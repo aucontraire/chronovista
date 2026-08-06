@@ -510,7 +510,7 @@ When running bulk corrections, be aware of these known limitations:
 YouTube's auto-generated transcripts split text into small overlapping segments (typically 2–5 seconds). If a misspelling spans two adjacent segments (e.g., "Claudia" at the end of one segment and "Shembun" at the start of the next), `find-replace` will not match it because each segment is searched independently. You must correct such cases manually via the inline web UI.
 
 **Regex pattern safety:**
-Broad regex patterns can match unintended text. For example, `--pattern "Sham\w*" --regex` will match "Shambo", "Shamado", but also "Shame", "Sham", etc. Always run with `--dry-run` first and review every match before applying. Consider adding more specificity to your pattern (e.g., `Katherine Johnsm\w+` instead of just `Sham\w*`).
+Broad regex patterns can match unintended text. For example, `--pattern "Love\w*" --regex` will match "Lovelace", "Loveless", but also "Loved", "Lover", etc. Always run with `--dry-run` first and review every match before applying. Consider adding more specificity to your pattern (e.g., `Ada Love\w+` instead of just `Love\w*`).
 
 **Substring mode vs. word boundaries:**
 The default substring mode uses SQL `LIKE '%pattern%'`, which matches anywhere inside a word. For example, `--pattern "art"` matches "art", "start", "party", etc. If you need exact word matching, use `--regex` with word boundaries: `--pattern '\bart\b' --regex`.
@@ -524,7 +524,7 @@ After running `find-replace`, you should:
 The entity scan reads segment-level effective text (corrected_text if available), but `rebuild-text` keeps the full-text search index and the "Full Text" view in the web UI in sync.
 
 **ASR alias registration (v0.41.0+):**
-When `find-replace` corrects text that matches a known entity name, the original misspelling form is automatically registered as an `asr_error` alias on that entity. In regex mode, each distinct matched form (e.g., "Shambo", "Shamado", "Shambom") is registered as a separate alias. This means a subsequent `entities scan` will find more mentions because the alias list has grown. This is the intended closed-loop pipeline: corrections → aliases → expanded mention coverage.
+When `find-replace` corrects text that matches a known entity name, the original misspelling form is automatically registered as an `asr_error` alias on that entity. In regex mode, each distinct matched form (e.g., "Lovelace", "Loveless", "Lovelach") is registered as a separate alias. This means a subsequent `entities scan` will find more mentions because the alias list has grown. This is the intended closed-loop pipeline: corrections → aliases → expanded mention coverage.
 
 ## Entity Mention Scanning (v0.41.0+)
 
@@ -550,14 +550,14 @@ The most effective workflow combines corrections with scanning:
 ```bash
 # 1. Fix a recurring ASR error across all transcripts
 chronovista corrections find-replace \
-  --pattern 'Katherine Johnsm\w+' \
-  --replacement 'Katherine Johnson' \
+  --pattern 'Ada Love\w+' \
+  --replacement 'Ada Lovelace' \
   --regex --dry-run
 
 # Review the dry-run output, then apply:
 chronovista corrections find-replace \
-  --pattern 'Katherine Johnsm\w+' \
-  --replacement 'Katherine Johnson' \
+  --pattern 'Ada Love\w+' \
+  --replacement 'Ada Lovelace' \
   --regex
 
 # 2. Rebuild full transcript text

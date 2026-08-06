@@ -19,15 +19,15 @@ ASR engines frequently misrecognize proper nouns, acronyms, and names — especi
 ```bash
 # Preview a simple substring replacement
 chronovista corrections find-replace \
-  --pattern 'eml' --replacement 'EML' --dry-run
+  --pattern 'rag' --replacement 'RAG' --dry-run
 
 # Apply it (with confirmation prompt)
 chronovista corrections find-replace \
-  --pattern 'eml' --replacement 'EML'
+  --pattern 'rag' --replacement 'RAG'
 
 # Undo it
 chronovista corrections batch-revert \
-  --pattern 'EML' --dry-run
+  --pattern 'RAG' --dry-run
 ```
 
 ---
@@ -41,11 +41,11 @@ Matches the pattern as a literal substring anywhere in the segment text. Case-se
 ```bash
 # Exact substring match
 chronovista corrections find-replace \
-  --pattern 'eml' --replacement 'EML' --dry-run
+  --pattern 'rag' --replacement 'RAG' --dry-run
 
 # Case-insensitive substring match
 chronovista corrections find-replace \
-  --pattern 'eml' --replacement 'EML' \
+  --pattern 'rag' --replacement 'RAG' \
   --case-insensitive --dry-run
 ```
 
@@ -53,38 +53,38 @@ chronovista corrections find-replace \
 
 **Special characters**: Characters with special meaning in SQL LIKE patterns (`_`, `%`, `\`) are automatically escaped and matched literally in substring mode. For example, searching for `[ __ ]` will match that exact string rather than treating `_` as a single-character wildcard.
 
-**Watch out**: Substring mode matches inside longer words. `--pattern 'eml'` will also match "k**eml**ops". Use regex with `\b` word boundaries to avoid this (see below).
+**Watch out**: Substring mode matches inside longer words. `--pattern 'rag'` will also match "sto**rag**e". Use regex with `\b` word boundaries to avoid this (see below).
 
 ### Regex Mode (`--regex`)
 
 Treats the pattern as a Python regular expression. Use this when you need word boundaries, wildcards, or flexible matching.
 
 ```bash
-# Match "eml" as a whole word (not inside "kamloops")
+# Match "rag" as a whole word (not inside "storage")
 chronovista corrections find-replace \
-  --regex --pattern '\bamlo\w*' --replacement 'EML' --dry-run
+  --regex --pattern '\brag\w*' --replacement 'RAG' --dry-run
 ```
 
 **Key regex features**:
 
 | Syntax | Meaning | Example |
 |--------|---------|---------|
-| `\b` | Word boundary | `\bamlo\b` matches "eml" but not "kamloops" |
-| `\w*` | Zero or more word characters | `\bamlo\w*` matches "eml", "eml's" |
+| `\b` | Word boundary | `\brag\b` matches "rag" but not "storage" |
+| `\w*` | Zero or more word characters | `\brag\w*` matches "rag", "rag's" |
 | `\d+` | One or more digits | `\d+` matches "123" |
 | `\s+` | One or more whitespace | `foo\s+bar` matches "foo  bar" |
-| `(a\|b)` | Alternation | `(Shane\|Shayne)` matches either spelling |
+| `(a\|b)` | Alternation | `(data base\|data-base)` matches either spelling |
 
 **Word boundaries (`\b`)** are the most important regex feature for corrections. They ensure you match whole words without accidentally changing longer words that contain your pattern as a substring.
 
 ```bash
-# WITHOUT \b — dangerous: matches "eml" inside "kamloops"
+# WITHOUT \b — dangerous: matches "rag" inside "storage"
 chronovista corrections find-replace \
-  --regex --pattern 'eml' --replacement 'EML' --dry-run
+  --regex --pattern 'rag' --replacement 'RAG' --dry-run
 
-# WITH \b — safe: only matches "eml" at word boundaries
+# WITH \b — safe: only matches "rag" at word boundaries
 chronovista corrections find-replace \
-  --regex --pattern '\bamlo\w*' --replacement 'EML' --dry-run
+  --regex --pattern '\brag\w*' --replacement 'RAG' --dry-run
 ```
 
 **Malformed regex**: If your pattern has a syntax error (e.g., unclosed brackets), you get a clear error message instead of a crash:
@@ -101,14 +101,14 @@ chronovista corrections find-replace \
 
 ### The Problem
 
-ASR engines split audio into segments based on timing, not meaning. A name like "Katherine Johnson" may be split across two segments:
+ASR engines split audio into segments based on timing, not meaning. A term like "vector database" may be split across two segments:
 
 ```
-Segment 934 (39:46): "...una entrevista, Katherine Johnsen"
-Segment 935 (39:49): "Bound también siendo candidata..."
+Segment 934 (39:46): "...so we stored the embeddings in a vector data"
+Segment 935 (39:49): "base, which made retrieval much faster..."
 ```
 
-Without `--cross-segment`, you can only match within a single segment. The pattern "Johnsen Bound" won't be found because it spans two segments.
+Without `--cross-segment`, you can only match within a single segment. The pattern "data base" won't be found because it spans two segments.
 
 ### The Solution
 
@@ -117,8 +117,8 @@ The `--cross-segment` flag concatenates adjacent segments and matches patterns a
 ```bash
 chronovista corrections find-replace \
   --cross-segment \
-  --pattern 'Johnsen Bound' \
-  --replacement 'Sheinbaum' \
+  --pattern 'data base' \
+  --replacement 'database' \
   --video-id VIDEO_ID --dry-run
 ```
 
@@ -139,9 +139,9 @@ Cross-segment matches are visually distinguished from single-segment matches:
 ┌──────────┬─────────┬────────┬──────┬────────────────┬───────────────┐
 │ Video ID │ Segment │ Start  │ Type │ Current Text   │ Proposed Text │
 ├──────────┼─────────┼────────┼──────┼────────────────┼───────────────┤
-│ JIMXfr.. │ 934     │ 39:46  │ ╶─┐  │ ...Shane       │ ...Sheinbaum  │
-│ JIMXfr.. │ 935     │ 39:49  │ ╶─┘  │ Bound tam..    │ también..     │
-│ abc123.. │ 42      │ 01:23  │      │ eml said      │ EML said     │
+│ JIMXfr.. │ 934     │ 39:46  │ ╶─┐  │ ...vector data │ ...vector    │
+│ JIMXfr.. │ 935     │ 39:49  │ ╶─┘  │ base, which..  │ database,..  │
+│ abc123.. │ 42      │ 01:23  │      │ rag said      │ RAG said     │
 └──────────┴─────────┴────────┴──────┴────────────────┴───────────────┘
 
 Dry run complete: 3 segments would be corrected across 2 videos (1 cross-segment pair).
@@ -159,20 +159,20 @@ Dry run complete: 3 segments would be corrected across 2 videos (1 cross-segment
 # Cross-segment + regex + word boundaries
 chronovista corrections find-replace \
   --cross-segment --regex \
-  --pattern '\bPresident Shane Bum\b' \
-  --replacement 'Redacted' \
+  --pattern '\bvector data\s+base\b' \
+  --replacement 'Vector Database' \
   --video-id uajXFlDGTfg --dry-run
 
 # Cross-segment + case-insensitive
 chronovista corrections find-replace \
   --cross-segment --case-insensitive \
-  --pattern 'johnsen bound' --replacement 'Sheinbaum' \
+  --pattern 'data base' --replacement 'database' \
   --video-id JIMXfrMtHas --dry-run
 
 # Cross-segment + language filter
 chronovista corrections find-replace \
   --cross-segment --language es \
-  --pattern 'Johnsen Bound' --replacement 'Sheinbaum' --dry-run
+  --pattern 'data base' --replacement 'database' --dry-run
 ```
 
 ### Pairing Rules
@@ -217,11 +217,11 @@ Use `--yes` to bypass the warning, or add a scope filter.
 ```bash
 # Preview what would be reverted
 chronovista corrections batch-revert \
-  --pattern 'Sheinbaum' --video-id JIMXfrMtHas --dry-run
+  --pattern 'Database' --video-id JIMXfrMtHas --dry-run
 
 # Apply the revert
 chronovista corrections batch-revert \
-  --pattern 'Sheinbaum' --video-id JIMXfrMtHas
+  --pattern 'Database' --video-id JIMXfrMtHas
 ```
 
 **Important**: The pattern matches against the **corrected** text (what the segment says now), not the original text.
@@ -236,8 +236,8 @@ In dry-run mode, partner segments appear with a "(partner)" label:
 ┌──────────┬─────────┬────────┬───────────────────────┬──────────┐
 │ Video ID │ Segment │ Start  │ Corrected Text        │ Note     │
 ├──────────┼─────────┼────────┼───────────────────────┼──────────┤
-│ JIMXfr.. │ 934     │ 39:46  │ ...Sheinbaum          │          │
-│ JIMXfr.. │ 935     │ 39:49  │ también siendo..      │ (partner)│
+│ JIMXfr.. │ 934     │ 39:46  │ ...Database          │          │
+│ JIMXfr.. │ 935     │ 39:49  │ base, which made..    │ (partner)│
 └──────────┴─────────┴────────┴───────────────────────┴──────────┘
 
 Dry run complete: 2 segments would be reverted (1 via cross-segment partner cascade).
@@ -250,11 +250,11 @@ To revert only one segment without affecting others that match the same pattern,
 ```bash
 # Too broad — might revert multiple segments
 chronovista corrections batch-revert \
-  --pattern 'Sheinbaum' --video-id JIMXfrMtHas --dry-run
+  --pattern 'Database' --video-id JIMXfrMtHas --dry-run
 
 # More specific — targets only the segment with this exact corrected text
 chronovista corrections batch-revert \
-  --pattern 'concediera una entrevista, Katherine Johnson' \
+  --pattern 'we stored it in the vector database' \
   --video-id JIMXfrMtHas --dry-run
 ```
 
@@ -302,11 +302,11 @@ chronovista corrections rebuild-text --video-id VIDEO_ID --dry-run
 ```bash
 # 1. Preview with word boundaries to avoid false positives
 chronovista corrections find-replace \
-  --regex --pattern '\bamlo\b' --replacement 'EML' --dry-run
+  --regex --pattern '\brag\b' --replacement 'RAG' --dry-run
 
 # 2. Apply
 chronovista corrections find-replace \
-  --regex --pattern '\bamlo\b' --replacement 'EML'
+  --regex --pattern '\brag\b' --replacement 'RAG'
 
 # 3. Rebuild transcript text
 chronovista corrections rebuild-text
@@ -316,32 +316,32 @@ chronovista corrections rebuild-text
 
 ```bash
 # 1. Find the split in your transcript viewer
-#    e.g., "President Shane" + "Bound también..."
+#    e.g., "...vector data" + "base, which..."
 
 # 2. Preview the cross-segment fix
 chronovista corrections find-replace \
   --cross-segment \
-  --pattern 'Johnsen Bound' --replacement 'Sheinbaum' \
+  --pattern 'Data Base' --replacement 'database' \
   --video-id uajXFlDGTfg --dry-run
 
 # 3. Apply
 chronovista corrections find-replace \
   --cross-segment \
-  --pattern 'Johnsen Bound' --replacement 'Sheinbaum' \
+  --pattern 'Data Base' --replacement 'database' \
   --video-id uajXFlDGTfg
 
 # 4. If wrong, revert (partner segment auto-reverted)
 chronovista corrections batch-revert \
-  --pattern 'Sheinbaum' --video-id uajXFlDGTfg
+  --pattern 'Database' --video-id uajXFlDGTfg
 ```
 
 ### Bulk fix a pattern across a language
 
 ```bash
-# Fix all Spanish transcripts where ASR wrote "Redacted"
+# Fix all Spanish transcripts where ASR wrote "Data Base"
 chronovista corrections find-replace \
   --cross-segment --case-insensitive \
-  --pattern 'redacted' --replacement 'Sheinbaum' \
+  --pattern 'data base' --replacement 'database' \
   --language es --dry-run
 ```
 
@@ -406,7 +406,7 @@ When correcting ASR errors for entity names, you can optionally link the correct
 
 #### How It Works
 
-1. Type a replacement in the "Replace with" field (e.g., "EML")
+1. Type a replacement in the "Replace with" field (e.g., "RAG")
 2. The **entity autocomplete** appears below, showing matching entities from your database
 3. Select an entity to link — a **pill/badge** appears showing the entity name and type
 4. Click the external link icon on the pill to view the entity detail page (opens in a new tab)
@@ -416,13 +416,13 @@ When correcting ASR errors for entity names, you can optionally link the correct
 
 If the replacement text does not match the selected entity's canonical name or any of its registered aliases, an **amber warning** appears:
 
-> ⚠️ "EML" is not the canonical name or a registered alias for this entity.
+> ⚠️ "RAG" is not the canonical name or a registered alias for this entity.
 > The entity link will still be recorded, but future scans may not match this form.
 > To add it as an alias, click the 🔗 icon above to open the entity detail page. Or proceed as-is.
 
 This warning is **non-blocking** — you can still apply the correction. But the unregistered text form won't be picked up by `entities scan` later.
 
-To resolve the mismatch, open the entity detail page and add the replacement text as an alias (e.g., add "EML" as a `name_variant` alias for "Émile Moreau Laurent").
+To resolve the mismatch, open the entity detail page and add the replacement text as an alias (e.g., add "RAG" as a `name_variant` alias for "Retrieval Augmented Generation").
 
 #### What Happens on Apply
 
@@ -478,8 +478,8 @@ The diff analysis page at `/corrections/diff-analysis` surfaces recurring ASR mi
 
 The dashboard aggregates word-level diffs from all previously applied corrections and groups them by error token and canonical (corrected) form. Each row shows:
 
-- **Error token** — the original ASR-produced text (e.g., "Redacted")
-- **Canonical form** — the corrected text (e.g., "Sheinbaum")
+- **Error token** — the original ASR-produced text (e.g., "Data Base")
+- **Canonical form** — the corrected text (e.g., "Database")
 - **Frequency** — how many times this specific correction has been applied
 - **Remaining matches** — how many un-corrected instances of the error token still exist in your transcripts
 - **Entity association** — if the canonical form matches a named entity, the entity name is shown
@@ -497,7 +497,7 @@ Each row has a **Find & Replace** button that navigates to the batch corrections
 
 - The error token as the search pattern
 - The canonical form as the replacement
-- Regex mode enabled with `\b` word boundaries wrapping the pattern (e.g., `\bShane Baum\b`)
+- Regex mode enabled with `\b` word boundaries wrapping the pattern (e.g., `\bData Base\b`)
 
 This lets you quickly apply a known correction pattern to all remaining instances.
 
@@ -509,7 +509,7 @@ The Find & Replace page (`/corrections/batch`) includes a collapsible **Cross-Se
 
 ### How It Works
 
-Candidates are discovered by analyzing your existing correction history. When the system finds a recurring correction pattern (e.g., "Johnsen Bound" corrected to "Sheinbaum" at least 3 times), it scans for uncorrected segment pairs where that same error is split across a boundary.
+Candidates are discovered by analyzing your existing correction history. When the system finds a recurring correction pattern (e.g., "Data Base" corrected to "Database" at least 3 times), it scans for uncorrected segment pairs where that same error is split across a boundary.
 
 Each candidate shows:
 

@@ -60,9 +60,9 @@ Tick **Transcript only** to require that the entity was actually *said*, not mer
 Open any entity's detail page and scroll to **Appears with**. It lists the entities sharing the most videos with this one:
 
 ```
-Redacted        3296 videos
-Redacted             1474 videos
-Redacted            1301 videos
+Large Language Model    147 videos
+ChatGPT                 126 videos
+Anthropic               121 videos
 ```
 
 Click any of them and you land on the videos list filtered to **both** entities — that exact set of shared videos. The number in the panel and the number you land on are the same number, by construction.

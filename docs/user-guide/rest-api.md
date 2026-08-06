@@ -458,12 +458,12 @@ curl "http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/transcript/segments/1234/c
 # Preview batch corrections
 curl -X POST "http://localhost:8000/api/v1/corrections/batch/preview" \
   -H "Content-Type: application/json" \
-  -d '{"pattern": "eml", "replacement": "EML", "is_regex": false, "case_insensitive": true}'
+  -d '{"pattern": "rag", "replacement": "RAG", "is_regex": false, "case_insensitive": true}'
 
 # Apply to selected segments
 curl -X POST "http://localhost:8000/api/v1/corrections/batch/apply" \
   -H "Content-Type: application/json" \
-  -d '{"pattern": "eml", "replacement": "EML", "segment_ids": [1234, 1235], "correction_type": "proper_noun", "auto_rebuild": true}'
+  -d '{"pattern": "rag", "replacement": "RAG", "segment_ids": [1234, 1235], "correction_type": "proper_noun", "auto_rebuild": true}'
 
 # Rebuild transcript text for affected videos
 curl -X POST "http://localhost:8000/api/v1/corrections/batch/rebuild-text" \
@@ -511,12 +511,12 @@ curl "http://localhost:8000/api/v1/entities/check-duplicate?name=Noam%20Chomsky&
 # Classify a canonical tag as an entity
 curl -X POST http://localhost:8000/api/v1/entities/classify \
   -H "Content-Type: application/json" \
-  -d '{"normalized_form": "ada lovelace", "entity_type": "person", "description": "American linguist"}'
+  -d '{"normalized_form": "ada lovelace", "entity_type": "person", "description": "Mathematician"}'
 
 # Create a standalone entity with aliases
 curl -X POST http://localhost:8000/api/v1/entities \
   -H "Content-Type: application/json" \
-  -d '{"name": "Ada Lovelace", "entity_type": "person", "aliases": ["Chomsky", "N. Chomsky"]}'
+  -d '{"name": "Ada Lovelace", "entity_type": "person", "aliases": ["Lovelace", "A. Lovelace"]}'
 ```
 
 #### Alias Matching Behaviour

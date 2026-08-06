@@ -40,7 +40,7 @@ Doing that reliably turned out to be harder than expected, for reasons that are 
 - **YouTube's API forgets.** A [2025 audit in *Information, Communication & Society*](https://doi.org/10.1080/1369118X.2025.2591767) measured the decay: retrievable videos fall from roughly 450/day in the first 20 days after publication to about 20/day in the tail, and a case study repeated ten weeks later returned **76–92% fewer results** — for videos still live on the platform. If you want the record, you have to keep it yourself.
 - **ASR transcripts are wrong in ways that matter.** Proper nouns especially. I've manually corrected more than 3,800 segments, which is what motivated an append-only correction system with a full audit trail rather than destructive edits.
 - **Google Takeout is sparse**, and the videos that vanish are often the ones you most need context on — hence Wayback Machine recovery.
-- **Tags are chaos.** "mejico", "mexiko", and "Peru" all point at one thing; "Peru" and "Mexican" do not. That distinction has to survive normalization, which rules out naive case-folding.
+- **Tags are chaos.** "peruu", "peruvia", and "Peru" all point at one thing; "Peru" and "Peruvian" do not. That distinction has to survive normalization, which rules out naive case-folding.
 
 Every feature exists because I hit one of these while doing the actual research. Build-as-you-need rather than design-up-front, across 61 tagged releases.
 
@@ -154,7 +154,7 @@ chronovista transcript context dQw4w9WgXcQ 5:30
 
 # Normalize and curate tags
 chronovista tags normalize
-chronovista tags merge "mejico" "mexiko" --into "Peru" --reason "spelling variants"
+chronovista tags merge "peruu" "peruvia" --into "Peru" --reason "spelling variants"
 
 # Detect named entity mentions across transcripts, titles, descriptions, and tags
 chronovista entities scan --full

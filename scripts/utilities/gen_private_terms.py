@@ -57,9 +57,24 @@ ALLOWLIST = {
     "GraphRAG",
     "Knowledge Graph",
     "Large Language Model",
+    "LLM",
     "Obsidian",
     "OpenAI",
     "Vector Database",
+}
+
+# Aliases that are ordinary English words. Word boundaries do not rescue these
+# — "web UI", "fork the repo", "peek at the output", "check mate" are all
+# legitimate, and a detector that fires on them gets switched off. Each of these
+# entities is still covered by its full name, which is the form that actually
+# identifies a person. Listed separately from ALLOWLIST because the reason is
+# different: these are not this project's subject matter, they are collisions.
+COMMON_WORD_ALIASES = {
+    "Fork",
+    "Mate",
+    "Peek",
+    "Sham",
+    "Web",
 }
 
 QUERY = text(
@@ -80,7 +95,7 @@ async def main(dsn: str) -> int:
             # other casings ("Openai" beside "OpenAI"), and an exact-set
             # subtraction leaves those behind for the case-insensitive matcher
             # to flag — allowlisting a term must allowlist all its spellings.
-            blocked = {a.casefold() for a in ALLOWLIST}
+            blocked = {a.casefold() for a in ALLOWLIST | COMMON_WORD_ALIASES}
             terms = sorted(
                 {
                     r.term.strip()

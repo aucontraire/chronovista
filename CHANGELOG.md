@@ -47,14 +47,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Recover from stale lazy-loaded chunks after a redeploy.** Route pages are code-split with `React.lazy`; when the app is rebuilt, chunk filenames get new content hashes and old chunks 404, so a browser tab still on the previous build fails with "Failed to fetch dynamically imported module". The app now handles Vite's `vite:preloadError` by reloading once (guarded against loops), and the server serves `index.html` with `Cache-Control: no-cache` so the reload fetches HTML referencing the current hashes.
 - **Entity mention scans no longer report a false "Scan failed."** The entity and video scan endpoints (`POST /entities/{id}/scan`, `POST /videos/{id}/scan-entities`) now run asynchronously — they return `202` with a `job_id`, and the frontend polls `GET /api/v1/scan-jobs/{job_id}` for progress and result. Previously the scan blocked for minutes and tripped the client timeout (reporting failure) even though the backend completed and committed the mentions.
-- **Entity mention scanning now catches accented spellings.** The scan matched aliases accent-sensitively (case-insensitive only), so an alias like `Peru` never matched `México` in transcripts, titles, or descriptions — even though accented and unaccented spellings normalize to the same alias. Scanning now folds diacritics on both the alias patterns and the scanned text (offset-safe, so transcript seek positions and stored mention text stay correct) and matches exclusion patterns consistently. The duplicate-alias message now explains that accents and case are ignored. Re-run `entities scan --full` to pick up previously-missed accented mentions.
+- **Entity mention scanning now catches accented spellings.** The scan matched aliases accent-sensitively (case-insensitive only), so an alias like `Peru` never matched `Perú` in transcripts, titles, or descriptions — even though accented and unaccented spellings normalize to the same alias. Scanning now folds diacritics on both the alias patterns and the scanned text (offset-safe, so transcript seek positions and stored mention text stay correct) and matches exclusion patterns consistently. The duplicate-alias message now explains that accents and case are ignored. Re-run `entities scan --full` to pick up previously-missed accented mentions.
 
 ## [0.57.0] - 2026-07-20
 
 ### Added
 - **Feature 056: Tag Merge UI with Contains-Match Search**
   - **Frontend tag merge (US2)**: New `/tags/merge` page reached via a "Tags" collapsible sidebar nav group. Search for and select source tags, designate a target, preview the exact impact, and execute a merge without leaving the browser — surfacing the existing `TagManagementService` CLI capability in the web UI
-  - **Contains-match search (US1)**: `GET /api/v1/canonical-tags` gains a `match_mode` parameter (`prefix` default, `contains`) so searching "Grace Hopper" finds "Professor Grace Hopper". Contains results are relevance-tiered (exact → prefix → mid-string); the video filter keeps its prefix/limit-10 behavior unchanged
+  - **Contains-match search (US1)**: `GET /api/v1/canonical-tags` gains a `match_mode` parameter (`prefix` default, `contains`) so searching "Ada Lovelace" finds "Professor Ada Lovelace". Contains results are relevance-tiered (exact → prefix → mid-string); the video filter keeps its prefix/limit-10 behavior unchanged
   - **Merge preview (US2)**: Read-only `POST /api/v1/canonical-tags/merge/preview` computes exact post-merge counts via `COUNT(DISTINCT video_id)` over the source+target union — videos tagged with more than one selected tag are counted once (no client-side summing that would overstate impact)
   - **Configurable result limit (US3)**: Merge search surfaces up to 50 results while the video filter stays at 10
   - **Session-scoped undo (US4)**: The post-merge banner offers undo via `POST /api/v1/canonical-tags/operations/{id}/undo`; a copyable operation ID enables `chronovista tags undo <id>` later
@@ -137,7 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Sort order**: Transcript-mention videos appear before tag-only videos; within each group, sorted by mention count DESC then upload date DESC
 
 ### Fixed
-- ASR error aliases ("Emile", "Moreau", "edsger") excluded from tag matching to prevent false positives — e.g., "edsger" as an ASR alias for Nora Bennett was matching 15 Edsger Dijkstra videos via tags
+- ASR error aliases ("Retreival", "Augmentid", "edith") excluded from tag matching to prevent false positives — e.g., "edith" as an ASR alias for Edith Clarke was matching 15 Edsger Dijkstra videos via tags
 
 ### Technical
 - Backend version: 0.53.1 → 0.54.0
@@ -350,8 +350,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Entity Mention Scan False Positives**: `_load_entity_patterns()` now excludes `asr_error` aliases from scan patterns — previously included ASR error alias text (e.g., "Lovelach") in regex patterns, creating 917 false `rule_match` mentions across 24 entities
 - **Entity Video List Count Inconsistency**: `get_entity_video_list()` now applies visible-names filter (canonical name + non-ASR-error aliases) so video count and mention count are consistent in the entity detail page header — previously showed impossible stats like "2 mentions, 3 videos"
-- **Cross-Segment Stopword False Positives**: Added stopword filtering to `CrossSegmentDiscovery` — common English function word splits like "be out" (from "Alan Turner") no longer generate spurious cross-segment candidates
-- **ASR Alias Quality Gates**: `is_valid_asr_alias()` gate in `asr_alias_registry.py` rejects aliases shorter than 4 characters or consisting entirely of common English function words; applied to both full-string and sub-token alias registration; deleted "be out" alias and 51 associated false entity mentions for Alan Turner
+- **Cross-Segment Stopword False Positives**: Added stopword filtering to `CrossSegmentDiscovery` — common English function word splits like "be out" (from "Alan Turing") no longer generate spurious cross-segment candidates
+- **ASR Alias Quality Gates**: `is_valid_asr_alias()` gate in `asr_alias_registry.py` rejects aliases shorter than 4 characters or consisting entirely of common English function words; applied to both full-string and sub-token alias registration; deleted "be out" alias and 51 associated false entity mentions for Alan Turing
 - **DiffAnalysis Filter Alignment**: Fixed vertical misalignment between "Filter by error token" and "Filter by entity name" inputs on ASR Error Patterns page
 
 ### Technical
@@ -415,7 +415,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Entity autocomplete on batch corrections page (`/corrections/batch`): debounced search against entity names and aliases via `GET /api/v1/entities?search=...&search_aliases=true&exclude_alias_types=asr_error`
   - Selected entity pill/badge with canonical name, entity type badge, dismiss button, and external link to entity detail page (opens in new tab)
   - Mismatch warning (amber, non-blocking) when replacement text does not match the selected entity's canonical name or any registered alias — warns that future scans may not match the text form, suggests adding an alias via the entity detail page
-  - Alias-aware mismatch check: `useEntityDetail` hook fetches entity detail (including aliases, `asr_error` filtered by backend) so registered aliases like "EML" for "Émile Moreau Laurent" correctly suppress the warning
+  - Alias-aware mismatch check: `useEntityDetail` hook fetches entity detail (including aliases, `asr_error` filtered by backend) so registered aliases like "RAG" for "Retrieval Augmented Generation" correctly suppress the warning
   - Entity summary row in ApplyControls showing linked entity before apply, with compact mismatch indicator
   - Alias display on entity detail page: genuine aliases (not `asr_error`) shown in a dedicated section with color-coded type badges (name_variant, abbreviation, nickname, translated_name, former_name)
   - Alias creation form on entity detail page: text input + alias type dropdown + "Add" button with TanStack Query cache invalidation and 3-second auto-clearing success message
@@ -427,7 +427,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Transcript segment edit form transparency bug: virtual list items with `position: absolute` caused neighboring rows to paint on top of the edit form; fixed with `zIndex: 10` on active segment row
-- False positive mismatch warning for registered aliases (e.g., "EML" incorrectly triggering warning despite being a registered abbreviation alias)
+- False positive mismatch warning for registered aliases (e.g., "RAG" incorrectly triggering warning despite being a registered abbreviation alias)
 - `DuplicateTableError` for `ix_entity_mentions_correction_id`: removed duplicate `Index()` from `__table_args__` (column `index=True` already creates it)
 - 3 mypy errors in `test_batch_correction_service.py`: replaced lambda `append() or value` tricks with proper async helpers; removed unused `type: ignore` comment
 - 6 test failures after Feature 043 model changes: updated member count, expected keys, and mock attributes for `EntityMention` and entity detail response schema
@@ -507,7 +507,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Feature 040: Correction Pattern Matching Robustness (#76, #71)**
-  - `--cross-segment` flag on `corrections find-replace` — matches patterns spanning two adjacent transcript segments (e.g., ASR splitting "Katherine Johnson" across segment boundaries as "Katherine Johnsen" + "Bound")
+  - `--cross-segment` flag on `corrections find-replace` — matches patterns spanning two adjacent transcript segments (e.g., ASR splitting "Vector Database" across segment boundaries as "vector data" + "Bound")
   - Cross-segment dry-run preview with box-drawing pair markers (`╶─┐`/`╶─┘`) and pair count in summary
   - Cross-segment correction application: replacement placed in segment A, consumed fragment removed from segment B, leading whitespace normalized on segment B
   - Cross-segment partner cascade revert: reverting one segment of a cross-segment pair automatically reverts its partner via `[cross-segment:partner=N]` audit marker
@@ -671,7 +671,7 @@ Standalone named entity management CLI and improvements to the `classify` comman
 - `services/tag_management.py` — Added `description` and `auto_case` parameters to `classify()` method
 
 ### Fixed
-- 4 lowercase person entity names (Redacted, Redacted, Redacted, Redacted) corrected via one-time `INITCAP()` update across `canonical_tags`, `named_entities`, and `entity_aliases` tables — root cause: no YouTube creator ever title-cased those tags, so canonical form election selected lowercase
+- 4 lowercase person entity names (Grace Hopper, Katherine Johnson, Barbara Liskov, Radia Perlman) corrected via one-time `INITCAP()` update across `canonical_tags`, `named_entities`, and `entity_aliases` tables — root cause: no YouTube creator ever title-cased those tags, so canonical form election selected lowercase
 
 ### Technical
 - 42 new tests: 29 integration (entity CLI), 6 integration (tag management CLI), 7 unit (tag management service)
@@ -1051,7 +1051,7 @@ Integrates the canonical tag API (Feature 030) into the React frontend. Replaces
 **Video Detail Tag Grouping (`ClassificationSection`):**
 - Raw tags grouped by canonical form using batch `useQueries` resolution against `GET /api/v1/canonical-tags?q={tag}&limit=1`
 - Each canonical group shows `canonical_form` badge with teal color scheme
-- Top aliases displayed below each badge ("Also: PERU, peru, méxico, #peru") via `useCanonicalTagDetail` hook
+- Top aliases displayed below each badge ("Also: PERU, peru, perú, #peru") via `useCanonicalTagDetail` hook
 - Alias line hidden when `alias_count=1` or when only alias is the canonical form itself (R7 rule)
 - Unresolved/orphaned tags displayed in separate "Unresolved Tags" subsection with slate italic styling
 - Skeleton loading placeholders during resolution (up to 10)
@@ -1117,8 +1117,8 @@ CLI commands for manual curation of the canonical tag system. Enables merging sp
 - Self-contained rollback data: each operation stores complete previous state in `tag_operation_logs.rollback_data` JSONB — undo requires no additional table reads
 - Type-specific undo handlers: `_undo_merge()`, `_undo_split()`, `_undo_rename()`, `_undo_classify()`, `_undo_deprecate()`
 - Lazy count recalculation via `SELECT COUNT` with JOIN after every mutation
-- Multi-source merge: `tags merge mejico mexiko --into peru` in a single atomic operation with one log entry
-- Entity classification with upsert semantics (FR-019): handles multiple tag aliases normalizing to the same form (e.g., "Aaron Mate" and "Renée Dubois" → "aaron mate") by accumulating `occurrence_count` instead of failing on unique constraint
+- Multi-source merge: `tags merge peruu peruvia --into peru` in a single atomic operation with one log entry
+- Entity classification with upsert semantics (FR-019): handles multiple tag aliases normalizing to the same form (e.g., "Renee Dubois" and "Renée Dubois" → "aaron mate") by accumulating `occurrence_count` instead of failing on unique constraint
 - Entity-producing types (person, organization, place, event, work, technical_term) create `named_entities` + `entity_aliases` records; tag-only types (topic, descriptor) set `entity_type` only
 - Collision detection compares casefolded forms within canonical tag groups to find false diacritic merges
 - All commands support `--reason "text"` flag stored in `tag_operation_logs.reason`
@@ -1138,7 +1138,7 @@ CLI commands for manual curation of the canonical tag system. Enables merging sp
 
 ### Fixed
 - UUID JSON serialization error in `tag_operation_logs` JSONB columns: changed `source_canonical_ids` and `affected_alias_ids` from `list[uuid.UUID]` to `list[str]` in `TagOperationLogCreate` to prevent Pydantic V2 from coercing strings back to UUID objects that `json.dumps()` cannot serialize
-- Entity alias unique constraint violation during `tags classify` when multiple tag aliases normalize to the same form (e.g., "Aaron Mate" and "Renée Dubois"): implemented upsert semantics with `occurrence_count` accumulation for both in-batch duplicates and pre-existing DB records
+- Entity alias unique constraint violation during `tags classify` when multiple tag aliases normalize to the same form (e.g., "Renee Dubois" and "Renée Dubois"): implemented upsert semantics with `occurrence_count` accumulation for both in-batch duplicates and pre-existing DB records
 
 ### Technical
 - 181 new tests: 73 unit (service), 35 unit (repository), 73 integration (CLI commands)
@@ -1239,7 +1239,7 @@ Bulk backfill pipeline that processes all 141,163 distinct tags from the `video_
 
 **Analysis & Collision Detection:**
 - `run_analysis()` provides read-only pre-backfill preview with top canonical tags, collision candidates, and skip list
-- Collision detection compares casefolded-only forms within normalized groups; flags merges where forms differ by Tier 1 diacritics (e.g., México/Peru → peru)
+- Collision detection compares casefolded-only forms within normalized groups; flags merges where forms differ by Tier 1 diacritics (e.g., Perú/Peru → peru)
 - `KNOWN_FALSE_MERGE_PATTERNS` (`frozenset[str]`, 5 entries: café, résumé, cliché, naïve, rapé) — display-only labels in analysis output, not stored in DB, does not prevent merges
 - Table and JSON output formats (`--format table|json`)
 
@@ -2227,7 +2227,7 @@ curl "http://localhost:8000/api/v1/tags/hip%20hop/videos"
 
 ### Fixed
 - Topic IDs containing slashes now work correctly in URL paths
-- Removed orphaned YouTube category IDs from topic_categories table (they belong in video_categories)
+- Removed orphaned YouTube category IDs from topic_categories table (they bedithg in video_categories)
 
 ## [0.13.0] - 2026-02-03
 

@@ -74,7 +74,7 @@ parallel layer: `canonical_tags` holds one row per real concept, and
 Keeping the raw layer immutable makes normalization reversible — a merge that
 turns out to be wrong is undone from `tag_operation_logs` without re-fetching
 anything — and it preserves the distinction between spelling variants of one
-concept ("mejico" → Peru) and genuinely different concepts (Peru ≠ Mexican),
+concept ("peruu" → Peru) and genuinely different concepts (Peru ≠ Peruvian),
 which a destructive rewrite would erase.
 
 ### Corrections are append-only

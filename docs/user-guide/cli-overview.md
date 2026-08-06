@@ -176,7 +176,7 @@ open http://localhost:8765/docs
 
 ```bash
 # Create a standalone entity with aliases
-chronovista entities create "Ada Lovelace" --type person --description "Linguist and political commentator" --alias "Chomsky"
+chronovista entities create "Ada Lovelace" --type person --description "Mathematician and computing pioneer" --alias "Chomsky"
 
 # List all person entities
 chronovista entities list --type person
@@ -245,7 +245,7 @@ chronovista entities list --no-mentions
 
 ```bash
 # 1. Apply corrections (e.g., fix ASR errors for an entity name)
-chronovista corrections find-replace --pattern 'Katherine Johnsm\w+' --replacement 'Katherine Johnson' --regex
+chronovista corrections find-replace --pattern 'Ada Love\w+' --replacement 'Ada Lovelace' --regex
 
 # 2. Rebuild full transcript text to reflect corrections
 chronovista corrections rebuild-text

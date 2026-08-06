@@ -29,9 +29,16 @@ class VideoEntitySummary(BaseModel):
     description : str | None
         Entity description.
     mention_count : int
-        Number of distinct segments mentioning this entity.
-    first_mention_time : float
-        Start time (seconds) of the earliest segment with a mention.
+        Number of detected mentions: distinct transcript segments, plus each
+        title and description mention. Excludes manual associations, which are
+        reported by ``has_manual``.
+    first_mention_time : float | None
+        Start time (seconds) of the earliest segment with a mention. None when
+        the entity has no transcript mention — a title-only entity has a
+        mention but no timestamp.
+    sources : list[str]
+        Where the mentions were found (transcript, title, description), plus
+        "manual" if a hand-made association exists.
     """
 
     model_config = ConfigDict(strict=True)
@@ -43,7 +50,11 @@ class VideoEntitySummary(BaseModel):
     )
     description: str | None = Field(None, description="Entity description")
     mention_count: int = Field(
-        ..., description="Number of distinct segments mentioning this entity"
+        ...,
+        description=(
+            "Detected mentions: distinct transcript segments plus each title "
+            "and description mention; excludes manual associations"
+        ),
     )
     first_mention_time: float | None = Field(
         ...,
@@ -51,7 +62,10 @@ class VideoEntitySummary(BaseModel):
     )
     sources: list[str] = Field(
         ...,
-        description="Detection method categories (transcript, manual, user_correction)",
+        description=(
+            "Where mentions were found (transcript, title, description), plus "
+            "'manual' when a hand-made association exists"
+        ),
     )
     has_manual: bool = Field(
         ..., description="Whether a manual association exists for this entity"
@@ -131,7 +145,10 @@ class EntityVideoResult(BaseModel):
     )
     sources: list[str] = Field(
         ...,
-        description="Detection method categories (transcript, manual, user_correction)",
+        description=(
+            "Where mentions were found (transcript, title, description), plus "
+            "'manual' when a hand-made association exists"
+        ),
     )
     has_manual: bool = Field(..., description="Whether a manual association exists")
     first_mention_time: float | None = Field(

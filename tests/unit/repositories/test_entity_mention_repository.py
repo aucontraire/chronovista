@@ -1351,9 +1351,17 @@ class TestGetVideoEntitySummary:
         entity_type: str = "technology",
         description: str | None = "Programming language",
         mention_count: int = 3,
-        first_mention_time: float = 12.5,
+        first_mention_time: float | None = 12.5,
+        mention_sources: list[str | None] | None = None,
+        detection_methods: list[str] | None = None,
+        has_manual: bool = False,
     ) -> MagicMock:
-        """Build a row mock matching the SELECT columns of get_video_entity_summary."""
+        """Build a row mock matching the SELECT columns of get_video_entity_summary.
+
+        Every column is set explicitly, including the falsey ones. An unset
+        MagicMock attribute is a truthy MagicMock, so a row that omits
+        ``has_manual`` silently tests the opposite of what it appears to.
+        """
         row = MagicMock()
         row.entity_id = entity_id or _uuid()
         row.canonical_name = canonical_name
@@ -1361,6 +1369,13 @@ class TestGetVideoEntitySummary:
         row.description = description
         row.mention_count = mention_count
         row.first_mention_time = first_mention_time
+        row.mention_sources = (
+            ["transcript"] if mention_sources is None else mention_sources
+        )
+        row.detection_methods = (
+            ["rule_match"] if detection_methods is None else detection_methods
+        )
+        row.has_manual = has_manual
         return row
 
     async def test_returns_list_of_summary_dicts(
@@ -1386,6 +1401,119 @@ class TestGetVideoEntitySummary:
         assert "description" in item
         assert "mention_count" in item
         assert "first_mention_time" in item
+
+    async def test_counts_mentions_that_have_no_transcript_segment(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """A title or description mention must count, and must be located.
+
+        Regression: mention_count was COUNT(DISTINCT segment_id), and title and
+        description mentions carry no segment. An entity named only in a
+        video's title therefore reported "0 mentions" with its row present in
+        the table — 58,169 video/entity pairs across 303 of 315 entities.
+        """
+        row = self._make_summary_row(
+            canonical_name="Ada Lovelace",
+            mention_count=1,
+            first_mention_time=None,
+            mention_sources=["title"],
+            has_manual=False,
+        )
+        mock_result = MagicMock()
+        mock_result.all.return_value = [row]
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.get_video_entity_summary(
+            mock_session, video_id="dQw4w9WgXcQ"
+        )
+
+        assert result[0]["mention_count"] == 1
+        # Not "transcript": that was inferred from detection_method, where
+        # rule_match was hardcoded to mean transcript (#172).
+        assert result[0]["sources"] == ["title"]
+        # A title mention has no timestamp, and that is correct rather than a
+        # second bug — it must not be invented.
+        assert result[0]["first_mention_time"] is None
+
+    async def test_count_expression_is_not_segment_only(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """The emitted SQL must not count distinct segments alone.
+
+        Asserting the mapped dict cannot catch this: the mapping is correct for
+        whatever the database returns, and the defect was entirely in the
+        aggregate. This inspects the statement instead.
+        """
+        mock_result = MagicMock()
+        mock_result.all.return_value = []
+        mock_session.execute.return_value = mock_result
+
+        await repository.get_video_entity_summary(mock_session, video_id="dQw4w9WgXcQ")
+
+        sql = str(mock_session.execute.await_args.args[0])
+        assert "coalesce" in sql.lower(), "non-segment mentions are not counted"
+        assert "mention_source" in sql, "location is not read from mention_source"
+
+    async def test_manual_only_association_still_counts_zero(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Manual associations must stay out of mention_count.
+
+        Not incidental: the web client treats mention_count == 0 as "linked by
+        hand, never detected" when optimistically removing an association. All
+        397 manual mentions carry a NULL segment, so a fix that simply counted
+        non-segment rows would have swept them in and broken that removal.
+        """
+        row = self._make_summary_row(
+            canonical_name="Grace Hopper",
+            mention_count=0,
+            first_mention_time=None,
+            mention_sources=[None],
+            detection_methods=["manual"],
+            has_manual=True,
+        )
+        mock_result = MagicMock()
+        mock_result.all.return_value = [row]
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.get_video_entity_summary(
+            mock_session, video_id="dQw4w9WgXcQ"
+        )
+
+        assert result[0]["mention_count"] == 0
+        assert result[0]["has_manual"] is True
+        # "manual" only. A manual row carries mention_source 'transcript'
+        # regardless of whether the entity was ever said, so reporting it would
+        # have the entity claim a transcript appearance it does not have.
+        assert result[0]["sources"] == ["manual"]
+
+    async def test_mixed_sources_are_all_reported(
+        self,
+        repository: EntityMentionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """An entity found in several places lists each, sorted and deduped."""
+        row = self._make_summary_row(
+            canonical_name="Alan Turing",
+            mention_count=3,
+            mention_sources=["transcript", "description", "transcript"],
+            has_manual=True,
+        )
+        mock_result = MagicMock()
+        mock_result.all.return_value = [row]
+        mock_session.execute.return_value = mock_result
+
+        result = await repository.get_video_entity_summary(
+            mock_session, video_id="dQw4w9WgXcQ"
+        )
+
+        assert result[0]["sources"] == ["description", "manual", "transcript"]
 
     async def test_entity_id_is_serialised_to_string(
         self,

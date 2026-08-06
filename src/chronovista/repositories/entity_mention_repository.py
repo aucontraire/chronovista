@@ -17,10 +17,13 @@ from sqlalchemy import (
     String,
     Subquery,
     and_,
+    case,
+    cast,
     delete,
     distinct,
     func,
     literal,
+    null,
     or_,
     select,
     type_coerce,
@@ -470,7 +473,13 @@ class EntityMentionRepository(
         )
         await session.execute(zero_stmt)
 
-    # Category mapping for detection methods → source categories
+    # Category mapping for detection methods → source categories.
+    #
+    # Retained only for callers that genuinely classify by *detection method*.
+    # It must NOT be used to report where a mention was found: it predates
+    # Feature 054's ``mention_source`` column and hardcodes the assumption that
+    # a rule-matched mention came from a transcript, which stopped being true
+    # the moment title and description scanning shipped (GitHub #172).
     _SOURCE_CATEGORY_MAP: dict[str, str] = {
         "rule_match": "transcript",
         "spacy_ner": "transcript",
@@ -508,6 +517,34 @@ class EntityMentionRepository(
             List of dicts matching VideoEntitySummary schema including
             sources, has_manual, and nullable first_mention_time.
         """
+        # What counts as one mention.
+        #
+        # Transcript mentions are counted per distinct segment, so an entity
+        # said three times in one segment counts once — the long-standing
+        # behaviour, preserved. Title and description mentions have no segment
+        # (``segment_id`` is NULL), so counting distinct segments scored them
+        # zero: an entity present only in a video's title reported "0 mentions"
+        # while its row sat in the table. That was 58,169 video/entity pairs
+        # across 303 of 315 entities.
+        #
+        # Falling back to the mention's own id gives each non-segment mention
+        # its own identity, so it counts exactly once.
+        #
+        # Manual associations stay excluded, which is deliberate rather than
+        # incidental: ``has_manual`` reports them, and the web client treats
+        # ``mention_count == 0`` as "linked by hand, never actually detected"
+        # when it optimistically removes an association. Counting them here
+        # would silently break that removal. All 397 manual mentions carry a
+        # NULL segment, so they would otherwise have been swept in by the fix.
+        countable_mention = case(
+            (EntityMentionDB.detection_method == "manual", null()),
+            else_=func.coalesce(
+                cast(EntityMentionDB.segment_id, String),
+                cast(EntityMentionDB.id, String),
+            ),
+        )
+        mention_count = func.count(distinct(countable_mention))
+
         # Use array_agg to collect distinct detection methods per entity
         stmt = (
             select(
@@ -515,11 +552,27 @@ class EntityMentionRepository(
                 NamedEntityDB.canonical_name,
                 NamedEntityDB.entity_type,
                 NamedEntityDB.description,
-                func.count(distinct(EntityMentionDB.segment_id)).label("mention_count"),
+                mention_count.label("mention_count"),
                 func.min(TranscriptSegmentDB.start_time).label("first_mention_time"),
                 func.array_agg(distinct(EntityMentionDB.detection_method)).label(
                     "detection_methods"
                 ),
+                # Where the mentions were actually found. Reported from
+                # mention_source, never inferred from detection method.
+                #
+                # Manual rows are excluded: they carry mention_source
+                # 'transcript' regardless of whether the entity was ever said,
+                # so including them would have a hand-linked entity claim a
+                # transcript appearance it does not have. That a human added it
+                # is reported by has_manual instead.
+                func.array_agg(
+                    distinct(
+                        case(
+                            (EntityMentionDB.detection_method == "manual", null()),
+                            else_=EntityMentionDB.mention_source,
+                        )
+                    )
+                ).label("mention_sources"),
                 func.bool_or(EntityMentionDB.detection_method == "manual").label(
                     "has_manual"
                 ),
@@ -539,7 +592,7 @@ class EntityMentionRepository(
                 NamedEntityDB.entity_type,
                 NamedEntityDB.description,
             )
-            .order_by(func.count(distinct(EntityMentionDB.segment_id)).desc())
+            .order_by(mention_count.desc())
         )
 
         if language_code is not None:
@@ -567,11 +620,17 @@ class EntityMentionRepository(
                     if row.first_mention_time is not None
                     else None
                 ),
+                # Where the mentions were found, plus "manual" when the entity
+                # was also linked by hand. Previously derived by mapping
+                # detection_method, which reported a title-only mention as
+                # "transcript" because rule_match was hardcoded to mean
+                # transcript. Location comes from mention_source; the manual
+                # marker is a detection-method fact and still comes from there.
+                # array_agg emits a NULL element for every manual row the CASE
+                # blanked, so None is filtered rather than assumed absent.
                 "sources": sorted(
-                    {
-                        self._SOURCE_CATEGORY_MAP.get(dm, dm)
-                        for dm in (row.detection_methods or [])
-                    }
+                    {s for s in (row.mention_sources or []) if s is not None}
+                    | ({"manual"} if row.has_manual else set())
                 ),
                 "has_manual": bool(row.has_manual),
             }

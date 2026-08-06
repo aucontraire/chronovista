@@ -32,6 +32,9 @@ class EntityEditSnapshot(BaseModel):
     description: str | None = Field(
         default=None, description="Entity description at this point"
     )
+    entity_type: str | None = Field(
+        default=None, description="Entity type at this point"
+    )
 
     model_config = ConfigDict(validate_assignment=True)
 

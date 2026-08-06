@@ -295,3 +295,88 @@ class TestUpdateEntityEndpoint:
                 assert entity.entity_type == "organization"
         finally:
             await _purge(integration_session_factory)
+
+    async def test_entity_type_change_200(
+        self,
+        async_client: AsyncClient,
+        seed_entity: uuid.UUID,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """A JSON string must be accepted for entity_type.
+
+        The request model is strict, and Pydantic strict mode will not coerce
+        "place" into the EntityType enum — it demands an enum instance, which
+        no HTTP client can send. Service-level tests pass a plain string and so
+        never exercise the schema; this is the layer where that fails, with a
+        422 the UI surfaces as a generic "Failed to save changes."
+        """
+        with _auth() as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            resp = await async_client.patch(
+                _url(str(seed_entity)), json={"entity_type": "place"}
+            )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data"]["entity_type"] == "place"
+
+        async with integration_session_factory() as session:
+            entity = (
+                await session.execute(
+                    select(NamedEntityDB).where(NamedEntityDB.id == seed_entity)
+                )
+            ).scalar_one()
+            assert entity.entity_type == "place"
+            # A retype is not a rename.
+            assert entity.canonical_name == "Ect057upd Openai"
+
+    async def test_unknown_entity_type_422(
+        self,
+        async_client: AsyncClient,
+        seed_entity: uuid.UUID,
+    ) -> None:
+        with _auth() as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            resp = await async_client.patch(
+                _url(str(seed_entity)), json={"entity_type": "country"}
+            )
+        assert resp.status_code == 422, resp.text
+
+    async def test_retype_into_an_occupied_pair_409(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Uniqueness is the pair, so a retype can collide without a rename.
+
+        Checking the retype against the entity's OLD type always passes — the
+        entity is excluded from its own query — and the duplicate then fails at
+        flush time as a 500 instead of a clean 409.
+        """
+        await _purge(integration_session_factory)
+        await _seed_entity(
+            integration_session_factory,
+            canonical_name="Ect057upd Luxembourg",
+            normalized=f"{_PREFIX} luxembourg",
+            entity_type="place",
+        )
+        person_id = await _seed_entity(
+            integration_session_factory,
+            canonical_name="Ect057upd Luxembourg",
+            normalized=f"{_PREFIX} luxembourg",
+            entity_type="person",
+        )
+        try:
+            with _auth() as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                resp = await async_client.patch(
+                    _url(str(person_id)), json={"entity_type": "place"}
+                )
+            assert resp.status_code == 409, resp.text
+            async with integration_session_factory() as session:
+                entity = (
+                    await session.execute(
+                        select(NamedEntityDB).where(NamedEntityDB.id == person_id)
+                    )
+                ).scalar_one()
+                assert entity.entity_type == "person", "must not have mutated"
+        finally:
+            await _purge(integration_session_factory)

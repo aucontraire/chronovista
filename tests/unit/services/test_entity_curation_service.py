@@ -239,6 +239,156 @@ class TestUpdateEntity:
         log_repo.create.assert_not_awaited()
 
 
+class TestUpdateEntityType:
+    """Correcting an entity filed under the wrong type.
+
+    Picking the wrong type at creation is easy and, before this, the only
+    remedy was a direct database UPDATE — which skipped the audit log and the
+    collision pre-check entirely.
+    """
+
+    async def test_changes_the_type(self) -> None:
+        entity = _entity(
+            canonical_name="Luxembourg", normalized="luxembourg", entity_type="person"
+        )
+        service, _repo, _log = _make_service(entity)
+        session = _no_collision_session()
+
+        updated = await service.update_entity(
+            session, entity.id, entity_type="place", actor=_ACTOR
+        )
+
+        assert updated.entity_type == "place"
+        # The name is untouched: a retype is not a rename.
+        assert updated.canonical_name == "Luxembourg"
+        assert updated.canonical_name_normalized == "luxembourg"
+
+    async def test_rejects_an_invalid_type(self) -> None:
+        entity = _entity(canonical_name="Luxembourg", normalized="luxembourg")
+        service, _repo, _log = _make_service(entity)
+
+        with pytest.raises(InvalidEntityEditError, match="Entity type must be one of"):
+            await service.update_entity(
+                _no_collision_session(), entity.id, entity_type="country", actor=_ACTOR
+            )
+
+    async def test_collision_is_checked_against_the_NEW_type(self) -> None:
+        """The unique key is the pair, so the check must query the new type.
+
+        Asserting that a collision raises is NOT enough: a blanket
+        collision-returning mock raises whichever type was queried, so such a
+        test passes even when the code checks the old type. This inspects the
+        emitted query's bound parameters instead.
+
+        Checking a retype against the entity's *old* type always passes — the
+        entity itself is excluded — and the duplicate then fails at flush time
+        with an IntegrityError (500) rather than a clean 409.
+        """
+        entity = _entity(
+            canonical_name="Luxembourg", normalized="luxembourg", entity_type="person"
+        )
+        service, _repo, _log = _make_service(entity)
+        session = _no_collision_session()
+
+        await service.update_entity(
+            session, entity.id, entity_type="place", actor=_ACTOR
+        )
+
+        stmt = session.execute.await_args.args[0]
+        params = stmt.compile().params
+        queried_types = {v for v in params.values() if v in {"person", "place"}}
+        assert queried_types == {
+            "place"
+        }, f"collision check queried {queried_types}, must query the NEW type"
+
+    async def test_no_op_retype_writes_nothing(self) -> None:
+        entity = _entity(
+            canonical_name="Luxembourg", normalized="luxembourg", entity_type="place"
+        )
+        service, repo, log_repo = _make_service(entity)
+
+        await service.update_entity(
+            _no_collision_session(), entity.id, entity_type="place", actor=_ACTOR
+        )
+
+        repo.update.assert_not_awaited()
+        log_repo.create.assert_not_awaited()
+
+    async def test_type_change_is_logged_for_undo(self) -> None:
+        entity = _entity(
+            canonical_name="Luxembourg", normalized="luxembourg", entity_type="person"
+        )
+        service, _repo, log_repo = _make_service(entity)
+
+        await service.update_entity(
+            _no_collision_session(), entity.id, entity_type="place", actor=_ACTOR
+        )
+
+        rollback = log_repo.create.await_args.kwargs["obj_in"].rollback_data
+        assert "entity_type" in rollback.changed_fields
+        assert rollback.before.entity_type == "person"
+        assert rollback.after.entity_type == "place"
+
+    async def test_name_and_type_change_together(self) -> None:
+        entity = _entity(
+            canonical_name="Luxemburg", normalized="luxemburg", entity_type="person"
+        )
+        service, _repo, log_repo = _make_service(entity)
+
+        updated = await service.update_entity(
+            _no_collision_session(),
+            entity.id,
+            canonical_name="Luxembourg",
+            entity_type="place",
+            actor=_ACTOR,
+        )
+
+        assert updated.canonical_name == "Luxembourg"
+        assert updated.entity_type == "place"
+        changed = log_repo.create.await_args.kwargs[
+            "obj_in"
+        ].rollback_data.changed_fields
+        assert set(changed) == {"canonical_name", "entity_type"}
+
+    async def test_undo_restores_the_previous_type(self) -> None:
+        entity = _entity(
+            canonical_name="Luxembourg", normalized="luxembourg", entity_type="place"
+        )
+        service, _repo, log_repo = _make_service(entity)
+        log = create_entity_operation_log(
+            entity_id=entity.id,
+            rollback_data={
+                "before": {"entity_type": "person"},
+                "after": {"entity_type": "place"},
+                "changed_fields": ["entity_type"],
+            },
+        )
+        log_repo.get = AsyncMock(return_value=log)
+
+        restored = await service.undo_operation(
+            _no_collision_session(), log.id, actor=_ACTOR
+        )
+
+        assert restored.entity_type == "person"
+
+    async def test_undo_without_a_recorded_type_is_rejected(self) -> None:
+        """Refuse rather than guess when the rollback record is incomplete."""
+        entity = _entity(entity_type="place")
+        service, _repo, log_repo = _make_service(entity)
+        log = create_entity_operation_log(
+            entity_id=entity.id,
+            rollback_data={
+                "before": {},
+                "after": {"entity_type": "place"},
+                "changed_fields": ["entity_type"],
+            },
+        )
+        log_repo.get = AsyncMock(return_value=log)
+
+        with pytest.raises(InvalidEntityEditError, match="previous entity type"):
+            await service.undo_operation(_no_collision_session(), log.id, actor=_ACTOR)
+
+
 class TestUndoOperation:
     async def test_undo_restores_name(self) -> None:
         entity = _entity(canonical_name="OpenAI", normalized="openai")

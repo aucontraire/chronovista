@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-08-06
+
+### Added
+- **An entity's type can be corrected from the detail page.** Choosing the wrong type when creating an entity is easy, and there was no way to fix it: `PATCH /api/v1/entities/{id}` and `EntityCurationService.update_entity` handled name and description only, so the only remedy was a direct database `UPDATE` — which skips both the audit log and the collision pre-check. The edit form gains a Type select, driven from the shared `ENTITY_TYPE_LABELS` map so its options cannot drift from the types the database accepts. Type changes are recorded in `entity_operation_logs` with before/after, so a mis-click is undoable like any other entity edit.
+
+### Fixed
+- **The uniqueness pre-check now evaluates the pair it actually constrains.** `uq_named_entity_canonical` is on `(canonical_name_normalized, entity_type)`, but the check ran against the entity's *existing* type. For a retype that always passed — the entity is excluded from its own query — and the duplicate then failed at flush time as an `IntegrityError` (HTTP 500) instead of a clean 409. Both values are now resolved before one check. The undo path carried the same latent defect, restoring a name while checking it against the current type, and is fixed the same way.
+- **The edit request accepts a JSON string for `entity_type`.** The request model is strict, and Pydantic strict mode will not coerce `"place"` into the enum — it requires an enum instance, which no HTTP client can send. Every retype returned 422, surfaced in the UI as a generic "Failed to save changes." Service-level tests passed throughout because they call the service directly with a plain string and never exercise the schema; endpoint tests that PATCH real JSON now cover the gap.
+- The 409 message no longer blames the name alone: a collision can now originate from a type change.
+
 ## [0.60.0] - 2026-08-02
 
 ### Fixed

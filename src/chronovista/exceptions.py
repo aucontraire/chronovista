@@ -1056,6 +1056,32 @@ class ExternalServiceError(APIError):
     _error_code_value: str = "EXTERNAL_SERVICE_ERROR"
 
 
+class QueryTimeoutError(APIError):
+    """A read query exceeded its time budget (504).
+
+    Raised when a query is still running past its ceiling. The point is not to
+    make slow queries fast — it is to make them *bounded*, so the interface
+    shows a definite error instead of spinning indefinitely.
+
+    Attributes
+    ----------
+    status_code : int
+        Always 504 for this exception.
+    error_code : ErrorCode
+        Always QUERY_TIMEOUT for this exception.
+
+    Examples
+    --------
+    >>> raise QueryTimeoutError(
+    ...     message="Query timeout exceeded. Maximum query time is 10 seconds.",
+    ...     details={"timeout_seconds": 10, "operation": "co-occurring entities"}
+    ... )
+    """
+
+    status_code: int = 504
+    _error_code_value: str = "QUERY_TIMEOUT"
+
+
 # Exit codes for CLI integration
 EXIT_CODE_SUCCESS = 0
 EXIT_CODE_GENERAL_ERROR = 1

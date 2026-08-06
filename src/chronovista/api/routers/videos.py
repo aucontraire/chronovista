@@ -18,6 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import get_db, get_recovery_deps, require_auth
+from chronovista.api.query_protection import (
+    QUERY_TIMEOUT_SECONDS,
+    check_rate_limit,
+    get_client_id,
+)
 from chronovista.api.routers.responses import (
     CONFLICT_RESPONSE,
     GET_ITEM_ERRORS,
@@ -108,85 +113,14 @@ MAX_ENTITIES = 10
 # Rate limiting configuration (T097)
 # In-memory rate limiter - requests per minute per client
 RATE_LIMIT_FILTER_QUERIES = 100  # requests per minute
-RATE_LIMIT_WINDOW_SECONDS = 60
 
 # Storage for rate limit tracking
 _filter_request_counts: dict[str, list[float]] = defaultdict(list)
 
-# Query timeout per FR-036 (T099)
-QUERY_TIMEOUT_SECONDS = 10
 
 # Recovery idempotency guard (T033)
 # Skip Wayback Machine requests if entity was recovered within this window
 RECOVERY_IDEMPOTENCY_MINUTES = 5
-
-
-def _get_client_id(request: Request) -> str:
-    """
-    Get client identifier from request.
-
-    Uses X-Forwarded-For header for proxied requests, falls back to client host.
-
-    Parameters
-    ----------
-    request : Request
-        FastAPI request object.
-
-    Returns
-    -------
-    str
-        Client identifier (IP address or "unknown").
-    """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def _check_rate_limit(
-    client_id: str,
-    request_counts: dict[str, list[float]],
-    rate_limit: int,
-) -> tuple[bool, int]:
-    """
-    Check if client has exceeded rate limit.
-
-    Cleans up old entries and checks if current request should be allowed.
-
-    Parameters
-    ----------
-    client_id : str
-        Client identifier.
-    request_counts : Dict[str, List[float]]
-        Storage for request timestamps per client.
-    rate_limit : int
-        Maximum requests allowed per minute.
-
-    Returns
-    -------
-    Tuple[bool, int]
-        Tuple of (is_allowed, retry_after_seconds).
-        If is_allowed is True, retry_after is 0.
-        If is_allowed is False, retry_after indicates seconds until a slot opens.
-    """
-    now = time.time()
-    window_start = now - RATE_LIMIT_WINDOW_SECONDS
-
-    # Clean old entries (older than window)
-    request_counts[client_id] = [
-        ts for ts in request_counts[client_id] if ts > window_start
-    ]
-
-    # Check if limit exceeded
-    if len(request_counts[client_id]) >= rate_limit:
-        # Find when the oldest request in window will expire
-        oldest = min(request_counts[client_id])
-        retry_after = int(oldest + RATE_LIMIT_WINDOW_SECONDS - now) + 1
-        return False, max(1, retry_after)
-
-    # Add current request timestamp
-    request_counts[client_id].append(now)
-    return True, 0
 
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -699,8 +633,8 @@ async def list_videos(
         Query timeout exceeded per FR-036.
     """
     # T097: Rate limiting for filter queries (100 req/min)
-    client_id = _get_client_id(request)
-    is_allowed, retry_after = _check_rate_limit(
+    client_id = get_client_id(request)
+    is_allowed, retry_after = check_rate_limit(
         client_id, _filter_request_counts, RATE_LIMIT_FILTER_QUERIES
     )
     if not is_allowed:

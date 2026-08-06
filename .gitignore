@@ -298,3 +298,7 @@ frontend/src/api/*.ts
 frontend/node_modules/
 frontend/dist/
 frontend/build/
+# Private-name list for the pre-commit leak check. Generated from the local
+# library by scripts/utilities/gen_private_terms.py. This file IS the sensitive
+# data — it must never be committed.
+.private-terms

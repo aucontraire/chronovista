@@ -33,6 +33,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TERMS_FILE = ROOT / ".private-terms"
@@ -54,6 +55,17 @@ def build_pattern(terms: list[str]) -> re.Pattern[str]:
     )
 
 
+# A term list older than this no longer covers recently added entities. It is a
+# warning rather than a block: coverage decays silently otherwise, but a hard
+# stop on a stale file would fire on any machine without database access.
+STALE_AFTER_DAYS = 14
+
+# Image formats. The text check cannot read these, and a screenshot of the
+# application shows real names visually — the one leak class this tool is blind
+# to. Staging one earns a prompt to look at it.
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+
+
 def load_terms() -> list[str]:
     if not TERMS_FILE.exists():
         print(
@@ -63,11 +75,42 @@ def load_terms() -> list[str]:
             file=sys.stderr,
         )
         return []
+    age_days = (time.time() - TERMS_FILE.stat().st_mtime) / 86400
+    if age_days > STALE_AFTER_DAYS:
+        print(
+            f"WARNING: {TERMS_FILE.name} is {int(age_days)} days old. Entities "
+            "added since then are NOT covered.\n"
+            "         Refresh: python scripts/utilities/gen_private_terms.py",
+            file=sys.stderr,
+        )
     return [
         line.strip()
         for line in TERMS_FILE.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+
+
+def warn_about_staged_images() -> None:
+    """Flag staged images, which no text check can inspect."""
+    proc = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    images = [
+        f
+        for f in proc.stdout.split()
+        if pathlib.Path(f).suffix.lower() in IMAGE_SUFFIXES
+    ]
+    if images:
+        print(
+            "\nNOTE: this commit adds image(s) that no text check can read:\n"
+            + "".join(f"  {f}\n" for f in images)
+            + "A screenshot of the app shows real names on screen. Open each one\n"
+            "and look before pushing.\n",
+            file=sys.stderr,
+        )
 
 
 def added_lines() -> list[tuple[str, str]]:
@@ -119,9 +162,24 @@ def main(argv: list[str]) -> int:
     if len(argv) >= 2 and argv[0] == "--msg":
         message = pathlib.Path(argv[1]).read_text(encoding="utf-8")
         findings.extend(("commit message", m) for m in set(pattern.findall(message)))
+    elif argv and argv[0] == "--text":
+        # Arbitrary text that never passes through git: issue bodies, pull
+        # request descriptions, release notes, a forum post. Nothing can hook
+        # those, so they need a check that can be run by hand before posting.
+        #   python scripts/utilities/check_private_terms.py --text body.md
+        #   pbpaste | python scripts/utilities/check_private_terms.py --text -
+        raw = (
+            sys.stdin.read()
+            if len(argv) < 2 or argv[1] == "-"
+            else pathlib.Path(argv[1]).read_text(encoding="utf-8")
+        )
+        findings.extend(("text", m) for m in set(pattern.findall(raw)))
+        if not findings:
+            print("Clean — no library content found.")
     else:
         for path, line in added_lines():
             findings.extend((path, m) for m in set(pattern.findall(line)))
+        warn_about_staged_images()
 
     return report(findings)
 

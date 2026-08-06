@@ -76,7 +76,7 @@ class TestNormalize:
 
     def test_composed_transformations(self, svc: TagNormalizationService) -> None:
         """Hashtag + accent + case fold: '#PERU' -> 'peru'."""
-        assert svc.normalize("#MÉXICO") == "peru"
+        assert svc.normalize("#PERÚ") == "peru"
 
     # ----- idempotency (FR-007) ------------------------------------------
 
@@ -88,8 +88,8 @@ class TestNormalize:
             "año",
             "façade",
             "München",
-            "#MÉXICO",
-            "mex\u200bico",
+            "#PERÚ",
+            "per\u200bu",
             "hello\u00a0world",
         ],
         ids=[
@@ -136,7 +136,7 @@ class TestNormalize:
 
     def test_zero_width_space_removal(self, svc: TagNormalizationService) -> None:
         """Zero-width space (U+200B) inside a word is removed."""
-        assert svc.normalize("mex\u200bico") == "peru"
+        assert svc.normalize("per\u200bu") == "peru"
 
     def test_zero_width_non_joiner_removal(self, svc: TagNormalizationService) -> None:
         """Zero-width non-joiner (U+200C) is removed."""
@@ -301,7 +301,7 @@ class TestSelectCanonicalForm:
         self, svc: TagNormalizationService
     ) -> None:
         """When title case forms have equal count, use alphabetical min."""
-        forms = [("Peru", 200), ("México", 200)]
+        forms = [("Peru", 200), ("Perú", 200)]
         assert svc.select_canonical_form(forms) == "Peru"
 
     def test_most_frequent_when_no_title_case(
@@ -355,8 +355,8 @@ class TestSelectCanonicalForm:
         self, svc: TagNormalizationService
     ) -> None:
         """Among multiple title case forms, pick the one with highest count."""
-        forms = [("Peru", 100), ("México", 200), ("peru", 500)]
-        assert svc.select_canonical_form(forms) == "México"
+        forms = [("Peru", 100), ("Perú", 200), ("peru", 500)]
+        assert svc.select_canonical_form(forms) == "Perú"
 
 
 # =========================================================================

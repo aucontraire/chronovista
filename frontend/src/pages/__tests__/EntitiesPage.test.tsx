@@ -641,9 +641,9 @@ describe("EntitiesPage", () => {
     });
 
     it("search input reflects the URL search param value", () => {
-      renderPage("?search=Chomsky");
+      renderPage("?search=Lovelace");
       const input = screen.getByRole("searchbox", { name: /search entities/i });
-      expect(input).toHaveValue("Chomsky");
+      expect(input).toHaveValue("Lovelace");
     });
 
     it("typing in the search input updates its value", () => {

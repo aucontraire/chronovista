@@ -1681,8 +1681,8 @@ class TestCreateEntityEndpoint:
 
         The endpoint creates:
         - 1 canonical alias (the title-cased name itself)
-        - 1 alias for "Ed Snowden"
-        - 1 alias for "Snowden"
+        - 1 alias for "Ed Turing"
+        - 1 alias for "Turing"
 
         So alias_count must be 3, and canonical_name must be "Alan Turing".
         """
@@ -1719,7 +1719,7 @@ class TestCreateEntityEndpoint:
                     json={
                         "name": _VALID_CREATE_NAME,
                         "entity_type": _VALID_CREATE_TYPE,
-                        "aliases": ["Ed Snowden", "Snowden"],
+                        "aliases": ["Ed Turing", "Turing"],
                     },
                 )
 
@@ -1885,7 +1885,7 @@ class TestCreateEntityEndpoint:
         mock_session.execute.assert_not_called()
 
     async def test_aliases_with_normalized_duplicates_skipped(self) -> None:
-        """Aliases ["Ed Snowden", "ed snowden"] produce only 1 additional alias.
+        """Aliases ["Ed Turing", "ed turing"] produce only 1 additional alias.
 
         When two user-supplied aliases normalize to the same string, the second
         is silently skipped.  alias_count = 1 (canonical) + 1 (unique alias) = 2.
@@ -1911,8 +1911,8 @@ class TestCreateEntityEndpoint:
                 ) as mock_normalizer,
             ):
                 # "alan turing" -> "alan turing" (canonical)
-                # "Ed Snowden"     -> "ed snowden" (unique alias)
-                # "ed snowden"     -> "ed snowden" (DUPLICATE -> skipped)
+                # "Ed Turing"     -> "ed turing" (unique alias)
+                # "ed turing"     -> "ed turing" (DUPLICATE -> skipped)
                 mock_normalizer.normalize.side_effect = (
                     lambda text: text.strip().lower()
                 )
@@ -1924,7 +1924,7 @@ class TestCreateEntityEndpoint:
                     json={
                         "name": "alan turing",
                         "entity_type": "person",
-                        "aliases": ["Ed Snowden", "ed snowden"],
+                        "aliases": ["Ed Turing", "ed turing"],
                     },
                 )
 

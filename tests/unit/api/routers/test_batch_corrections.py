@@ -45,8 +45,8 @@ def _make_batch_list_item(
     batch_id: uuid.UUID | None = None,
     correction_count: int = 5,
     corrected_by_user_id: str = "user:batch",
-    pattern: str = "Shanebam",
-    replacement: str = "Sheinbaum",
+    pattern: str = "Jonsun",
+    replacement: str = "Johnson",
     batch_timestamp: datetime | None = None,
 ) -> BatchListItem:
     """Build a BatchListItem via the factory with optional overrides."""

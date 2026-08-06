@@ -480,7 +480,7 @@ curl -X DELETE "http://localhost:8000/api/v1/corrections/batch/01936c8a-1234-700
 curl "http://localhost:8000/api/v1/corrections/batch/diff-analysis?show_completed=false"
 
 # Filter error patterns by entity name
-curl "http://localhost:8000/api/v1/corrections/batch/diff-analysis?entity_name=Sheinbaum"
+curl "http://localhost:8000/api/v1/corrections/batch/diff-analysis?entity_name=Johnson"
 
 # Get cross-segment correction candidates
 curl "http://localhost:8000/api/v1/corrections/batch/cross-segment/candidates?min_corrections=3"
@@ -493,7 +493,7 @@ curl "http://localhost:8000/api/v1/entities/01936c8a-1234-7000-8000-000000000001
 
 ```bash
 # Search entities with link status for a specific video
-curl "http://localhost:8000/api/v1/entities/search?q=chomsky&video_id=dQw4w9WgXcQ"
+curl "http://localhost:8000/api/v1/entities/search?q=lovelace&video_id=dQw4w9WgXcQ"
 
 # Create a manual entity-video association
 curl -X POST http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/entities/01936c8a-1234-7000-8000-000000000001/manual
@@ -506,7 +506,7 @@ curl -X DELETE http://localhost:8000/api/v1/videos/dQw4w9WgXcQ/entities/01936c8a
 
 ```bash
 # Check for duplicate entity before creating
-curl "http://localhost:8000/api/v1/entities/check-duplicate?name=Noam%20Chomsky&type=person"
+curl "http://localhost:8000/api/v1/entities/check-duplicate?name=Ada%20Chomsky&type=person"
 
 # Classify a canonical tag as an entity
 curl -X POST http://localhost:8000/api/v1/entities/classify \

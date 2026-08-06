@@ -657,7 +657,7 @@ class TestMultipleAliases:
         await _seed_segment(
             db_session,
             video_id(seed="ma_001"),
-            text="Musk announced new ventures",
+            text="Dijkstra announced new ventures",
             start_time=10.0,
             sequence_number=1,
         )
@@ -670,7 +670,7 @@ class TestMultipleAliases:
         )
 
         entity = await _seed_entity(db_session, "Edsger Dijkstra", entity_type="person")
-        await _seed_alias(db_session, entity.id, "Musk")
+        await _seed_alias(db_session, entity.id, "Dijkstra")
         await _seed_alias(db_session, entity.id, "Tesla CEO")
 
         await db_session.commit()
@@ -933,7 +933,7 @@ class TestCorrectedSegmentText:
         seg = TranscriptSegmentDB(
             video_id=vid,
             language_code="en",
-            text="Elan Musk spoke today",  # ASR error
+            text="Elan Dijkstra spoke today",  # ASR error
             corrected_text="Edsger Dijkstra spoke today",  # corrected
             has_correction=True,
             start_time=0.0,
@@ -982,8 +982,8 @@ class TestASRErrorAliasCounterExclusion:
         scan patterns entirely).
 
         Setup:
-        - Entity "Edsger Dijkstra" with an ASR-error alias "Elan Musk"
-        - Segment text contains "Elan Musk" only (no canonical name)
+        - Entity "Edsger Dijkstra" with an ASR-error alias "Elan Dijkstra"
+        - Segment text contains "Elan Dijkstra" only (no canonical name)
 
         Expected:
         - Zero EntityMention rows (ASR alias not used as scan pattern)
@@ -997,10 +997,12 @@ class TestASRErrorAliasCounterExclusion:
         await _seed_segment(
             db_session,
             vid,
-            text="Elan Musk announced a new rocket",
+            text="Elan Dijkstra announced a new rocket",
         )
         entity = await _seed_entity(db_session, "Edsger Dijkstra", entity_type="person")
-        await _seed_alias(db_session, entity.id, "Elan Musk", alias_type="asr_error")
+        await _seed_alias(
+            db_session, entity.id, "Elan Dijkstra", alias_type="asr_error"
+        )
 
         await db_session.commit()
 
@@ -1082,8 +1084,8 @@ class TestASRErrorAliasCounterExclusion:
         Mentions matching a non-ASR-error alias must be counted.
 
         Setup:
-        - Entity "Edsger Dijkstra" with a name_variant alias "Musk"
-        - Segment text contains "Musk" only
+        - Entity "Edsger Dijkstra" with a name_variant alias "Dijkstra"
+        - Segment text contains "Dijkstra" only
 
         Expected:
         - mention_count=1 because name_variant aliases are visible
@@ -1096,10 +1098,10 @@ class TestASRErrorAliasCounterExclusion:
         await _seed_segment(
             db_session,
             vid,
-            text="Musk tweeted about the new model",
+            text="Dijkstra tweeted about the new model",
         )
         entity = await _seed_entity(db_session, "Edsger Dijkstra", entity_type="person")
-        await _seed_alias(db_session, entity.id, "Musk", alias_type="name_variant")
+        await _seed_alias(db_session, entity.id, "Dijkstra", alias_type="name_variant")
 
         await db_session.commit()
 
@@ -1316,12 +1318,12 @@ class TestDiacriticInsensitiveTranscriptScan:
     async def test_ascii_alias_matches_accented_occurrence(
         self, db_session: AsyncSession
     ) -> None:
-        """Alias 'Peru' matches 'México'; mention_text and offsets are the raw form."""
+        """Alias 'Peru' matches 'Perú'; mention_text and offsets are the raw form."""
         await _seed_channel(db_session)
         await _seed_video(db_session, video_id(seed="dia_01"))
         await _seed_transcript(db_session, video_id(seed="dia_01"))
 
-        raw = "una revolución de color aquí en México."
+        raw = "una revolución de color aquí en Perú."
         seg = await _seed_segment(db_session, video_id(seed="dia_01"), text=raw)
         entity = await _seed_entity(db_session, "Peru", entity_type="place")
         await _seed_alias(db_session, entity.id, "Peru")
@@ -1335,21 +1337,21 @@ class TestDiacriticInsensitiveTranscriptScan:
         assert len(rows) == 1, f"Expected 1 mention, got {len(rows)}"
         m = rows[0]
         assert m.segment_id == seg.id
-        assert m.mention_text == "México"
-        assert raw[m.match_start : m.match_end] == "México"
-        assert m.match_start == raw.index("México")
+        assert m.mention_text == "Perú"
+        assert raw[m.match_start : m.match_end] == "Perú"
+        assert m.match_start == raw.index("Perú")
         assert result.mentions_found == 1
 
     async def test_uppercase_and_plain_ascii_both_match(
         self, db_session: AsyncSession
     ) -> None:
-        """Both 'MÉXICO' (accented, uppercase) and plain 'Peru' match the alias."""
+        """Both 'PERÚ' (accented, uppercase) and plain 'Peru' match the alias."""
         await _seed_channel(db_session)
         await _seed_video(db_session, video_id(seed="dia_02"))
         await _seed_transcript(db_session, video_id(seed="dia_02"))
 
         await _seed_segment(
-            db_session, video_id(seed="dia_02"), text="VIVA MÉXICO", seg_id=None
+            db_session, video_id(seed="dia_02"), text="VIVA PERÚ", seg_id=None
         )
         await _seed_segment(
             db_session,
@@ -1368,7 +1370,7 @@ class TestDiacriticInsensitiveTranscriptScan:
 
         rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
         texts = {r.mention_text for r in rows}
-        assert texts == {"MÉXICO", "Peru"}, f"Got {texts}"
+        assert texts == {"PERÚ", "Peru"}, f"Got {texts}"
 
     async def test_offset_safety_length_changing_char_before_match(
         self, db_session: AsyncSession
@@ -1377,20 +1379,20 @@ class TestDiacriticInsensitiveTranscriptScan:
 
         'café' is written with a DECOMPOSED accent (e + U+0301). Folding drops
         the combining mark, so the folded text is shorter than the raw text and
-        every character of the 'México' match sits at a folded index one less
+        every character of the 'Perú' match sits at a folded index one less
         than its raw index. The offset map must recover the correct raw offsets.
         """
         await _seed_channel(db_session)
         await _seed_video(db_session, video_id(seed="dia_03"))
         await _seed_transcript(db_session, video_id(seed="dia_03"))
 
-        raw = "cafe\u0301 M\u00e9xico aqui"  # decomposed accent, then precomposed 'México'
+        raw = "cafe\u0301 Per\u00fa aqui"  # decomposed accent, then precomposed 'Perú'
         # Guard: this really is a length-changing input under the fold.
         from chronovista.services.entity_mention_scan_service import _fold_diacritics
 
         folded, _ = _fold_diacritics(raw)
         assert len(folded) == len(raw) - 1
-        assert folded.index("Peru") != raw.index("México")
+        assert folded.index("Peru") != raw.index("Perú")
 
         await _seed_segment(db_session, video_id(seed="dia_03"), text=raw)
         entity = await _seed_entity(db_session, "Peru", entity_type="place")
@@ -1404,22 +1406,22 @@ class TestDiacriticInsensitiveTranscriptScan:
         rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
         assert len(rows) == 1
         m = rows[0]
-        assert m.match_start == raw.index("México")
-        assert raw[m.match_start : m.match_end] == "México"
-        assert m.mention_text == "México"
+        assert m.match_start == raw.index("Perú")
+        assert raw[m.match_start : m.match_end] == "Perú"
+        assert m.mention_text == "Perú"
 
 
 class TestDiacriticInsensitiveMetadataScan:
     """Accent-free aliases must match accented occurrences in title/description."""
 
     async def test_accented_title_matched(self, db_session: AsyncSession) -> None:
-        """A video title containing 'México' is matched by alias 'Peru'."""
+        """A video title containing 'Perú' is matched by alias 'Peru'."""
         await _seed_channel(db_session)
         vid = video_id(seed="dia_meta_01")
         video = VideoDB(
             video_id=vid,
             channel_id=DEFAULT_CHANNEL_ID,
-            title="Un viaje por México",
+            title="Un viaje por Perú",
             description="",
             upload_date=datetime(2024, 1, 1, tzinfo=UTC),
             duration=120,
@@ -1441,6 +1443,6 @@ class TestDiacriticInsensitiveMetadataScan:
         assert len(rows) == 1, f"Expected 1 title mention, got {len(rows)}"
         m = rows[0]
         assert m.video_id == vid
-        assert m.mention_text == "México"
+        assert m.mention_text == "Perú"
         assert m.mention_source == "title"
         assert result.mentions_found == 1

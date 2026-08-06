@@ -164,13 +164,13 @@ class TestGetCrossSegmentCandidates:
 
         await client.get(
             self.BASE_URL,
-            params={"min_corrections": 5, "entity_name": "Sheinbaum"},
+            params={"min_corrections": 5, "entity_name": "Johnson"},
         )
 
         mock_instance.discover.assert_awaited_once()
         call_kwargs = mock_instance.discover.call_args.kwargs
         assert call_kwargs["min_corrections"] == 5
-        assert call_kwargs["entity_name"] == "Sheinbaum"
+        assert call_kwargs["entity_name"] == "Johnson"
 
     async def test_min_corrections_below_minimum(
         self,

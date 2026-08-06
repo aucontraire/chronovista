@@ -149,7 +149,7 @@ class TestGenerateSplits:
 
     def test_all_splits_have_non_empty_prefix_and_suffix(self) -> None:
         """Every split tuple must have a non-empty prefix and non-empty suffix."""
-        for text in ["hello world", "Chomski", "a b"]:
+        for text in ["hello world", "Lovelase", "a b"]:
             for prefix, suffix, _ in _generate_splits(text):
                 assert prefix != ""
                 assert suffix != ""
@@ -215,9 +215,9 @@ class TestScoreCandidate:
     ) -> None:
         """Word-boundary split base score (0.4) exceeds char-level (0.15)."""
         word_score = service._score_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
-            seg_n_text="He said Chomski",
+            seg_n_text="He said Lovelase",
             seg_n1_text="is great",
             is_word_boundary=True,
             pattern_occurrences=5,
@@ -265,18 +265,18 @@ class TestScoreCandidate:
     ) -> None:
         """is_partially_corrected=True adds 0.1 boost to the score."""
         base_score = service._score_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
-            seg_n_text="He said Chomski",
+            seg_n_text="He said Lovelase",
             seg_n1_text="is right",
             is_word_boundary=True,
             pattern_occurrences=3,
             is_partially_corrected=False,
         )
         boosted_score = service._score_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
-            seg_n_text="He said Chomski",
+            seg_n_text="He said Lovelase",
             seg_n1_text="is right",
             is_word_boundary=True,
             pattern_occurrences=3,
@@ -313,16 +313,16 @@ class TestScoreCandidate:
     ) -> None:
         """Exact end/start boundary match adds 0.2 to the score."""
         exact_score = service._score_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="was",
-            seg_n_text="said Chomski",
+            seg_n_text="said Lovelase",
             seg_n1_text="was wrong",
             is_word_boundary=True,
             pattern_occurrences=5,
             is_partially_corrected=False,
         )
         partial_score = service._score_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="was",
             seg_n_text="not a match",
             seg_n1_text="not a match either",
@@ -380,7 +380,7 @@ class TestCrossSegmentDiscoveryDiscover:
     #     additional explicit check with entity filter returning nothing)
     async def test_entity_filter_with_no_match_returns_empty(self) -> None:
         """When entity filter matches no patterns and no aliases, discover() returns []."""
-        pattern = _make_pattern("Chomski is", "Chomsky is", occurrences=5)
+        pattern = _make_pattern("Lovelase is", "Lovelace is", occurrences=5)
         batch_svc = _make_batch_service(patterns=[pattern])
         discovery = CrossSegmentDiscovery(batch_service=batch_svc)
         session = _make_mock_session()
@@ -404,7 +404,7 @@ class TestCrossSegmentDiscoveryDiscover:
     # (c) Entity filter case-insensitive match (pattern path)
     async def test_entity_filter_is_case_insensitive(self) -> None:
         """Entity filter matches patterns case-insensitively in the pattern path."""
-        pattern_matching = _make_pattern("Chomski is", "Chomsky is", occurrences=5)
+        pattern_matching = _make_pattern("Lovelase is", "Lovelace is", occurrences=5)
         pattern_not_matching = _make_pattern(
             "wrong text", "correct text", occurrences=5
         )
@@ -423,7 +423,7 @@ class TestCrossSegmentDiscoveryDiscover:
         exec_result.fetchall.return_value = []
         session.execute.return_value = exec_result
 
-        # We verify entity_name="chomski" (lower-case) still matches "Chomski is"
+        # We verify entity_name="lovelase" (lower-case) still matches "Lovelase is"
         # by spying on _find_adjacent_pairs_batched and checking which splits
         # are passed (only splits from the matching pattern should appear).
         recorded_pairs: list[tuple[str, str]] = []
@@ -442,16 +442,16 @@ class TestCrossSegmentDiscoveryDiscover:
         discovery._find_adjacent_pairs_batched = _spy_batched  # type: ignore[assignment]
         discovery._get_corrected_segment_ids = _fake_corrected_ids  # type: ignore[assignment]
 
-        await discovery.discover(session, min_corrections=3, entity_name="chomski")
+        await discovery.discover(session, min_corrections=3, entity_name="lovelase")
 
-        # Only splits from "Chomski is" should be present (word-boundary: "Chomski"/"is")
+        # Only splits from "Lovelase is" should be present (word-boundary: "Lovelase"/"is")
         assert len(recorded_pairs) >= 1
-        assert any("Chomski" in p for p, _ in recorded_pairs)
+        assert any("Lovelase" in p for p, _ in recorded_pairs)
 
     # (a) Discovers cross-segment split — full pipeline with mocked _find_adjacent_pairs
     async def test_discovers_candidate_from_recurring_pattern(self) -> None:
         """discover() returns a CrossSegmentCandidate when adjacent pairs are found."""
-        pattern = _make_pattern("Chomski is", "Chomsky is", occurrences=10)
+        pattern = _make_pattern("Lovelase is", "Lovelace is", occurrences=10)
         batch_svc = _make_batch_service(patterns=[pattern])
         discovery = CrossSegmentDiscovery(batch_service=batch_svc)
         session = _make_mock_session()
@@ -461,7 +461,7 @@ class TestCrossSegmentDiscoveryDiscover:
             video_id="dQw4w9WgXcQ",
             language_code="en",
             sequence_number=5,
-            text="He said Chomski",
+            text="He said Lovelase",
         )
         seg_n1 = _make_segment_mock(
             seg_id=11,
@@ -494,14 +494,14 @@ class TestCrossSegmentDiscoveryDiscover:
         assert first.segment_n_id == 10
         assert first.segment_n1_id == 11
         assert first.video_id == "dQw4w9WgXcQ"
-        assert first.proposed_correction == "Chomsky is"
-        assert first.source_pattern == "Chomski is"
+        assert first.proposed_correction == "Lovelace is"
+        assert first.source_pattern == "Lovelase is"
         assert 0.0 <= first.confidence <= 1.0
 
     # (d) Fully corrected pairs are excluded
     async def test_fully_corrected_pairs_excluded(self) -> None:
         """If both segments are already corrected, the candidate is not returned."""
-        pattern = _make_pattern("Chomski is", "Chomsky is", occurrences=5)
+        pattern = _make_pattern("Lovelase is", "Lovelace is", occurrences=5)
         batch_svc = _make_batch_service(patterns=[pattern])
         discovery = CrossSegmentDiscovery(batch_service=batch_svc)
         session = _make_mock_session()
@@ -511,9 +511,9 @@ class TestCrossSegmentDiscoveryDiscover:
             video_id="vid1",
             language_code="en",
             sequence_number=0,
-            text="He said Chomski",
+            text="He said Lovelase",
             has_correction=True,
-            corrected_text="He said Chomsky",
+            corrected_text="He said Lovelace",
         )
         seg_n1 = _make_segment_mock(
             seg_id=21,
@@ -547,7 +547,7 @@ class TestCrossSegmentDiscoveryDiscover:
     # (e) Partially corrected pairs included with flag set
     async def test_partially_corrected_pair_included_with_flag(self) -> None:
         """If exactly one segment is corrected, the candidate is included with is_partially_corrected=True."""
-        pattern = _make_pattern("Chomski is", "Chomsky is", occurrences=5)
+        pattern = _make_pattern("Lovelase is", "Lovelace is", occurrences=5)
         batch_svc = _make_batch_service(patterns=[pattern])
         discovery = CrossSegmentDiscovery(batch_service=batch_svc)
         session = _make_mock_session()
@@ -557,9 +557,9 @@ class TestCrossSegmentDiscoveryDiscover:
             video_id="vid2",
             language_code="en",
             sequence_number=0,
-            text="he said Chomski",
+            text="he said Lovelase",
             has_correction=True,
-            corrected_text="He said Chomski",  # capitalisation fix; pattern still matches
+            corrected_text="He said Lovelase",  # capitalisation fix; pattern still matches
         )
         seg_n1 = _make_segment_mock(
             seg_id=31,
@@ -594,7 +594,7 @@ class TestCrossSegmentDiscoveryDiscover:
     async def test_results_sorted_by_confidence_descending(self) -> None:
         """discover() returns candidates sorted by confidence, highest first."""
         # Two word-boundary patterns with different occurrences → different scores
-        pattern_high = _make_pattern("Chomski is", "Chomsky is", occurrences=20)
+        pattern_high = _make_pattern("Lovelase is", "Lovelace is", occurrences=20)
         pattern_low = _make_pattern("foo bar", "Foo Bar", occurrences=1)
         batch_svc = _make_batch_service(patterns=[pattern_high, pattern_low])
         discovery = CrossSegmentDiscovery(batch_service=batch_svc)
@@ -609,7 +609,7 @@ class TestCrossSegmentDiscoveryDiscover:
             video_id="vid3",
             language_code="en",
             sequence_number=0,
-            text="said Chomski",
+            text="said Lovelase",
         )
         seg_high_n1 = _make_segment_mock(
             seg_id=41,
@@ -689,7 +689,7 @@ class TestCrossSegmentDiscoveryDiscover:
     # return cross-language pairs from _find_adjacent_pairs.
     async def test_cross_language_pairs_not_discovered(self) -> None:
         """Segments of the same video but different languages are not paired."""
-        pattern = _make_pattern("Chomski is", "Chomsky is", occurrences=5)
+        pattern = _make_pattern("Lovelase is", "Lovelace is", occurrences=5)
         batch_svc = _make_batch_service(patterns=[pattern])
         discovery = CrossSegmentDiscovery(batch_service=batch_svc)
         session = _make_mock_session()
@@ -719,7 +719,7 @@ class TestCrossSegmentDiscoveryDiscover:
     # confidence rounded to 4 decimal places in CrossSegmentCandidate
     async def test_candidate_confidence_rounded_to_4_decimal_places(self) -> None:
         """CrossSegmentCandidate.confidence is rounded to 4 decimal places."""
-        pattern = _make_pattern("Chomski is", "Chomsky is", occurrences=7)
+        pattern = _make_pattern("Lovelase is", "Lovelace is", occurrences=7)
         batch_svc = _make_batch_service(patterns=[pattern])
         discovery = CrossSegmentDiscovery(batch_service=batch_svc)
         session = _make_mock_session()
@@ -729,7 +729,7 @@ class TestCrossSegmentDiscoveryDiscover:
             video_id="vid6",
             language_code="en",
             sequence_number=0,
-            text="said Chomski",
+            text="said Lovelase",
         )
         seg_n1 = _make_segment_mock(
             seg_id=71,
@@ -775,11 +775,11 @@ class TestCrossSegmentCandidateModel:
     def _valid_kwargs(self) -> dict[str, Any]:
         return {
             "segment_n_id": 1,
-            "segment_n_text": "He said Chomski",
+            "segment_n_text": "He said Lovelase",
             "segment_n1_id": 2,
             "segment_n1_text": "is great",
-            "proposed_correction": "Chomsky is",
-            "source_pattern": "Chomski is",
+            "proposed_correction": "Lovelace is",
+            "source_pattern": "Lovelase is",
             "confidence": 0.75,
             "is_partially_corrected": False,
             "video_id": "dQw4w9WgXcQ",
@@ -847,18 +847,18 @@ class TestGenerateWordSplits:
         """A two-word alias produces exactly one (prefix, suffix) split."""
         splits = _generate_word_splits("Katherine Johnbom")
         assert len(splits) == 1
-        assert splits[0] == ("Claudia", "Shabom")
+        assert splits[0] == ("Katherine", "Johnbom")
 
     def test_three_word_text_produces_two_splits(self) -> None:
         """A three-word alias produces N-1=2 splits in left-to-right order."""
         splits = _generate_word_splits("Katherine Johnsen Bound")
         assert len(splits) == 2
-        assert splits[0] == ("Claudia", "Johnsen Bound")
+        assert splits[0] == ("Katherine", "Johnsen Bound")
         assert splits[1] == ("Katherine Johnsen", "Bound")
 
     def test_single_word_returns_empty_list(self) -> None:
         """A single-word text (no whitespace) produces no splits."""
-        splits = _generate_word_splits("Chomski")
+        splits = _generate_word_splits("Lovelase")
         assert splits == []
 
     def test_empty_string_returns_empty_list(self) -> None:
@@ -868,11 +868,11 @@ class TestGenerateWordSplits:
 
     def test_preserves_original_casing(self) -> None:
         """The prefix and suffix preserve the original case of the input."""
-        splits = _generate_word_splits("Ada Lovelace")
+        splits = _generate_word_splits("ada Lovelace")
         assert len(splits) == 1
         prefix, suffix = splits[0]
-        assert prefix == "noam"
-        assert suffix == "Chomsky"
+        assert prefix == "ada"
+        assert suffix == "Lovelace"
 
     def test_four_word_text_produces_three_splits(self) -> None:
         """A four-word alias produces N-1=3 splits."""
@@ -934,7 +934,7 @@ class TestIsStopwordSplit:
         assert _is_stopword_split("Chomsk", "i") is False
 
     def test_proper_name_prefix_returns_false(self) -> None:
-        assert _is_stopword_split("Shein", "baum") is False
+        assert _is_stopword_split("Johns", "baum") is False
 
     def test_mixed_stopword_and_name_returns_false(self) -> None:
         assert _is_stopword_split("Rick be", "out") is False
@@ -971,7 +971,7 @@ class TestScoreEntityCandidate:
     def test_base_score_without_bonuses(self, service: CrossSegmentDiscovery) -> None:
         """No matching boundary, no partial, non-person, 3-word alias → score == 0.50."""
         score = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="something else entirely",
             seg_n1_text="nothing here",
@@ -986,7 +986,7 @@ class TestScoreEntityCandidate:
     ) -> None:
         """Entity base (0.50) exceeds pattern word-boundary base (0.40)."""
         entity_score = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unmatched text",
             seg_n1_text="unmatched text",
@@ -995,7 +995,7 @@ class TestScoreEntityCandidate:
             alias_word_count=3,
         )
         pattern_score = service._score_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unmatched text",
             seg_n1_text="unmatched text",
@@ -1008,7 +1008,7 @@ class TestScoreEntityCandidate:
     def test_exact_boundary_adds_0_20(self, service: CrossSegmentDiscovery) -> None:
         """When seg_n ends with prefix AND seg_n1 starts with suffix, +0.20 is added."""
         base_score = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1017,9 +1017,9 @@ class TestScoreEntityCandidate:
             alias_word_count=3,
         )
         exact_score = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
-            seg_n_text="He said Chomski",
+            seg_n_text="He said Lovelase",
             seg_n1_text="is the truth",
             is_partially_corrected=False,
             entity_type="organization",
@@ -1030,7 +1030,7 @@ class TestScoreEntityCandidate:
     def test_one_side_boundary_adds_0_10(self, service: CrossSegmentDiscovery) -> None:
         """When only one side matches, +0.10 is added (not +0.20)."""
         base_score = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1039,9 +1039,9 @@ class TestScoreEntityCandidate:
             alias_word_count=3,
         )
         one_side_score = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
-            seg_n_text="He said Chomski",  # ends with prefix
+            seg_n_text="He said Lovelase",  # ends with prefix
             seg_n1_text="no match here",  # does NOT start with suffix
             is_partially_corrected=False,
             entity_type="organization",
@@ -1052,7 +1052,7 @@ class TestScoreEntityCandidate:
     def test_partial_correction_adds_0_10(self, service: CrossSegmentDiscovery) -> None:
         """is_partially_corrected=True adds exactly 0.10 to the score."""
         without = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1061,7 +1061,7 @@ class TestScoreEntityCandidate:
             alias_word_count=3,
         )
         with_partial = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1074,7 +1074,7 @@ class TestScoreEntityCandidate:
     def test_person_entity_type_adds_0_10(self, service: CrossSegmentDiscovery) -> None:
         """entity_type='person' adds exactly 0.10 over a non-person type."""
         non_person = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1083,7 +1083,7 @@ class TestScoreEntityCandidate:
             alias_word_count=3,
         )
         person = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1096,7 +1096,7 @@ class TestScoreEntityCandidate:
     def test_two_word_alias_adds_0_10(self, service: CrossSegmentDiscovery) -> None:
         """alias_word_count==2 adds exactly 0.10 over a 3-word alias."""
         three_word = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1105,7 +1105,7 @@ class TestScoreEntityCandidate:
             alias_word_count=3,
         )
         two_word = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1120,7 +1120,7 @@ class TestScoreEntityCandidate:
     ) -> None:
         """alias_word_count==3 does NOT receive the 2-word alias bonus."""
         score = service._score_entity_candidate(
-            prefix="Chomski Shane",
+            prefix="Lovelase Johnsen",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1134,9 +1134,9 @@ class TestScoreEntityCandidate:
     def test_score_capped_at_one(self, service: CrossSegmentDiscovery) -> None:
         """All bonuses stacked together cannot push the score above 1.0."""
         score = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
-            seg_n_text="He said Chomski",  # exact ends-with
+            seg_n_text="He said Lovelase",  # exact ends-with
             seg_n1_text="is the truth",  # exact starts-with
             is_partially_corrected=True,
             entity_type="person",
@@ -1162,7 +1162,7 @@ class TestScoreEntityCandidate:
     def test_score_is_float(self, service: CrossSegmentDiscovery) -> None:
         """The return type of _score_entity_candidate is float."""
         score = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1178,7 +1178,7 @@ class TestScoreEntityCandidate:
         """Each bonus is independently additive before the cap."""
         # Apply exactly one bonus at a time and verify the delta
         base = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1187,7 +1187,7 @@ class TestScoreEntityCandidate:
             alias_word_count=3,
         )
         with_person = service._score_entity_candidate(
-            prefix="Chomski",
+            prefix="Lovelase",
             suffix="is",
             seg_n_text="unrelated",
             seg_n1_text="unrelated",
@@ -1240,7 +1240,7 @@ class TestDiscoverFromEntities:
         self, service: CrossSegmentDiscovery
     ) -> None:
         """All candidates returned have discovery_source='entity_alias'."""
-        aliases = [_make_alias_row("Chomski is", "Chomsky", "person")]
+        aliases = [_make_alias_row("Lovelase is", "Lovelace", "person")]
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         seg_n = _make_segment_mock(
@@ -1248,7 +1248,7 @@ class TestDiscoverFromEntities:
             video_id="vid10",
             language_code="en",
             sequence_number=0,
-            text="He said Chomski",
+            text="He said Lovelase",
         )
         seg_n1 = _make_segment_mock(
             seg_id=101,
@@ -1281,7 +1281,7 @@ class TestDiscoverFromEntities:
     ) -> None:
         """The proposed_correction field equals the entity's canonical_name."""
         canonical = "Ada Lovelace"
-        aliases = [_make_alias_row("Chomski is", canonical, "person")]
+        aliases = [_make_alias_row("Lovelase is", canonical, "person")]
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         seg_n = _make_segment_mock(
@@ -1289,7 +1289,7 @@ class TestDiscoverFromEntities:
             video_id="vid11",
             language_code="en",
             sequence_number=0,
-            text="He said Chomski",
+            text="He said Lovelase",
         )
         seg_n1 = _make_segment_mock(
             seg_id=111,
@@ -1320,7 +1320,7 @@ class TestDiscoverFromEntities:
         self, service: CrossSegmentDiscovery
     ) -> None:
         """Pairs where both segments are already corrected are excluded."""
-        aliases = [_make_alias_row("Chomski is", "Chomsky", "person")]
+        aliases = [_make_alias_row("Lovelase is", "Lovelace", "person")]
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         seg_n = _make_segment_mock(
@@ -1328,9 +1328,9 @@ class TestDiscoverFromEntities:
             video_id="vid12",
             language_code="en",
             sequence_number=0,
-            text="Chomski",
+            text="Lovelase",
             has_correction=True,
-            corrected_text="Chomsky",
+            corrected_text="Lovelace",
         )
         seg_n1 = _make_segment_mock(
             seg_id=121,
@@ -1363,19 +1363,19 @@ class TestDiscoverFromEntities:
         self, service: CrossSegmentDiscovery
     ) -> None:
         """When only one segment is corrected, the candidate is included with is_partially_corrected=True."""
-        aliases = [_make_alias_row("Chomski is", "Chomsky", "person")]
+        aliases = [_make_alias_row("Lovelase is", "Lovelace", "person")]
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         # seg_n has a correction for something else (punctuation), but its
-        # effective text still ends with the alias prefix "Chomski".
+        # effective text still ends with the alias prefix "Lovelase".
         seg_n = _make_segment_mock(
             seg_id=130,
             video_id="vid13",
             language_code="en",
             sequence_number=0,
-            text="he said Chomski",
+            text="he said Lovelase",
             has_correction=True,
-            corrected_text="He said Chomski",
+            corrected_text="He said Lovelase",
         )
         seg_n1 = _make_segment_mock(
             seg_id=131,
@@ -1411,17 +1411,19 @@ class TestDiscoverFromEntities:
         service._load_multiword_asr_aliases = AsyncMock(return_value=[])  # type: ignore[method-assign]
         session = _make_mock_session()
 
-        await service.discover_from_entities(session, entity_name="Chomsky")
+        await service.discover_from_entities(session, entity_name="Lovelace")
 
-        service._load_multiword_asr_aliases.assert_awaited_once_with(session, "Chomsky")
+        service._load_multiword_asr_aliases.assert_awaited_once_with(
+            session, "Lovelace"
+        )
 
     async def test_no_multiword_aliases_returns_empty(
         self, service: CrossSegmentDiscovery
     ) -> None:
         """When all aliases are single-word (no spaces), no splits are generated."""
-        # _generate_word_splits("Chomski") returns [] for single-word aliases.
+        # _generate_word_splits("Lovelase") returns [] for single-word aliases.
         # Simulate this by providing an alias that produces no splits.
-        aliases = [_make_alias_row("Chomski", "Chomsky", "person")]
+        aliases = [_make_alias_row("Lovelase", "Lovelace", "person")]
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         async def _fake_find_pairs_batched(
@@ -1444,7 +1446,7 @@ class TestDiscoverFromEntities:
         self, service: CrossSegmentDiscovery
     ) -> None:
         """All returned candidates have confidence in [0.0, 1.0]."""
-        aliases = [_make_alias_row("Chomski is", "Chomsky", "person")]
+        aliases = [_make_alias_row("Lovelase is", "Lovelace", "person")]
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         seg_n = _make_segment_mock(
@@ -1452,7 +1454,7 @@ class TestDiscoverFromEntities:
             video_id="vid14",
             language_code="en",
             sequence_number=0,
-            text="He said Chomski",
+            text="He said Lovelase",
         )
         seg_n1 = _make_segment_mock(
             seg_id=141,
@@ -1485,7 +1487,7 @@ class TestDiscoverFromEntities:
         self, service: CrossSegmentDiscovery
     ) -> None:
         """discover_from_entities returns a list of CrossSegmentCandidate instances."""
-        aliases = [_make_alias_row("Chomski is", "Chomsky", "person")]
+        aliases = [_make_alias_row("Lovelase is", "Lovelace", "person")]
         service._load_multiword_asr_aliases = AsyncMock(return_value=aliases)  # type: ignore[method-assign]
 
         seg_n = _make_segment_mock(
@@ -1493,7 +1495,7 @@ class TestDiscoverFromEntities:
             video_id="vid15",
             language_code="en",
             sequence_number=0,
-            text="He said Chomski",
+            text="He said Lovelase",
         )
         seg_n1 = _make_segment_mock(
             seg_id=151,
@@ -1532,7 +1534,7 @@ def _make_candidate(
     seg_n1_id: int,
     confidence: float = 0.75,
     discovery_source: str = "correction_pattern",
-    proposed_correction: str = "Chomsky is",
+    proposed_correction: str = "Lovelace is",
 ) -> CrossSegmentCandidate:
     """Build a CrossSegmentCandidate for merge tests."""
     return CrossSegmentCandidate(
@@ -1541,7 +1543,7 @@ def _make_candidate(
         segment_n1_id=seg_n1_id,
         segment_n1_text="suffix text",
         proposed_correction=proposed_correction,
-        source_pattern="Chomski is",
+        source_pattern="Lovelase is",
         confidence=confidence,
         is_partially_corrected=False,
         video_id="dQw4w9WgXcQ",
@@ -1816,13 +1818,13 @@ class TestDiscoverCombined:
         discovery.discover_from_entities = AsyncMock(return_value=[])  # type: ignore[method-assign]
         discovery._discover_from_patterns = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
-        await discovery.discover(session, min_corrections=5, entity_name="Chomsky")
+        await discovery.discover(session, min_corrections=5, entity_name="Lovelace")
 
         entity_call = discovery.discover_from_entities.call_args
         pattern_call = discovery._discover_from_patterns.call_args
 
-        assert entity_call.kwargs.get("entity_name") == "Chomsky"
-        assert pattern_call.kwargs.get("entity_name") == "Chomsky"
+        assert entity_call.kwargs.get("entity_name") == "Lovelace"
+        assert pattern_call.kwargs.get("entity_name") == "Lovelace"
 
     async def test_min_corrections_forwarded_to_pattern_strategy(self) -> None:
         """min_corrections is forwarded to _discover_from_patterns."""
@@ -1866,11 +1868,11 @@ class TestCrossSegmentCandidateDiscoverySource:
     def _valid_kwargs(self) -> dict[str, Any]:
         return {
             "segment_n_id": 1,
-            "segment_n_text": "He said Chomski",
+            "segment_n_text": "He said Lovelase",
             "segment_n1_id": 2,
             "segment_n1_text": "is great",
-            "proposed_correction": "Chomsky is",
-            "source_pattern": "Chomski is",
+            "proposed_correction": "Lovelace is",
+            "source_pattern": "Lovelase is",
             "confidence": 0.75,
             "is_partially_corrected": False,
             "video_id": "dQw4w9WgXcQ",
@@ -1985,8 +1987,8 @@ class TestIsTooShortSplit:
     @pytest.mark.parametrize(
         "prefix,suffix",
         [
-            ("Chomski", "is"),  # 7 + 2: long selective prefix, short suffix
-            ("El", "Musk"),  # 2 + 4: short prefix, selective suffix
+            ("Lovelase", "is"),  # 7 + 2: long selective prefix, short suffix
+            ("El", "Dijkstra"),  # 2 + 4: short prefix, selective suffix
             ("Roy", "Cohn"),  # 3 + 4
             ("Matt", "Lee"),  # 4 + 3
         ],
@@ -2015,4 +2017,4 @@ class TestIsTooShortSplit:
         # "  Roy " -> "Roy" (3), " Cohn" -> "Cohn" (4): kept.
         assert _is_too_short_split("  Roy ", " Cohn") is False
         # " a " -> "a" (1): single-char after strip, dropped.
-        assert _is_too_short_split(" a ", "Musk") is True
+        assert _is_too_short_split(" a ", "Dijkstra") is True

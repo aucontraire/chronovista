@@ -37,8 +37,8 @@ from chronovista.services.phonetic_matcher import PhoneticMatch
 
 def _make_match(
     *,
-    original_text: str = "shein bomb",
-    proposed_correction: str = "Sheinbaum",
+    original_text: str = "johns bomb",
+    proposed_correction: str = "Johnson",
     confidence: float = 0.78,
     evidence_description: str = "Phonetic similarity: 0.78",
     video_id: str = "abc123",
@@ -137,8 +137,8 @@ class TestGetPhoneticMatches:
         body = response.json()
         data = body["data"]
         assert len(data) == 1
-        assert data[0]["original_text"] == "shein bomb"
-        assert data[0]["proposed_correction"] == "Sheinbaum"
+        assert data[0]["original_text"] == "johns bomb"
+        assert data[0]["proposed_correction"] == "Johnson"
         assert data[0]["confidence"] == 0.78
         assert data[0]["evidence_description"] == "Phonetic similarity: 0.78"
         assert data[0]["video_id"] == "vid1"

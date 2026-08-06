@@ -2931,7 +2931,7 @@ class TestSearchEntities:
     ) -> None:
         """search_entities() populates matched_alias when the hit came from an alias.
 
-        When query "Joanna" matches the alias "Joanna" (not the canonical name
+        When query "Barbara" matches the alias "Barbara" (not the canonical name
         "Barbara Liskov"), the result dict's matched_alias field must equal
         the alias text that triggered the match.
         """
@@ -2939,18 +2939,18 @@ class TestSearchEntities:
         fake_row = self._make_entity_row(
             entity_id=entity_id,
             canonical_name="Barbara Liskov",
-            matched_alias="Joanna",
+            matched_alias="Barbara",
         )
         mock_session.execute.return_value = self._make_all_result([fake_row])
 
-        results = await repository.search_entities(mock_session, query="Joanna")
+        results = await repository.search_entities(mock_session, query="Barbara")
 
         assert len(results) >= 1
         item = next(
             (r for r in results if r["canonical_name"] == "Barbara Liskov"), None
         )
         assert item is not None, "Expected 'Barbara Liskov' in results"
-        assert item["matched_alias"] == "Joanna"
+        assert item["matched_alias"] == "Barbara"
 
     async def test_search_deduplication_canonical_and_alias(
         self,
@@ -2973,14 +2973,14 @@ class TestSearchEntities:
         alias_row = self._make_entity_row(
             entity_id=entity_id,
             canonical_name="Barbara Liskov",
-            matched_alias="Joanna",
+            matched_alias="Barbara",
         )
         # Both rows have the same entity_id — duplicates
         mock_session.execute.return_value = self._make_all_result(
             [canonical_row, alias_row]
         )
 
-        results = await repository.search_entities(mock_session, query="Joanna")
+        results = await repository.search_entities(mock_session, query="Barbara")
 
         entity_ids_returned = [r["entity_id"] for r in results]
         assert entity_ids_returned.count(str(entity_id)) == 1, (

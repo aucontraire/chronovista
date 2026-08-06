@@ -176,13 +176,13 @@ open http://localhost:8765/docs
 
 ```bash
 # Create a standalone entity with aliases
-chronovista entities create "Ada Lovelace" --type person --description "Mathematician and computing pioneer" --alias "Chomsky"
+chronovista entities create "Ada Lovelace" --type person --description "Mathematician and computing pioneer" --alias "Lovelace"
 
 # List all person entities
 chronovista entities list --type person
 
 # Search entities by name
-chronovista entities list --search "chomsky"
+chronovista entities list --search "lovelace"
 
 # Backfill descriptions from classify --reason text
 chronovista entities backfill-descriptions --dry-run
@@ -282,10 +282,10 @@ chronovista entities scan --full
 chronovista corrections patterns --min-occurrences 2
 
 # 2. Preview a batch correction
-chronovista corrections find-replace --pattern "Chsky" --replacement "Chomsky" --dry-run
+chronovista corrections find-replace --pattern "Chsky" --replacement "Lovelace" --dry-run
 
 # 3. Apply the correction
-chronovista corrections find-replace --pattern "Chsky" --replacement "Chomsky"
+chronovista corrections find-replace --pattern "Chsky" --replacement "Lovelace"
 
 # 4. Rebuild full transcript text
 chronovista corrections rebuild-text
@@ -297,7 +297,7 @@ chronovista corrections stats
 chronovista corrections export --format json --output corrections-backup.json
 
 # 7. If a correction was wrong, batch revert it
-chronovista corrections batch-revert --pattern "Chomsky" --dry-run
+chronovista corrections batch-revert --pattern "Lovelace" --dry-run
 ```
 
 ### Identity Repair (v0.60.0+)

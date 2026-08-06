@@ -43,7 +43,7 @@ def _fold_diacritics(raw: str) -> tuple[str, list[int]]:
     """Fold accents off a string and map folded positions back to raw ones.
 
     The fold decomposes each character with canonical (NFD) normalization and
-    drops non-spacing combining marks (Unicode category ``Mn``), so ``"México"``
+    drops non-spacing combining marks (Unicode category ``Mn``), so ``"Perú"``
     folds to ``"Peru"``.  Case is intentionally left untouched — callers keep
     handling case with ``re.IGNORECASE``.  Compatibility decomposition (NFKD) is
     deliberately avoided so characters such as ``"½"`` or the ``"ﬁ"`` ligature
@@ -1082,7 +1082,7 @@ class EntityMentionScanService:
             # Build the diacritic-folded alternation: \b(alias1|alias2|...)\b.
             # Alias names are folded (accents stripped) so the pattern matches
             # accented occurrences in folded text — e.g. alias "Peru" must
-            # match "México".  Case is still handled by re.IGNORECASE at compile
+            # match "Perú".  Case is still handled by re.IGNORECASE at compile
             # time.  Names that fold to empty (pure combining marks) cannot match
             # anything meaningful and are dropped to avoid an empty alternative.
             #

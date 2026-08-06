@@ -131,13 +131,13 @@ class TestResolveEntityIdFromText:
         # First execute: no entity → None; second execute: alias found.
         session = _mock_execute_returns(None, alias_mock)
 
-        result = await resolve_entity_id_from_text(session, "Sheinbom")
+        result = await resolve_entity_id_from_text(session, "Johnsbom")
 
         assert result is not None
         entity_id, returned_text = result
         assert entity_id == alias_mock.entity_id
         # When matched via alias, the original *text* arg is returned verbatim.
-        assert returned_text == "Sheinbom"
+        assert returned_text == "Johnsbom"
 
     async def test_alias_match_is_case_insensitive(self) -> None:
         """Alias lookup is case-insensitive (``func.lower`` applied)."""
@@ -276,7 +276,7 @@ class TestRegisterAsrAlias:
             await register_asr_alias(
                 session,
                 original_text="Seon",
-                corrected_text="Sheinbaum",
+                corrected_text="Johnson",
             )
 
         mock_repo_instance.create.assert_called_once()
@@ -462,7 +462,7 @@ class TestRegisterAsrAlias:
 
             await register_asr_alias(
                 session,
-                original_text="Shainbom",
+                original_text="Johnsom",
                 corrected_text="Unknown Person",
             )
 
@@ -479,7 +479,7 @@ class TestRegisterAsrAlias:
         # Should NOT raise — best-effort means any exception is caught.
         await register_asr_alias(
             session,
-            original_text="Shainbom",
+            original_text="Johnsom",
             corrected_text="Katherine Johnson",
         )
 
@@ -495,7 +495,7 @@ class TestRegisterAsrAlias:
         ):
             await register_asr_alias(
                 session,
-                original_text="Shainbom",
+                original_text="Johnsom",
                 corrected_text="Katherine Johnson",
             )
 
@@ -582,7 +582,7 @@ class TestRegisterAsrAlias:
             )
 
         # T022: normalize() is now called twice — once for the full-string alias
-        # ("Katherine Johnsom") and once for the minimal error token ("Shainbom").
+        # ("Katherine Johnsom") and once for the minimal error token ("Johnsom").
         calls = mock_normalizer.normalize.call_args_list
         assert (
             len(calls) == 2
@@ -591,7 +591,7 @@ class TestRegisterAsrAlias:
             calls[0].args[0] == "Katherine Johnsom"
         ), f"First call should normalize the full-string alias, got: {calls[0].args[0]}"
         assert (
-            calls[1].args[0] == "Shainbom"
+            calls[1].args[0] == "Johnsom"
         ), f"Second call should normalize the minimal error token, got: {calls[1].args[0]}"
 
     async def test_falls_back_to_lower_when_normalize_returns_none(self) -> None:
@@ -640,7 +640,7 @@ class TestRegisterAsrAlias:
         ):
             await register_asr_alias(
                 session,
-                original_text="Shainbom",
+                original_text="Johnsom",
                 corrected_text="Katherine Johnson",
                 log_prefix="batch-correction",
             )
@@ -660,7 +660,7 @@ class TestRegisterAsrAlias:
         ):
             await register_asr_alias(
                 session,
-                original_text="Shainbom",
+                original_text="Johnsom",
                 corrected_text="Katherine Johnson",
             )
 
@@ -767,7 +767,7 @@ class TestIsValidAsrAlias:
 
     def test_accepts_legitimate_asr_error(self) -> None:
         """Legitimate ASR error alias is accepted."""
-        assert is_valid_asr_alias("Shainbom") is True
+        assert is_valid_asr_alias("Johnsom") is True
 
     def test_accepts_multi_word_asr_error(self) -> None:
         """Multi-word alias with at least one non-stopword is accepted."""

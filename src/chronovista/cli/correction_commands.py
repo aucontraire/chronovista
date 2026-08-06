@@ -1350,7 +1350,7 @@ def detect_boundaries(
     \b
     Examples:
       chronovista corrections detect-boundaries
-      chronovista corrections detect-boundaries --entity "Chomsky" --threshold 0.6
+      chronovista corrections detect-boundaries --entity "Lovelace" --threshold 0.6
     """
     from sqlalchemy import func as sqla_func
     from sqlalchemy import select as sa_select
@@ -1483,7 +1483,7 @@ def suggest_cross_segment(
     Examples:
       chronovista corrections suggest-cross-segment
       chronovista corrections suggest-cross-segment --min-corrections 5
-      chronovista corrections suggest-cross-segment --entity "Chomsky"
+      chronovista corrections suggest-cross-segment --entity "Lovelace"
     """
     from chronovista.services.cross_segment_discovery import (
         CrossSegmentDiscovery,

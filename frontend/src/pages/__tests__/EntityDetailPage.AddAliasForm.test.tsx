@@ -209,7 +209,7 @@ beforeEach(() => {
   // Default: createEntityAlias resolves successfully.
   vi.mocked(createEntityAlias).mockResolvedValue({
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    alias_name: "Chomsky",
+    alias_name: "Lovelace",
     alias_type: "name_variant",
     occurrence_count: 0,
     case_sensitive: false,
@@ -270,7 +270,7 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
       renderPage();
 
       const input = screen.getByRole("textbox", { name: /alias name/i });
-      await user.type(input, "Chomsky");
+      await user.type(input, "Lovelace");
 
       expect(screen.getByRole("button", { name: /^add$/i })).not.toBeDisabled();
     });
@@ -286,7 +286,7 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
       renderPage();
 
       const input = screen.getByRole("textbox", { name: /alias name/i });
-      await user.type(input, "Chomsky");
+      await user.type(input, "Lovelace");
 
       await user.click(screen.getByRole("button", { name: /^add$/i }));
 
@@ -296,7 +296,7 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
 
       expect(vi.mocked(createEntityAlias)).toHaveBeenCalledWith(
         "entity-uuid-001",
-        "Chomsky",
+        "Lovelace",
         "name_variant"
       );
     });
@@ -306,7 +306,7 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
       renderPage();
 
       const input = screen.getByRole("textbox", { name: /alias name/i });
-      await user.type(input, "Chomsky");
+      await user.type(input, "Lovelace");
       await user.click(screen.getByRole("button", { name: /^add$/i }));
 
       await waitFor(() => {
@@ -319,12 +319,12 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
       renderPage();
 
       const input = screen.getByRole("textbox", { name: /alias name/i });
-      await user.type(input, "Chomsky");
+      await user.type(input, "Lovelace");
       await user.click(screen.getByRole("button", { name: /^add$/i }));
 
       await waitFor(() => {
         expect(
-          screen.getByText(/"Chomsky" added successfully\./i)
+          screen.getByText(/"Lovelace" added successfully\./i)
         ).toBeInTheDocument();
       });
     });
@@ -334,7 +334,7 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
       renderPage();
 
       const input = screen.getByRole("textbox", { name: /alias name/i });
-      await user.type(input, "Chomsky");
+      await user.type(input, "Lovelace");
       await user.click(screen.getByRole("button", { name: /^add$/i }));
 
       await waitFor(() => {
@@ -564,7 +564,7 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
       renderPage();
 
       const input = screen.getByRole("textbox", { name: /alias name/i });
-      await user.type(input, "Avram Chomsky");
+      await user.type(input, "Avram Lovelace");
       await user.keyboard("{Enter}");
 
       await waitFor(() => {

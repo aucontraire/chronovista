@@ -9,7 +9,7 @@ creates all tables fresh per test and rolls back on completion.
 Feature 040 -- Correction Pattern Matching
 
 Test coverage:
-T005  — Word boundary integration: \\bamlo\\w* matches "eml" / "eml's government"
+T005  — Word boundary integration: \\beml\\w* matches "eml" / "eml's government"
         but must NOT match "kamloops is a city" in the database via find_by_text_pattern().
 T011  — Cross-segment match basic: "Katherine Johnsen" + "Bound …" corrected to "Katherine Johnson".
 T012  — Single-segment match within cross-segment mode: pattern fully within one segment.
@@ -217,7 +217,7 @@ class TestWordBoundaryRegexIntegration:
     Integration tests for \\b word-boundary behaviour in find_by_text_pattern().
 
     T005 verifies that the PostgreSQL regex operator ('~') honours word-boundary
-    semantics equivalent to Python's \\b when the pattern \\bamlo\\w* is supplied.
+    semantics equivalent to Python's \\b when the pattern \\beml\\w* is supplied.
 
     The three segments seeded cover the three boundary cases that must all be
     handled correctly in a single call:
@@ -233,11 +233,11 @@ class TestWordBoundaryRegexIntegration:
     is intentional: this test defines the contract before the implementation ships.
     """
 
-    async def test_word_boundary_pattern_matches_amlo_but_not_kamloops(
+    async def test_word_boundary_pattern_matches_eml_but_not_kamloops(
         self, db_session: AsyncSession
     ) -> None:
         r"""
-        \\bamlo\\w* must match segments containing "eml" as a whole word but
+        \\beml\\w* must match segments containing "eml" as a whole word but
         must NOT match segments where "eml" appears only as an interior substring
         (e.g. "kamloops").
 
@@ -253,7 +253,7 @@ class TestWordBoundaryRegexIntegration:
         * Segment 1 (kamloops) is not among the results.
         * Segments 0 and 2 are both present in the results (by sequence_number).
         """
-        vid_id = video_id(seed="wb_amlo_001")
+        vid_id = video_id(seed="wb_eml_001")
 
         await _seed_channel(db_session)
         await _seed_video(db_session, vid_id)
@@ -286,7 +286,7 @@ class TestWordBoundaryRegexIntegration:
         repo = TranscriptSegmentRepository()
         results = await repo.find_by_text_pattern(
             db_session,
-            pattern=r"\bamlo\w*",
+            pattern=r"\beml\w*",
             regex=True,
         )
 
@@ -300,19 +300,19 @@ class TestWordBoundaryRegexIntegration:
         )
 
         assert seg1.id not in returned_ids, (
-            f"Segment 1 ('kamloops is a city') must NOT match \\bamlo\\w* "
+            f"Segment 1 ('kamloops is a city') must NOT match \\beml\\w* "
             f"because 'eml' is a substring of 'kamloops', not a word boundary match. "
             f"Returned segment IDs: {returned_ids}"
         )
 
         assert seg0.id in returned_ids, (
-            f"Segment 0 ('eml said something') must match \\bamlo\\w* — "
+            f"Segment 0 ('eml said something') must match \\beml\\w* — "
             f"'eml' appears at a word boundary. "
             f"Returned segment IDs: {returned_ids}"
         )
 
         assert seg2.id in returned_ids, (
-            f"Segment 2 ('eml\\'s government') must match \\bamlo\\w* — "
+            f"Segment 2 ('eml\\'s government') must match \\beml\\w* — "
             f"'eml' appears at a word boundary before the possessive apostrophe. "
             f"Returned segment IDs: {returned_ids}"
         )
@@ -408,7 +408,7 @@ class TestCrossSegmentMatchBasic:
         * Result type is ``BatchCorrectionResult``.
         * ``total_matched >= 1`` (at least the cross-segment pair was detected).
         * Segment 155 ``corrected_text`` contains "Katherine Johnson".
-        * Segment 155 ``corrected_text`` does NOT contain the ASR artefact "Shane".
+        * Segment 155 ``corrected_text`` does NOT contain the ASR artefact "Johnsen".
         * Segment 156 ``corrected_text`` does NOT start with "Bound".
         * Segment 156 ``corrected_text`` still contains "también siendo candidata"
           (trailing context preserved).
@@ -472,8 +472,8 @@ class TestCrossSegmentMatchBasic:
             f"Segment 155 must contain 'Katherine Johnson' after cross-segment "
             f"replacement. Got: {corrected_a!r}"
         )
-        assert "Shane" not in corrected_a, (
-            f"ASR artefact 'Shane' must be removed from segment 155. "
+        assert "Johnsen" not in corrected_a, (
+            f"ASR artefact 'Johnsen' must be removed from segment 155. "
             f"Got: {corrected_a!r}"
         )
         assert not corrected_b.startswith("Bound"), (
@@ -958,7 +958,7 @@ class TestRegexCrossSegment:
         self, db_session: AsyncSession
     ) -> None:
         r"""
-        Pattern ``\bCla\w+ Johnsen Bound\b`` matches "Katherine Johnsen Bound"
+        Pattern ``\bKat\w+ Johnsen Bound\b`` matches "Katherine Johnsen Bound"
         spanning segment N and segment N+1.
 
         Seed setup
@@ -968,7 +968,7 @@ class TestRegexCrossSegment:
 
         Combined: "Katherine Johnsen Bound también"
 
-        The regex ``\bCla\w+ Johnsen Bound\b`` matches "Katherine Johnsen Bound" in
+        The regex ``\bKat\w+ Johnsen Bound\b`` matches "Katherine Johnsen Bound" in
         the combined text, spanning the boundary.  The replacement
         "Katherine Johnson" is placed into segment 20; "Bound" is removed
         from segment 21.
@@ -1007,7 +1007,7 @@ class TestRegexCrossSegment:
         service = _make_batch_service()
         result = await service.find_and_replace(
             db_session,
-            pattern=r"\bCla\w+ Johnsen Bound\b",
+            pattern=r"\bKat\w+ Johnsen Bound\b",
             replacement="Katherine Johnson",
             regex=True,
             cross_segment=True,
@@ -1017,7 +1017,7 @@ class TestRegexCrossSegment:
 
         assert isinstance(result, BatchCorrectionResult)
         assert result.total_matched >= 1, (
-            r"Regex pattern \bCla\w+ Johnsen Bound\b must match "
+            r"Regex pattern \bKat\w+ Johnsen Bound\b must match "
             r"'Katherine Johnsen Bound' across the cross-segment boundary. "
             f"total_matched={result.total_matched}"
         )

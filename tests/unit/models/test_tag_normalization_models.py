@@ -582,8 +582,8 @@ class TestEntityAliasModels:
 
         alias = EntityAliasFactory.build(
             id=alias_id,
-            alias_name="E. Musk",
-            alias_name_normalized="e. musk",
+            alias_name="E. Dijkstra",
+            alias_name_normalized="e. dijkstra",
             alias_type=EntityAliasType.ABBREVIATION,
             entity_id=entity_id,
             occurrence_count=25,
@@ -592,8 +592,8 @@ class TestEntityAliasModels:
         )
 
         assert alias.id == alias_id
-        assert alias.alias_name == "E. Musk"
-        assert alias.alias_name_normalized == "e. musk"
+        assert alias.alias_name == "E. Dijkstra"
+        assert alias.alias_name_normalized == "e. dijkstra"
         assert alias.alias_type == EntityAliasType.ABBREVIATION
         assert alias.entity_id == entity_id
         assert alias.occurrence_count == 25

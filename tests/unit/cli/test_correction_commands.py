@@ -1557,9 +1557,9 @@ class TestCrossSegmentDryRunDisplay:
                 [
                     "find-replace",
                     "--pattern",
-                    "Shane",
+                    "Johnsen",
                     "--replacement",
-                    "Sheinbaum",
+                    "Johnson",
                     "--dry-run",
                     "--cross-segment",
                     "--video-id",
@@ -1634,9 +1634,9 @@ class TestCrossSegmentDryRunDisplay:
                 [
                     "find-replace",
                     "--pattern",
-                    "Shane",
+                    "Johnsen",
                     "--replacement",
-                    "Sheinbaum",
+                    "Johnson",
                     "--dry-run",
                     "--cross-segment",
                     "--video-id",
@@ -2165,8 +2165,8 @@ class TestAnalyzeDiffsCommand:
         mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
 
         correction = _make_correction_mock(
-            original_text="Chomski",
-            corrected_text="Chomsky",
+            original_text="Lovelase",
+            corrected_text="Lovelace",
         )
 
         with (
@@ -2203,7 +2203,7 @@ class TestAnalyzeDiffsCommand:
     ) -> None:
         """Repeated (error_token, canonical_form) pairs accumulate frequency.
 
-        Three corrections all containing "Chomski" → "Chomsky" must produce a
+        Three corrections all containing "Lovelase" → "Lovelace" must produce a
         frequency of 3 for that pair in the output.
         """
         mock_session = AsyncMock()
@@ -2211,8 +2211,8 @@ class TestAnalyzeDiffsCommand:
 
         corrections = [
             _make_correction_mock(
-                original_text="Chomski",
-                corrected_text="Chomsky",
+                original_text="Lovelase",
+                corrected_text="Lovelace",
             )
             for _ in range(3)
         ]
@@ -2235,8 +2235,8 @@ class TestAnalyzeDiffsCommand:
         assert result.exit_code == 0
         # Frequency count of 3 must appear in the table row
         assert "3" in result.stdout
-        assert "Chomski" in result.stdout
-        assert "Chomsky" in result.stdout
+        assert "Lovelase" in result.stdout
+        assert "Lovelace" in result.stdout
 
     # ------------------------------------------------------------------
     # (c) No-op corrections (original == corrected) excluded
@@ -2305,8 +2305,8 @@ class TestAnalyzeDiffsCommand:
 
         entity_id = uuid.UUID(bytes=uuid7().bytes)
         correction = _make_correction_mock(
-            original_text="Chomski",
-            corrected_text="Chomsky",
+            original_text="Lovelase",
+            corrected_text="Lovelace",
         )
 
         with (
@@ -2391,8 +2391,8 @@ class TestAnalyzeDiffsCommand:
         mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
 
         revert_correction = _make_correction_mock(
-            original_text="Chomsky",
-            corrected_text="Chomski",
+            original_text="Lovelace",
+            corrected_text="Lovelase",
             correction_type="revert",
         )
 
@@ -2432,8 +2432,8 @@ class TestAnalyzeDiffsCommand:
 
         corrections = [
             _make_correction_mock(
-                original_text="Chomski",
-                corrected_text="Chomsky",
+                original_text="Lovelase",
+                corrected_text="Lovelace",
             ),
             _make_correction_mock(
                 original_text="recieve",
@@ -2501,7 +2501,7 @@ def _mock_session_for_detect(
 
 def _make_named_entity_db_mock(
     *,
-    name: str = "Sheinbaum",
+    name: str = "Johnson",
     entity_type: str = "person",
 ) -> MagicMock:
     """Build a minimal NamedEntityDB-like mock for CLI testing.
@@ -2566,7 +2566,7 @@ class TestDetectBoundariesCommand:
         """
         from chronovista.services.phonetic_matcher import PhoneticMatch as _PM
 
-        entity = _make_named_entity_db_mock(name="Sheinbaum")
+        entity = _make_named_entity_db_mock(name="Johnson")
         mock_session = _mock_session_for_detect([entity])
 
         async def _session_gen(*_a: object, **_kw: object):
@@ -2575,8 +2575,8 @@ class TestDetectBoundariesCommand:
         mock_db.get_session = _session_gen
 
         phonetic_match = _PM(
-            original_text="Shanebam",
-            proposed_correction="Sheinbaum",
+            original_text="Jonsun",
+            proposed_correction="Johnson",
             confidence=0.72,
             evidence_description="phonetic+levenshtein match (conf=0.72)",
             video_id="dQw4w9WgXcQ",
@@ -2609,7 +2609,7 @@ class TestDetectBoundariesCommand:
         """Match data (original text, correction, confidence) appears in the output."""
         from chronovista.services.phonetic_matcher import PhoneticMatch as _PM
 
-        entity = _make_named_entity_db_mock(name="Chomsky")
+        entity = _make_named_entity_db_mock(name="Lovelace")
         mock_session = _mock_session_for_detect([entity])
 
         async def _session_gen(*_a: object, **_kw: object):
@@ -2619,7 +2619,7 @@ class TestDetectBoundariesCommand:
 
         phonetic_match = _PM(
             original_text="Chomskee",
-            proposed_correction="Chomsky",
+            proposed_correction="Lovelace",
             confidence=0.8500,
             evidence_description="phonetic+levenshtein match (conf=0.85)",
             video_id="dQw4w9WgXcQ",
@@ -2634,7 +2634,7 @@ class TestDetectBoundariesCommand:
 
         assert result.exit_code == 0
         assert "Chomskee" in result.stdout
-        assert "Chomsky" in result.stdout
+        assert "Lovelace" in result.stdout
         # Confidence column may be truncated to "0…" in narrow terminal; check
         # the evidence description instead which echoes the conf value
         assert "conf=0.85" in result.stdout
@@ -2657,7 +2657,7 @@ class TestDetectBoundariesCommand:
         """
         from chronovista.services.phonetic_matcher import PhoneticMatch as _PM
 
-        entity = _make_named_entity_db_mock(name="Chomsky")
+        entity = _make_named_entity_db_mock(name="Lovelace")
         mock_session = _mock_session_for_detect([entity])
 
         async def _session_gen(*_a: object, **_kw: object):
@@ -2667,7 +2667,7 @@ class TestDetectBoundariesCommand:
 
         phonetic_match = _PM(
             original_text="Chomskee",
-            proposed_correction="Chomsky",
+            proposed_correction="Lovelace",
             confidence=0.75,
             evidence_description="phonetic+levenshtein match (conf=0.75)",
             video_id="dQw4w9WgXcQ",
@@ -2680,11 +2680,11 @@ class TestDetectBoundariesCommand:
 
         result = runner.invoke(
             correction_app,
-            ["detect-boundaries", "--entity", "Chomsky"],
+            ["detect-boundaries", "--entity", "Lovelace"],
         )
 
         assert result.exit_code == 0
-        assert "Chomsky" in result.stdout
+        assert "Lovelace" in result.stdout
         assert "1" in result.stdout
 
     @patch("chronovista.cli.correction_commands.db_manager")
@@ -2728,7 +2728,7 @@ class TestDetectBoundariesCommand:
         The CLI must pass the user-supplied threshold to the service layer
         rather than always using the default 0.5.
         """
-        entity = _make_named_entity_db_mock(name="Sheinbaum")
+        entity = _make_named_entity_db_mock(name="Johnson")
         mock_session = _mock_session_for_detect([entity])
 
         async def _session_gen(*_a: object, **_kw: object):
@@ -2761,7 +2761,7 @@ class TestDetectBoundariesCommand:
         runner: CliRunner,
     ) -> None:
         """When --threshold is omitted, the default 0.5 is used."""
-        entity = _make_named_entity_db_mock(name="Sheinbaum")
+        entity = _make_named_entity_db_mock(name="Johnson")
         mock_session = _mock_session_for_detect([entity])
 
         async def _session_gen(*_a: object, **_kw: object):
@@ -2827,7 +2827,7 @@ class TestDetectBoundariesCommand:
         """
         from chronovista.services.phonetic_matcher import PhoneticMatch as _PM
 
-        entity_a = _make_named_entity_db_mock(name="Sheinbaum")
+        entity_a = _make_named_entity_db_mock(name="Johnson")
         entity_b = _make_named_entity_db_mock(name="UnknownPerson")
         mock_session = _mock_session_for_detect([entity_a, entity_b])
 
@@ -2837,8 +2837,8 @@ class TestDetectBoundariesCommand:
         mock_db.get_session = _session_gen
 
         phonetic_match = _PM(
-            original_text="Shanebam",
-            proposed_correction="Sheinbaum",
+            original_text="Jonsun",
+            proposed_correction="Johnson",
             confidence=0.72,
             evidence_description="phonetic+levenshtein match (conf=0.72)",
             video_id="dQw4w9WgXcQ",
@@ -2854,7 +2854,7 @@ class TestDetectBoundariesCommand:
         result = runner.invoke(correction_app, ["detect-boundaries"])
 
         assert result.exit_code == 0
-        assert "Sheinbaum" in result.stdout
+        assert "Johnson" in result.stdout
         assert "2" in result.stdout
 
     # ---- help text ----
@@ -2881,7 +2881,7 @@ class TestDetectBoundariesCommand:
         runner: CliRunner,
     ) -> None:
         """The summary Panel is always printed at the end of the command output."""
-        entity = _make_named_entity_db_mock(name="Sheinbaum")
+        entity = _make_named_entity_db_mock(name="Johnson")
         mock_session = _mock_session_for_detect([entity])
 
         async def _session_gen(*_a: object, **_kw: object):
@@ -2907,11 +2907,11 @@ class TestDetectBoundariesCommand:
 def _make_cross_segment_candidate(
     *,
     segment_n_id: int = 10,
-    segment_n_text: str = "He said Chomski",
+    segment_n_text: str = "He said Lovelase",
     segment_n1_id: int = 11,
     segment_n1_text: str = "is wrong",
-    proposed_correction: str = "Chomsky is",
-    source_pattern: str = "Chomski is",
+    proposed_correction: str = "Lovelace is",
+    source_pattern: str = "Lovelase is",
     confidence: float = 0.75,
     is_partially_corrected: bool = False,
     video_id: str = "dQw4w9WgXcQ",
@@ -3012,8 +3012,8 @@ class TestSuggestCrossSegmentCommand:
         candidate = _make_cross_segment_candidate(
             segment_n_id=42,
             segment_n1_id=43,
-            source_pattern="Chomski is",
-            proposed_correction="Chomsky is",
+            source_pattern="Lovelase is",
+            proposed_correction="Lovelace is",
             confidence=0.8500,
         )
         mock_session = AsyncMock()
@@ -3031,8 +3031,8 @@ class TestSuggestCrossSegmentCommand:
 
         assert result.exit_code == 0
         # The text columns (width=25) reliably show their data
-        assert "Chomski is" in result.stdout
-        assert "Chomsky is" in result.stdout
+        assert "Lovelase is" in result.stdout
+        assert "Lovelace is" in result.stdout
         # The table title always appears
         assert "Cross-Segment Candidates" in result.stdout
 
@@ -3227,7 +3227,7 @@ class TestSuggestCrossSegmentCommand:
         mock_db: MagicMock,
         runner: CliRunner,
     ) -> None:
-        """``--entity Chomsky`` is forwarded as ``entity_name='Chomsky'`` to discover()."""
+        """``--entity Lovelace`` is forwarded as ``entity_name='Lovelace'`` to discover()."""
         mock_session = AsyncMock()
 
         async def _session_gen(*_a: object, **_kw: object):
@@ -3239,10 +3239,10 @@ class TestSuggestCrossSegmentCommand:
         mock_discovery_instance.discover = AsyncMock(return_value=[])
         mock_discovery_cls.return_value = mock_discovery_instance
 
-        runner.invoke(correction_app, ["suggest-cross-segment", "--entity", "Chomsky"])
+        runner.invoke(correction_app, ["suggest-cross-segment", "--entity", "Lovelace"])
 
         call_kwargs = mock_discovery_instance.discover.call_args.kwargs
-        assert call_kwargs.get("entity_name") == "Chomsky"
+        assert call_kwargs.get("entity_name") == "Lovelace"
 
     @patch("chronovista.cli.correction_commands.db_manager")
     @patch("chronovista.services.cross_segment_discovery.CrossSegmentDiscovery")
@@ -3392,8 +3392,8 @@ class TestSuggestCrossSegmentCommand:
             _make_cross_segment_candidate(
                 segment_n_id=1,
                 segment_n1_id=2,
-                source_pattern="Chomski is",
-                proposed_correction="Chomsky is",
+                source_pattern="Lovelase is",
+                proposed_correction="Lovelace is",
             ),
             _make_cross_segment_candidate(
                 segment_n_id=5,
@@ -3416,5 +3416,5 @@ class TestSuggestCrossSegmentCommand:
         result = runner.invoke(correction_app, ["suggest-cross-segment"])
 
         assert result.exit_code == 0
-        assert "Chomski is" in result.stdout
+        assert "Lovelase is" in result.stdout
         assert "teh" in result.stdout

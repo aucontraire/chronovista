@@ -83,7 +83,7 @@ def _make_named_entity_row(entity_id: str | None = None) -> MagicMock:
 
 
 def _make_alias_db_row(
-    alias_name: str = "Musk",
+    alias_name: str = "Dijkstra",
     alias_type: str = "name_variant",
     occurrence_count: int = 0,
     case_sensitive: bool = False,
@@ -253,7 +253,7 @@ class TestCreateEntityAliasHappyPath:
         the response envelope contains alias_name, alias_type, occurrence_count.
         """
         entity_row = _make_named_entity_row()
-        alias_row = _make_alias_db_row(alias_name="Musk", alias_type="name_variant")
+        alias_row = _make_alias_db_row(alias_name="Dijkstra", alias_type="name_variant")
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
         async for client in _build_client(mock_session):
@@ -265,12 +265,12 @@ class TestCreateEntityAliasHappyPath:
                     "chronovista.api.routers.entity_mentions._normalizer"
                 ) as mock_normalizer,
             ):
-                mock_normalizer.normalize.return_value = "musk"
+                mock_normalizer.normalize.return_value = "dijkstra"
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
                 response = await client.post(
                     _alias_url(),
-                    json={"alias_name": "Musk", "alias_type": "name_variant"},
+                    json={"alias_name": "Dijkstra", "alias_type": "name_variant"},
                 )
 
         assert response.status_code == 201, response.text
@@ -395,12 +395,12 @@ class TestCreateEntityAliasHappyPath:
                     "chronovista.api.routers.entity_mentions._normalizer"
                 ) as mock_normalizer,
             ):
-                mock_normalizer.normalize.return_value = "musk"
+                mock_normalizer.normalize.return_value = "dijkstra"
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
                 await client.post(
                     _alias_url(entity_id),
-                    json={"alias_name": "Musk", "alias_type": "name_variant"},
+                    json={"alias_name": "Dijkstra", "alias_type": "name_variant"},
                 )
 
                 # The repo must have been called exactly once
@@ -431,11 +431,11 @@ class TestCreateEntityAliasEntityNotFound:
             with patch(
                 "chronovista.api.routers.entity_mentions._normalizer"
             ) as mock_normalizer:
-                mock_normalizer.normalize.return_value = "musk"
+                mock_normalizer.normalize.return_value = "dijkstra"
 
                 response = await client.post(
                     _alias_url(),
-                    json={"alias_name": "Musk", "alias_type": "name_variant"},
+                    json={"alias_name": "Dijkstra", "alias_type": "name_variant"},
                 )
 
         assert response.status_code == 404, response.text
@@ -452,11 +452,11 @@ class TestCreateEntityAliasEntityNotFound:
             with patch(
                 "chronovista.api.routers.entity_mentions._normalizer"
             ) as mock_normalizer:
-                mock_normalizer.normalize.return_value = "musk"
+                mock_normalizer.normalize.return_value = "dijkstra"
 
                 response = await client.post(
                     _alias_url(),
-                    json={"alias_name": "Musk", "alias_type": "name_variant"},
+                    json={"alias_name": "Dijkstra", "alias_type": "name_variant"},
                 )
 
         assert response.status_code == 404
@@ -478,7 +478,7 @@ class TestCreateEntityAliasEntityNotFound:
         async for client in _build_client(mock_session):
             response = await client.post(
                 _alias_url(_INVALID_UUID),
-                json={"alias_name": "Musk", "alias_type": "name_variant"},
+                json={"alias_name": "Dijkstra", "alias_type": "name_variant"},
             )
 
         assert response.status_code == 404, response.text
@@ -494,7 +494,7 @@ class TestCreateEntityAliasEntityNotFound:
         async for client in _build_client(mock_session):
             await client.post(
                 _alias_url(_INVALID_UUID),
-                json={"alias_name": "Musk", "alias_type": "name_variant"},
+                json={"alias_name": "Dijkstra", "alias_type": "name_variant"},
             )
 
         mock_session.execute.assert_not_called()
@@ -557,7 +557,7 @@ class TestCreateEntityAliasConflict:
     ) -> None:
         """409 message must name the existing alias and explain accent/case folding.
 
-        Adding ``México`` when ``Peru`` already exists collides on the
+        Adding ``Perú`` when ``Peru`` already exists collides on the
         normalized form.  The reworded conflict message must (a) reference the
         existing colliding alias by name and (b) make clear that accents AND
         case are ignored when matching, so the caller understands why the
@@ -585,7 +585,7 @@ class TestCreateEntityAliasConflict:
 
                 response = await client.post(
                     _alias_url(),
-                    json={"alias_name": "México", "alias_type": "translated_name"},
+                    json={"alias_name": "Perú", "alias_type": "translated_name"},
                 )
 
         assert response.status_code == 409, response.text
@@ -803,7 +803,7 @@ class TestCreateEntityAliasValidation:
         async for client in _build_client(mock_session):
             response = await client.post(
                 _alias_url(),
-                json={"alias_name": "Musk", "alias_type": "completely_invalid"},
+                json={"alias_name": "Dijkstra", "alias_type": "completely_invalid"},
             )
 
         assert response.status_code == 422, response.text
@@ -873,12 +873,12 @@ class TestCreateEntityAliasAllowedTypes:
                     "chronovista.api.routers.entity_mentions._normalizer"
                 ) as mock_normalizer,
             ):
-                mock_normalizer.normalize.return_value = "musk"
+                mock_normalizer.normalize.return_value = "dijkstra"
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
                 response = await client.post(
                     _alias_url(),
-                    json={"alias_name": "Musk", "alias_type": alias_type},
+                    json={"alias_name": "Dijkstra", "alias_type": alias_type},
                 )
                 status_code = response.status_code
 
@@ -977,7 +977,7 @@ class TestCreateEntityAliasAuthentication:
                 ) as client:
                     response = await client.post(
                         _alias_url(),
-                        json={"alias_name": "Musk", "alias_type": "name_variant"},
+                        json={"alias_name": "Dijkstra", "alias_type": "name_variant"},
                     )
         finally:
             app.dependency_overrides.clear()

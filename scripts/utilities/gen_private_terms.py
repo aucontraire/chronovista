@@ -73,7 +73,7 @@ COMMON_WORD_ALIASES = {
     "Fork",
     "Mate",
     "Peek",
-    "Sham",
+    "Johnsm",
     "Web",
 }
 

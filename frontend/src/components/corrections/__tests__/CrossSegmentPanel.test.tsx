@@ -44,9 +44,9 @@ function makeCandidate(overrides: Partial<CrossSegmentCandidate> = {}): CrossSeg
     segment_n_id: 1,
     segment_n_text: "the senator said",
     segment_n1_id: 2,
-    segment_n1_text: "bernie would win",
-    proposed_correction: "Bernie",
-    source_pattern: "bernie",
+    segment_n1_text: "henry would win",
+    proposed_correction: "Henry",
+    source_pattern: "henry",
     confidence: 0.85,
     is_partially_corrected: false,
     video_id: "video-uuid-001",
@@ -217,25 +217,25 @@ describe("CrossSegmentPanel", () => {
   it("renders candidate cards with segment texts", () => {
     const candidate = makeCandidate({
       segment_n_text: "the senator said",
-      segment_n1_text: "bernie would win",
+      segment_n1_text: "henry would win",
     });
     mockedUseHook.mockReturnValue(makeSuccessHook([candidate]));
     renderPanel();
 
     expect(screen.getByText("the senator said")).toBeInTheDocument();
-    expect(screen.getByText("bernie would win")).toBeInTheDocument();
+    expect(screen.getByText("henry would win")).toBeInTheDocument();
   });
 
   it("renders source pattern and proposed correction on candidate cards", () => {
     const candidate = makeCandidate({
-      source_pattern: "bernie",
-      proposed_correction: "Bernie",
+      source_pattern: "henry",
+      proposed_correction: "Henry",
     });
     mockedUseHook.mockReturnValue(makeSuccessHook([candidate]));
     renderPanel();
 
-    expect(screen.getAllByText("bernie").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Bernie").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("henry").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Henry").length).toBeGreaterThan(0);
   });
 
   it("renders confidence as a percentage", () => {
@@ -322,8 +322,8 @@ describe("CrossSegmentPanel", () => {
   it("calls prefillForm with correct values when a candidate is clicked", () => {
     const prefillForm = vi.fn();
     const candidate = makeCandidate({
-      source_pattern: "bernie",
-      proposed_correction: "Bernie",
+      source_pattern: "henry",
+      proposed_correction: "Henry",
     });
     mockedUseHook.mockReturnValue(makeSuccessHook([candidate]));
     renderPanel(prefillForm);
@@ -334,8 +334,8 @@ describe("CrossSegmentPanel", () => {
 
     expect(prefillForm).toHaveBeenCalledTimes(1);
     expect(prefillForm).toHaveBeenCalledWith({
-      pattern: "bernie",
-      replacement: "Bernie",
+      pattern: "henry",
+      replacement: "Henry",
       crossSegment: true,
     });
   });
@@ -362,8 +362,8 @@ describe("CrossSegmentPanel", () => {
   it("calls prefillForm when Enter is pressed on a candidate card", () => {
     const prefillForm = vi.fn();
     const candidate = makeCandidate({
-      source_pattern: "bernie",
-      proposed_correction: "Bernie",
+      source_pattern: "henry",
+      proposed_correction: "Henry",
     });
     mockedUseHook.mockReturnValue(makeSuccessHook([candidate]));
     renderPanel(prefillForm);
@@ -373,8 +373,8 @@ describe("CrossSegmentPanel", () => {
 
     expect(prefillForm).toHaveBeenCalledTimes(1);
     expect(prefillForm).toHaveBeenCalledWith({
-      pattern: "bernie",
-      replacement: "Bernie",
+      pattern: "henry",
+      replacement: "Henry",
       crossSegment: true,
     });
   });
@@ -382,8 +382,8 @@ describe("CrossSegmentPanel", () => {
   it("calls prefillForm when Space is pressed on a candidate card", () => {
     const prefillForm = vi.fn();
     const candidate = makeCandidate({
-      source_pattern: "bernie",
-      proposed_correction: "Bernie",
+      source_pattern: "henry",
+      proposed_correction: "Henry",
     });
     mockedUseHook.mockReturnValue(makeSuccessHook([candidate]));
     renderPanel(prefillForm);

@@ -47,8 +47,8 @@ vi.mock("../../components/corrections/CrossSegmentPanel", () => ({
             type="button"
             onClick={() =>
               prefillForm({
-                pattern: "bernie",
-                replacement: "Bernie",
+                pattern: "henry",
+                replacement: "Henry",
                 crossSegment: true,
               })
             }
@@ -419,7 +419,7 @@ describe("BatchCorrectionsPage — Entity Selection Persistence", () => {
         const patternInput = screen.getByPlaceholderText(
           /enter text or regex pattern/i
         );
-        expect(patternInput).toHaveValue("bernie");
+        expect(patternInput).toHaveValue("henry");
       });
 
       // Entity must be cleared
@@ -437,7 +437,7 @@ describe("BatchCorrectionsPage — Entity Selection Persistence", () => {
       // Replacement must be prefilled with the candidate value
       await waitFor(() => {
         const replacementInput = screen.getByPlaceholderText(/replacement text/i);
-        expect(replacementInput).toHaveValue("Bernie");
+        expect(replacementInput).toHaveValue("Henry");
       });
 
       // Entity must be cleared

@@ -11,10 +11,10 @@ Mock strategy: ``AsyncSession`` is replaced with a ``MagicMock`` whose
 level to avoid real DB queries.
 
 Key phonetic properties under test:
-  (a) Single-word corruption "Shanebam" → "Sheinbaum" scores high confidence
-  (b) Truncation "Johnsn" → "Sheinbaum" scores medium confidence
-  (c) Multi-word "Johnsen Bound" → "Sheinbaum" scores medium confidence
-  (d) Non-match "Shane believes" filtered out (below default threshold)
+  (a) Single-word corruption "Jonsun" → "Johnson" scores high confidence
+  (b) Truncation "Johnsn" → "Johnson" scores medium confidence
+  (c) Multi-word "Johnsen Bound" → "Johnson" scores medium confidence
+  (d) Non-match "Johnsen believes" filtered out (below default threshold)
   (e) Confidence weights: 0.4 + 0.3 + 0.3 = 1.0 maximum
   (f) Corroborating evidence binary boost: +0.3 when present, 0.0 when absent
   (g) Non-alphabetic characters stripped before phonetic encoding
@@ -170,37 +170,37 @@ class TestPhoneticMatcherScoreMatch:
     # ---- (a) Single-word corruption ----
 
     def test_single_word_corruption_scores_high_confidence(self) -> None:
-        """'Shanebam' phonetically resembles 'Sheinbaum' and scores above 0.5.
+        """'Jonsun' phonetically resembles 'Johnson' and scores above 0.5.
 
         This is the primary use case: ASR mis-transcribes a proper noun as a
         phonetically similar garbled word.  Without corroborating evidence the
         score must still exceed 0.5 based on phonetic + Levenshtein similarity.
         """
         score = PhoneticMatcher.score_match(
-            ngram="Shanebam",
-            entity_name="Sheinbaum",
+            ngram="Jonsun",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
         assert (
             score > 0.5
-        ), f"Expected 'Shanebam' → 'Sheinbaum' to score above 0.5, got {score:.4f}"
+        ), f"Expected 'Jonsun' → 'Johnson' to score above 0.5, got {score:.4f}"
 
     def test_single_word_corruption_with_evidence_boosts_score(self) -> None:
-        """Corroborating evidence pushes the 'Shanebam' → 'Sheinbaum' score higher.
+        """Corroborating evidence pushes the 'Jonsun' → 'Johnson' score higher.
 
         The +0.3 evidence boost should raise the score compared to the
         same inputs without evidence.
         """
         score_no_evidence = PhoneticMatcher.score_match(
-            ngram="Shanebam",
-            entity_name="Sheinbaum",
+            ngram="Jonsun",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
         score_with_evidence = PhoneticMatcher.score_match(
-            ngram="Shanebam",
-            entity_name="Sheinbaum",
+            ngram="Jonsun",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=True,
         )
@@ -211,14 +211,14 @@ class TestPhoneticMatcherScoreMatch:
     # ---- (b) Truncation ----
 
     def test_truncated_form_scores_medium_confidence(self) -> None:
-        """'Johnsn' (a truncation of 'Sheinbaum') scores in the medium range (0.2-0.7).
+        """'Johnsn' (a truncation of 'Johnson') scores in the medium range (0.2-0.7).
 
         Short N-grams that are prefixes of the entity name should score
         noticeably above zero but below the level of the full corrupted form.
         """
         score = PhoneticMatcher.score_match(
             ngram="Johnsn",
-            entity_name="Sheinbaum",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
@@ -230,7 +230,7 @@ class TestPhoneticMatcherScoreMatch:
     # ---- (c) Multi-word match ----
 
     def test_multi_word_ngram_scores_medium_confidence(self) -> None:
-        """'Johnsen Bound' (multi-word) phonetically resembles 'Sheinbaum'.
+        """'Johnsen Bound' (multi-word) phonetically resembles 'Johnson'.
 
         Multi-word N-grams are scored against the entity name after stripping
         non-alphabetic characters.  A phonetically close multi-word string
@@ -238,7 +238,7 @@ class TestPhoneticMatcherScoreMatch:
         """
         score = PhoneticMatcher.score_match(
             ngram="Johnsen Bound",
-            entity_name="Sheinbaum",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
@@ -250,21 +250,21 @@ class TestPhoneticMatcherScoreMatch:
     # ---- (d) Non-match filtered out ----
 
     def test_non_matching_ngram_scores_below_default_threshold(self) -> None:
-        """'Shane believes' has low phonetic similarity to 'Sheinbaum'.
+        """'Johnsen believes' has low phonetic similarity to 'Johnson'.
 
-        The phrase shares the 'Shane' prefix but the second word diverges
+        The phrase shares the 'Johnsen' prefix but the second word diverges
         strongly.  The combined score should be below the default threshold
         of 0.5, so it would be filtered from results.
         """
         score = PhoneticMatcher.score_match(
-            ngram="Shane believes",
-            entity_name="Sheinbaum",
+            ngram="Johnsen believes",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
         assert (
             score < 0.5
-        ), f"Expected 'Shane believes' to score below 0.5, got {score:.4f}"
+        ), f"Expected 'Johnsen believes' to score below 0.5, got {score:.4f}"
 
     # ---- (e) Weight sum: 0.4 + 0.3 + 0.3 = 1.0 ----
 
@@ -275,8 +275,8 @@ class TestPhoneticMatcherScoreMatch:
         approach or reach 1.0 but must never exceed it.
         """
         score = PhoneticMatcher.score_match(
-            ngram="Sheinbaum",
-            entity_name="Sheinbaum",
+            ngram="Johnson",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=True,
         )
@@ -293,8 +293,8 @@ class TestPhoneticMatcherScoreMatch:
         (0.3) components sum to 0.7 at most.
         """
         score = PhoneticMatcher.score_match(
-            ngram="Sheinbaum",
-            entity_name="Sheinbaum",
+            ngram="Johnson",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
@@ -310,14 +310,14 @@ class TestPhoneticMatcherScoreMatch:
         of exactly 0.3 (clipped to ensure we don't exceed 1.0).
         """
         base = PhoneticMatcher.score_match(
-            ngram="Sheinbaum",
-            entity_name="Sheinbaum",
+            ngram="Johnson",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
         boosted = PhoneticMatcher.score_match(
-            ngram="Sheinbaum",
-            entity_name="Sheinbaum",
+            ngram="Johnson",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=True,
         )
@@ -337,14 +337,14 @@ class TestPhoneticMatcherScoreMatch:
         evidence flag to isolate the 0.0 / 0.3 contribution.
         """
         score_false = PhoneticMatcher.score_match(
-            ngram="Chomsky",
-            entity_name="Chomsky",
+            ngram="Lovelace",
+            entity_name="Lovelace",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
         score_true = PhoneticMatcher.score_match(
-            ngram="Chomsky",
-            entity_name="Chomsky",
+            ngram="Lovelace",
+            entity_name="Lovelace",
             entity_aliases=[],
             has_corroborating_evidence=True,
         )
@@ -359,13 +359,13 @@ class TestPhoneticMatcherScoreMatch:
         """
         score_without = PhoneticMatcher.score_match(
             ngram="xyz",
-            entity_name="Sheinbaum",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
         score_with = PhoneticMatcher.score_match(
             ngram="xyz",
-            entity_name="Sheinbaum",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=True,
         )
@@ -380,23 +380,23 @@ class TestPhoneticMatcherScoreMatch:
     def test_non_alphabetic_chars_stripped_before_encoding(self) -> None:
         """Punctuation and digits are removed before phonetic encoding.
 
-        'Shein-baum!' and 'Sheinbaum' should produce similar scores because
+        'John-son!' and 'Johnson' should produce similar scores because
         the non-alphabetic characters are stripped via ``_strip_non_alpha``
         before Double Metaphone encoding.
         """
         score_clean = PhoneticMatcher.score_match(
-            ngram="Sheinbaum",
-            entity_name="Sheinbaum",
+            ngram="Johnson",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
         score_punctuated = PhoneticMatcher.score_match(
-            ngram="Shein-baum!",
-            entity_name="Sheinbaum",
+            ngram="John-son!",
+            entity_name="Johnson",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
-        # After stripping, "Sheinbaum" == "Sheinbaum"; scores should be equal
+        # After stripping, "Johnson" == "Johnson"; scores should be equal
         assert abs(score_punctuated - score_clean) < 0.05, (
             f"Stripping should normalise punctuated form; "
             f"clean={score_clean:.4f}, punctuated={score_punctuated:.4f}"
@@ -425,8 +425,8 @@ class TestPhoneticMatcherScoreMatch:
         it uses the canonical name as the sole candidate.
         """
         score = PhoneticMatcher.score_match(
-            ngram="Chomsky",
-            entity_name="Chomsky",
+            ngram="Lovelace",
+            entity_name="Lovelace",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
@@ -442,16 +442,16 @@ class TestPhoneticMatcherScoreMatch:
         """
         # Canonical name: completely unrelated
         score_no_alias = PhoneticMatcher.score_match(
-            ngram="Noam",
-            entity_name="Chomsky",
+            ngram="Ada",
+            entity_name="Lovelace",
             entity_aliases=[],
             has_corroborating_evidence=False,
         )
-        # With alias "Noam" (first name) that matches the ngram exactly
+        # With alias "Ada" (first name) that matches the ngram exactly
         score_with_alias = PhoneticMatcher.score_match(
-            ngram="Noam",
-            entity_name="Chomsky",
-            entity_aliases=["Noam"],
+            ngram="Ada",
+            entity_name="Lovelace",
+            entity_aliases=["Ada"],
             has_corroborating_evidence=False,
         )
         assert (
@@ -463,10 +463,10 @@ class TestPhoneticMatcherScoreMatch:
     def test_score_always_in_range(self) -> None:
         """score_match() must always return a value in [0.0, 1.0]."""
         cases = [
-            ("completely_unrelated", "Sheinbaum", [], False),
-            ("Sheinbaum", "Sheinbaum", [], True),
-            ("", "Sheinbaum", [], True),
-            ("Sheinbaum", "Sheinbaum", ["Claudia"], True),
+            ("completely_unrelated", "Johnson", [], False),
+            ("Johnson", "Johnson", [], True),
+            ("", "Johnson", [], True),
+            ("Johnson", "Johnson", ["Katherine"], True),
         ]
         for ngram, name, aliases, evidence in cases:
             score = PhoneticMatcher.score_match(ngram, name, aliases, evidence)
@@ -531,7 +531,7 @@ class TestPhoneticMatcherMatchEntity:
         entity_id = _uuid()
 
         mock_entity = MagicMock()
-        mock_entity.canonical_name = "Sheinbaum"
+        mock_entity.canonical_name = "Johnson"
         mock_entity.id = entity_id
 
         entity_result = MagicMock()
@@ -572,13 +572,13 @@ class TestPhoneticMatcherMatchEntity:
         # Segment 1: exact match → high score
         # Segment 2: truncated match → lower score
         segment_texts = [
-            ("dQw4w9WgXcQ", "Sheinbaum spoke", 1),
-            ("dQw4w9WgXcQ", "Shanebam policy", 2),
+            ("dQw4w9WgXcQ", "Johnson spoke", 1),
+            ("dQw4w9WgXcQ", "Jonsun policy", 2),
         ]
 
         _configure_entity_query(
             mock_session=mock_session,
-            entity_name="Sheinbaum",
+            entity_name="Johnson",
             entity_id=entity_id,
             aliases=[],
             video_ids=["dQw4w9WgXcQ"],
@@ -620,14 +620,14 @@ class TestPhoneticMatcherMatchEntity:
         matcher, mock_repo = matcher_and_repo
         entity_id = _uuid()
 
-        # A segment with text that produces low-scoring N-grams for "Sheinbaum"
+        # A segment with text that produces low-scoring N-grams for "Johnson"
         segment_texts = [
             ("dQw4w9WgXcQ", "the economy grew last year", 1),
         ]
 
         _configure_entity_query(
             mock_session=mock_session,
-            entity_name="Sheinbaum",
+            entity_name="Johnson",
             entity_id=entity_id,
             aliases=[],
             video_ids=["dQw4w9WgXcQ"],
@@ -659,14 +659,14 @@ class TestPhoneticMatcherMatchEntity:
         entity_id = _uuid()
 
         segment_texts = [
-            ("dQw4w9WgXcQ", "Sheinbaum Shanebam Shane", 1),
+            ("dQw4w9WgXcQ", "Johnson Jonsun Johnsen", 1),
         ]
 
         # Configure two independent calls (each call to match_entity uses a
         # fresh side_effect sequence)
         def _make_side_effects() -> list[Any]:
             mock_entity = MagicMock()
-            mock_entity.canonical_name = "Sheinbaum"
+            mock_entity.canonical_name = "Johnson"
             mock_entity.id = entity_id
 
             ent_r = MagicMock()
@@ -730,10 +730,10 @@ class TestPhoneticMatcherMatchEntity:
         matcher, mock_repo = matcher_and_repo
         entity_id = _uuid()
 
-        segment_texts = [("dQw4w9WgXcQ", "Sheinbaum is president", 42)]
+        segment_texts = [("dQw4w9WgXcQ", "Johnson is president", 42)]
         _configure_entity_query(
             mock_session=mock_session,
-            entity_name="Sheinbaum",
+            entity_name="Johnson",
             entity_id=entity_id,
             aliases=[],
             video_ids=["dQw4w9WgXcQ"],
@@ -748,7 +748,7 @@ class TestPhoneticMatcherMatchEntity:
             threshold=0.3,
         )
 
-        assert len(result) >= 1, "Expected at least one match for 'Sheinbaum'"
+        assert len(result) >= 1, "Expected at least one match for 'Johnson'"
         match = result[0]
 
         assert isinstance(match.original_text, str)
@@ -775,7 +775,7 @@ class TestPhoneticMatcherMatchEntity:
         entity_id = _uuid()
 
         mock_entity = MagicMock()
-        mock_entity.canonical_name = "Sheinbaum"
+        mock_entity.canonical_name = "Johnson"
         mock_entity.id = entity_id
 
         entity_result = MagicMock()
@@ -796,7 +796,7 @@ class TestPhoneticMatcherMatchEntity:
         seg.video_id = "dQw4w9WgXcQ"
         seg.id = 99
         seg.text = "garbled nonsense words"  # raw text — unrelated
-        seg.corrected_text = "Sheinbaum spoke today"  # corrected — should score
+        seg.corrected_text = "Johnson spoke today"  # corrected — should score
         seg.has_correction = True
 
         seg_scalars = MagicMock()
@@ -818,8 +818,8 @@ class TestPhoneticMatcherMatchEntity:
             threshold=0.3,
         )
 
-        # We expect at least the "Sheinbaum" N-gram from the corrected text
+        # We expect at least the "Johnson" N-gram from the corrected text
         match_texts = [m.original_text for m in result]
         assert any(
-            "Sheinbaum" in t for t in match_texts
-        ), f"Expected 'Sheinbaum' from corrected_text in matches; got {match_texts}"
+            "Johnson" in t for t in match_texts
+        ), f"Expected 'Johnson' from corrected_text in matches; got {match_texts}"

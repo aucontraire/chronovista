@@ -30,7 +30,7 @@ const RESULTS = [
   },
   {
     entity_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-    canonical_name: 'Chomsky Hierarchy',
+    canonical_name: 'Lovelace Hierarchy',
     entity_type: 'technical_term',
   },
 ];
@@ -61,12 +61,12 @@ describe('EntityAutocomplete — batch correction contract (FR-039)', () => {
       // input reflects the correction field the user is editing elsewhere.
       render(
         <EntityAutocomplete
-          searchText="Chomsky"
+          searchText="Lovelace"
           selectedEntity={null}
           onEntitySelect={vi.fn()}
         />
       );
-      expect(screen.getByRole('combobox')).toHaveValue('Chomsky');
+      expect(screen.getByRole('combobox')).toHaveValue('Lovelace');
     });
 
     it('shows suggestions once the parent text reaches the minimum length', () => {
@@ -98,7 +98,7 @@ describe('EntityAutocomplete — batch correction contract (FR-039)', () => {
       const onEntitySelect = vi.fn();
       render(
         <EntityAutocomplete
-          searchText="Chomsky"
+          searchText="Lovelace"
           selectedEntity={null}
           onEntitySelect={onEntitySelect}
         />
@@ -151,7 +151,7 @@ describe('EntityAutocomplete — batch correction contract (FR-039)', () => {
     it('disables every control when the parent says so', () => {
       render(
         <EntityAutocomplete
-          searchText="Chomsky"
+          searchText="Lovelace"
           selectedEntity={null}
           onEntitySelect={vi.fn()}
           disabled

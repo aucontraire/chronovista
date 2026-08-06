@@ -59,7 +59,7 @@ function makePhoneticMatch(overrides: Partial<PhoneticMatch> = {}): PhoneticMatc
     evidence_description: "Phonetic similarity via double metaphone",
     video_id: "video-uuid-001",
     segment_id: 42,
-    video_title: "Chomsky on Language",
+    video_title: "Lovelace on Language",
     ...overrides,
   };
 }
@@ -220,8 +220,8 @@ describe("PhoneticVariantsSection", () => {
 
   it("renders match data in table rows", () => {
     const match = makePhoneticMatch({
-      original_text: "chomski",
-      proposed_correction: "Chomsky",
+      original_text: "lovelase",
+      proposed_correction: "Lovelace",
       video_title: "Test Video",
       evidence_description: "Double metaphone",
     });
@@ -229,8 +229,8 @@ describe("PhoneticVariantsSection", () => {
     renderSection();
     fireEvent.click(getDisclosureButton());
 
-    expect(screen.getByText("chomski")).toBeInTheDocument();
-    expect(screen.getByText("Chomsky")).toBeInTheDocument();
+    expect(screen.getByText("lovelase")).toBeInTheDocument();
+    expect(screen.getByText("Lovelace")).toBeInTheDocument();
     expect(screen.getByText("Test Video")).toBeInTheDocument();
     expect(screen.getByText("Double metaphone")).toBeInTheDocument();
   });
@@ -312,41 +312,41 @@ describe("PhoneticVariantsSection", () => {
   // -------------------------------------------------------------------------
 
   it("renders 'Register as Alias' button for each match", () => {
-    const match = makePhoneticMatch({ original_text: "chomski" });
+    const match = makePhoneticMatch({ original_text: "lovelase" });
     mockedUsePhoneticMatches.mockReturnValue(makeSuccessHook([match]));
     renderSection();
     fireEvent.click(getDisclosureButton());
 
     expect(
-      screen.getByRole("button", { name: /register "chomski" as alias/i })
+      screen.getByRole("button", { name: /register "lovelase" as alias/i })
     ).toBeInTheDocument();
   });
 
   it("calls createEntityAlias with correct args when Register as Alias is clicked", async () => {
     mockedCreateEntityAlias.mockResolvedValueOnce({
       id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-      alias_name: "chomski",
+      alias_name: "lovelase",
       alias_type: "name_variant",
       occurrence_count: 1,
       case_sensitive: false,
     });
     const match = makePhoneticMatch({
-      original_text: "chomski",
-      proposed_correction: "Chomsky",
+      original_text: "lovelase",
+      proposed_correction: "Lovelace",
     });
     mockedUsePhoneticMatches.mockReturnValue(makeSuccessHook([match]));
     renderSection();
     fireEvent.click(getDisclosureButton());
 
     const registerBtn = screen.getByRole("button", {
-      name: /register "chomski" as alias/i,
+      name: /register "lovelase" as alias/i,
     });
     fireEvent.click(registerBtn);
 
     await waitFor(() => {
       expect(mockedCreateEntityAlias).toHaveBeenCalledWith(
         "entity-uuid-001",
-        "chomski",
+        "lovelase",
         "name_variant"
       );
     });
@@ -355,18 +355,18 @@ describe("PhoneticVariantsSection", () => {
   it("shows 'Registered' checkmark state after successful alias creation", async () => {
     mockedCreateEntityAlias.mockResolvedValueOnce({
       id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-      alias_name: "chomski",
+      alias_name: "lovelase",
       alias_type: "name_variant",
       occurrence_count: 1,
       case_sensitive: false,
     });
-    const match = makePhoneticMatch({ original_text: "chomski" });
+    const match = makePhoneticMatch({ original_text: "lovelase" });
     mockedUsePhoneticMatches.mockReturnValue(makeSuccessHook([match]));
     renderSection();
     fireEvent.click(getDisclosureButton());
 
     fireEvent.click(
-      screen.getByRole("button", { name: /register "chomski" as alias/i })
+      screen.getByRole("button", { name: /register "lovelase" as alias/i })
     );
 
     await waitFor(() => {
@@ -374,7 +374,7 @@ describe("PhoneticVariantsSection", () => {
     });
     // The register button should no longer be present
     expect(
-      screen.queryByRole("button", { name: /register "chomski" as alias/i })
+      screen.queryByRole("button", { name: /register "lovelase" as alias/i })
     ).not.toBeInTheDocument();
   });
 
@@ -382,7 +382,7 @@ describe("PhoneticVariantsSection", () => {
     mockedCreateEntityAlias.mockRejectedValueOnce(
       Object.assign(new Error("Server error"), { status: 500 })
     );
-    const match = makePhoneticMatch({ original_text: "chomski" });
+    const match = makePhoneticMatch({ original_text: "lovelase" });
     mockedUsePhoneticMatches.mockReturnValue(makeSuccessHook([match]));
     // Use real timers for this test — we only need to verify the error appears,
     // not that it auto-dismisses after the 4-second timeout.
@@ -391,7 +391,7 @@ describe("PhoneticVariantsSection", () => {
     fireEvent.click(getDisclosureButton());
 
     fireEvent.click(
-      screen.getByRole("button", { name: /register "chomski" as alias/i })
+      screen.getByRole("button", { name: /register "lovelase" as alias/i })
     );
 
     await waitFor(() => {
@@ -406,7 +406,7 @@ describe("PhoneticVariantsSection", () => {
     mockedCreateEntityAlias.mockRejectedValueOnce(
       Object.assign(new Error("Conflict"), { status: 409 })
     );
-    const match = makePhoneticMatch({ original_text: "chomski" });
+    const match = makePhoneticMatch({ original_text: "lovelase" });
     mockedUsePhoneticMatches.mockReturnValue(makeSuccessHook([match]));
     // Use real timers for this test — we only need to verify the conflict
     // message appears, not the auto-dismiss behaviour.
@@ -415,7 +415,7 @@ describe("PhoneticVariantsSection", () => {
     fireEvent.click(getDisclosureButton());
 
     fireEvent.click(
-      screen.getByRole("button", { name: /register "chomski" as alias/i })
+      screen.getByRole("button", { name: /register "lovelase" as alias/i })
     );
 
     await waitFor(() => {
@@ -429,8 +429,8 @@ describe("PhoneticVariantsSection", () => {
 
   it("renders 'Find & Replace' button for each match", () => {
     const match = makePhoneticMatch({
-      original_text: "chomski",
-      proposed_correction: "Chomsky",
+      original_text: "lovelase",
+      proposed_correction: "Lovelace",
     });
     mockedUsePhoneticMatches.mockReturnValue(makeSuccessHook([match]));
     renderSection();
@@ -438,15 +438,15 @@ describe("PhoneticVariantsSection", () => {
 
     expect(
       screen.getByRole("button", {
-        name: /find and replace "chomski" with "Chomsky"/i,
+        name: /find and replace "lovelase" with "Lovelace"/i,
       })
     ).toBeInTheDocument();
   });
 
   it("navigates to /corrections/batch with state when Find & Replace is clicked", () => {
     const match = makePhoneticMatch({
-      original_text: "chomski",
-      proposed_correction: "Chomsky",
+      original_text: "lovelase",
+      proposed_correction: "Lovelace",
     });
     mockedUsePhoneticMatches.mockReturnValue(makeSuccessHook([match]));
     renderSection();
@@ -454,15 +454,15 @@ describe("PhoneticVariantsSection", () => {
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: /find and replace "chomski" with "Chomsky"/i,
+        name: /find and replace "lovelase" with "Lovelace"/i,
       })
     );
 
     expect(mockNavigate).toHaveBeenCalledTimes(1);
     expect(mockNavigate).toHaveBeenCalledWith("/corrections/batch", {
       state: {
-        pattern: "chomski",
-        replacement: "Chomsky",
+        pattern: "lovelase",
+        replacement: "Lovelace",
       },
     });
   });

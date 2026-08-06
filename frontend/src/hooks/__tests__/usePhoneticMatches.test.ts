@@ -44,7 +44,7 @@ function makePhoneticMatch(
     evidence_description: "Phonetic similarity via double metaphone",
     video_id: "video-uuid-001",
     segment_id: 42,
-    video_title: "Chomsky on Language",
+    video_title: "Lovelace on Language",
     ...overrides,
   };
 }

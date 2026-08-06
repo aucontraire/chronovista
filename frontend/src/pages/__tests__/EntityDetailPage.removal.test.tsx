@@ -137,10 +137,10 @@ const mockEntity = {
 /** A video card that has ONLY transcript mentions (no manual association). */
 const transcriptOnlyVideo: EntityVideoResult = {
   video_id: "vid-transcript-001",
-  video_title: "Chomsky on Language",
+  video_title: "Lovelace on Language",
   channel_name: "MIT OpenCourseWare",
   mention_count: 5,
-  mentions: [{ segment_id: 101, start_time: 45.5, mention_text: "Chomsky" }],
+  mentions: [{ segment_id: 101, start_time: 45.5, mention_text: "Lovelace" }],
   sources: ["transcript"],
   has_manual: false,
   first_mention_time: 45.5,
@@ -166,7 +166,7 @@ const multiSourceVideo: EntityVideoResult = {
   video_title: "Multi Source Video",
   channel_name: "Tech Talk",
   mention_count: 3,
-  mentions: [{ segment_id: 202, start_time: 90.0, mention_text: "Chomsky" }],
+  mentions: [{ segment_id: 202, start_time: 90.0, mention_text: "Lovelace" }],
   sources: ["transcript", "manual"],
   has_manual: true,
   first_mention_time: 90.0,

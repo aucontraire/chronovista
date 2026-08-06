@@ -2200,7 +2200,7 @@ class BatchCorrectionService:
         Extract meaningful word tokens from a search pattern for pre-filtering.
 
         For plain substring patterns the words are the whitespace-split tokens
-        of the pattern itself (e.g. "Johnsen Bomb" -> ["Shine", "Bomb"]).
+        of the pattern itself (e.g. "Johnsen Bomb" -> ["Johnsen", "Bomb"]).
 
         For regex patterns we strip all regex metacharacters and split on
         whitespace, returning only tokens that are three or more characters
@@ -2229,7 +2229,7 @@ class BatchCorrectionService:
         # For regex: strip metacharacters and word-boundary escape sequences
         # first, then keep alphanumeric runs of length >= 3.
         # Order matters: strip \b, \B, \d, \w etc. before stripping lone backslashes
-        # so that "bShine" is not left as a token when the input was "\bShine\b".
+        # so that "bShine" is not left as a token when the input was "\bJohnsen\b".
         stripped = re.sub(r"\\[a-zA-Z]", " ", pattern)  # \b \B \d \w …
         stripped = re.sub(r"[\\^$.*+?()[\]{}|]", " ", stripped)  # remaining metas
         tokens = [t for t in stripped.split() if len(t) >= 3]

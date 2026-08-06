@@ -261,8 +261,8 @@ def _is_stopword_split(prefix: str, suffix: str) -> bool:
 # selectivity and matches hundreds of thousands of segments. We therefore
 # require neither side to be a single character AND at least one side to be a
 # substantial (>= 4 char) anchor that lets PostgreSQL drive the self-join from
-# a small row set. This keeps precise splits like "Chomski"/"is" or
-# "El"/"Musk" while dropping noise like "M"/"lo" — cutting the batched query
+# a small row set. This keeps precise splits like "Lovelase"/"is" or
+# "El"/"Dijkstra" while dropping noise like "M"/"lo" — cutting the batched query
 # from ~12s to ~1s on a ~1.5M-row segment table.
 _MIN_BOUNDARY_FRAGMENT_LEN = 2
 _MIN_BOUNDARY_ANCHOR_LEN = 4

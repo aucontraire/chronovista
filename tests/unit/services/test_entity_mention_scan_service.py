@@ -228,15 +228,17 @@ class TestPatternConstruction:
     async def test_multiple_aliases_joined_in_pattern(self) -> None:
         """Multiple alias names are joined with '|' in the pg_pattern."""
         entity_id = _make_uuid()
-        entity_row = _make_entity_row(entity_id=entity_id, canonical_name="Edsger Dijkstra")
-        alias1 = _make_alias_row(entity_id=entity_id, alias_name="Musk")
+        entity_row = _make_entity_row(
+            entity_id=entity_id, canonical_name="Edsger Dijkstra"
+        )
+        alias1 = _make_alias_row(entity_id=entity_id, alias_name="Dijkstra")
         alias2 = _make_alias_row(entity_id=entity_id, alias_name="Tesla CEO")
         patterns = await self._call_load_patterns(entity_row, [alias1, alias2])
 
         assert len(patterns) == 1
         pg = patterns[0].pg_pattern
         assert re.escape("Edsger Dijkstra") in pg
-        assert re.escape("Musk") in pg
+        assert re.escape("Dijkstra") in pg
         assert re.escape("Tesla CEO") in pg
         # Joined with "|"
         assert "|" in pg
@@ -1378,10 +1380,10 @@ class TestDryRunMode:
         entity_id = _make_uuid()
         fake_pattern = _EntityPattern(
             entity_id=entity_id,
-            canonical_name="Halcyon Labs",
+            canonical_name="Halcyon",
             entity_type="organization",
-            pg_pattern=re.escape("Halcyon Labs"),
-            alias_names=["Halcyon Labs"],
+            pg_pattern=re.escape("Halcyon"),
+            alias_names=["Halcyon"],
         )
 
         session = AsyncMock()
@@ -1396,12 +1398,12 @@ class TestDryRunMode:
             segment_id=1,
             video_id="dQw4w9WgXcQ",
             language_code="en",
-            mention_text="Halcyon Labs",
+            mention_text="Halcyon",
             detection_method=DetectionMethod.RULE_MATCH,
             confidence=1.0,
         )
         preview = {
-            "entity_name": "Halcyon Labs",
+            "entity_name": "Halcyon",
             "video_id": "dQw4w9WgXcQ",
             "context": "...",
         }
@@ -1421,7 +1423,7 @@ class TestDryRunMode:
 
         assert result.dry_run_matches is not None
         assert len(result.dry_run_matches) == 1
-        assert result.dry_run_matches[0]["entity_name"] == "Halcyon Labs"
+        assert result.dry_run_matches[0]["entity_name"] == "Halcyon"
 
 
 # ---------------------------------------------------------------------------
@@ -1995,7 +1997,7 @@ class TestAuditUnregisteredMentions:
         raw_row = _make_audit_row(
             canonical_name="Ada Lovelace",
             entity_id=entity_id,
-            mention_text="chomsky",
+            mention_text="lovelace",
             segment_count=3,
         )
 
@@ -2013,7 +2015,7 @@ class TestAuditUnregisteredMentions:
         canonical, eid, text, count = results[0]
         assert canonical == "Ada Lovelace"
         assert eid == entity_id
-        assert text == "chomsky"
+        assert text == "lovelace"
         assert count == 3
 
     # ------------------------------------------------------------------
@@ -2530,11 +2532,11 @@ class TestAliasRegexOrdering:
 
         entity_id = _make_uuid()
         entity_row = _make_entity_row(
-            entity_id=entity_id, canonical_name="Renée Dubois"
+            entity_id=entity_id, canonical_name="Renee Dubois"
         )
-        short_alias = _make_alias_row(entity_id=entity_id, alias_name="Renée Dubois")
+        short_alias = _make_alias_row(entity_id=entity_id, alias_name="Renee Dubois")
         long_alias = _make_alias_row(
-            entity_id=entity_id, alias_name="Renée Dubois Laurent"
+            entity_id=entity_id, alias_name="Renee Dubois Laurént"
         )
 
         session = AsyncMock()
@@ -2555,8 +2557,8 @@ class TestAliasRegexOrdering:
         pg = patterns[0].pg_pattern
         parts = pg.split("|")
         # The escaped longer alias must appear before the shorter one
-        long_escaped = re.escape("Renée Dubois Albarran")
-        short_escaped = re.escape("Renée Dubois")
+        long_escaped = re.escape("Renee Dubois Laurent")
+        short_escaped = re.escape("Renee Dubois")
         long_idx = next(i for i, p in enumerate(parts) if p == long_escaped)
         short_idx = next(i for i, p in enumerate(parts) if p == short_escaped)
         assert (
@@ -2570,23 +2572,23 @@ class TestAliasRegexOrdering:
         entity_id = _make_uuid()
         fake_pattern = _EntityPattern(
             entity_id=entity_id,
-            canonical_name="Renée Dubois",
+            canonical_name="Renee Dubois",
             entity_type="person",
             pg_pattern="|".join(
                 sorted(
                     [
-                        re.escape("Renée Dubois Albarran"),
-                        re.escape("Renée Dubois"),
+                        re.escape("Renee Dubois Laurent"),
+                        re.escape("Renee Dubois"),
                     ],
                     key=len,
                     reverse=True,
                 )
             ),
-            alias_names=["Renée Dubois Laurent", "Renée Dubois"],
+            alias_names=["Renee Dubois Laurént", "Renee Dubois"],
         )
 
         segment = _make_segment_row(
-            effective_text="Gracias don Renée Dubois Laurent, gracias a todos"
+            effective_text="Gracias don Renee Dubois Laurént, gracias a todos"
         )
 
         session = AsyncMock()
@@ -2610,7 +2612,7 @@ class TestAliasRegexOrdering:
         # The dry-run preview should contain the longer alias match
         assert result.dry_run_matches is not None
         assert len(result.dry_run_matches) == 1
-        assert result.dry_run_matches[0]["matched_text"] == "Renée Dubois Laurent"
+        assert result.dry_run_matches[0]["matched_text"] == "Renee Dubois Laurént"
 
 
 # ---------------------------------------------------------------------------
@@ -2724,10 +2726,10 @@ class TestDiacriticFoldingHelper:
         """Precomposed accented chars fold in place, one raw char per folded char."""
         from chronovista.services.entity_mention_scan_service import _fold_diacritics
 
-        folded, offset_map = _fold_diacritics("México")
+        folded, offset_map = _fold_diacritics("Perú")
         assert folded == "Peru"
-        # Precomposed 'é' (U+00E9) → single folded 'e' at the same index.
-        assert offset_map == [0, 1, 2, 3, 4, 5]
+        # Precomposed 'ú' (U+00FA) → single folded 'u' at the same index.
+        assert offset_map == [0, 1, 2, 3]
 
     def test_does_not_expand_ligatures_or_fractions_nfd_not_nfkd(self) -> None:
         """NFD (not NFKD) leaves the 'ﬁ' ligature and '½' unchanged (no expansion)."""
@@ -2759,7 +2761,7 @@ class TestDiacriticFoldingHelper:
         """Case is preserved by the fold (case is handled by re.IGNORECASE)."""
         from chronovista.services.entity_mention_scan_service import _fold_diacritics
 
-        folded, _ = _fold_diacritics("MÉXICO")
+        folded, _ = _fold_diacritics("PERÚ")
         assert folded == "PERU"
 
 
@@ -2767,29 +2769,29 @@ class TestDiacriticFoldingScanBatch:
     """Transcript-path (``_scan_batch``) diacritic-insensitive matching."""
 
     async def test_accented_occurrence_matched_with_ascii_alias(self) -> None:
-        """Alias 'Peru' matches 'México' and stores the accented mention_text."""
-        raw = "una revolución de color aquí en México."
+        """Alias 'Peru' matches 'Perú' and stores the accented mention_text."""
+        raw = "una revolución de color aquí en Perú."
         pattern = _make_pattern("Peru", ["Peru"])
 
         mentions = await _run_scan_batch(pattern, raw)
 
         assert len(mentions) == 1
         m = mentions[0]
-        assert m.mention_text == "México"
-        assert raw[m.match_start : m.match_end] == "México"
-        # Offsets point exactly at "México" in the raw text.
-        assert raw.index("México") == m.match_start
-        assert m.match_end == m.match_start + len("México")
+        assert m.mention_text == "Perú"
+        assert raw[m.match_start : m.match_end] == "Perú"
+        # Offsets point exactly at "Perú" in the raw text.
+        assert raw.index("Perú") == m.match_start
+        assert m.match_end == m.match_start + len("Perú")
 
     async def test_uppercase_accented_occurrence_matched(self) -> None:
-        """'MÉXICO' matches the ASCII alias 'Peru' (case + accent insensitive)."""
-        raw = "VISITA MÉXICO HOY"
+        """'PERÚ' matches the ASCII alias 'Peru' (case + accent insensitive)."""
+        raw = "VISITA PERÚ HOY"
         pattern = _make_pattern("Peru", ["Peru"])
 
         mentions = await _run_scan_batch(pattern, raw)
 
         assert len(mentions) == 1
-        assert mentions[0].mention_text == "MÉXICO"
+        assert mentions[0].mention_text == "PERÚ"
 
     async def test_plain_ascii_occurrence_still_matched(self) -> None:
         """Plain ASCII 'Peru' still matches (no regression)."""
@@ -2806,12 +2808,12 @@ class TestDiacriticFoldingScanBatch:
 
         The word 'café' is written with a *decomposed* accent (e + U+0301). When
         folded, that combining mark is dropped, so every character after it — the
-        entire "México" match — sits at a folded index one less than its raw
+        entire "Perú" match — sits at a folded index one less than its raw
         index.  Without the offset map, the mention would be sliced from the
         wrong position.  This asserts the raw offsets (and mention_text) are
         correct AND that they genuinely differ from the naive folded offsets.
         """
-        raw = "cafe\u0301 M\u00e9xico aqui"  # decomposed accent precedes match
+        raw = "cafe\u0301 Per\u00fa aqui"  # decomposed accent precedes match
         pattern = _make_pattern("Peru", ["Peru"])
 
         # Sanity: this input really is length-changing under the fold.
@@ -2820,7 +2822,7 @@ class TestDiacriticFoldingScanBatch:
         folded, _ = _fold_diacritics(raw)
         assert len(folded) == len(raw) - 1
         naive_folded_start = folded.index("Peru")
-        raw_start = raw.index("México")
+        raw_start = raw.index("Perú")
         assert naive_folded_start != raw_start, (
             "Test is not exercising the length-changing case: folded and raw "
             "offsets coincide"
@@ -2831,13 +2833,13 @@ class TestDiacriticFoldingScanBatch:
         assert len(mentions) == 1
         m = mentions[0]
         assert m.match_start == raw_start
-        assert raw[m.match_start : m.match_end] == "México"
-        assert m.mention_text == "México"
+        assert raw[m.match_start : m.match_end] == "Perú"
+        assert m.mention_text == "Perú"
 
     async def test_exclusion_pattern_suppresses_accented_match(self) -> None:
         """An accent-free exclusion pattern suppresses an accented match."""
-        raw = "New México is a US state"
-        # Exclusion "New Peru" (accent-free) overlaps the "México" match once
+        raw = "New Perú is a US state"
+        # Exclusion "New Peru" (accent-free) overlaps the "Perú" match once
         # both are folded, so the match must be suppressed.
         pattern = _make_pattern("Peru", ["Peru"], exclusion_patterns=["New Peru"])
 
@@ -2849,17 +2851,15 @@ class TestDiacriticFoldingScanBatch:
         """Longest-match-wins prefers the longer accented alias over a shorter one."""
         entity_id = _make_uuid()
         # One entity has both "Peru" and "Peru City" (accent-free aliases).
-        pattern = _make_pattern(
-            "Peru City", ["Peru City", "Peru"], entity_id=entity_id
-        )
-        raw = "flying into México City tomorrow"
+        pattern = _make_pattern("Peru City", ["Peru City", "Peru"], entity_id=entity_id)
+        raw = "flying into Perú City tomorrow"
 
         mentions = await _run_scan_batch(pattern, raw)
 
         # Only the longest match survives, and it is the accented raw substring.
         assert len(mentions) == 1
-        assert mentions[0].mention_text == "México City"
-        assert raw[mentions[0].match_start : mentions[0].match_end] == "México City"
+        assert mentions[0].mention_text == "Perú City"
+        assert raw[mentions[0].match_start : mentions[0].match_end] == "Perú City"
 
 
 class TestDiacriticFoldingLoadPatterns:
@@ -2869,7 +2869,7 @@ class TestDiacriticFoldingLoadPatterns:
         """An accented canonical name is folded before entering pg_pattern."""
         entity_id = _make_uuid()
         entity_row = _make_entity_row(
-            entity_id=entity_id, canonical_name="México", entity_type="place"
+            entity_id=entity_id, canonical_name="Perú", entity_type="place"
         )
 
         session = AsyncMock()
@@ -2887,9 +2887,9 @@ class TestDiacriticFoldingLoadPatterns:
         assert len(patterns) == 1
         # Folded form is present; the accented form is not in the regex.
         assert "Peru" in patterns[0].pg_pattern
-        assert "México" not in patterns[0].pg_pattern
+        assert "Perú" not in patterns[0].pg_pattern
         # The raw name is preserved in alias_names for reporting.
-        assert patterns[0].alias_names == ["México"]
+        assert patterns[0].alias_names == ["Perú"]
 
 
 class TestDiacriticFoldingMetadata:
@@ -2905,14 +2905,14 @@ class TestDiacriticFoldingMetadata:
         return compiled, {pattern.entity_id: pattern}
 
     def test_accented_title_matched_by_metadata_scan(self) -> None:
-        """A title containing 'México' is matched by the ASCII alias 'Peru'."""
+        """A title containing 'Perú' is matched by the ASCII alias 'Peru'."""
         from chronovista.models.enums import MentionSource
 
         pattern = _make_pattern("Peru", ["Peru"])
         compiled, by_entity = self._compiled_for(pattern)
 
         svc = _build_service(MagicMock())
-        title = "A road trip through México"
+        title = "A road trip through Perú"
         mentions, _ = svc._match_text_for_video(
             video_id="dQw4w9WgXcQ",
             text=title,
@@ -2924,8 +2924,8 @@ class TestDiacriticFoldingMetadata:
 
         assert len(mentions) == 1
         m = mentions[0]
-        assert m.mention_text == "México"
-        assert title[m.match_start : m.match_end] == "México"
+        assert m.mention_text == "Perú"
+        assert title[m.match_start : m.match_end] == "Perú"
         assert m.mention_source == MentionSource.TITLE
 
     def test_metadata_offset_safety_with_length_changing_char(self) -> None:
@@ -2936,7 +2936,7 @@ class TestDiacriticFoldingMetadata:
         compiled, by_entity = self._compiled_for(pattern)
 
         svc = _build_service(MagicMock())
-        desc = "cafe\u0301 in M\u00e9xico downtown"
+        desc = "cafe\u0301 in Per\u00fa downtown"
         mentions, _ = svc._match_text_for_video(
             video_id="dQw4w9WgXcQ",
             text=desc,
@@ -2948,8 +2948,8 @@ class TestDiacriticFoldingMetadata:
 
         assert len(mentions) == 1
         m = mentions[0]
-        assert desc[m.match_start : m.match_end] == "México"
-        assert m.mention_text == "México"
+        assert desc[m.match_start : m.match_end] == "Perú"
+        assert m.mention_text == "Perú"
 
 
 class TestTranscriptMentionContext:
@@ -3029,16 +3029,16 @@ class TestTranscriptMentionContext:
 
     async def test_context_preserves_accents_from_the_raw_text(self) -> None:
         # Matching folds diacritics, but the stored snippet must read as it
-        # was written — folded text would show "Peru" where "México" was
+        # was written — folded text would show "Peru" where "Perú" was
         # said, which is a different claim about the source.
         mentions = await self._scan_one(
-            "Hoy en México se discutió el acuerdo comercial", "Peru"
+            "Hoy en Perú se discutió el acuerdo comercial", "Peru"
         )
 
         assert len(mentions) == 1
         context = mentions[0].mention_context
         assert context is not None
-        assert "México" in context
+        assert "Perú" in context
         assert "discutió" in context
 
 
@@ -3209,11 +3209,11 @@ class TestPerAliasCaseSensitivity:
             _fold_diacritics,
         )
 
-        folded_text = _fold_diacritics("Hoy en México se discutio")[0]
+        folded_text = _fold_diacritics("Hoy en Perú se discutio")[0]
         found = self._matches([("Peru", True)], folded_text)
         assert found == ["Peru"]
 
-        assert self._matches([("Peru", True)], _fold_diacritics("méxico")[0]) == []
+        assert self._matches([("Peru", True)], _fold_diacritics("perú")[0]) == []
 
 
 class TestCaseSensitivityReachesTheCompiledPattern:
@@ -3285,7 +3285,7 @@ class TestCaseSensitivityReachesTheCompiledPattern:
                     entity_id=entity_id, alias_name="Sidetone", case_sensitive=True
                 ),
                 _make_alias_row(
-                    entity_id=entity_id, alias_name="K Dennis", case_sensitive=False
+                    entity_id=entity_id, alias_name="K Reed", case_sensitive=False
                 ),
             ],
         )
@@ -3294,4 +3294,4 @@ class TestCaseSensitivityReachesTheCompiledPattern:
         assert rx.search("Sidetone performed") is not None
         assert rx.search("I sidetone agree") is None
         # The sibling alias keeps its own rule rather than inheriting.
-        assert rx.search("k dennis performed") is not None
+        assert rx.search("k reed performed") is not None

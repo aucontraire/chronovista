@@ -65,7 +65,7 @@ describe("Feature 046 type interfaces (T001)", () => {
     it("can be constructed with entity_id and entity_name as strings", () => {
       const pattern: DiffErrorPattern = {
         error_token: "berny",
-        canonical_form: "Bernie",
+        canonical_form: "Henry",
         frequency: 10,
         remaining_matches: 7,
         entity_id: "3f4a7b2c-1d9e-4f6a-b8c2-9e0d1f2a3b4c",
@@ -135,7 +135,7 @@ describe("Feature 046 type interfaces (T001)", () => {
 
     it("can be constructed with video_title as a string", () => {
       const match: PhoneticMatch = {
-        original_text: "Ilhan",
+        original_text: "Nora",
         proposed_correction: "Nora Bennett",
         confidence: 0.78,
         evidence_description: "Truncated name — surname likely cut by ASR pause",

@@ -241,7 +241,7 @@ class TestCanonicalTagRepositorySearch:
 
         mock_session.execute.side_effect = [count_result, items_result]
 
-        await repository.search(mock_session, q="sheinbaum")
+        await repository.search(mock_session, q="johnson")
 
         # Inspect the SQL of the count query (first execute call)
         count_call_stmt = mock_session.execute.call_args_list[0].args[0]

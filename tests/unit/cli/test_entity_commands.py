@@ -42,7 +42,7 @@ def _make_uuid() -> uuid.UUID:
 def _audit_result(
     canonical_name: str = "Ada Lovelace",
     entity_id: uuid.UUID | None = None,
-    mention_text: str = "chomsky",
+    mention_text: str = "lovelace",
     segment_count: int = 3,
 ) -> tuple[str, uuid.UUID, str, int]:
     """Build a single audit result tuple matching the service return type."""
@@ -182,7 +182,7 @@ class TestScanAuditFlag:
             _audit_result(
                 canonical_name="Ada Lovelace",
                 entity_id=entity_id,
-                mention_text="chomsky",
+                mention_text="lovelace",
                 segment_count=5,
             )
         ]
@@ -276,7 +276,7 @@ class TestScanAuditFlag:
             _audit_result(
                 canonical_name="Ada Lovelace",
                 entity_id=entity_id,
-                mention_text="chomsky",
+                mention_text="lovelace",
                 segment_count=1,
             )
         ]
@@ -303,7 +303,7 @@ class TestScanAuditFlag:
 
         assert result.exit_code == 0
         output = result.stdout
-        # The suggestion renders: chronovista entities add-alias "Ada Lovelace" --alias "chomsky"
+        # The suggestion renders: chronovista entities add-alias "Ada Lovelace" --alias "lovelace"
         assert "add-alias" in output
 
     @patch("chronovista.cli.entity_commands.EntityMentionScanService")

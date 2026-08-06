@@ -35,8 +35,8 @@ vi.mock("../../components/corrections/CrossSegmentPanel", () => ({
           type="button"
           onClick={() =>
             prefillForm({
-              pattern: "bernie",
-              replacement: "Bernie",
+              pattern: "henry",
+              replacement: "Henry",
               crossSegment: true,
             })
           }
@@ -172,7 +172,7 @@ describe("BatchCorrectionsPage — CrossSegmentPanel integration", () => {
     // PatternInput should remount with the new initial value
     await waitFor(() => {
       const updatedInput = screen.getByPlaceholderText(/enter text or regex pattern/i);
-      expect(updatedInput).toHaveValue("bernie");
+      expect(updatedInput).toHaveValue("henry");
     });
   });
 
@@ -183,7 +183,7 @@ describe("BatchCorrectionsPage — CrossSegmentPanel integration", () => {
 
     await waitFor(() => {
       const replacementInput = screen.getByPlaceholderText(/replacement text/i);
-      expect(replacementInput).toHaveValue("Bernie");
+      expect(replacementInput).toHaveValue("Henry");
     });
   });
 
@@ -276,7 +276,7 @@ describe("BatchCorrectionsPage — CrossSegmentPanel integration", () => {
 
     await waitFor(() => {
       const patternInput = screen.getByPlaceholderText(/enter text or regex pattern/i);
-      expect(patternInput).toHaveValue("bernie");
+      expect(patternInput).toHaveValue("henry");
     });
 
     // Preview should now be clickable (pattern is non-empty)
@@ -287,8 +287,8 @@ describe("BatchCorrectionsPage — CrossSegmentPanel integration", () => {
 
     expect(mockPreviewMutate).toHaveBeenCalledWith(
       expect.objectContaining({
-        pattern: "bernie",
-        replacement: "Bernie",
+        pattern: "henry",
+        replacement: "Henry",
         cross_segment: true,
       }),
       expect.any(Object)

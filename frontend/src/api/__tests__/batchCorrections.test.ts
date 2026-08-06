@@ -119,7 +119,7 @@ describe("fetchDiffAnalysis", () => {
     await fetchDiffAnalysis({ entityName: "Barbara Jordan-Reed" });
 
     expect(mockedApiFetch).toHaveBeenCalledWith(
-      "/corrections/batch/diff-analysis?entity_name=Alexandria+Ocasio-Cortez",
+      "/corrections/batch/diff-analysis?entity_name=Barbara+Jordan-Reed",
       {}
     );
   });
@@ -214,7 +214,7 @@ describe("fetchCrossSegmentCandidates", () => {
     await fetchCrossSegmentCandidates({ entityName: "Henry Whitfield" });
 
     expect(mockedApiFetch).toHaveBeenCalledWith(
-      "/corrections/batch/cross-segment/candidates?entity_name=Bernie+Sanders",
+      "/corrections/batch/cross-segment/candidates?entity_name=Henry+Whitfield",
       {}
     );
   });

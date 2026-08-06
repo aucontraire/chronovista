@@ -426,10 +426,10 @@ The `chronovista corrections` CLI commands enable bulk correction operations acr
 
 ```bash
 # Find a recurring ASR error and preview what would change
-chronovista corrections find-replace --pattern "Chsky" --replacement "Chomsky" --dry-run
+chronovista corrections find-replace --pattern "Chsky" --replacement "Lovelace" --dry-run
 
 # Apply the correction (with confirmation prompt)
-chronovista corrections find-replace --pattern "Chsky" --replacement "Chomsky"
+chronovista corrections find-replace --pattern "Chsky" --replacement "Lovelace"
 
 # Rebuild full transcript text to reflect corrections
 chronovista corrections rebuild-text
@@ -507,7 +507,7 @@ For full command options, see the [CLI reference](../reference/cli.md).
 When running bulk corrections, be aware of these known limitations:
 
 **Cross-segment matches (issue [#71](https://github.com/chronovista/chronovista/issues/71)):**
-YouTube's auto-generated transcripts split text into small overlapping segments (typically 2–5 seconds). If a misspelling spans two adjacent segments (e.g., "Claudia" at the end of one segment and "Shembun" at the start of the next), `find-replace` will not match it because each segment is searched independently. You must correct such cases manually via the inline web UI.
+YouTube's auto-generated transcripts split text into small overlapping segments (typically 2–5 seconds). If a misspelling spans two adjacent segments (e.g., "Katherine" at the end of one segment and "Shembun" at the start of the next), `find-replace` will not match it because each segment is searched independently. You must correct such cases manually via the inline web UI.
 
 **Regex pattern safety:**
 Broad regex patterns can match unintended text. For example, `--pattern "Love\w*" --regex` will match "Lovelace", "Loveless", but also "Loved", "Lover", etc. Always run with `--dry-run` first and review every match before applying. Consider adding more specificity to your pattern (e.g., `Ada Love\w+` instead of just `Love\w*`).

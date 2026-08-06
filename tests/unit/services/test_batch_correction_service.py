@@ -2567,7 +2567,7 @@ class TestRecordAsrAliasForBatchReplacement:
 
                 await service._record_asr_alias_for_batch_replacement(
                     session,
-                    pattern="Katherine Johnsom",
+                    pattern="Katherine Jonnsom",
                     replacement="Katherine Johnson",
                     total_applied=5,
                 )
@@ -2576,7 +2576,7 @@ class TestRecordAsrAliasForBatchReplacement:
             call_kwargs = mock_repo_instance.create.call_args
             alias_create = call_kwargs[1]["obj_in"]
             assert alias_create.entity_id == entity_mock.id
-            assert alias_create.alias_name == "Katherine Johnsom"
+            assert alias_create.alias_name == "Katherine Jonnsom"
             assert alias_create.occurrence_count == 5
             assert alias_create.alias_type == EntityAliasType.ASR_ERROR
 
@@ -2605,7 +2605,7 @@ class TestRecordAsrAliasForBatchReplacement:
                 await service._record_asr_alias_for_batch_replacement(
                     session,
                     pattern="Seon",
-                    replacement="Sheinbaum",
+                    replacement="Johnson",
                     total_applied=3,
                 )
 
@@ -2633,7 +2633,7 @@ class TestRecordAsrAliasForBatchReplacement:
 
         await service._record_asr_alias_for_batch_replacement(
             session,
-            pattern="Katherine Johnsom",
+            pattern="Katherine Jonnsom",
             replacement="Katherine Johnson",
             total_applied=7,
         )
@@ -2658,7 +2658,7 @@ class TestRecordAsrAliasForBatchReplacement:
 
             await service._record_asr_alias_for_batch_replacement(
                 session,
-                pattern="Shainbom",
+                pattern="Jonnsom",
                 replacement="Unknown Person",
                 total_applied=5,
             )
@@ -2676,19 +2676,19 @@ class TestRecordAsrAliasForBatchReplacement:
         seg1 = _make_segment(
             video_id="v1",
             segment_id=1,
-            text="presidenta Katherine Johnsbom también",
+            text="presidenta Katherine Jonnbom también",
             start_time=0.0,
         )
         seg2 = _make_segment(
             video_id="v1",
             segment_id=2,
-            text="presidenta Katherine Johnmon equipara",
+            text="presidenta Katherine Jonnmon equipara",
             start_time=1.0,
         )
         seg3 = _make_segment(
             video_id="v2",
             segment_id=3,
-            text="presidenta Katherine Johnsbom quien",
+            text="presidenta Katherine Jonnbom quien",
             start_time=2.0,
         )
 
@@ -2703,7 +2703,7 @@ class TestRecordAsrAliasForBatchReplacement:
         ) as mock_hook:
             await service.find_and_replace(
                 mock_session,
-                pattern=r"Katherine Johnsm\w*",
+                pattern=r"Katherine Jonn\w*",
                 replacement="Katherine Johnson",
                 regex=True,
             )
@@ -2716,8 +2716,8 @@ class TestRecordAsrAliasForBatchReplacement:
                 c.kwargs["pattern"]: c.kwargs["total_applied"]
                 for c in mock_hook.call_args_list
             }
-            assert calls_by_pattern["Katherine Johnsbom"] == 2
-            assert calls_by_pattern["Katherine Johnmon"] == 1
+            assert calls_by_pattern["Katherine Jonnbom"] == 2
+            assert calls_by_pattern["Katherine Jonnmon"] == 1
 
     async def test_regex_mode_single_form_calls_hook(
         self,
@@ -2730,7 +2730,7 @@ class TestRecordAsrAliasForBatchReplacement:
         seg = _make_segment(
             video_id="v1",
             segment_id=1,
-            text="Katherine Johnsom here",
+            text="Katherine Jonnsom here",
             start_time=0.0,
         )
 
@@ -2745,13 +2745,13 @@ class TestRecordAsrAliasForBatchReplacement:
         ) as mock_hook:
             await service.find_and_replace(
                 mock_session,
-                pattern=r"Katherine Johnsan\w*",
+                pattern=r"Katherine Jonn\w*",
                 replacement="Katherine Johnson",
                 regex=True,
             )
             mock_hook.assert_called_once_with(
                 mock_session,
-                pattern="Katherine Johnsom",
+                pattern="Katherine Jonnsom",
                 replacement="Katherine Johnson",
                 total_applied=1,
             )
@@ -2766,7 +2766,7 @@ class TestRecordAsrAliasForBatchReplacement:
         seg = _make_segment(
             video_id="v1",
             segment_id=1,
-            text="Shainbom",
+            text="Jonnsom",
             start_time=0.0,
         )
 
@@ -2784,8 +2784,8 @@ class TestRecordAsrAliasForBatchReplacement:
         ) as mock_hook:
             await service.find_and_replace(
                 mock_session,
-                pattern="Shainbom",
-                replacement="Sheinbaum",
+                pattern="Jonnsom",
+                replacement="Johnson",
                 dry_run=True,
             )
             mock_hook.assert_not_called()
@@ -2875,7 +2875,7 @@ class TestRecordAsrAliasForBatchReplacement:
         seg = _make_segment(
             video_id="v1",
             segment_id=1,
-            text="Katherine Johnsom",
+            text="Katherine Jonnsom",
             start_time=0.0,
         )
 
@@ -2890,12 +2890,12 @@ class TestRecordAsrAliasForBatchReplacement:
         ) as mock_hook:
             await service.find_and_replace(
                 mock_session,
-                pattern="Katherine Johnsom",
+                pattern="Katherine Jonnsom",
                 replacement="Katherine Johnson",
             )
             mock_hook.assert_called_once_with(
                 mock_session,
-                pattern="Katherine Johnsom",
+                pattern="Katherine Jonnsom",
                 replacement="Katherine Johnson",
                 total_applied=1,
             )
@@ -2927,7 +2927,7 @@ class TestExtractPatternTokens:
     def test_plain_multi_word_splits_on_spaces(self, service_cls: Any) -> None:
         """Multi-word plain pattern splits into its constituent words."""
         tokens = service_cls._extract_pattern_tokens("Johnsen Bomb", regex=False)
-        assert tokens == ["Shine", "Bomb"]
+        assert tokens == ["Johnsen", "Bomb"]
 
     def test_plain_single_word_returns_list_with_that_word(
         self, service_cls: Any
@@ -2958,9 +2958,9 @@ class TestExtractPatternTokens:
     # ------------------------------------------------------------------
 
     def test_regex_word_boundary_pattern_extracts_word(self, service_cls: Any) -> None:
-        r"""Regex \bShine\b yields at least ['Shine'] after metachar stripping."""
-        tokens = service_cls._extract_pattern_tokens(r"\bShine\b", regex=True)
-        assert "Shine" in tokens
+        r"""Regex \bJohnsen\b yields at least ['Johnsen'] after metachar stripping."""
+        tokens = service_cls._extract_pattern_tokens(r"\bJohnsen\b", regex=True)
+        assert "Johnsen" in tokens
 
     def test_regex_metachar_only_pattern_falls_back(self, service_cls: Any) -> None:
         r"""Pattern composed entirely of metacharacters falls back to [pattern]."""
@@ -3028,7 +3028,7 @@ class TestGetCandidateVideoIds:
 
         mock_segment_repo.find_candidate_video_ids_for_cross_segment.assert_called_once_with(
             mock_session,
-            tokens=["Shine", "Bomb"],
+            tokens=["Johnsen", "Bomb"],
             language=None,
             channel=None,
             case_insensitive=False,
@@ -4652,15 +4652,15 @@ class TestWordLevelDiff:
     def test_single_word_change_one_changed_pair(self) -> None:
         """A single misspelled word produces exactly one changed pair.
 
-        "Chomski" → "Chomsky" must yield changed_pairs=[("Chomski", "Chomsky")]
+        "Lovelase" → "Lovelace" must yield changed_pairs=[("Lovelase", "Lovelace")]
         with no unchanged_tokens and no residual pairs.
         """
         from chronovista.services.batch_correction_service import word_level_diff
 
-        result = word_level_diff("Chomski", "Chomsky")
+        result = word_level_diff("Lovelase", "Lovelace")
 
         assert len(result.changed_pairs) == 1
-        assert result.changed_pairs[0] == ("Chomski", "Chomsky")
+        assert result.changed_pairs[0] == ("Lovelase", "Lovelace")
         # Single-token input — nothing is unchanged
         assert result.unchanged_tokens == []
 
@@ -4671,7 +4671,7 @@ class TestWordLevelDiff:
     def test_multi_word_shared_context_only_diff_reported(self) -> None:
         """Unchanged surrounding words are captured in unchanged_tokens.
 
-        "Ada Lovelase" → "Ada Lovelace": "Noam" is identical (case-insensitive),
+        "Ada Lovelase" → "Ada Lovelace": "Ada" is identical (case-insensitive),
         so it must appear in unchanged_tokens. Only the misspelled word should
         appear as a changed pair.
         """
@@ -4679,9 +4679,9 @@ class TestWordLevelDiff:
 
         result = word_level_diff("Ada Lovelase", "Ada Lovelace")
 
-        assert ("Chomski", "Chomsky") in result.changed_pairs
-        assert "Noam" in result.unchanged_tokens
-        # There must be exactly one changed pair (the misspelling, not "Noam")
+        assert ("Lovelase", "Lovelace") in result.changed_pairs
+        assert "Ada" in result.unchanged_tokens
+        # There must be exactly one changed pair (the misspelling, not "Ada")
         assert len(result.changed_pairs) == 1
 
     # ------------------------------------------------------------------
@@ -4691,19 +4691,19 @@ class TestWordLevelDiff:
     def test_entire_text_changed_both_tokens_different(self) -> None:
         """When every token changes, all pairs land in changed_pairs.
 
-        "Johnsen Bound" → "Sheinbaum": both tokens differ, so changed_pairs must
+        "Johnsen Bound" → "Johnson": both tokens differ, so changed_pairs must
         contain the full original and corrected fragments. No unchanged_tokens.
         """
         from chronovista.services.batch_correction_service import word_level_diff
 
-        result = word_level_diff("Johnsen Bound", "Sheinbaum")
+        result = word_level_diff("Johnsen Bound", "Johnson")
 
         # At least one changed pair must exist; unchanged_tokens must be empty
         assert len(result.changed_pairs) >= 1
         assert result.unchanged_tokens == []
         # Reconstruct all originals from pairs
         all_originals = " ".join(pair[0] for pair in result.changed_pairs if pair[0])
-        assert "Shane" in all_originals or "Johnsen Bound" in all_originals
+        assert "Johnsen" in all_originals or "Johnsen Bound" in all_originals
 
     # ------------------------------------------------------------------
     # (d) Capitalisation-only excluded
@@ -4730,13 +4730,13 @@ class TestWordLevelDiff:
     def test_token_count_mismatch_handled(self) -> None:
         """2-token original vs 1-token corrected does not raise.
 
-        "Johnsin Bomb" (2 tokens) → "Sheinbaum" (1 token): the function must
+        "Johnsin Bomb" (2 tokens) → "Johnson" (1 token): the function must
         return a result without raising, and changed_pairs must be non-empty
         since the content differs.
         """
         from chronovista.services.batch_correction_service import word_level_diff
 
-        result = word_level_diff("Johnsin Bomb", "Sheinbaum")
+        result = word_level_diff("Johnsin Bomb", "Johnson")
 
         # Must not raise; must have at least one change since texts differ
         assert isinstance(result.changed_pairs, list)
@@ -4801,7 +4801,7 @@ class TestWordLevelDiff:
         """
         from chronovista.services.batch_correction_service import word_level_diff
 
-        result = word_level_diff("", "Chomsky")
+        result = word_level_diff("", "Lovelace")
 
         assert len(result.changed_pairs) >= 1
         # An insert opcode adds ("", token) pairs
@@ -4814,7 +4814,7 @@ class TestWordLevelDiff:
         """
         from chronovista.services.batch_correction_service import word_level_diff
 
-        result = word_level_diff("Chomski", "")
+        result = word_level_diff("Lovelase", "")
 
         assert len(result.changed_pairs) >= 1
         assert any(pair[1] == "" for pair in result.changed_pairs)
@@ -4848,8 +4848,8 @@ class TestMinimalTokenAliasRegistration:
         also registered as separate ASR aliases.
 
         Scenario: "Ada Lovelase" → "Ada Lovelace". The full string is
-        registered for the entity. The sub-token diff produces ("Chomski",
-        "Chomsky") which must trigger a second alias registration.
+        registered for the entity. The sub-token diff produces ("Lovelase",
+        "Lovelace") which must trigger a second alias registration.
         """
         import uuid
         from unittest.mock import AsyncMock, MagicMock, patch
@@ -4906,7 +4906,7 @@ class TestMinimalTokenAliasRegistration:
     async def test_multiple_changed_blocks_registered_separately(self) -> None:
         """Each distinct changed pair from the diff is registered individually.
 
-        Scenario: "Johnsin Bomb" → "Sheinbaum" — two tokens differ.  The
+        Scenario: "Johnsin Bomb" → "Johnson" — two tokens differ.  The
         implementation must attempt alias creation for every non-empty,
         non-duplicate changed pair.
         """
@@ -4925,7 +4925,7 @@ class TestMinimalTokenAliasRegistration:
         with (
             patch(
                 "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-                new=AsyncMock(return_value=(entity_id, "Sheinbaum")),
+                new=AsyncMock(return_value=(entity_id, "Johnson")),
             ),
             patch(
                 "chronovista.services.asr_alias_registry.TagNormalizationService"
@@ -4950,7 +4950,7 @@ class TestMinimalTokenAliasRegistration:
             await register_asr_alias(
                 mock_session,
                 original_text="Johnsin Bomb",
-                corrected_text="Sheinbaum",
+                corrected_text="Johnson",
             )
 
         # At least the full-string alias must have been registered
@@ -4964,7 +4964,7 @@ class TestMinimalTokenAliasRegistration:
         """Sub-tokens that are identical to the full original string are skipped.
 
         The guard ``error_token.strip() == original_text.strip()`` prevents
-        registering the same ASR error form twice.  With "Chomski" → "Chomsky"
+        registering the same ASR error form twice.  With "Lovelase" → "Lovelace"
         the single token equals the full string, so only one alias is created.
         """
         import uuid
@@ -4982,7 +4982,7 @@ class TestMinimalTokenAliasRegistration:
         with (
             patch(
                 "chronovista.services.asr_alias_registry.resolve_entity_id_from_text",
-                new=AsyncMock(return_value=(entity_id, "Chomsky")),
+                new=AsyncMock(return_value=(entity_id, "Lovelace")),
             ),
             patch(
                 "chronovista.services.asr_alias_registry.TagNormalizationService"
@@ -5006,11 +5006,11 @@ class TestMinimalTokenAliasRegistration:
 
             await register_asr_alias(
                 mock_session,
-                original_text="Chomski",
-                corrected_text="Chomsky",
+                original_text="Lovelase",
+                corrected_text="Lovelace",
             )
 
-        # "Chomski" == "Chomski" (full string) so no sub-token registration,
+        # "Lovelase" == "Lovelase" (full string) so no sub-token registration,
         # meaning create is called exactly once (for the full-string alias).
         assert repo_instance.create.call_count == 1
 

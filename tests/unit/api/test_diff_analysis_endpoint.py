@@ -39,8 +39,8 @@ from chronovista.models.batch_correction_models import CorrectionPattern
 
 def _make_pattern(
     *,
-    original_text: str = "shanebam",
-    corrected_text: str = "Sheinbaum",
+    original_text: str = "jonsun",
+    corrected_text: str = "Johnson",
     occurrences: int = 5,
     remaining_matches: int = 3,
 ) -> CorrectionPattern:
@@ -147,7 +147,7 @@ class TestGetDiffAnalysis:
         pattern = _make_pattern()
         entity_id = uuid.uuid4()
         mock_service.get_patterns = AsyncMock(return_value=[pattern])
-        mock_find_entity.return_value = (entity_id, "Sheinbaum")
+        mock_find_entity.return_value = (entity_id, "Johnson")
 
         response = await client.get(self.BASE_URL)
 
@@ -155,13 +155,13 @@ class TestGetDiffAnalysis:
         body = response.json()
         data = body["data"]
         assert len(data) == 1
-        assert data[0]["error_token"] == "shanebam"
-        assert data[0]["canonical_form"] == "Sheinbaum"
+        assert data[0]["error_token"] == "jonsun"
+        assert data[0]["canonical_form"] == "Johnson"
         assert data[0]["frequency"] == 5
         # remaining_matches is now computed at the token level (mock returns 3)
         assert data[0]["remaining_matches"] == 3
         assert data[0]["entity_id"] == str(entity_id)
-        assert data[0]["entity_name"] == "Sheinbaum"
+        assert data[0]["entity_name"] == "Johnson"
 
     @patch(
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
@@ -201,11 +201,11 @@ class TestGetDiffAnalysis:
     ) -> None:
         """Endpoint filters results when entity_name parameter is provided."""
         entity_id = uuid.uuid4()
-        pattern = _make_pattern(corrected_text="Sheinbaum")
+        pattern = _make_pattern(corrected_text="Johnson")
         mock_service.get_patterns = AsyncMock(return_value=[pattern])
-        mock_find_entity.return_value = (entity_id, "Sheinbaum")
+        mock_find_entity.return_value = (entity_id, "Johnson")
 
-        response = await client.get(self.BASE_URL, params={"entity_name": "Shein"})
+        response = await client.get(self.BASE_URL, params={"entity_name": "Johns"})
 
         assert response.status_code == 200
         data = response.json()["data"]
@@ -226,9 +226,9 @@ class TestGetDiffAnalysis:
         client: AsyncClient,
     ) -> None:
         """Patterns not matching entity_name filter are excluded."""
-        pattern = _make_pattern(corrected_text="Sheinbaum")
+        pattern = _make_pattern(corrected_text="Johnson")
         mock_service.get_patterns = AsyncMock(return_value=[pattern])
-        mock_find_entity.return_value = (uuid.uuid4(), "Sheinbaum")
+        mock_find_entity.return_value = (uuid.uuid4(), "Johnson")
 
         response = await client.get(self.BASE_URL, params={"entity_name": "Trump"})
 
@@ -254,7 +254,7 @@ class TestGetDiffAnalysis:
         mock_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (None, None)
 
-        response = await client.get(self.BASE_URL, params={"entity_name": "Shein"})
+        response = await client.get(self.BASE_URL, params={"entity_name": "Johns"})
 
         assert response.status_code == 200
         assert response.json()["data"] == []

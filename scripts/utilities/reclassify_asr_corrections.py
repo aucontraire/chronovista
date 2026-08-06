@@ -150,11 +150,11 @@ def classify_correction(original: str, corrected: str) -> str:
     Priority order:
     1. Spaces added or removed:
        - If a changed token in corrected text is title-cased → proper_noun
-         (ASR split a name, e.g. "Shane Bomb" → "Sheinbaum")
+         (ASR split a name, e.g. "Johnsen Bomb" → "Johnson")
        - Otherwise → word_boundary
     2. Same token count — if ANY changed token in corrected text is title-cased
-       → proper_noun  (catches "Chsky" → "Chomsky", "Galain" → "Ghislaine",
-       "norm" → "Noam", etc.)
+       → proper_noun  (catches "Chsky" → "Lovelace", "Galain" → "Ghislaine",
+       "norm" → "Ada", etc.)
     3. Identical ignoring case (no other signal) → formatting
     4. Fallback → other
 
@@ -177,7 +177,7 @@ def classify_correction(original: str, corrected: str) -> str:
     corr_words = _words(corrected)
 
     # 1. Space count changed → word_boundary, unless a corrected token is
-    #    title-cased (ASR split a name, e.g. "Shane Bomb" → "Sheinbaum").
+    #    title-cased (ASR split a name, e.g. "Johnsen Bomb" → "Johnson").
     if original.count(" ") != corrected.count(" "):
         # Check if any token in the corrected text that differs is title-cased.
         # For unequal-length token lists we scan the corrected tokens that are

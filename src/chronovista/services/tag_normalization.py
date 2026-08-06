@@ -123,7 +123,7 @@ class TagNormalizationService:
         Examples
         --------
         >>> svc = TagNormalizationService()
-        >>> svc.normalize("#MÉXICO")
+        >>> svc.normalize("#PERÚ")
         'peru'
 
         >>> svc.normalize("  ")
@@ -209,7 +209,7 @@ class TagNormalizationService:
         >>> svc.select_canonical_form([("PERU", 203), ("Peru", 412), ("peru", 156)])
         'Peru'
 
-        >>> svc.select_canonical_form([("Peru", 200), ("México", 200)])
+        >>> svc.select_canonical_form([("Peru", 200), ("Perú", 200)])
         'Peru'
 
         >>> svc.select_canonical_form([("PERU", 500), ("peru", 300)])

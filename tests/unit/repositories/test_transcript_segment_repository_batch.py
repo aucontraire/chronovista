@@ -811,7 +811,7 @@ class TestFindCandidateVideoIdsForCrossSegment:
 
         result = await repository.find_candidate_video_ids_for_cross_segment(
             mock_session,
-            tokens=["Shine"],
+            tokens=["Johnsen"],
         )
 
         assert result == ["vid1", "vid2"]
@@ -827,7 +827,7 @@ class TestFindCandidateVideoIdsForCrossSegment:
 
         result = await repository.find_candidate_video_ids_for_cross_segment(
             mock_session,
-            tokens=["Shine", "Bomb"],
+            tokens=["Johnsen", "Bomb"],
         )
 
         assert result == ["vid3"]

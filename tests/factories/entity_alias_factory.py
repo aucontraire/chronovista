@@ -123,18 +123,18 @@ class EntityAliasTestData:
 
     VALID_ALIAS_NAMES = [
         "Edsger",
-        "E. Musk",
+        "E. Dijkstra",
         "SpaceX CEO",
         "Tesla CEO",
-        "Mr. Musk",
+        "Mr. Dijkstra",
     ]
 
     VALID_ALIAS_NAMES_NORMALIZED = [
         "edsger",
-        "e. musk",
+        "e. dijkstra",
         "spacex ceo",
         "tesla ceo",
-        "mr. musk",
+        "mr. dijkstra",
     ]
 
     VALID_ALIAS_TYPES = [

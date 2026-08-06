@@ -234,7 +234,7 @@ class TestCreateEntityCommand:
                     "--type",
                     "person",
                     "--alias",
-                    "N. Chomsky",
+                    "N. Lovelace",
                     "--alias",
                     "Avram Ada Lovelace",
                 ],
@@ -581,7 +581,7 @@ class TestListEntitiesCommand:
         assert result.exit_code == 0, f"Output: {result.output}"
 
     def test_list_entities_with_search_exits_code_zero(self) -> None:
-        """--search chomsky filter is accepted and returns exit code 0."""
+        """--search lovelace filter is accepted and returns exit code 0."""
         mock_entity = _make_mock_entity()
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
@@ -603,7 +603,7 @@ class TestListEntitiesCommand:
                 alias_count_result,
             ]
 
-            result = runner.invoke(app, ["entities", "list", "--search", "chomsky"])
+            result = runner.invoke(app, ["entities", "list", "--search", "lovelace"])
 
         assert result.exit_code == 0, f"Output: {result.output}"
 
@@ -917,7 +917,7 @@ class TestAddAliasCommand:
 
             result = runner.invoke(
                 app,
-                ["entities", "add-alias", "Ada Lovelace", "--alias", "N. Chomsky"],
+                ["entities", "add-alias", "Ada Lovelace", "--alias", "N. Lovelace"],
             )
 
         assert result.exit_code == 0, f"Output: {result.output}"
@@ -1003,9 +1003,9 @@ class TestAddAliasCommand:
                     "add-alias",
                     "Ada Lovelace",
                     "--alias",
-                    "N. Chomsky",
+                    "N. Lovelace",
                     "--alias",
-                    "Prof. Chomsky",
+                    "Prof. Lovelace",
                 ],
             )
 

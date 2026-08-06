@@ -599,7 +599,7 @@ class TestCascadeDelete:
         alias1 = EntityAlias(
             id=uuid7(),
             entity_id=entity_id,
-            alias_name="México",
+            alias_name="Perú",
             alias_name_normalized="peru",
             alias_type="name_variant",
         )

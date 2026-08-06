@@ -1206,14 +1206,14 @@ class TestIdentifyAllBatches:
             # Frontend batch: different text, same timestamp
             _make_row(
                 id="fe1",
-                original_text="ctx A Shanebam",
-                corrected_text="ctx A Sheinbaum",
+                original_text="ctx A Jonsun",
+                corrected_text="ctx A Johnson",
                 corrected_at=ts_frontend,
             ),
             _make_row(
                 id="fe2",
-                original_text="ctx B Shanebam",
-                corrected_text="ctx B Sheinbaum",
+                original_text="ctx B Jonsun",
+                corrected_text="ctx B Johnson",
                 corrected_at=ts_frontend,
             ),
         ]

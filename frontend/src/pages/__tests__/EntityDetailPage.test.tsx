@@ -114,11 +114,11 @@ const mockEntity = {
 function createMockVideo(overrides: Partial<EntityVideoResult> = {}): EntityVideoResult {
   return {
     video_id: "vid123",
-    video_title: "Chomsky on Language",
+    video_title: "Lovelace on Language",
     channel_name: "Lectures Channel",
     mention_count: 7,
     mentions: [
-      { segment_id: 101, start_time: 30.5, mention_text: "Chomsky" },
+      { segment_id: 101, start_time: 30.5, mention_text: "Lovelace" },
     ],
     sources: ["transcript"],
     has_manual: false,
@@ -347,7 +347,7 @@ describe("EntityDetailPage", () => {
         total: 1,
       });
       renderPage();
-      expect(screen.getByText("Chomsky on Language")).toBeInTheDocument();
+      expect(screen.getByText("Lovelace on Language")).toBeInTheDocument();
       expect(screen.getByText("Lectures Channel")).toBeInTheDocument();
     });
 
@@ -366,7 +366,7 @@ describe("EntityDetailPage", () => {
         ...defaultUseEntityVideos,
         videos: [
           createMockVideo({
-            mentions: [{ segment_id: 101, start_time: 90.0, mention_text: "Chomsky" }],
+            mentions: [{ segment_id: 101, start_time: 90.0, mention_text: "Lovelace" }],
             first_mention_time: 90.0,
           }),
         ],
@@ -383,13 +383,13 @@ describe("EntityDetailPage", () => {
         videos: [
           createMockVideo({
             video_id: "abc123",
-            mentions: [{ segment_id: 101, start_time: 30.5, mention_text: "Chomsky" }],
+            mentions: [{ segment_id: 101, start_time: 30.5, mention_text: "Lovelace" }],
           }),
         ],
         total: 1,
       });
       renderPage();
-      const link = screen.getByRole("link", { name: /Chomsky on Language/i });
+      const link = screen.getByRole("link", { name: /Lovelace on Language/i });
       expect(link).toHaveAttribute("href", expect.stringContaining("/videos/abc123"));
       expect(link).toHaveAttribute("href", expect.stringContaining("seg=101"));
       expect(link).toHaveAttribute("href", expect.stringContaining("t=30"));
@@ -523,7 +523,7 @@ describe("EntityDetailPage", () => {
           createMockVideo({
             video_id: "abc_ts",
             mention_count: 2,
-            mentions: [{ segment_id: 50, start_time: 60.0, mention_text: "Chomsky" }],
+            mentions: [{ segment_id: 50, start_time: 60.0, mention_text: "Lovelace" }],
             sources: ["transcript"],
             has_manual: false,
             first_mention_time: 60.0,
@@ -532,7 +532,7 @@ describe("EntityDetailPage", () => {
         total: 1,
       });
       renderPage();
-      const link = screen.getByRole("link", { name: /Chomsky on Language/i });
+      const link = screen.getByRole("link", { name: /Lovelace on Language/i });
       expect(link).toHaveAttribute("href", expect.stringContaining("t=60"));
     });
 
@@ -552,7 +552,7 @@ describe("EntityDetailPage", () => {
         total: 1,
       });
       renderPage();
-      const link = screen.getByRole("link", { name: /Chomsky on Language/i });
+      const link = screen.getByRole("link", { name: /Lovelace on Language/i });
       expect(link).toHaveAttribute("href", "/videos/abc_manual");
       expect(link).not.toHaveAttribute("href", expect.stringContaining("t="));
     });

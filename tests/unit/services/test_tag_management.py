@@ -2559,7 +2559,9 @@ class TestClassify:
 
         # No existing entity with same normalized form
         _make_tag_alias(
-            raw_form="Edsger Dijkstra", normalized_form="edsger dijkstra", canonical_tag_id=tag.id
+            raw_form="Edsger Dijkstra",
+            normalized_form="edsger dijkstra",
+            canonical_tag_id=tag.id,
         )
         _make_tag_alias(
             raw_form="ElonMusk", normalized_form="elonmusk", canonical_tag_id=tag.id

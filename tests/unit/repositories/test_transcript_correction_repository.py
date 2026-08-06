@@ -881,8 +881,8 @@ class TestTranscriptCorrectionRepositoryBatchId:
         row_a.batch_id = batch_id_a
         row_a.correction_count = 5
         row_a.corrected_by_user_id = "user:batch"
-        row_a.pattern = "Chomski"
-        row_a.replacement = "Chomsky"
+        row_a.pattern = "Lovelase"
+        row_a.replacement = "Lovelace"
         row_a.batch_timestamp = datetime(2025, 2, 1, 10, 0, 0, tzinfo=UTC)
 
         row_b = MagicMock()
@@ -904,8 +904,8 @@ class TestTranscriptCorrectionRepositoryBatchId:
         assert results[0].batch_id == batch_id_a
         assert results[0].correction_count == 5
         assert results[0].corrected_by_user_id == "user:batch"
-        assert results[0].pattern == "Chomski"
-        assert results[0].replacement == "Chomsky"
+        assert results[0].pattern == "Lovelase"
+        assert results[0].replacement == "Lovelace"
         assert results[1].batch_id == batch_id_b
         assert results[1].correction_count == 3
         mock_session.execute.assert_called_once()
@@ -1080,14 +1080,14 @@ class TestTranscriptCorrectionRepositoryBatchId:
         item = create_batch_list_item(
             correction_count=10,
             corrected_by_user_id="user:batch",
-            pattern="Shanebam",
-            replacement="Sheinbaum",
+            pattern="Jonsun",
+            replacement="Johnson",
         )
 
         assert item.correction_count == 10
         assert item.corrected_by_user_id == "user:batch"
-        assert item.pattern == "Shanebam"
-        assert item.replacement == "Sheinbaum"
+        assert item.pattern == "Jonsun"
+        assert item.replacement == "Johnson"
         assert isinstance(item.batch_id, uuid.UUID)
 
     async def test_get_batch_list_items_have_correct_field_types(

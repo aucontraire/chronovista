@@ -36,8 +36,8 @@ def strip_boundary_punctuation(text: str) -> str:
 
     Examples
     --------
-    >>> strip_boundary_punctuation('"Sheinbaum"')
-    'Sheinbaum'
+    >>> strip_boundary_punctuation('"Johnson"')
+    'Johnson'
     >>> strip_boundary_punctuation("Teapot-Dome")
     'Teapot-Dome'
     >>> strip_boundary_punctuation("Khashoggi's")

@@ -360,7 +360,7 @@ class TestStandaloneCreationEndToEnd:
     _SNOWDEN_NORMALIZED = "alan turing"
 
     @pytest.fixture(autouse=True)
-    async def cleanup_snowden(
+    async def cleanup_turing(
         self,
         integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> AsyncGenerator[None, None]:
@@ -421,7 +421,7 @@ class TestStandaloneCreationEndToEnd:
                 json={
                     "name": "alan turing",
                     "entity_type": "person",
-                    "aliases": ["Ed Snowden", "Snowden"],
+                    "aliases": ["Ed Turing", "Turing"],
                 },
             )
 
@@ -480,11 +480,11 @@ class TestStandaloneCreationEndToEnd:
                 "alan turing" in alias_names
             ), f"Canonical alias 'alan turing' missing: {alias_names}"
             assert (
-                "Ed Snowden" in alias_names
-            ), f"User alias 'Ed Snowden' missing: {alias_names}"
+                "Ed Turing" in alias_names
+            ), f"User alias 'Ed Turing' missing: {alias_names}"
             assert (
-                "Snowden" in alias_names
-            ), f"User alias 'Snowden' missing: {alias_names}"
+                "Turing" in alias_names
+            ), f"User alias 'Turing' missing: {alias_names}"
 
     async def test_standalone_creation_deduplicates_identical_aliases(
         self,
@@ -505,7 +505,7 @@ class TestStandaloneCreationEndToEnd:
                     "name": "alan turing",
                     "entity_type": "person",
                     # "Alan Turing" normalizes the same as the entity name
-                    "aliases": ["Alan Turing", "Ed Snowden"],
+                    "aliases": ["Alan Turing", "Ed Turing"],
                 },
             )
 
@@ -520,7 +520,7 @@ class TestStandaloneCreationEndToEnd:
                 select(EntityAliasDB).where(EntityAliasDB.entity_id == entity_uuid)
             )
             aliases = aliases_result.scalars().all()
-            # canonical + "Ed Snowden" only — "Alan Turing" duplicate skipped
+            # canonical + "Ed Turing" only — "Alan Turing" duplicate skipped
             assert len(aliases) == 2, (
                 f"Expected 2 aliases after dedup, found {len(aliases)}: "
                 f"{[a.alias_name for a in aliases]}"
@@ -560,7 +560,7 @@ class TestDuplicateDetection:
     _GARLAND_NORMALIZED = "radia perlman"
 
     @pytest.fixture
-    async def seed_garland_entity(
+    async def seed_radia_entity(
         self,
         integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> AsyncGenerator[dict[str, Any], None]:
@@ -629,7 +629,7 @@ class TestDuplicateDetection:
     async def test_duplicate_detection_returns_correct_entity(
         self,
         async_client: AsyncClient,
-        seed_garland_entity: dict[str, Any],
+        seed_radia_entity: dict[str, Any],
     ) -> None:
         """GET /entities/check-duplicate returns is_duplicate=True for existing entity.
 
@@ -642,7 +642,7 @@ class TestDuplicateDetection:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get(
                 _check_duplicate_url(
-                    name="garland+nixon",
+                    name="radia+perlman",
                     entity_type="person",
                 )
             )
@@ -659,8 +659,8 @@ class TestDuplicateDetection:
         assert (
             existing is not None
         ), f"Expected existing_entity to be populated, got None. Body: {body}"
-        assert existing["entity_id"] == seed_garland_entity["entity_id_str"], (
-            f"entity_id mismatch: expected {seed_garland_entity['entity_id_str']}, "
+        assert existing["entity_id"] == seed_radia_entity["entity_id_str"], (
+            f"entity_id mismatch: expected {seed_radia_entity['entity_id_str']}, "
             f"got {existing['entity_id']}"
         )
         assert (
@@ -708,7 +708,7 @@ class TestConflictOnDuplicateCreation:
     _GARLAND_NORMALIZED = "radia perlman"
 
     @pytest.fixture
-    async def seed_garland_for_conflict(
+    async def seed_radia_for_conflict(
         self,
         integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> AsyncGenerator[dict[str, Any], None]:
@@ -770,7 +770,7 @@ class TestConflictOnDuplicateCreation:
     async def test_409_on_duplicate_creation(
         self,
         async_client: AsyncClient,
-        seed_garland_for_conflict: dict[str, Any],
+        seed_radia_for_conflict: dict[str, Any],
     ) -> None:
         """POST /entities returns 409 when entity with same name+type already exists.
 
@@ -796,7 +796,7 @@ class TestConflictOnDuplicateCreation:
     async def test_same_name_different_type_is_allowed(
         self,
         async_client: AsyncClient,
-        seed_garland_for_conflict: dict[str, Any],
+        seed_radia_for_conflict: dict[str, Any],
         integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """POST /entities allows same name when entity_type differs.

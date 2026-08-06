@@ -379,7 +379,9 @@ class TestGetVideoEntities:
             (item for item in data if item["canonical_name"] == "Edsger Dijkstra"),
             None,
         )
-        assert entity_summary is not None, "Expected 'Edsger Dijkstra' in entity summaries"
+        assert (
+            entity_summary is not None
+        ), "Expected 'Edsger Dijkstra' in entity summaries"
         assert entity_summary["entity_id"] == seed_entity_data["entity_id"]
         assert entity_summary["entity_type"] == "person"
         assert (
@@ -1069,19 +1071,23 @@ class TestListEntities:
             item["entity_type"] == "person" for item in person_data
         ), "All items must have entity_type='person' when type filter is applied"
         edsger = next(
-            (item for item in person_data if item["canonical_name"] == "Edsger Dijkstra"),
+            (
+                item
+                for item in person_data
+                if item["canonical_name"] == "Edsger Dijkstra"
+            ),
             None,
         )
         assert edsger is not None, "Expected 'Edsger Dijkstra' in type=person results"
 
         assert response_org.status_code == 200, response_org.text
         org_data = response_org.json()["data"]
-        elon_org = next(
+        edsger_org = next(
             (item for item in org_data if item["canonical_name"] == "Edsger Dijkstra"),
             None,
         )
         assert (
-            elon_org is None
+            edsger_org is None
         ), "Did not expect 'Edsger Dijkstra' in type=organization results"
 
     async def test_list_entities_filter_has_mentions_true(
@@ -1194,19 +1200,31 @@ class TestListEntities:
 
         assert response_lower.status_code == 200, response_lower.text
         lower_data = response_lower.json()["data"]
-        elon_lower = next(
-            (item for item in lower_data if item["canonical_name"] == "Edsger Dijkstra"),
+        edsger_lower = next(
+            (
+                item
+                for item in lower_data
+                if item["canonical_name"] == "Edsger Dijkstra"
+            ),
             None,
         )
-        assert elon_lower is not None, "Expected 'Edsger Dijkstra' when searching 'edsger'"
+        assert (
+            edsger_lower is not None
+        ), "Expected 'Edsger Dijkstra' when searching 'edsger'"
 
         assert response_upper.status_code == 200, response_upper.text
         upper_data = response_upper.json()["data"]
-        elon_upper = next(
-            (item for item in upper_data if item["canonical_name"] == "Edsger Dijkstra"),
+        edsger_upper = next(
+            (
+                item
+                for item in upper_data
+                if item["canonical_name"] == "Edsger Dijkstra"
+            ),
             None,
         )
-        assert elon_upper is not None, "Expected 'Edsger Dijkstra' when searching 'EDSGER'"
+        assert (
+            edsger_upper is not None
+        ), "Expected 'Edsger Dijkstra' when searching 'EDSGER'"
 
     async def test_list_entities_search_no_match_returns_empty(
         self,
@@ -1711,7 +1729,7 @@ async def seed_search_data(
     - One channel (``_SEARCH_CHANNEL_ID``).
     - One video (``_SEARCH_VIDEO_ID``) belonging to that channel.
     - One active NamedEntity ``"Barbara Liskov"`` (type: person) with one
-      alias ``"Joanna"`` (type: name_variant).
+      alias ``"Barbara"`` (type: name_variant).
     - One deprecated NamedEntity ``"Old Entity"`` (type: person).
     - One EntityMention linking "Barbara Liskov" to ``_SEARCH_VIDEO_ID``
       (detection_method='rule_match') so ``is_linked`` tests have data.
@@ -1778,13 +1796,13 @@ async def seed_search_data(
             )
             await session.commit()
 
-            # Add alias "Joanna"
+            # Add alias "Barbara"
             session.add(
                 EntityAliasDB(
                     id=uuid.UUID(bytes=uuid7().bytes),
                     entity_id=active_entity_id,
-                    alias_name="Joanna",
-                    alias_name_normalized="joanna",
+                    alias_name="Barbara",
+                    alias_name_normalized="barbara",
                     alias_type="name_variant",
                     occurrence_count=0,
                 )
@@ -1911,16 +1929,16 @@ class TestSearchEntitiesEndpoint:
         async_client: AsyncClient,
         seed_search_data: dict[str, Any],
     ) -> None:
-        """GET /api/v1/entities/search returns Barbara Liskov for query 'Joan'.
+        """GET /api/v1/entities/search returns Barbara Liskov for query 'Barb'.
 
-        The canonical name "Barbara Liskov" matches a 'Joan' prefix. The
+        The canonical name "Barbara Liskov" matches a 'Barb' prefix. The
         response must include an entity with the correct canonical_name,
         entity_id, entity_type, status, and a null matched_alias field.
         """
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get(
-                _search_entities_url(), params={"q": "Joan"}
+                _search_entities_url(), params={"q": "Barb"}
             )
 
         assert response.status_code == 200, response.text
@@ -1939,7 +1957,7 @@ class TestSearchEntitiesEndpoint:
             None,
         )
         assert entity is not None, (
-            f"Expected 'Barbara Liskov' in search results for query 'Joan'. "
+            f"Expected 'Barbara Liskov' in search results for query 'Barb'. "
             f"Response: {body}"
         )
         assert entity["entity_id"] == seed_search_data["active_entity_id"]
@@ -1954,15 +1972,15 @@ class TestSearchEntitiesEndpoint:
     ) -> None:
         """GET /api/v1/entities/search returns matched_alias when hit via alias.
 
-        The query "Joanna" matches the alias "Joanna" (not the canonical name
-        "Barbara Liskov"). The result must include matched_alias="Joanna".
+        The query "Barbara" matches the alias "Barbara" (not the canonical name
+        "Barbara Liskov"). The result must include matched_alias="Barbara".
         If the canonical name also matches then matched_alias may be None
         (canonical preference), but the entity must be present.
         """
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get(
-                _search_entities_url(), params={"q": "Joanna"}
+                _search_entities_url(), params={"q": "Barbara"}
             )
 
         assert response.status_code == 200, response.text
@@ -1977,9 +1995,9 @@ class TestSearchEntitiesEndpoint:
         assert (
             entity is not None
         ), f"Expected 'Barbara Liskov' in alias-match results. Body: {body}"
-        # matched_alias should be "Joanna" when query matches via alias
-        # (canonical "Barbara Liskov" also starts with "Joanna", so either
-        # None or "Joanna" is acceptable — entity must be present)
+        # matched_alias should be "Barbara" when query matches via alias
+        # (canonical "Barbara Liskov" also starts with "Barbara", so either
+        # None or "Barbara" is acceptable — entity must be present)
         assert entity.get("entity_id") == seed_search_data["active_entity_id"]
 
     async def test_search_is_linked_with_video_id(
@@ -1999,7 +2017,7 @@ class TestSearchEntitiesEndpoint:
             mock_oauth.is_authenticated.return_value = True
             response = await async_client.get(
                 _search_entities_url(),
-                params={"q": "Joan", "video_id": video_id},
+                params={"q": "Barb", "video_id": video_id},
             )
 
         assert response.status_code == 200, response.text
@@ -2011,9 +2029,7 @@ class TestSearchEntitiesEndpoint:
             (item for item in items if item.get("canonical_name") == "Barbara Liskov"),
             None,
         )
-        assert (
-            entity is not None
-        ), f"Expected 'Barbara Liskov' in results. Body: {body}"
+        assert entity is not None, f"Expected 'Barbara Liskov' in results. Body: {body}"
         assert entity.get("is_linked") is True, (
             f"Expected is_linked=True for entity already linked to video. "
             f"Got: {entity}"
@@ -2093,7 +2109,7 @@ class TestSearchEntitiesEndpoint:
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = False
             response = await async_client.get(
-                _search_entities_url(), params={"q": "Joan"}
+                _search_entities_url(), params={"q": "Barb"}
             )
 
         assert response.status_code in (401, 403), (
@@ -3036,7 +3052,7 @@ class TestPerformanceAssertions:
         """GET /api/v1/entities/search must complete within 300 ms (NFR-001).
 
         Uses the ``seed_search_data`` fixture which seeds "Barbara Liskov"
-        so the search query 'Joan' always returns at least one result,
+        so the search query 'Barb' always returns at least one result,
         exercising the full DB lookup path.
         """
         budget_ms: float = 300.0
@@ -3046,7 +3062,7 @@ class TestPerformanceAssertions:
 
             t_start = time.perf_counter()
             response = await async_client.get(
-                _search_entities_url(), params={"q": "Joan"}
+                _search_entities_url(), params={"q": "Barb"}
             )
             elapsed_ms = (time.perf_counter() - t_start) * 1_000
 

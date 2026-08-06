@@ -332,7 +332,7 @@ describe("CreateEntityModal", () => {
       mockTagResults([
         makeTag({
           canonical_form: "Barbara Jordan-Reed",
-          normalized_form: "alexandria_ocasio_cortez",
+          normalized_form: "barbara_ocasio_cortez",
         }),
       ]);
     });
@@ -368,7 +368,7 @@ describe("CreateEntityModal", () => {
       fireEvent.click(screen.getByRole("option", { name: /barbara jordan-reed/i }));
 
       // Edit the name — triggers FR-004 mode transition
-      fireEvent.change(getNameInput(), { target: { value: "alexandria modified" } });
+      fireEvent.change(getNameInput(), { target: { value: "barbara modified" } });
 
       expect(screen.queryByText("Creating from tag")).not.toBeInTheDocument();
       // Text appears in both the visible <p> and the sr-only aria-live region.
@@ -1187,7 +1187,7 @@ describe("CreateEntityModal", () => {
       fireEvent.click(addButton);
 
       const aliasInput = screen.getByLabelText("Alias 1");
-      fireEvent.change(aliasInput, { target: { value: "Ed Snowden" } });
+      fireEvent.change(aliasInput, { target: { value: "Ed Turing" } });
 
       const removeButton = screen.getByRole("button", { name: "Remove alias 1" });
       fireEvent.click(removeButton);
@@ -1285,11 +1285,11 @@ describe("CreateEntityModal", () => {
       const addButton = screen.getByRole("button", { name: /\+ add alias/i });
       fireEvent.click(addButton);
       fireEvent.change(screen.getByLabelText("Alias 1"), {
-        target: { value: "Ed Snowden" },
+        target: { value: "Ed Turing" },
       });
       fireEvent.click(addButton);
       fireEvent.change(screen.getByLabelText("Alias 2"), {
-        target: { value: "Snowden" },
+        target: { value: "Turing" },
       });
 
       fireEvent.click(screen.getByRole("button", { name: /create entity/i }));
@@ -1298,7 +1298,7 @@ describe("CreateEntityModal", () => {
         expect.objectContaining({
           name: "alan turing",
           entity_type: "person",
-          aliases: ["Ed Snowden", "Snowden"],
+          aliases: ["Ed Turing", "Turing"],
         }),
         expect.any(Object)
       );

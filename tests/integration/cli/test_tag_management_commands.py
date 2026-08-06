@@ -619,9 +619,7 @@ class TestRenameCommand:
             mock_service.rename.return_value = mock_result
             mock_factory.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["tags", "rename", "peru", "--to", "Peru City"]
-            )
+            result = runner.invoke(app, ["tags", "rename", "peru", "--to", "Peru City"])
 
         assert result.exit_code == 0, f"Output: {result.output}"
 
@@ -649,9 +647,7 @@ class TestRenameCommand:
             mock_service.rename.return_value = mock_result
             mock_factory.return_value = mock_service
 
-            result = runner.invoke(
-                app, ["tags", "rename", "peru", "--to", "Peru City"]
-            )
+            result = runner.invoke(app, ["tags", "rename", "peru", "--to", "Peru City"])
 
         assert "Rename Successful" in result.output
         assert "Peru" in result.output
@@ -2030,7 +2026,7 @@ class TestInputNormalization:
 
         mock_result = RenameResult(
             old_form="#ChasFreeman",
-            new_form="Chas W. Freeman",
+            new_form="Carl W. Backus",
             normalized_form="chasfreeman",
             operation_id=_OP_ID,
         )
@@ -2054,7 +2050,7 @@ class TestInputNormalization:
                     "rename",
                     "#ChasFreeman",
                     "--to",
-                    "Chas W. Freeman",
+                    "Carl W. Backus",
                 ],
             )
 
@@ -2155,7 +2151,7 @@ class TestInputNormalization:
 
             result = runner.invoke(
                 app,
-                ["tags", "merge", "MÉXICO", "--into", "México"],
+                ["tags", "merge", "PERÚ", "--into", "Perú"],
             )
 
         assert result.exit_code == 0, f"Output: {result.output}"

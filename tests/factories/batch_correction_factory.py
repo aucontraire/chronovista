@@ -91,16 +91,16 @@ class BatchListItemTestData:
     ]
 
     VALID_PATTERNS = [
-        "Shanebam",
-        "Chomski",
+        "Jonsun",
+        "Lovelase",
         "teh",
         "recieve",
         "seperate",
     ]
 
     VALID_REPLACEMENTS = [
-        "Sheinbaum",
-        "Chomsky",
+        "Johnson",
+        "Lovelace",
         "the",
         "receive",
         "separate",
@@ -155,8 +155,8 @@ class BatchListItemTestData:
             {
                 "correction_count": 100,
                 "corrected_by_user_id": "user:batch",
-                "pattern": "Shanebam",
-                "replacement": "Sheinbaum",
+                "pattern": "Jonsun",
+                "replacement": "Johnson",
             }
         )
         return data

@@ -445,10 +445,10 @@ class TestSearchResolvesMergedAliases:
 
     Scenario
     --------
-    - "target" canonical tag: ``mrg_test_claudia sheinbaum`` (active)
-    - "source" canonical tag: ``mrg_test_sheinbaum presidenta`` (active → merged)
-    - Source has two aliases: one with raw_form ``mrg_test_sheinbaum presidenta``
-      and one with raw_form ``mrg_test_Sheinbaum Presidenta`` (case variant).
+    - "target" canonical tag: ``mrg_test_katherine johnson`` (active)
+    - "source" canonical tag: ``mrg_test_johnson presidenta`` (active → merged)
+    - Source has two aliases: one with raw_form ``mrg_test_johnson presidenta``
+      and one with raw_form ``mrg_test_Johnson Presidenta`` (case variant).
     - Merge is simulated by:
       1. Reassigning all source aliases to the target (update canonical_tag_id
          and normalized_form on each TagAlias row).
@@ -571,14 +571,14 @@ class TestSearchResolvesMergedAliases:
 
         Creates:
         - ``ct_target``: active canonical tag with normalized_form
-          ``mrg_test_claudia sheinbaum``
+          ``mrg_test_katherine johnson``
         - ``ct_source``: initially active, then merged into target, with
-          normalized_form ``mrg_test_sheinbaum presidenta``
+          normalized_form ``mrg_test_johnson presidenta``
         - Two aliases originally belonging to source:
-          - raw_form ``mrg_test_sheinbaum presidenta``  (lower-case variant)
-          - raw_form ``mrg_test_Sheinbaum Presidenta``  (title-case variant)
+          - raw_form ``mrg_test_johnson presidenta``  (lower-case variant)
+          - raw_form ``mrg_test_Johnson Presidenta``  (title-case variant)
         - One alias originally belonging to target:
-          - raw_form ``mrg_test_Claudia Sheinbaum``
+          - raw_form ``mrg_test_Katherine Johnson``
 
         After merge simulation (alias reassignment + source status update),
         all three aliases point to ``ct_target`` and ``ct_source.status``
@@ -597,17 +597,17 @@ class TestSearchResolvesMergedAliases:
         target_normalized = f"{_MERGE_TAG_PREFIX}katherine johnson"
         ct_target = await self._insert_canonical_tag(
             test_data_session,
-            canonical_form="Mrg_test_Claudia Sheinbaum",
+            canonical_form="Mrg_test_Katherine Johnson",
             normalized_form=target_normalized,
             alias_count=3,  # will own 3 aliases after merge
             video_count=5,
         )
 
         # ---- Create source canonical tag (will be merged) ----
-        source_normalized = f"{_MERGE_TAG_PREFIX}sheinbaum presidenta"
+        source_normalized = f"{_MERGE_TAG_PREFIX}johnson presidenta"
         ct_source = await self._insert_canonical_tag(
             test_data_session,
-            canonical_form="Mrg_test_Sheinbaum Presidenta",
+            canonical_form="Mrg_test_Johnson Presidenta",
             normalized_form=source_normalized,
             alias_count=2,  # owns 2 aliases before merge
             video_count=2,
@@ -624,8 +624,8 @@ class TestSearchResolvesMergedAliases:
         )
 
         # ---- Create aliases for source (these will be reassigned to target) ----
-        source_alias_raw_form = f"{_MERGE_TAG_PREFIX}sheinbaum presidenta"
-        source_alias_raw_form_title = f"{_MERGE_TAG_PREFIX}Sheinbaum Presidenta"
+        source_alias_raw_form = f"{_MERGE_TAG_PREFIX}johnson presidenta"
+        source_alias_raw_form_title = f"{_MERGE_TAG_PREFIX}Johnson Presidenta"
 
         alias_source_lower = await self._insert_alias(
             test_data_session,
@@ -697,13 +697,13 @@ class TestSearchResolvesMergedAliases:
         must traverse ``tag_aliases.raw_form`` and surface the active target tag.
 
         The search query prefix is derived from the raw_form of the first source
-        alias, which starts with ``mrg_test_sheinbaum``.  After the merge that
+        alias, which starts with ``mrg_test_johnson``.  After the merge that
         alias belongs to the active target tag; the source tag is ``merged`` and
         must not appear in results.
         """
         source_alias_raw = merge_scenario["source_alias_raw_form"]
         # Use the first 24 chars of the raw_form as the search prefix.
-        # "mrg_test_sheinbaum presi" is unambiguous and long enough to avoid
+        # "mrg_test_johnson presi" is unambiguous and long enough to avoid
         # matching unrelated tags inserted by other tests.
         q = source_alias_raw[:24]
 
@@ -741,12 +741,12 @@ class TestSearchResolvesMergedAliases:
 
         During the merge, the source aliases have their ``normalized_form``
         column updated to match the target's normalized_form.  The *original*
-        source normalized_form (``mrg_test_sheinbaum presidenta``) now lives
+        source normalized_form (``mrg_test_johnson presidenta``) now lives
         only as the ``normalized_form`` of the source canonical_tag row (which
         is ``merged`` and invisible) — it is no longer on any alias row.
 
         However, the alias ``raw_form`` still starts with the source's original
-        tag text (``mrg_test_sheinbaum presidenta``), so searching by that
+        tag text (``mrg_test_johnson presidenta``), so searching by that
         prefix still resolves to the target via the ``tag_aliases.raw_form``
         ILIKE path.
 
@@ -754,7 +754,7 @@ class TestSearchResolvesMergedAliases:
         does not break the lookup: the raw_form path is sufficient to find
         the target.
         """
-        # The source alias raw_form starts with "mrg_test_sheinbaum presidenta".
+        # The source alias raw_form starts with "mrg_test_johnson presidenta".
         # We query with a 22-char prefix to avoid catching unrelated rows.
         source_alias_raw = merge_scenario["source_alias_raw_form"]
         q = source_alias_raw[:22]
@@ -788,10 +788,10 @@ class TestSearchResolvesMergedAliases:
         behaviour for the target tag.  Querying the target's canonical_form
         prefix must still return the target without regression.
         """
-        # "Mrg_test_Claudia Sheinbaum" — use 21 chars as the prefix to keep
+        # "Mrg_test_Katherine Johnson" — use 21 chars as the prefix to keep
         # the query specific enough while exercising the ILIKE path on
         # canonical_form.
-        q = "Mrg_test_Claudia Shei"
+        q = "Mrg_test_Katherine John"
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -827,7 +827,7 @@ class TestSearchResolvesMergedAliases:
 
         This test verifies the status filter is applied correctly: even when
         searching for a prefix that historically matched the source tag's own
-        canonical_form (``Mrg_test_Sheinbaum Presidenta``), the source must not
+        canonical_form (``Mrg_test_Johnson Presidenta``), the source must not
         appear because its status is now ``"merged"``.
 
         The target may or may not appear depending on whether its aliases match;
@@ -835,7 +835,7 @@ class TestSearchResolvesMergedAliases:
         """
         # Use the source's own canonical_form prefix — before the merge this
         # would have returned the source directly.
-        q = "Mrg_test_Sheinbaum Pre"
+        q = "Mrg_test_Johnson Pre"
 
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -856,7 +856,7 @@ class TestSearchResolvesMergedAliases:
         )
 
         # The target must appear: its two reassigned aliases have raw_form
-        # starting with "mrg_test_Sheinbaum Pre…" which matches the query.
+        # starting with "mrg_test_Johnson Pre…" which matches the query.
         target_norm = merge_scenario["target_normalized_form"]
         assert target_norm in result_norms, (
             f"Expected active target tag '{target_norm}' in results for q='{q}'; "

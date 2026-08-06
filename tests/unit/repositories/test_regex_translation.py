@@ -37,8 +37,8 @@ class TestTranslatePythonRegexToPosix:
 
     def test_start_boundary_only(self) -> None:
         """\\b at the start of a pattern becomes \\y."""
-        result = translate_python_regex_to_posix(r"\bamlo\w*")
-        assert result == r"\yamlo\w*"
+        result = translate_python_regex_to_posix(r"\beml\w*")
+        assert result == r"\yeml\w*"
 
     def test_end_boundary_only(self) -> None:
         """\\b at the end of a pattern becomes \\y."""
@@ -47,8 +47,8 @@ class TestTranslatePythonRegexToPosix:
 
     def test_both_boundaries(self) -> None:
         """\\b on both sides of a word are both converted to \\y."""
-        result = translate_python_regex_to_posix(r"\bamlo\b")
-        assert result == r"\yamlo\y"
+        result = translate_python_regex_to_posix(r"\beml\b")
+        assert result == r"\yeml\y"
 
     def test_non_word_boundary(self) -> None:
         """\\B (non-word boundary) becomes \\Y."""

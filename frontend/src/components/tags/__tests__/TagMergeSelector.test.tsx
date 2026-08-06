@@ -127,7 +127,7 @@ describe("TagMergeSelector", () => {
       const props = renderSelector();
 
       const input = screen.getByLabelText(/search tags to merge/i);
-      await userEvent.type(input, "hannah");
+      await userEvent.type(input, "grace");
 
       await userEvent.click(
         screen.getByRole("button", { name: /set grace hopper as the merge target/i })
@@ -146,7 +146,7 @@ describe("TagMergeSelector", () => {
       const props = renderSelector({ target: hannahFryTag });
 
       const input = screen.getByLabelText(/search tags to merge/i);
-      await userEvent.type(input, "hannah");
+      await userEvent.type(input, "grace");
 
       // The "Add as source" button for the target is disabled — clicking is a no-op,
       // but we assert the disabled state directly (FR-011).

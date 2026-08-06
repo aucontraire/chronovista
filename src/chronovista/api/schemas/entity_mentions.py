@@ -598,6 +598,10 @@ class UpdateEntityRequest(BaseModel):
     )
     entity_type: EntityType | None = Field(
         default=None,
+        # This model is strict, and strict mode will not coerce the JSON string
+        # "place" into the enum — it demands an EntityType instance, which no
+        # HTTP client can send. Same opt-out as CorrectionType uses.
+        strict=False,
         description="New entity type (e.g. correcting a place filed as a person)",
     )
 

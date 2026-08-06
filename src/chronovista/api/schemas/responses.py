@@ -31,6 +31,7 @@ class ErrorCode(str, Enum):
         DATABASE_ERROR: Database operation failed (500)
         EXTERNAL_SERVICE_ERROR: External service unavailable (502)
         SERVICE_UNAVAILABLE: Service temporarily unavailable (503)
+        QUERY_TIMEOUT: Query exceeded its time budget (504)
     """
 
     # 4xx Client Errors
@@ -53,6 +54,7 @@ class ErrorCode(str, Enum):
     DATABASE_ERROR = "DATABASE_ERROR"
     EXTERNAL_SERVICE_ERROR = "EXTERNAL_SERVICE_ERROR"
     SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
+    QUERY_TIMEOUT = "QUERY_TIMEOUT"
 
 
 # RFC 7807 Constants and Utilities
@@ -100,6 +102,7 @@ ERROR_TITLES: dict[ErrorCode, str] = {
     ErrorCode.NO_CHANGE_DETECTED: "No Change Detected",
     ErrorCode.NO_ACTIVE_CORRECTION: "No Active Correction",
     ErrorCode.INVALID_CORRECTION_TYPE: "Invalid Correction Type",
+    ErrorCode.QUERY_TIMEOUT: "Query Timeout",
 }
 """Mapping from ErrorCode to human-readable RFC 7807 title."""
 

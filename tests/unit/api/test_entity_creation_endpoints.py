@@ -1452,7 +1452,7 @@ class TestCheckDuplicateEndpoint:
 
         async for client in _build_client(mock_session):
             with patch(
-                "chronovista.api.routers.entity_mentions._check_rate_limit"
+                "chronovista.api.routers.entity_mentions.check_rate_limit"
             ) as mock_rate_limit:
                 # Simulate 50 req/min limit already exceeded; retry after 30s
                 mock_rate_limit.return_value = (False, 30)
@@ -1483,7 +1483,7 @@ class TestCheckDuplicateEndpoint:
 
         async for client in _build_client(mock_session):
             with patch(
-                "chronovista.api.routers.entity_mentions._check_rate_limit"
+                "chronovista.api.routers.entity_mentions.check_rate_limit"
             ) as mock_rate_limit:
                 mock_rate_limit.return_value = (False, 15)
 

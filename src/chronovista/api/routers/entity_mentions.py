@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -22,6 +21,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import get_db, require_auth
+from chronovista.api.query_protection import (
+    check_rate_limit,
+    get_client_id,
+    run_with_timeout,
+)
 from chronovista.api.schemas.entity_mentions import (
     ClassifyTagRequest,
     CooccurringEntitiesResponse,
@@ -136,78 +140,14 @@ _scan_tasks: set[asyncio.Task[None]] = set()
 # Cap on retained jobs to bound memory; oldest terminal jobs are pruned first.
 _MAX_SCAN_JOBS = 100
 
-# Rate limiting configuration for duplicate check (50 req/min per client)
+# Rate limit for the duplicate check. This endpoint fires on every keystroke
+# with no client-side debounce (useCheckDuplicate is keyed on the name input),
+# which is what earns it a limiter — see chronovista.api.query_protection for
+# the rule and why it is not applied router-wide.
 RATE_LIMIT_DUPLICATE_CHECK = 50
-RATE_LIMIT_WINDOW_SECONDS = 60
 
 # Storage for rate limit tracking
 _duplicate_check_counts: dict[str, list[float]] = defaultdict(list)
-
-
-def _get_client_id(request: Request) -> str:
-    """Get client identifier from request.
-
-    Uses X-Forwarded-For header for proxied requests, falls back to client host.
-
-    Parameters
-    ----------
-    request : Request
-        FastAPI request object.
-
-    Returns
-    -------
-    str
-        Client identifier (IP address or "unknown").
-    """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
-
-
-def _check_rate_limit(
-    client_id: str,
-    request_counts: dict[str, list[float]],
-    rate_limit: int,
-) -> tuple[bool, int]:
-    """Check if client has exceeded rate limit.
-
-    Cleans up old entries and checks if current request should be allowed.
-
-    Parameters
-    ----------
-    client_id : str
-        Client identifier.
-    request_counts : Dict[str, List[float]]
-        Storage for request timestamps per client.
-    rate_limit : int
-        Maximum requests allowed per minute.
-
-    Returns
-    -------
-    Tuple[bool, int]
-        Tuple of (is_allowed, retry_after_seconds).
-        If is_allowed is True, retry_after is 0.
-        If is_allowed is False, retry_after indicates seconds until a slot opens.
-    """
-    now = time.time()
-    window_start = now - RATE_LIMIT_WINDOW_SECONDS
-
-    # Clean old entries (older than window)
-    request_counts[client_id] = [
-        ts for ts in request_counts[client_id] if ts > window_start
-    ]
-
-    # Check if limit exceeded
-    if len(request_counts[client_id]) >= rate_limit:
-        # Find when the oldest request in window will expire
-        oldest = min(request_counts[client_id])
-        retry_after = int(oldest + RATE_LIMIT_WINDOW_SECONDS - now) + 1
-        return False, max(1, retry_after)
-
-    # Add current request timestamp
-    request_counts[client_id].append(now)
-    return True, 0
 
 
 @router.get(
@@ -517,8 +457,8 @@ async def check_duplicate_entity(
         If rate limit is exceeded.
     """
     # Rate limiting
-    client_id = _get_client_id(request)
-    is_allowed, retry_after = _check_rate_limit(
+    client_id = get_client_id(request)
+    is_allowed, retry_after = check_rate_limit(
         client_id, _duplicate_check_counts, RATE_LIMIT_DUPLICATE_CHECK
     )
     if not is_allowed:
@@ -710,11 +650,17 @@ async def get_cooccurring_entities(
     if not entity_exists.scalar_one_or_none():
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
-    partners = await _mention_repo.get_cooccurring_entities(
-        session,
-        entity_id=parsed_entity_id,
-        limit=limit,
-        evidence_scope=min_evidence,
+    # MAX_COOCCURRING_LIMIT bounds the result SIZE, not the query cost: the
+    # scan is over the entity's whole co-occurrence set before the limit
+    # applies. Measured at 923 ms on the most connected entity.
+    partners = await run_with_timeout(
+        _mention_repo.get_cooccurring_entities(
+            session,
+            entity_id=parsed_entity_id,
+            limit=limit,
+            evidence_scope=min_evidence,
+        ),
+        operation="co-occurring entities",
     )
 
     # An entity with no co-occurrences returns an empty list, not an error
@@ -799,13 +745,19 @@ async def get_entity_videos(
         )
 
     # Fetch paginated video list from repository
-    results, total = await _mention_repo.get_entity_video_list(
-        session,
-        entity_id=parsed_entity_id,
-        language_code=language_code,
-        source_filter=source,
-        limit=limit,
-        offset=offset,
+    # Merges mention-derived and tag-derived video sets, then filters by source
+    # in Python after the query — cost scales with the entity's whole video
+    # population, not with the requested page.
+    results, total = await run_with_timeout(
+        _mention_repo.get_entity_video_list(
+            session,
+            entity_id=parsed_entity_id,
+            language_code=language_code,
+            source_filter=source,
+            limit=limit,
+            offset=offset,
+        ),
+        operation="entity video list",
     )
 
     # Map dicts to response models
@@ -1058,10 +1010,13 @@ async def get_phonetic_matches(
 
     # Run phonetic matcher
     matcher = PhoneticMatcher(entity_mention_repo=EntityMentionRepository())
-    matches = await matcher.match_entity(
-        entity_id=entity_id,
-        session=session,
-        threshold=threshold,
+    matches = await run_with_timeout(
+        matcher.match_entity(
+            entity_id=entity_id,
+            session=session,
+            threshold=threshold,
+        ),
+        operation="phonetic matches",
     )
 
     # Video title enrichment

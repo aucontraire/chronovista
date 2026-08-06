@@ -9,8 +9,10 @@ response, and the limiter must expire its window rather than count forever.
 from __future__ import annotations
 
 import asyncio
+import pathlib
+import re
 from collections import defaultdict
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -61,7 +63,7 @@ class TestCheckRateLimit:
         counts["c"] = [1.0, 2.0, 3.0]  # long past
         allowed, retry = check_rate_limit("c", counts, 3)
         assert allowed and retry == 0
-        assert counts["c"] == [pytest.approx(counts["c"][0])], "stale entries retained"
+        assert len(counts["c"]) == 1, "stale entries were not expired"
 
     def test_clients_do_not_share_a_budget(self) -> None:
         counts: dict[str, list[float]] = defaultdict(list)
@@ -106,10 +108,67 @@ class TestRunWithTimeout:
             )
         assert "co-occurring entities" in str(exc_info.value.details["operation"])
 
+    async def test_rolls_back_the_session_it_is_given(self) -> None:
+        """Cancelling mid-query leaves the transaction needing a rollback.
+
+        Without this the next statement on that session raises
+        PendingRollbackError instead of the timeout the caller expects —
+        verified against a real connection, where the pooled connection itself
+        recovers cleanly but the session does not.
+        """
+        session = MagicMock()
+        session.rollback = AsyncMock()
+
+        async def slow() -> None:
+            await asyncio.sleep(10)
+
+        with pytest.raises(QueryTimeoutError):
+            await run_with_timeout(
+                slow(), operation="x", session=session, timeout_seconds=0.01  # type: ignore[arg-type]
+            )
+        session.rollback.assert_awaited_once()
+
+    async def test_does_not_touch_the_session_on_success(self) -> None:
+        session = MagicMock()
+        session.rollback = AsyncMock()
+
+        async def work() -> str:
+            return "ok"
+
+        assert await run_with_timeout(work(), operation="x", session=session) == "ok"
+        session.rollback.assert_not_awaited()
+
     async def test_default_ceiling_is_the_shared_constant(self) -> None:
         """Callers should not each invent their own budget."""
 
         async def work() -> int:
             return QUERY_TIMEOUT_SECONDS
 
-        assert await run_with_timeout(work(), operation="test") == 10
+        assert await run_with_timeout(work(), operation="test") == 8
+
+
+def test_server_ceiling_stays_below_the_client_timeout() -> None:
+    """The server budget must beat the client's, or the 504 never arrives.
+
+    frontend/src/api/config.ts sets API_TIMEOUT = 10000 ms. At an equal value
+    the two race and the client generally wins — its budget covers the whole
+    round trip while this one covers the query alone — so the user sees a
+    generic "server took too long" instead of a 504 naming the query. Raising
+    this above the client's timeout disables it for the browser entirely.
+    """
+    config = (
+        pathlib.Path(__file__).resolve().parents[3]
+        / "frontend"
+        / "src"
+        / "api"
+        / "config.ts"
+    )
+    if not config.is_file():  # pragma: no cover - frontend absent in some checkouts
+        pytest.skip("frontend not present")
+    match = re.search(r"API_TIMEOUT\s*=\s*(\d+)", config.read_text(encoding="utf-8"))
+    assert match, "API_TIMEOUT not found in the client config"
+    client_ms = int(match.group(1))
+    assert client_ms > QUERY_TIMEOUT_SECONDS * 1000, (
+        f"server ceiling {QUERY_TIMEOUT_SECONDS}s is not below the client's "
+        f"{client_ms / 1000}s — the 504 would rarely reach the browser"
+    )

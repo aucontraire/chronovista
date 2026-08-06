@@ -35,6 +35,7 @@ from collections.abc import Coroutine
 from typing import Any, TypeVar
 
 from fastapi import Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.exceptions import QueryTimeoutError
 
@@ -45,10 +46,22 @@ T = TypeVar("T")
 RATE_LIMIT_WINDOW_SECONDS = 60
 """Sliding window, in seconds, over which requests are counted."""
 
-QUERY_TIMEOUT_SECONDS = 10
-"""Ceiling for a single read query. Chosen to sit well above the slowest
-measured query (923 ms on the most connected entity) so it fires only on a
-genuine hang, not on ordinary slowness."""
+QUERY_TIMEOUT_SECONDS = 8
+"""Ceiling for a single read query.
+
+Two constraints set this value. It must sit well above the slowest measured
+query — 923 ms on the most connected entity — so it fires only on a genuine
+hang. And it must sit **below the client's own timeout**, which is
+``API_TIMEOUT = 10000`` ms in ``frontend/src/api/config.ts``.
+
+That second constraint is easy to miss. At an equal 10 s the two race, and the
+client generally wins: its budget covers the whole round trip while this one
+covers the query alone. The user then sees a generic "the server took too long"
+instead of a 504 naming the query that hung — the server-side ceiling would be
+real but effectively invisible. Raising this above the client's timeout would
+disable it entirely for the browser.
+
+If the client timeout changes, this must move with it."""
 
 
 def get_client_id(request: Request) -> str:
@@ -121,6 +134,7 @@ async def run_with_timeout(
     work: Coroutine[Any, Any, T],
     *,
     operation: str,
+    session: AsyncSession | None = None,
     timeout_seconds: int = QUERY_TIMEOUT_SECONDS,
 ) -> T:
     """Run *work* under a ceiling, converting a hang into a 504.
@@ -137,6 +151,14 @@ async def run_with_timeout(
     operation : str
         Human-readable label naming the query, used in the log line and the
         error detail so a timeout report identifies which query hung.
+    session : AsyncSession, optional
+        The session the query runs on. Rolled back when the ceiling fires.
+        Cancelling a query mid-flight leaves the transaction in a failed state,
+        and the next statement on that session raises ``PendingRollbackError``
+        rather than the timeout the caller is expecting. Callers that touch the
+        session again after a timeout — or that sit inside a broader
+        transaction — should pass it. Verified: the pooled connection itself
+        recovers cleanly, so this guards the session, not the pool.
     timeout_seconds : int, optional
         Ceiling in seconds (default :data:`QUERY_TIMEOUT_SECONDS`).
 
@@ -156,6 +178,8 @@ async def run_with_timeout(
         logger.error(
             "Query timeout exceeded (%ds) for operation %s", timeout_seconds, operation
         )
+        if session is not None:
+            await session.rollback()
         raise QueryTimeoutError(
             message=(
                 f"Query timeout exceeded. Maximum query time is "

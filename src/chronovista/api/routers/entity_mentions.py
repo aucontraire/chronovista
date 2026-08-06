@@ -661,6 +661,7 @@ async def get_cooccurring_entities(
             evidence_scope=min_evidence,
         ),
         operation="co-occurring entities",
+        session=session,
     )
 
     # An entity with no co-occurrences returns an empty list, not an error
@@ -758,6 +759,7 @@ async def get_entity_videos(
             offset=offset,
         ),
         operation="entity video list",
+        session=session,
     )
 
     # Map dicts to response models
@@ -1017,6 +1019,7 @@ async def get_phonetic_matches(
             threshold=threshold,
         ),
         operation="phonetic matches",
+        session=session,
     )
 
     # Video title enrichment

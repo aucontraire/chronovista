@@ -1,5 +1,5 @@
 # Makefile for chronovista development (Poetry-based)
-.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit run build docs docs-serve docs-build docs-deploy dev dev-backend dev-frontend generate-api docker-build docker-up docker-down docker-logs docker-shell docker-db-shell docker-status docker-setup docker-clean docker-restart
+.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit pre-push run build docs docs-serve docs-build docs-deploy dev dev-backend dev-frontend generate-api docker-build docker-up docker-down docker-logs docker-shell docker-db-shell docker-status docker-setup docker-clean docker-restart
 
 # Default target
 help:
@@ -34,6 +34,7 @@ help:
 	@echo "  type-check        - Run type checking (mypy)"
 	@echo "  quality           - Run all checks (format-check + lint + type-check)"
 	@echo "  pre-commit        - Run pre-commit hooks on all files"
+	@echo "  pre-push          - Reproduce all four CI jobs locally before pushing"
 	@echo "  quick-check       - Quick format + lint check (src only)"
 	@echo ""
 	@echo "Development:"
@@ -235,6 +236,36 @@ quality: format-check lint type-check
 
 pre-commit:
 	$(POETRY_RUN) pre-commit run --all-files
+
+# Reproduces .github/workflows/test.yml step for step, so that a green run here
+# predicts a green CI run. Drift between the two defeats the whole purpose —
+# when you change one, change the other.
+#
+# Deliberately does NOT reuse `quality` or `test-unit`, despite the overlap:
+#   - `quality` also runs isort, which CI does not, so it can fail on something
+#     CI would pass.
+#   - `test-unit` selects `-m "unit"`, a marker no test in this repo carries. It
+#     collects zero tests and exits 0 — the exact false green this target exists
+#     to prevent.
+pre-push:
+	@echo "==> [1/6] ruff"
+	$(POETRY_RUN) ruff check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
+	@echo "==> [2/6] black --check"
+	$(POETRY_RUN) black --check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
+	@echo "==> [3/6] mypy --strict"
+	$(POETRY_RUN) mypy $(SRC_DIR)/$(PACKAGE_NAME)/ --strict --no-error-summary
+	@echo "==> [4/6] backend unit tests"
+	NO_COLOR=1 $(POETRY_RUN) pytest $(TEST_DIR)/unit/ -x -q -o "addopts=-v --strict-markers --strict-config" -m "not db"
+	@echo "==> [5/6] frontend type check + tests"
+	cd frontend && npm run typecheck && npx vitest run
+	@echo "==> [6/6] backend integration tests"
+	@docker exec chronovista-postgres-dev pg_isready -U dev_user -q 2>/dev/null || \
+		(echo "❌ Integration database unreachable. Start it with 'make dev-db-up'." && \
+		 echo "   Not skipping: CI runs this job, so passing without it would be a false green." && \
+		 exit 1)
+	NO_COLOR=1 $(POETRY_RUN) pytest $(TEST_DIR)/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow and not auth and not db"
+	@echo ""
+	@echo "✅ pre-push passed — all four CI jobs reproduced locally"
 
 # Development targets
 run:

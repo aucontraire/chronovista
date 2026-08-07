@@ -227,7 +227,7 @@ class CanonicalTagRepository(
         session: AsyncSession,
         normalized_form: str,
         *,
-        status: str = "active",
+        status: str | None = "active",
     ) -> CanonicalTagDB | None:
         """
         Look up a single canonical tag by its unique normalized form.
@@ -246,12 +246,12 @@ class CanonicalTagRepository(
         CanonicalTagDB | None
             The matching canonical tag, or ``None`` if not found.
         """
-        result = await session.execute(
-            select(CanonicalTagDB).where(
-                CanonicalTagDB.normalized_form == normalized_form,
-                CanonicalTagDB.status == status,
-            )
+        query = select(CanonicalTagDB).where(
+            CanonicalTagDB.normalized_form == normalized_form
         )
+        if status is not None:
+            query = query.where(CanonicalTagDB.status == status)
+        result = await session.execute(query)
         return result.scalar_one_or_none()
 
     async def get_top_aliases(

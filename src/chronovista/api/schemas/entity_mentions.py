@@ -611,6 +611,67 @@ class ClassifyTagRequest(BaseModel):
         return self
 
 
+class AddEntityTagRequest(BaseModel):
+    """Request body for attaching a canonical tag to an entity (Feature 064).
+
+    Carries only the tag. The server chooses between linking and merging from
+    the entity's current state (FR-001/FR-002) — the client never decides, so
+    that the rule "the entity's tag always wins" (FR-003) cannot be overridden
+    from a browser.
+
+    Deliberately has no ``entity_type``: it is inferred from the entity, and a
+    value disagreeing with the target is a conflict rather than an instruction.
+    No ``description`` or ``display_name`` either — those describe an entity
+    being created, and neither is inert on this path (FR-004).
+
+    Attributes
+    ----------
+    normalized_form : str
+        Normalized form of the canonical tag to attach.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    normalized_form: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Normalized form of the canonical tag to attach",
+    )
+
+
+class AddEntityTagResult(BaseModel):
+    """Outcome of attaching a tag, including which operation was chosen.
+
+    Attributes
+    ----------
+    operation : Literal["link", "merge"]
+        Which path the server took. Reported so the interface can word its
+        confirmation truthfully rather than guessing.
+    operation_id : str
+        Operation log id, usable to reverse this.
+    target_normalized_form : str
+        The tag that now represents the entity. For a merge this is the
+        pre-existing tag, not the one just supplied.
+    entity_video_count : int
+        The entity's video count after the operation, so the caller can show
+        the consequence without a second request.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    operation: Literal["link", "merge"]
+    operation_id: str
+    target_normalized_form: str
+    entity_video_count: int
+
+
+class AddEntityTagResponse(BaseModel):
+    """Envelope for :class:`AddEntityTagResult`."""
+
+    data: AddEntityTagResult
+
+
 class UpdateEntityRequest(BaseModel):
     """Request body for editing an entity's name and/or description.
 

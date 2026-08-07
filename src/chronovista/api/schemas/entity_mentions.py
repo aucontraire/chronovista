@@ -792,6 +792,10 @@ class AddEntityTagResult(BaseModel):
     target_normalized_form : str
         The tag that now represents the entity. For a merge this is the
         pre-existing tag, not the one just supplied.
+    target_canonical_form : str
+        Its display form. Supplied because the normalized form is lower-cased
+        and a message built from it reads as a different tag than the one shown
+        immediately above it on the page.
     entity_video_count : int
         The entity's video count after the operation, so the caller can show
         the consequence without a second request.
@@ -802,6 +806,7 @@ class AddEntityTagResult(BaseModel):
     operation: Literal["link", "merge"]
     operation_id: str
     target_normalized_form: str
+    target_canonical_form: str
     entity_video_count: int
 
 

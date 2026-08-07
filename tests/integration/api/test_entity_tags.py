@@ -1090,11 +1090,20 @@ class TestUnMerge:
             json={},
         )
         assert r.status_code == 409, r.text
-        detail = r.json()["detail"]
+        body = r.json()
+        detail = body["detail"]
         assert "1 other tag" in detail
         # The name, not just the number — whether this is acceptable depends on
         # which tag comes back.
         assert TAG_THIRD.title() in detail or TAG_THIRD in detail
+        # The sentence says "N *other* tags", so the tag being un-merged must
+        # not appear among the names that follow: the list would otherwise
+        # contradict its own count. Asserted on `detail` because the error's
+        # `details` dict is not serialized into the problem-details body.
+        named = detail.split("one operation:")[1]
+        assert (
+            TAG_OTHER not in named and TAG_OTHER.title() not in named
+        ), "the tag being un-merged is listed among the 'other' tags"
 
         confirmed = await async_client.post(
             f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}/un-merge",

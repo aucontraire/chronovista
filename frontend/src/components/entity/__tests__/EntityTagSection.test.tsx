@@ -147,6 +147,7 @@ describe("EntityTagSection", () => {
       operation: "merge",
       operation_id: "op-1",
       target_normalized_form: "harbour board",
+      target_canonical_form: "Harbour Board",
       entity_video_count: 4,
     });
 
@@ -170,6 +171,7 @@ describe("EntityTagSection", () => {
       operation: "merge",
       operation_id: "op-1",
       target_normalized_form: "harbour board",
+      target_canonical_form: "Harbour Board",
       entity_video_count: 4,
     });
 
@@ -179,7 +181,9 @@ describe("EntityTagSection", () => {
 
     // "Linked" would misdescribe what happened: the chosen tag was folded into
     // the entity's existing one and no longer exists separately.
-    expect(await section().findByText(/Merged "Harbour Brd" into/)).toBeInTheDocument();
+    expect(
+      await section().findByText(/Merged "Harbour Brd" into "Harbour Board"/)
+    ).toBeInTheDocument();
     expect(section().queryByText(/^Linked/)).not.toBeInTheDocument();
   });
 
@@ -189,6 +193,7 @@ describe("EntityTagSection", () => {
       operation: "link",
       operation_id: "op-1",
       target_normalized_form: "harbour brd",
+      target_canonical_form: "Harbour Brd",
       entity_video_count: 3,
     });
 
@@ -454,6 +459,7 @@ describe("EntityTagSection", () => {
       operation: "merge",
       operation_id: "op-1",
       target_normalized_form: "harbour board",
+      target_canonical_form: "Harbour Board",
       entity_video_count: 4,
     });
     renderSection();

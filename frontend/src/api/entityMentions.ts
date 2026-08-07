@@ -698,6 +698,12 @@ export interface AddEntityTagResult {
    * pre-existing tag, not the one just supplied — the entity's tag always wins.
    */
   target_normalized_form: string;
+  /**
+   * The target's display form. The normalized form is lower-cased, and a
+   * message built from it reads as a different tag than the one shown
+   * immediately above it on the page.
+   */
+  target_canonical_form: string;
   /** The entity's video count after the operation. */
   entity_video_count: number;
 }

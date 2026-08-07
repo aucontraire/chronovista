@@ -2346,6 +2346,7 @@ async def add_entity_tag(
 
     operation: str
     target_form: str
+    target_display: str
 
     if not linked:
         # FR-001: nothing to merge into, so this tag becomes the entity's.
@@ -2358,6 +2359,7 @@ async def add_entity_tag(
         )
         operation = "link"
         target_form = body.normalized_form
+        target_display = tag.canonical_form
         operation_id = result.operation_id
     else:
         # FR-002/FR-003: the entity's tag is always the target.
@@ -2371,6 +2373,7 @@ async def add_entity_tag(
         )
         operation = "merge"
         target_form = target.normalized_form
+        target_display = target.canonical_form
         operation_id = merge_result.operation_id
 
     await session.commit()
@@ -2383,6 +2386,7 @@ async def add_entity_tag(
             operation=operation,  # type: ignore[arg-type]
             operation_id=str(operation_id),
             target_normalized_form=target_form,
+            target_canonical_form=target_display,
             entity_video_count=entity_video_count,
         )
     )
@@ -2550,7 +2554,13 @@ async def un_merge_entity_tag(
 
     if source_count > 1 and not body.confirm_multi_source:
         siblings = await _canonical_tag_repo.get_merged_into(session, linked[0].id)
-        names = sorted(t.canonical_form for t, op, _ in siblings if op == operation_id)
+        # Exclude the tag being un-merged: the sentence says "N *other* tags",
+        # so listing it among them contradicts its own count.
+        names = sorted(
+            t.canonical_form
+            for t, op, _ in siblings
+            if op == operation_id and t.id != tag.id
+        )
         raise ConflictError(
             message=(
                 f"Un-merging '{tag.canonical_form}' also restores "
@@ -2642,9 +2652,11 @@ async def unlink_entity_tag(
                 f"{len(merged)} tag{'' if len(merged) == 1 else 's'} "
                 f"{'is' if len(merged) == 1 else 'are'} merged into "
                 f"'{target.canonical_form}'. Un-merge "
-                f"{'it' if len(merged) == 1 else 'them'} first — their raw "
-                f"forms live on this tag, so unlinking would take their videos "
-                f"from this entity too."
+                f"{'it' if len(merged) == 1 else 'them'} first — "
+                f"{'its' if len(merged) == 1 else 'their'} raw forms live on "
+                f"this tag, so unlinking would take "
+                f"{'its' if len(merged) == 1 else 'their'} videos from this "
+                f"entity too."
             ),
             details={
                 "merged_normalized_forms": [t.normalized_form for t, _, _ in merged]

@@ -57,6 +57,7 @@ export function EntityTagSection({
   // repeats the tags it named rather than a bare "are you sure?".
   const [pendingUnMerge, setPendingUnMerge] = useState<{
     normalizedForm: string;
+    displayForm: string;
     detail: string;
   } | null>(null);
 
@@ -142,7 +143,11 @@ export function EntityTagSection({
     return detail ?? fallback;
   }
 
-  async function handleUnMerge(normalizedForm: string, confirmed = false) {
+  async function handleUnMerge(
+    normalizedForm: string,
+    confirmed = false,
+    displayForm = normalizedForm
+  ) {
     setSuccessMsg(null);
     setErrorMsg(null);
     try {
@@ -151,7 +156,7 @@ export function EntityTagSection({
         confirmMultiSource: confirmed,
       });
       setPendingUnMerge(null);
-      setSuccessMsg(`Un-merged "${normalizedForm}". It is searchable again.`);
+      setSuccessMsg(`Un-merged "${displayForm}". It is searchable again.`);
     } catch (err: unknown) {
       const status = (err as { status?: number } | null)?.status;
       const detail = describeFailure(err, "Could not un-merge that tag.");
@@ -159,7 +164,7 @@ export function EntityTagSection({
       // operation folded several at once and the curator has now been told
       // which ones return.
       if (status === 409 && detail.includes("also restores")) {
-        setPendingUnMerge({ normalizedForm, detail });
+        setPendingUnMerge({ normalizedForm, displayForm, detail });
       } else {
         setPendingUnMerge(null);
         setErrorMsg(detail);
@@ -167,13 +172,13 @@ export function EntityTagSection({
     }
   }
 
-  async function handleUnlink(normalizedForm: string) {
+  async function handleUnlink(normalizedForm: string, displayForm = normalizedForm) {
     setSuccessMsg(null);
     setErrorMsg(null);
     try {
       await unlink.mutateAsync(normalizedForm);
       setSuccessMsg(
-        `Unlinked "${normalizedForm}". It no longer represents ${entityName}.`
+        `Unlinked "${displayForm}". It no longer represents ${entityName}.`
       );
     } catch (err: unknown) {
       setErrorMsg(describeFailure(err, "Could not unlink that tag."));
@@ -193,7 +198,7 @@ export function EntityTagSection({
       // would suggest.
       const verb =
         result.operation === "merge"
-          ? `Merged "${selected.canonical_form}" into "${result.target_normalized_form}"`
+          ? `Merged "${selected.canonical_form}" into "${result.target_canonical_form}"`
           : `Linked "${selected.canonical_form}"`;
       setSuccessMsg(
         `${verb} — ${n} ${n === 1 ? "video" : "videos"} now count toward ${entityName}.`
@@ -278,7 +283,7 @@ export function EntityTagSection({
                       )}
                       <button
                         type="button"
-                        onClick={() => void handleUnlink(linked.normalized_form)}
+                        onClick={() => void handleUnlink(linked.normalized_form, linked.canonical_form)}
                         disabled={unlink.isPending}
                         className="text-xs text-slate-500 hover:text-red-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
                       >
@@ -312,7 +317,7 @@ export function EntityTagSection({
                               <button
                                 type="button"
                                 onClick={() =>
-                                  void handleUnMerge(m.normalized_form)
+                                  void handleUnMerge(m.normalized_form, false, m.canonical_form)
                                 }
                                 disabled={unMerge.isPending}
                                 className="text-blue-700 hover:text-blue-900 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
@@ -473,7 +478,11 @@ export function EntityTagSection({
               <button
                 type="button"
                 onClick={() =>
-                  void handleUnMerge(pendingUnMerge.normalizedForm, true)
+                  void handleUnMerge(
+                    pendingUnMerge.normalizedForm,
+                    true,
+                    pendingUnMerge.displayForm
+                  )
                 }
                 disabled={unMerge.isPending}
                 className="px-3 py-1 text-sm font-medium text-white bg-amber-700 rounded-lg hover:bg-amber-800 disabled:opacity-50"

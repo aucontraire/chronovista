@@ -22,7 +22,8 @@
 import { useId, useRef, useState } from "react";
 
 import { useCanonicalTags } from "../../hooks/useCanonicalTags";
-import { useAddEntityTag } from "../../hooks/useEntityTags";
+import { useAddEntityTag, useEntityTags } from "../../hooks/useEntityTags";
+import type { LinkedTagSummary } from "../../api/entityMentions";
 import type { CanonicalTagListItem } from "../../types/canonical-tags";
 
 /** Minimum characters before a contains-mode search runs. */
@@ -53,6 +54,17 @@ export function EntityTagSection({
   const listboxId = useId();
 
   const addTag = useAddEntityTag(entityId);
+  const { data: tagData, isLoading: isLoadingTags } = useEntityTags(entityId);
+
+  // Read the list defensively. This section sits inside a much larger page, and
+  // a shape it did not expect must degrade to "show no tags" rather than throw
+  // — a render error here would blank the entity page entirely, including the
+  // aliases and videos that have nothing to do with tags.
+  const linkedTags: LinkedTagSummary[] = Array.isArray(tagData?.linked_tags)
+    ? tagData.linked_tags
+    : [];
+  const needsAttention = tagData?.needs_attention === true;
+  const hasTagData = !isLoadingTags && Array.isArray(tagData?.linked_tags);
 
   // Contains mode finds a tag whose form differs from the entity's name by a
   // prefix, which prefix mode would miss.
@@ -152,6 +164,76 @@ export function EntityTagSection({
         Tags
       </h2>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        {/*
+          The current state comes first. Without it the section is write-only,
+          and "does this entity already have a tag?" is the question that
+          precedes every action below.
+        */}
+        {hasTagData && (
+          <div className="mb-4">
+            {needsAttention && (
+              <p
+                className="mb-3 px-3 py-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg"
+                role="alert"
+              >
+                This entity has {linkedTags.length} tags representing
+                it. Only one should. Attaching another is blocked until that is
+                resolved, because there is no single tag to merge into.
+              </p>
+            )}
+
+            {linkedTags.length === 0 ? (
+              <p className="text-sm text-slate-500 italic">
+                No tag is linked to this entity — videos tagged with its name are
+                not counted toward it.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {linkedTags.map((linked: LinkedTagSummary) => (
+                  <li key={linked.normalized_form} className="py-2 first:pt-0">
+                    <div className="flex flex-wrap items-baseline gap-2">
+                      <span className="text-sm font-medium text-slate-900">
+                        {linked.canonical_form}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {linked.video_count} video
+                        {linked.video_count === 1 ? "" : "s"} ·{" "}
+                        {linked.alias_count} variation
+                        {linked.alias_count === 1 ? "" : "s"}
+                      </span>
+                    </div>
+
+                    {linked.merged_tags.length > 0 && (
+                      <ul className="mt-1 ml-4 space-y-0.5">
+                        {linked.merged_tags.map((m) => (
+                          <li
+                            key={m.normalized_form}
+                            className="text-xs text-slate-500"
+                          >
+                            <span className="text-slate-400">↳</span>{" "}
+                            {m.canonical_form}{" "}
+                            {/*
+                              "brought", not "has": a merged tag owns no videos
+                              now, and this is what it contributed at merge
+                              time. Saying "has" would read as a live count and
+                              invite adding it to the parent's, which double
+                              counts any overlap.
+                            */}
+                            <span className="text-slate-400">
+                              (brought {m.contributed_video_count} video
+                              {m.contributed_video_count === 1 ? "" : "s"})
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         <p className="text-sm text-slate-600 mb-3">
           Attach a canonical tag so its videos count toward this entity. If a tag
           already represents it, the one you choose is merged into that tag.

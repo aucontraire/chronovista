@@ -8,10 +8,26 @@
  * it are both stale the moment it succeeds.
  */
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { addEntityTag } from "../api/entityMentions";
-import type { AddEntityTagResult } from "../api/entityMentions";
+import { addEntityTag, fetchEntityTags } from "../api/entityMentions";
+import type { AddEntityTagResult, EntityTagsResult } from "../api/entityMentions";
+
+/**
+ * The tags representing an entity.
+ *
+ * Without this the section is write-only: a curator cannot tell whether an
+ * entity already has a tag, which is the question that precedes every other
+ * action here.
+ *
+ * @param entityId - The entity to inspect
+ */
+export function useEntityTags(entityId: string) {
+  return useQuery<EntityTagsResult>({
+    queryKey: ["entity-tags", entityId],
+    queryFn: () => fetchEntityTags(entityId),
+  });
+}
 
 /**
  * Attach a canonical tag to an entity.
@@ -40,6 +56,9 @@ export function useAddEntityTag(entityId: string) {
       // merge, by entity_id for a link — so cached search results now offer a
       // tag the next request would reject.
       void queryClient.invalidateQueries({ queryKey: ["canonical-tags"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["entity-tags", entityId],
+      });
     },
   });
 }

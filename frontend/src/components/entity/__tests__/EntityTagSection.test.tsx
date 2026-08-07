@@ -17,6 +17,12 @@ vi.mock("../../../hooks/useCanonicalTags", () => ({
   useCanonicalTags: vi.fn(),
 }));
 
+vi.mock("../../../hooks/useEntityTags", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../hooks/useEntityTags")>();
+  return { ...actual, useEntityTags: vi.fn() };
+});
+
 vi.mock("../../../api/entityMentions", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../api/entityMentions")>();
@@ -25,6 +31,7 @@ vi.mock("../../../api/entityMentions", async (importOriginal) => {
 
 import { EntityTagSection } from "../EntityTagSection";
 import { useCanonicalTags } from "../../../hooks/useCanonicalTags";
+import { useEntityTags } from "../../../hooks/useEntityTags";
 import { addEntityTag } from "../../../api/entityMentions";
 
 const ENTITY_ID = "entity-uuid-064";
@@ -68,9 +75,26 @@ async function pickMatch(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await section().findByRole("option", { name: /Harbour Brd/ }));
 }
 
+/** Shape a useEntityTags result without repeating the query fields. */
+function tagsResult(linked: unknown[], needsAttention = false) {
+  return {
+    data: { linked_tags: linked, needs_attention: needsAttention },
+    isLoading: false,
+  } as unknown as ReturnType<typeof useEntityTags>;
+}
+
+const LINKED_TAG = {
+  canonical_form: "Harbour Board",
+  normalized_form: "harbour board",
+  video_count: 12,
+  alias_count: 4,
+  merged_tags: [],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(useCanonicalTags).mockReturnValue(EMPTY);
+  vi.mocked(useEntityTags).mockReturnValue(tagsResult([]));
 });
 
 describe("EntityTagSection", () => {
@@ -238,6 +262,66 @@ describe("EntityTagSection", () => {
     expect(
       section().getByRole("button", { name: /^Attach "Harbour Brd"/ })
     ).toBeInTheDocument();
+  });
+
+  it("shows the tag that represents the entity", () => {
+    vi.mocked(useEntityTags).mockReturnValue(tagsResult([LINKED_TAG]));
+    renderSection();
+
+    expect(section().getByText("Harbour Board")).toBeInTheDocument();
+    expect(section().getByText(/12 videos · 4 variations/)).toBeInTheDocument();
+  });
+
+  it("states plainly when no tag is linked", () => {
+    vi.mocked(useEntityTags).mockReturnValue(tagsResult([]));
+    renderSection();
+
+    // The empty state is the signal that the entity is under-counted, so it
+    // has to say so rather than render nothing.
+    expect(
+      section().getByText(/No tag is linked to this entity/)
+    ).toBeInTheDocument();
+  });
+
+  it("lists what the tag absorbed, as a contribution not a live count", () => {
+    vi.mocked(useEntityTags).mockReturnValue(
+      tagsResult([
+        {
+          ...LINKED_TAG,
+          merged_tags: [
+            {
+              canonical_form: "Harbour Brd",
+              normalized_form: "harbour brd",
+              contributed_video_count: 3,
+              operation_id: "op-1",
+              operation_source_count: 1,
+            },
+          ],
+        },
+      ])
+    );
+    renderSection();
+
+    expect(section().getByText(/Harbour Brd/)).toBeInTheDocument();
+    // "brought" not "has": a merged tag owns no videos now, and wording it as
+    // a live count invites adding it to the parent's, double counting overlap.
+    expect(section().getByText(/brought 3 videos/)).toBeInTheDocument();
+  });
+
+  it("flags an entity carrying more than one linked tag", () => {
+    vi.mocked(useEntityTags).mockReturnValue(
+      tagsResult(
+        [LINKED_TAG, { ...LINKED_TAG, normalized_form: "harbour b", canonical_form: "Harbour B" }],
+        true
+      )
+    );
+    renderSection();
+
+    // FR-011a: render the legacy state as needing repair, without inventing a
+    // primary among them.
+    expect(section().getByRole("alert")).toHaveTextContent(
+      /2 tags representing it/
+    );
   });
 
   it("offers no attach button until a tag is chosen", async () => {

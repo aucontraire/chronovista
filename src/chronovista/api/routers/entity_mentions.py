@@ -38,12 +38,16 @@ from chronovista.api.schemas.entity_mentions import (
     DuplicateCheckResponse,
     EntityAliasSummary,
     EntitySearchResult,
+    EntityTagsResponse,
+    EntityTagsResult,
     EntityVideoResponse,
     EntityVideoResult,
     ExclusionPatternRequest,
     ExistingEntityInfo,
+    LinkedTagSummary,
     ManualAssociationResponse,
     MentionPreview,
+    MergedTagSummary,
     PhoneticMatchResponse,
     ScanJobData,
     ScanJobResponse,
@@ -2375,5 +2379,81 @@ async def add_entity_tag(
             operation_id=str(operation_id),
             target_normalized_form=target_form,
             entity_video_count=entity_video_count,
+        )
+    )
+
+
+@router.get(
+    "/entities/{entity_id}/tags",
+    summary="Tags representing an entity, and what they have absorbed",
+    response_model=EntityTagsResponse,
+)
+async def get_entity_tags(
+    entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
+    session: AsyncSession = Depends(get_db),
+) -> EntityTagsResponse:
+    """Return the entity's linked tag(s), each with the tags merged into it.
+
+    Without this the tag section is write-only: a curator cannot tell whether
+    an entity already has a tag, which is the question that precedes every
+    other action here (Feature 064, US3).
+
+    An empty ``linked_tags`` is a meaningful answer, not an error — it is the
+    signal that the entity's video count omits every tag-associated video
+    (FR-011). More than one sets ``needs_attention``: legacy data reached that
+    state, the browser can no longer create it, and the page renders it rather
+    than raising (FR-011a).
+
+    Parameters
+    ----------
+    entity_id : uuid.UUID
+        The entity to inspect.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    EntityTagsResponse
+        Linked tags with their absorbed tags, and whether attention is needed.
+
+    Raises
+    ------
+    NotFoundError
+        The entity does not exist (404).
+    """
+    entity = await session.get(NamedEntityDB, entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
+
+    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+
+    summaries: list[LinkedTagSummary] = []
+    for tag in linked:
+        merged = await _canonical_tag_repo.get_merged_into(session, tag.id)
+        summaries.append(
+            LinkedTagSummary(
+                canonical_form=tag.canonical_form,
+                normalized_form=tag.normalized_form,
+                video_count=tag.video_count,
+                alias_count=tag.alias_count,
+                merged_tags=[
+                    MergedTagSummary(
+                        canonical_form=m.canonical_form,
+                        normalized_form=m.normalized_form,
+                        # Frozen at merge time. Not additive with the parent's
+                        # count, since the video sets may overlap (FR-014).
+                        contributed_video_count=m.video_count,
+                        operation_id=str(op_id) if op_id is not None else None,
+                        operation_source_count=source_count,
+                    )
+                    for m, op_id, source_count in merged
+                ],
+            )
+        )
+
+    return EntityTagsResponse(
+        data=EntityTagsResult(
+            linked_tags=summaries,
+            needs_attention=len(summaries) > 1,
         )
     )

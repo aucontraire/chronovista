@@ -17,6 +17,7 @@ from sqlalchemy.sql import Select
 
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.db.models import TagAlias as TagAliasDB
+from chronovista.db.models import TagOperationLog as TagOperationLogDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTag
 from chronovista.models.canonical_tag import CanonicalTagCreate, CanonicalTagUpdate
@@ -221,6 +222,74 @@ class CanonicalTagRepository(
             .order_by(desc(CanonicalTagDB.video_count))
         )
         return list(result.scalars().all())
+
+    async def get_merged_into(
+        self,
+        session: AsyncSession,
+        target_id: uuid.UUID,
+    ) -> list[tuple[CanonicalTagDB, uuid.UUID | None, int]]:
+        """
+        Return the canonical tags merged into *target_id*, with their operation.
+
+        Only tags a curator merged. Raw-form variants produced by automatic
+        normalization are not included: those came from a data process rather
+        than a decision, and are not separately reversible (Feature 064,
+        FR-013).
+
+        The operation is found by containment against
+        ``tag_operation_logs.source_canonical_ids``, a top-level JSONB array of
+        the ids a merge absorbed. Operations already reversed are skipped, and
+        the most recent match wins — a tag can be merged, un-merged and merged
+        again, and only the live merge is reversible.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        target_id : uuid.UUID
+            The surviving canonical tag.
+
+        Returns
+        -------
+        list[tuple[CanonicalTagDB, uuid.UUID | None, int]]
+            ``(merged_tag, operation_id, source_count)`` per absorbed tag.
+            ``operation_id`` is None when no live operation is found, which
+            makes the tag un-reversible from the interface rather than
+            reversible by guess. ``source_count`` is how many tags that one
+            operation folded, so a caller can tell in advance whether reversing
+            it needs confirmation (FR-016).
+        """
+        merged_result = await session.execute(
+            select(CanonicalTagDB)
+            .where(CanonicalTagDB.merged_into_id == target_id)
+            .order_by(desc(CanonicalTagDB.video_count))
+        )
+        merged_tags = list(merged_result.scalars().all())
+
+        out: list[tuple[CanonicalTagDB, uuid.UUID | None, int]] = []
+        for tag in merged_tags:
+            op_row = (
+                await session.execute(
+                    select(
+                        TagOperationLogDB.id,
+                        func.jsonb_array_length(TagOperationLogDB.source_canonical_ids),
+                    )
+                    .where(
+                        TagOperationLogDB.operation_type == "merge",
+                        TagOperationLogDB.rolled_back.is_(False),
+                        TagOperationLogDB.source_canonical_ids.op("@>")(
+                            func.jsonb_build_array(str(tag.id))
+                        ),
+                    )
+                    .order_by(desc(TagOperationLogDB.performed_at))
+                    .limit(1)
+                )
+            ).first()
+            if op_row is None:
+                out.append((tag, None, 0))
+            else:
+                out.append((tag, op_row[0], int(op_row[1] or 0)))
+        return out
 
     async def get_by_normalized_form(
         self,

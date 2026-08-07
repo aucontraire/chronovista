@@ -611,6 +611,92 @@ class ClassifyTagRequest(BaseModel):
         return self
 
 
+class MergedTagSummary(BaseModel):
+    """A canonical tag folded into the entity's tag by a curator's merge.
+
+    Attributes
+    ----------
+    canonical_form : str
+        Display form of the absorbed tag.
+    normalized_form : str
+        Its normalized form, used to address it for un-merging.
+    contributed_video_count : int
+        Videos this tag held **at the moment it was merged**. A frozen figure,
+        not a live count, and not additive with the parent's — the two video
+        sets may overlap. Labelled accordingly wherever it is shown (FR-014).
+    operation_id : str | None
+        The merge that absorbed it, if a live one is recorded. ``None`` means
+        the tag cannot be un-merged from the interface, rather than that it can
+        be un-merged by guessing which operation to reverse.
+    operation_source_count : int
+        How many tags that one operation folded. Greater than 1 means reversing
+        it restores others too, which requires confirmation (FR-016). Supplied
+        here so the interface knows without a second request.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    canonical_form: str
+    normalized_form: str
+    contributed_video_count: int
+    operation_id: str | None
+    operation_source_count: int
+
+
+class LinkedTagSummary(BaseModel):
+    """A canonical tag that represents the entity, plus what it has absorbed.
+
+    Attributes
+    ----------
+    canonical_form : str
+        Display form of the tag.
+    normalized_form : str
+        Its normalized form.
+    video_count : int
+        Current video count — live, unlike ``contributed_video_count`` above.
+    alias_count : int
+        Raw forms this tag owns, including any inherited by merging.
+    merged_tags : list[MergedTagSummary]
+        Tags merged into this one. Only curator merges; auto-normalized raw
+        forms are excluded (FR-013).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    canonical_form: str
+    normalized_form: str
+    video_count: int
+    alias_count: int
+    merged_tags: list[MergedTagSummary]
+
+
+class EntityTagsResult(BaseModel):
+    """The tags representing an entity.
+
+    Attributes
+    ----------
+    linked_tags : list[LinkedTagSummary]
+        Normally exactly one (FR-028 / invariant I1). Empty when no tag is
+        linked, which is itself the signal that the entity is under-counted
+        (FR-011). A list rather than a single value because legacy data reached
+        a multi-tag state the browser can no longer create, and the page must
+        render it rather than raise (FR-011a).
+    needs_attention : bool
+        True when more than one tag is linked.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    linked_tags: list[LinkedTagSummary]
+    needs_attention: bool
+
+
+class EntityTagsResponse(BaseModel):
+    """Envelope for :class:`EntityTagsResult`."""
+
+    data: EntityTagsResult
+
+
 class AddEntityTagRequest(BaseModel):
     """Request body for attaching a canonical tag to an entity (Feature 064).
 

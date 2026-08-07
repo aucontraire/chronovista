@@ -782,3 +782,149 @@ class TestCrossFeatureContracts:
         # Consumer 5 — mention detection reads entity_aliases, untouched.
         counts = await _counts(integration_session_factory, entity_id)
         assert counts["aliases"] == 0
+
+
+# ---------------------------------------------------------------------------
+# US3 — see which tag represents the entity (T037)
+# ---------------------------------------------------------------------------
+
+
+class TestGetEntityTags:
+    async def test_reports_the_linked_tag(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+    ) -> None:
+        """FR-010 — the question that precedes every other action here."""
+        r = await async_client.get(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags"
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()["data"]
+        assert data["needs_attention"] is False
+        assert len(data["linked_tags"]) == 1
+        assert data["linked_tags"][0]["normalized_form"] == TAG_MAIN
+        assert data["linked_tags"][0]["merged_tags"] == []
+
+    async def test_an_entity_with_no_tag_returns_an_empty_list(
+        self,
+        async_client: AsyncClient,
+        entity_without_tag: dict[str, Any],
+    ) -> None:
+        """FR-011 — empty is a meaningful answer, not an error.
+
+        It is the signal that the entity's video count omits every
+        tag-associated video, which is the state that opened #183.
+        """
+        r = await async_client.get(
+            f"/api/v1/entities/{entity_without_tag['entity_id']}/tags"
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["data"]["linked_tags"] == []
+        assert r.json()["data"]["needs_attention"] is False
+
+    async def test_lists_what_the_tag_has_absorbed(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+    ) -> None:
+        """FR-012/FR-013 — and the operation needed to reverse each."""
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        r = await async_client.get(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags"
+        )
+        assert r.status_code == 200, r.text
+        linked = r.json()["data"]["linked_tags"]
+        assert len(linked) == 1
+        merged = linked[0]["merged_tags"]
+        assert len(merged) == 1
+        assert merged[0]["normalized_form"] == TAG_OTHER
+        assert (
+            merged[0]["operation_id"] is not None
+        ), "without the operation the tag cannot be un-merged from the browser"
+        assert (
+            merged[0]["operation_source_count"] == 1
+        ), "a single-source merge needs no confirmation to reverse (FR-016)"
+
+    async def test_the_absorbed_count_is_frozen_not_live(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+    ) -> None:
+        """FR-014 — a merged tag owns no videos, so a live count would be 0.
+
+        Reporting 0 would tell the curator the tag brought nothing, when it
+        brought three. The figure is its pre-merge contribution.
+        """
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        r = await async_client.get(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags"
+        )
+        merged = r.json()["data"]["linked_tags"][0]["merged_tags"][0]
+        assert merged["contributed_video_count"] == 3
+
+    async def test_several_linked_tags_are_all_listed_and_flagged(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """FR-011a — render the legacy state rather than raise on it."""
+        async with integration_session_factory() as s:
+            third = await s.get(CanonicalTagDB, entity_with_tag["third_id"])
+            assert third is not None
+            third.entity_id = entity_with_tag["entity_id"]
+            s.add(third)
+            await s.commit()
+
+        r = await async_client.get(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags"
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()["data"]
+        assert data["needs_attention"] is True
+        forms = {t["normalized_form"] for t in data["linked_tags"]}
+        assert forms == {TAG_MAIN, TAG_THIRD}
+
+    async def test_a_missing_entity_is_a_404(
+        self,
+        async_client: AsyncClient,
+    ) -> None:
+        r = await async_client.get(
+            f"/api/v1/entities/{uuid.UUID(bytes=uuid7().bytes)}/tags"
+        )
+        assert r.status_code == 404, r.text
+
+    async def test_an_un_merged_tag_stops_being_listed(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """A reversed merge must not leave the tag showing as absorbed.
+
+        The operation lookup skips reversed operations; this checks the listing
+        follows the tag's own state rather than the stale operation log.
+        """
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        async with integration_session_factory() as s:
+            source = await s.get(CanonicalTagDB, entity_with_tag["other_id"])
+            assert source is not None
+            source.status = "active"
+            source.merged_into_id = None
+            s.add(source)
+            await s.commit()
+
+        r = await async_client.get(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags"
+        )
+        assert r.json()["data"]["linked_tags"][0]["merged_tags"] == []

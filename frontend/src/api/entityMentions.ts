@@ -1023,3 +1023,54 @@ export async function fetchCooccurringEntities(
   );
   return res.data;
 }
+
+/** A canonical tag folded into the entity's tag by a curator's merge. */
+export interface MergedTagSummary {
+  canonical_form: string;
+  normalized_form: string;
+  /**
+   * Videos this tag held **when it was merged** — frozen, not live, and not
+   * additive with the parent's count since the sets may overlap.
+   */
+  contributed_video_count: number;
+  /** null means it cannot be un-merged from the interface. */
+  operation_id: string | null;
+  /** >1 means reversing that merge restores other tags too. */
+  operation_source_count: number;
+}
+
+/** A canonical tag that represents the entity. */
+export interface LinkedTagSummary {
+  canonical_form: string;
+  normalized_form: string;
+  video_count: number;
+  alias_count: number;
+  merged_tags: MergedTagSummary[];
+}
+
+/** The tags representing an entity. */
+export interface EntityTagsResult {
+  /**
+   * Normally exactly one. Empty means no tag is linked — itself the signal
+   * that the entity's video count omits every tag-associated video.
+   */
+  linked_tags: LinkedTagSummary[];
+  /** True when more than one tag is linked: a legacy state needing repair. */
+  needs_attention: boolean;
+}
+
+/**
+ * Fetches the tags representing an entity, each with what it has absorbed.
+ *
+ * @param entityId - The entity to inspect
+ * @returns Linked tags and whether the entity needs attention
+ * @throws ApiError 404 if the entity does not exist
+ */
+export async function fetchEntityTags(
+  entityId: string
+): Promise<EntityTagsResult> {
+  const body = await apiFetch<{ data: EntityTagsResult }>(
+    `/entities/${entityId}/tags`
+  );
+  return body.data;
+}

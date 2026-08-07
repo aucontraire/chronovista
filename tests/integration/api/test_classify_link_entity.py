@@ -282,3 +282,123 @@ class TestClassifyLinkEntity:
         )
 
         assert response.status_code == 422, response.text
+
+    async def test_display_name_with_a_link_cannot_inject_an_alias(
+        self,
+        async_client: AsyncClient,
+        unlinked_tag: str,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """display_name is not inert when linking — it is written as an alias.
+
+        The service uses it to name the self-alias it creates, and in the
+        linking branch that alias lands on the *target* entity. Accepting it
+        would let a request that only claims to point at an entity write an
+        arbitrary name onto that entity's alias list.
+        """
+        entity_id = await _seed_entity(integration_session_factory)
+
+        response = await async_client.post(
+            "/api/v1/entities/classify",
+            json={
+                "normalized_form": unlinked_tag,
+                "link_entity_id": str(entity_id),
+                "display_name": "Unrelated Injected Name",
+            },
+        )
+
+        assert response.status_code == 422, response.text
+
+        async with integration_session_factory() as session:
+            names = (
+                (
+                    await session.execute(
+                        select(EntityAliasDB.alias_name).where(
+                            EntityAliasDB.entity_id == entity_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert "Unrelated Injected Name" not in names
+
+    async def test_entity_type_disagreeing_with_the_target_is_a_conflict(
+        self,
+        async_client: AsyncClient,
+        unlinked_tag: str,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """A tag must not claim a type its own linked entity contradicts.
+
+        The service writes the caller's entity_type onto the tag while
+        pointing it at the target, so accepting a mismatch left
+        ``tag.entity_type == "person"`` on a tag linked to an organization.
+        """
+        entity_id = await _seed_entity(integration_session_factory)
+
+        response = await async_client.post(
+            "/api/v1/entities/classify",
+            json={
+                "normalized_form": unlinked_tag,
+                "entity_type": "person",  # target is an organization
+                "link_entity_id": str(entity_id),
+            },
+        )
+
+        assert response.status_code == 409, response.text
+
+        async with integration_session_factory() as session:
+            tag = (
+                await session.execute(
+                    select(CanonicalTagDB).where(
+                        CanonicalTagDB.normalized_form == TAG_NORM
+                    )
+                )
+            ).scalar_one()
+            assert tag.entity_id is None, "a rejected link must not be written"
+            assert tag.entity_type is None
+
+    async def test_linking_records_the_tag_form_as_an_entity_alias(
+        self,
+        async_client: AsyncClient,
+        unlinked_tag: str,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Pinning two side effects of linking, so they stay deliberate.
+
+        The service creates a self-alias on the target named after the tag,
+        which is what makes the linked form findable by mention detection, and
+        title-cases the tag's canonical form on the way through. Both are
+        inherited from the CLI path; neither is obvious from the endpoint.
+        """
+        entity_id = await _seed_entity(integration_session_factory)
+
+        response = await async_client.post(
+            "/api/v1/entities/classify",
+            json={"normalized_form": unlinked_tag, "link_entity_id": str(entity_id)},
+        )
+        assert response.status_code == 201, response.text
+
+        async with integration_session_factory() as session:
+            names = (
+                (
+                    await session.execute(
+                        select(EntityAliasDB.alias_name).where(
+                            EntityAliasDB.entity_id == entity_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert ENTITY_NAME in names
+
+            tag = (
+                await session.execute(
+                    select(CanonicalTagDB).where(
+                        CanonicalTagDB.normalized_form == TAG_NORM
+                    )
+                )
+            ).scalar_one()
+            assert tag.canonical_form == ENTITY_NAME, "tag form is title-cased"

@@ -588,19 +588,26 @@ class ClassifyTagRequest(BaseModel):
         """Mirror the CLI's rules for combining these fields.
 
         ``entity_type`` is only optional in the linking case, where it is
-        inferred from the target entity. And ``description`` describes an
-        entity being created, so pairing it with a link would silently
-        discard it — the service's linking branch never reads it.
+        inferred from the target entity.
+
+        ``description`` and ``display_name`` both describe an entity being
+        created. Pairing either with a link is refused rather than accepted,
+        because neither is inert there: the service ignores ``description``
+        outright, and ``display_name`` is worse — it becomes the name of a new
+        alias written onto the *target* entity, so a link request could inject
+        an arbitrary alias onto a record it was only supposed to point at.
         """
         if self.entity_type is None and self.link_entity_id is None:
             raise ValueError(
                 "entity_type is required unless link_entity_id is provided"
             )
-        if self.link_entity_id is not None and self.description is not None:
-            raise ValueError(
-                "description and link_entity_id are mutually exclusive; "
-                "description applies only when creating a new entity"
-            )
+        if self.link_entity_id is not None:
+            for field in ("description", "display_name"):
+                if getattr(self, field) is not None:
+                    raise ValueError(
+                        f"{field} and link_entity_id are mutually exclusive; "
+                        f"{field} applies only when creating a new entity"
+                    )
         return self
 
 

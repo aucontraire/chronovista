@@ -1390,6 +1390,24 @@ async def classify_tag(
             )
         if effective_entity_type is None:
             effective_entity_type = target_entity.entity_type
+        elif effective_entity_type != target_entity.entity_type:
+            # The service writes the caller's type onto the tag while pointing
+            # it at this entity, leaving tag.entity_type contradicting the type
+            # of the entity it links to. The target owns its own type; a
+            # disagreement is a stale client, not an instruction.
+            raise ConflictError(
+                message=(
+                    f"entity_type '{effective_entity_type}' does not match "
+                    f"entity '{target_entity.canonical_name}', which is a "
+                    f"'{target_entity.entity_type}'. Omit entity_type to use "
+                    f"the entity's own type."
+                ),
+                details={
+                    "requested_entity_type": effective_entity_type,
+                    "entity_entity_type": target_entity.entity_type,
+                    "entity_id": str(target_entity.id),
+                },
+            )
 
     try:
         entity_type_enum = EntityType(effective_entity_type)

@@ -1344,7 +1344,10 @@ async def classify_tag(
     Parameters
     ----------
     body : ClassifyTagRequest
-        Request body with normalized_form, entity_type, and optional description.
+        Request body with normalized_form and either entity_type (to create a
+        new entity) or link_entity_id (to attach the tag to an existing one,
+        inferring the type from it). Optional description and display_name
+        apply to the creation case only.
     session : AsyncSession
         Database session (injected).
 
@@ -1356,18 +1359,44 @@ async def classify_tag(
     Raises
     ------
     NotFoundError
-        If the canonical tag is not found or inactive (404).
+        If the canonical tag is not found or inactive, or if link_entity_id
+        names no entity (404).
     ConflictError
-        If the tag is already classified as an entity (409).
+        If the tag is already classified as an entity, or link_entity_id
+        names an entity that is not active (409).
     APIValidationError
         If the request is otherwise invalid (400).
     """
+    # Resolve the link target first, when there is one. The service checks the
+    # entity too, but reports both failures as ValueError("... not found") /
+    # ("... not active"), and the mapping below would attribute either to the
+    # CanonicalTag — a 404 naming the wrong resource. Resolving here also
+    # supplies the entity_type when the caller omitted it.
+    effective_entity_type = body.entity_type
+    if body.link_entity_id is not None:
+        target_entity = await session.get(NamedEntityDB, body.link_entity_id)
+        if target_entity is None:
+            raise NotFoundError(
+                resource_type="NamedEntity",
+                identifier=str(body.link_entity_id),
+            )
+        if target_entity.status != "active":
+            raise ConflictError(
+                message=(
+                    f"Entity '{target_entity.canonical_name}' is not active "
+                    f"(status: {target_entity.status})."
+                ),
+                details={"entity_id": str(target_entity.id)},
+            )
+        if effective_entity_type is None:
+            effective_entity_type = target_entity.entity_type
+
     try:
-        entity_type_enum = EntityType(body.entity_type)
+        entity_type_enum = EntityType(effective_entity_type)
     except ValueError as exc:
         raise BadRequestError(
-            message=f"Invalid entity_type: {body.entity_type}",
-            details={"entity_type": body.entity_type},
+            message=f"Invalid entity_type: {effective_entity_type}",
+            details={"entity_type": effective_entity_type},
         ) from exc
 
     try:
@@ -1378,6 +1407,7 @@ async def classify_tag(
             description=body.description,
             auto_case=True,
             display_name=body.display_name,
+            link_entity_id=body.link_entity_id,
             actor=ACTOR_USER_LOCAL,
         )
     except ValueError as exc:

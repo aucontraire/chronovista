@@ -530,6 +530,10 @@ class ClassifyTagRequest(BaseModel):
         the created entity's ``canonical_name`` is this value exactly (no
         auto re-casing); when omitted, the auto-derived name is used
         (Feature 057, FR-008..FR-011).
+    link_entity_id : UUID | None
+        Link the tag to this existing entity instead of creating one. When
+        given, ``entity_type`` may be omitted and is inferred from the target
+        entity, matching ``tags classify --link-entity`` (issue #183).
     """
 
     model_config = ConfigDict(strict=True)
@@ -540,7 +544,11 @@ class ClassifyTagRequest(BaseModel):
         max_length=500,
         description="Normalized form of the canonical tag",
     )
-    entity_type: str = Field(..., min_length=1, description="Entity type")
+    entity_type: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Entity type; optional when link_entity_id is given",
+    )
     description: str | None = Field(
         default=None,
         max_length=5000,
@@ -552,17 +560,48 @@ class ClassifyTagRequest(BaseModel):
         max_length=500,
         description="Optional verbatim entity display name",
     )
+    link_entity_id: UUID | None = Field(
+        default=None,
+        # This model is strict, and strict mode refuses to build a UUID from
+        # the string an HTTP client sends — FastAPI validates the parsed body
+        # in python mode, where a str is just a str. Same opt-out the
+        # EntityType fields use.
+        strict=False,
+        description="Link to this existing entity instead of creating one",
+    )
 
     @field_validator("entity_type")
     @classmethod
-    def validate_entity_type(cls, v: str) -> str:
-        """Ensure entity_type is a valid entity-producing type."""
+    def validate_entity_type(cls, v: str | None) -> str | None:
+        """Ensure entity_type, when given, is a valid entity-producing type."""
+        if v is None:
+            return v
         if v not in _ENTITY_PRODUCING_TYPES:
             raise ValueError(
                 f"entity_type must be one of: "
                 f"{', '.join(sorted(_ENTITY_PRODUCING_TYPES))}"
             )
         return v
+
+    @model_validator(mode="after")
+    def validate_type_or_link(self) -> ClassifyTagRequest:
+        """Mirror the CLI's rules for combining these fields.
+
+        ``entity_type`` is only optional in the linking case, where it is
+        inferred from the target entity. And ``description`` describes an
+        entity being created, so pairing it with a link would silently
+        discard it — the service's linking branch never reads it.
+        """
+        if self.entity_type is None and self.link_entity_id is None:
+            raise ValueError(
+                "entity_type is required unless link_entity_id is provided"
+            )
+        if self.link_entity_id is not None and self.description is not None:
+            raise ValueError(
+                "description and link_entity_id are mutually exclusive; "
+                "description applies only when creating a new entity"
+            )
+        return self
 
 
 class UpdateEntityRequest(BaseModel):

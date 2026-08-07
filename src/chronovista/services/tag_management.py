@@ -31,9 +31,7 @@ from chronovista.models.enums import (
     TagOperationType,
     TagStatus,
 )
-from chronovista.models.tag_operation_log import (
-    TagOperationLogCreate,
-)
+from chronovista.models.tag_operation_log import TagOperationLogCreate
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
@@ -569,9 +567,18 @@ class TagManagementService:
                 all_moved_alias_ids.extend(alias_ids)
                 total_aliases_moved += len(alias_ids)
 
-            # Mark source as merged
+            # Mark source as merged, and drop its entity link.
+            #
+            # A merged tag owns nothing: its aliases have just moved to the
+            # target, so it cannot reach a video and has no business claiming
+            # an entity. Leaving entity_id set makes the column mean two
+            # different things — "this tag represents an entity" and "this tag
+            # used to" — and every caller then has to remember to filter on
+            # status or it will count one entity as having two linked tags.
+            # ``previous_entity_id`` above preserves it for undo.
             src.status = TagStatus.MERGED.value
             src.merged_into_id = target.id
+            src.entity_id = None
             session.add(src)
 
         rollback_data = {
@@ -1231,9 +1238,7 @@ class TagManagementService:
         entity_created = False
 
         if entity_type in entity_producing_types:
-            from chronovista.services.tag_normalization import (
-                TagNormalizationService,
-            )
+            from chronovista.services.tag_normalization import TagNormalizationService
 
             normalizer = TagNormalizationService()
 
@@ -1727,6 +1732,12 @@ class TagManagementService:
             if source_tag is not None:
                 source_tag.status = TagStatus.ACTIVE.value
                 source_tag.merged_into_id = None
+                # Merge clears entity_id; undo must put it back or reversing a
+                # merge would silently strip the entity link the source held.
+                # Older log entries predate the clearing and simply record null.
+                previous_entity_id = source_data.get("previous_entity_id")
+                if previous_entity_id is not None:
+                    source_tag.entity_id = uuid.UUID(previous_entity_id)
                 session.add(source_tag)
 
                 # Recalculate counts on source

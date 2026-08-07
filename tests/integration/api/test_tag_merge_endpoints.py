@@ -341,3 +341,129 @@ class TestUndo:
                 f"/api/v1/canonical-tags/operations/{op_id}/undo"
             )
             assert undo2.status_code == 409, undo2.text
+
+
+class TestMergeClearsEntityLink:
+    """A merged tag must not keep claiming an entity (#183 / Feature 064).
+
+    Merging moves every alias to the target, so the source can no longer reach
+    a video. Leaving ``entity_id`` set made the column mean two things at once
+    — "represents this entity" and "used to" — so every caller had to remember
+    to filter on status or an entity appeared to have two linked tags. The
+    counting side of this feature reads exactly that column.
+
+    The two halves are tested together on purpose: clearing on merge without
+    restoring on undo would silently destroy the link instead of moving it.
+    """
+
+    async def test_merge_clears_and_undo_restores_the_entity_link(
+        self,
+        sample_data: dict[str, Any],
+        cleanup_test_data: None,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        from uuid_utils import uuid7
+
+        from chronovista.db.models import CanonicalTag as CanonicalTagDB
+        from chronovista.db.models import NamedEntity as NamedEntityDB
+
+        entity_id = uuid.UUID(bytes=uuid7().bytes)
+        service = TagManagementService(
+            canonical_tag_repo=CanonicalTagRepository(),
+            tag_alias_repo=TagAliasRepository(),
+            named_entity_repo=NamedEntityRepository(),
+            entity_alias_repo=EntityAliasRepository(),
+            operation_log_repo=TagOperationLogRepository(),
+        )
+
+        # Link the source tag to an entity, the state this feature creates.
+        #
+        # Purge first: the integration database is never reset between runs, so
+        # a run that fails before its cleanup leaves this entity behind and the
+        # next insert collides on uq_named_entity_canonical.
+        async with integration_session_factory() as session:
+            await session.execute(
+                CanonicalTagDB.__table__.update()
+                .where(
+                    CanonicalTagDB.entity_id.in_(
+                        select(NamedEntityDB.id).where(
+                            NamedEntityDB.canonical_name_normalized
+                            == "ect064 harbour board"
+                        )
+                    )
+                )
+                .values(entity_id=None)
+            )
+            await session.execute(
+                NamedEntityDB.__table__.delete().where(
+                    NamedEntityDB.canonical_name_normalized == "ect064 harbour board"
+                )
+            )
+            session.add(
+                NamedEntityDB(
+                    id=entity_id,
+                    canonical_name="Ect064 Harbour Board",
+                    canonical_name_normalized="ect064 harbour board",
+                    entity_type="organization",
+                    status="active",
+                )
+            )
+            await session.commit()
+            source = (
+                await session.execute(
+                    select(CanonicalTagDB).where(
+                        CanonicalTagDB.normalized_form == "new york"
+                    )
+                )
+            ).scalar_one()
+            source.entity_id = entity_id
+            session.add(source)
+            await session.commit()
+
+        async with integration_session_factory() as session:
+            result = await service.merge(session, ["new york"], "music")
+            await session.commit()
+            op_id = result.operation_id
+
+        async with integration_session_factory() as session:
+            merged = (
+                await session.execute(
+                    select(CanonicalTagDB).where(
+                        CanonicalTagDB.normalized_form == "new york"
+                    )
+                )
+            ).scalar_one()
+            assert merged.status == "merged"
+            assert merged.entity_id is None, (
+                "a merged tag still claimed an entity; counting the entity's "
+                "linked tags would report two"
+            )
+
+        async with integration_session_factory() as session:
+            await service.undo(session, op_id)
+            await session.commit()
+
+        async with integration_session_factory() as session:
+            restored = (
+                await session.execute(
+                    select(CanonicalTagDB).where(
+                        CanonicalTagDB.normalized_form == "new york"
+                    )
+                )
+            ).scalar_one()
+            assert restored.status == "active"
+            assert restored.entity_id == entity_id, (
+                "undo restored the tag but not its entity link — reversing a "
+                "merge would silently unlink the entity"
+            )
+
+        async with integration_session_factory() as session:
+            await session.execute(
+                CanonicalTagDB.__table__.update()
+                .where(CanonicalTagDB.normalized_form == "new york")
+                .values(entity_id=None)
+            )
+            await session.execute(
+                NamedEntityDB.__table__.delete().where(NamedEntityDB.id == entity_id)
+            )
+            await session.commit()

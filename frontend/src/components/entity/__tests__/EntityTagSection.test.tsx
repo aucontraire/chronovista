@@ -446,6 +446,40 @@ describe("EntityTagSection", () => {
     );
   });
 
+  it("is fully operable by keyboard alone", async () => {
+    const user = userEvent.setup();
+    vi.mocked(useEntityTags).mockReturnValue(tagsResult([WITH_MERGED]));
+    vi.mocked(useCanonicalTags).mockReturnValue({ ...EMPTY, tags: [MATCH] });
+    vi.mocked(addEntityTag).mockResolvedValue({
+      operation: "merge",
+      operation_id: "op-1",
+      target_normalized_form: "harbour board",
+      entity_video_count: 4,
+    });
+    renderSection();
+
+    // FR-025: every control reachable and operable without a pointer. Tab
+    // order alone is not enough — the listbox is only navigable by arrow key,
+    // and the disclosure and both verbs must be activatable from the keyboard.
+    await user.tab();
+    expect(section().getByRole("button", { name: /Show 1 merged tag/ })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(section().getByRole("button", { name: "Un-merge" })).toBeInTheDocument();
+
+    const input = screen.getByRole("combobox", { name: "Search tags" });
+    input.focus();
+    await user.keyboard("harbour{ArrowDown}{Enter}");
+    expect(
+      section().getByRole("button", { name: /^Attach "Harbour Brd"/ })
+    ).toBeInTheDocument();
+
+    // Escape abandons the selection without reaching for a Cancel button.
+    await user.keyboard("{Escape}");
+    expect(
+      section().queryByRole("button", { name: /^Attach "/ })
+    ).not.toBeInTheDocument();
+  });
+
   it("offers no attach button until a tag is chosen", async () => {
     const user = userEvent.setup();
     vi.mocked(useCanonicalTags).mockReturnValue({ ...EMPTY, tags: [MATCH] });

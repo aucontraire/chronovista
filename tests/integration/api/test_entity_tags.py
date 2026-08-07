@@ -1212,3 +1212,220 @@ class TestUnlink:
             f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}"
         )
         assert r.status_code == 404, r.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 — cross-cutting invariants (T055-T058)
+# ---------------------------------------------------------------------------
+
+
+class TestInvariants:
+    async def test_a_failed_attach_moves_no_raw_forms(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """FR-030 — atomicity, checked at the state it would corrupt.
+
+        The partial state that matters is raw forms moved to the target without
+        the source being marked merged: the source would then own nothing while
+        still appearing active and searchable, and its videos would reach the
+        entity through a tag nobody links to it.
+        """
+        async with integration_session_factory() as s:
+            before = (
+                (
+                    await s.execute(
+                        select(TagAliasDB.canonical_tag_id).where(
+                            TagAliasDB.normalized_form.like(f"{PREFIX}%")
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+        # Refused for a reason the router raises before touching the service.
+        r = await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_MAIN},
+        )
+        assert r.status_code == 422, r.text
+
+        async with integration_session_factory() as s:
+            after = (
+                (
+                    await s.execute(
+                        select(TagAliasDB.canonical_tag_id).where(
+                            TagAliasDB.normalized_form.like(f"{PREFIX}%")
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert sorted(map(str, before)) == sorted(map(str, after))
+
+    async def test_counts_match_the_rows_they_summarize(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """FR-029 / invariant I6 — on the **active** tag after a merge.
+
+        FR-010 shows the linked tag's video count, which is only meaningful if
+        the denormalized value agrees with the rows underneath it.
+
+        The merged source is deliberately excluded: it owns no rows, so a
+        recomputed count would be zero, and that stored value is exactly what
+        FR-014 reports as what the tag contributed. Zeroing it would tell a
+        curator the tag brought nothing when it brought three videos. Both
+        halves are asserted here, because the pair is easy to "fix" in the
+        wrong direction.
+        """
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        async with integration_session_factory() as s:
+            target = await s.get(CanonicalTagDB, entity_with_tag["main_id"])
+            assert target is not None
+            real_aliases = (
+                await s.execute(
+                    select(func.count())
+                    .select_from(TagAliasDB)
+                    .where(TagAliasDB.canonical_tag_id == target.id)
+                )
+            ).scalar_one()
+            real_videos = (
+                await s.execute(
+                    select(func.count(func.distinct(VideoTagDB.video_id)))
+                    .select_from(VideoTagDB)
+                    .join(TagAliasDB, VideoTagDB.tag == TagAliasDB.raw_form)
+                    .where(TagAliasDB.canonical_tag_id == target.id)
+                )
+            ).scalar_one()
+            assert target.alias_count == real_aliases
+            assert target.video_count == real_videos
+
+            source = await s.get(CanonicalTagDB, entity_with_tag["other_id"])
+            assert source is not None
+            assert source.video_count == 3, (
+                "the merged tag's snapshot was recomputed away; FR-014 would "
+                "then report that it contributed nothing"
+            )
+
+    async def test_a_merge_leaves_the_sources_entity_type_alone(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """FR-026a — unlike the link, a type is meaningful without an entity.
+
+        Tag-only classifications (topic, descriptor) carry one with no link at
+        all, so clearing it would revoke a classification the merge was not
+        asked to touch.
+        """
+        async with integration_session_factory() as s:
+            other = await s.get(CanonicalTagDB, entity_with_tag["other_id"])
+            assert other is not None
+            other.entity_type = "organization"
+            s.add(other)
+            await s.commit()
+
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+
+        async with integration_session_factory() as s:
+            merged = await s.get(CanonicalTagDB, entity_with_tag["other_id"])
+            assert merged is not None
+            assert merged.status == "merged"
+            assert merged.entity_id is None, "the link must be cleared (FR-026)"
+            assert (
+                merged.entity_type == "organization"
+            ), "the type must survive (FR-026a)"
+
+    async def test_aliases_predating_this_feature_survive_every_operation(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """FR-004a — a negative requirement needs a guard more than a positive.
+
+        Nothing would fail today if a future change added "cleanup" that
+        deleted aliases it did not create, and an operation removing aliases it
+        never made is indistinguishable from the defect this feature corrects.
+        """
+        entity_id = entity_with_tag["entity_id"]
+        alias_id = uuid.UUID(bytes=uuid7().bytes)
+        async with integration_session_factory() as s:
+            s.add(
+                EntityAliasDB(
+                    id=alias_id,
+                    entity_id=entity_id,
+                    alias_name="Ect064 Pre-Existing Alias",
+                    alias_name_normalized="ect064 pre-existing alias",
+                    alias_type="name_variant",
+                    occurrence_count=0,
+                )
+            )
+            await s.commit()
+
+        await async_client.post(
+            f"/api/v1/entities/{entity_id}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        await async_client.post(
+            f"/api/v1/entities/{entity_id}/tags/{TAG_OTHER}/un-merge", json={}
+        )
+        await async_client.delete(f"/api/v1/entities/{entity_id}/tags/{TAG_MAIN}")
+
+        async with integration_session_factory() as s:
+            survivor = await s.get(EntityAliasDB, alias_id)
+            assert (
+                survivor is not None
+            ), "an operation deleted an alias it did not create"
+            assert survivor.alias_name == "Ect064 Pre-Existing Alias"
+
+    async def test_no_error_from_any_endpoint_speaks_cli(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """FR-020 across all four endpoints — clients render detail verbatim."""
+        entity_id = entity_with_tag["entity_id"]
+        missing = str(uuid.UUID(bytes=uuid7().bytes))
+
+        await async_client.post(
+            f"/api/v1/entities/{entity_id}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+
+        responses = [
+            await async_client.post(
+                f"/api/v1/entities/{missing}/tags",
+                json={"normalized_form": TAG_OTHER},
+            ),
+            await async_client.post(
+                f"/api/v1/entities/{entity_id}/tags",
+                json={"normalized_form": TAG_MAIN},
+            ),
+            await async_client.get(f"/api/v1/entities/{missing}/tags"),
+            await async_client.post(
+                f"/api/v1/entities/{entity_id}/tags/{TAG_THIRD}/un-merge", json={}
+            ),
+            await async_client.delete(f"/api/v1/entities/{entity_id}/tags/{TAG_MAIN}"),
+        ]
+        for r in responses:
+            detail = str(r.json().get("detail", ""))
+            for flag in ("--force", "--link-entity", "--type", "chronovista tags"):
+                assert (
+                    flag not in detail
+                ), f"{flag} leaked into {r.status_code}: {detail}"

@@ -21,11 +21,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import (
-    get_db,
-    get_tag_management_service,
-    require_auth,
-)
+from chronovista.api.deps import get_db, get_tag_management_service, require_auth
 from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.canonical_tags import (
     CanonicalTagDetail,
@@ -486,6 +482,15 @@ async def list_canonical_tags(
             "Contains requires a query of at least 2 characters."
         ),
     ),
+    exclude_linked: bool = Query(
+        False,
+        description=(
+            "Omit tags already linked to a named entity. Off by default so "
+            "existing callers are unaffected; the entity tag surface sets it "
+            "so a tag representing another entity, or this entity's own tag, "
+            "is never offered."
+        ),
+    ),
     limit: int = Query(
         20, ge=1, le=100, description="Maximum number of items to return"
     ),
@@ -560,7 +565,12 @@ async def list_canonical_tags(
         )
 
     items_orm, total = await _repository.search(
-        session, q=q, match_mode=match_mode.value, skip=offset, limit=limit
+        session,
+        q=q,
+        match_mode=match_mode.value,
+        exclude_linked=exclude_linked,
+        skip=offset,
+        limit=limit,
     )
 
     items: list[CanonicalTagListItem] = [
@@ -591,6 +601,12 @@ async def list_canonical_tags(
                 .order_by(desc(CanonicalTagDB.video_count))
                 .limit(FUZZY_CANDIDATE_POOL_SIZE)
             )
+            # The suggestion pool is a second, independent path to a tag name.
+            # Without this it would offer exactly the tags the caller asked to
+            # exclude, at the moment the main search returned nothing — the
+            # case where a suggestion is most likely to be acted on (FR-007).
+            if exclude_linked:
+                pool_query = pool_query.where(CanonicalTagDB.entity_id.is_(None))
             pool_result = await session.execute(pool_query)
             pool_tags = list(pool_result.scalars().all())
 

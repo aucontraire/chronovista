@@ -18,6 +18,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { CooccurringPanel } from "../components/entity/CooccurringPanel";
+import { EntityTagSection } from "../components/entity/EntityTagSection";
 import { EntityTypeBadge } from "../components/EntityTypeBadge";
 import { ENTITY_TYPE_LABELS } from "../constants/entityTypes";
 import {
@@ -1492,6 +1493,11 @@ export function EntityDetailPage() {
           )}
         </div>
       </section>
+
+      {/* Tags section (Feature 064) */}
+      {entityId && (
+        <EntityTagSection entityId={entityId} entityName={entity.canonical_name} />
+      )}
 
       {/* Exclusion Patterns section */}
       {entityId && (

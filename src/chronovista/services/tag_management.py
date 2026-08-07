@@ -31,9 +31,7 @@ from chronovista.models.enums import (
     TagOperationType,
     TagStatus,
 )
-from chronovista.models.tag_operation_log import (
-    TagOperationLogCreate,
-)
+from chronovista.models.tag_operation_log import TagOperationLogCreate
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
@@ -569,9 +567,18 @@ class TagManagementService:
                 all_moved_alias_ids.extend(alias_ids)
                 total_aliases_moved += len(alias_ids)
 
-            # Mark source as merged
+            # Mark source as merged, and drop its entity link.
+            #
+            # A merged tag owns nothing: its aliases have just moved to the
+            # target, so it cannot reach a video and has no business claiming
+            # an entity. Leaving entity_id set makes the column mean two
+            # different things — "this tag represents an entity" and "this tag
+            # used to" — and every caller then has to remember to filter on
+            # status or it will count one entity as having two linked tags.
+            # ``previous_entity_id`` above preserves it for undo.
             src.status = TagStatus.MERGED.value
             src.merged_into_id = target.id
+            src.entity_id = None
             session.add(src)
 
         rollback_data = {
@@ -1231,9 +1238,7 @@ class TagManagementService:
         entity_created = False
 
         if entity_type in entity_producing_types:
-            from chronovista.services.tag_normalization import (
-                TagNormalizationService,
-            )
+            from chronovista.services.tag_normalization import TagNormalizationService
 
             normalizer = TagNormalizationService()
 
@@ -1313,29 +1318,41 @@ class TagManagementService:
             # Create self-alias (entity display name as name_variant).
             # Tag aliases are NOT copied — they represent YouTube tag
             # variations (show names, SEO tags), not entity name variants.
-            entity_id_for_aliases = tag.entity_id
-            self_norm = (
-                normalizer.normalize(entity_display_name) or entity_display_name.lower()
-            )
-
-            existing_result = await session.execute(
-                select(EntityAliasDB).where(
-                    EntityAliasDB.entity_id == entity_id_for_aliases,
-                    EntityAliasDB.alias_name_normalized == self_norm,
+            #
+            # Skipped entirely when linking to an existing entity. A new entity
+            # needs a self-alias: its own name is a legitimate pattern to detect
+            # in transcripts. An entity that already exists has its own curated
+            # aliases, and the tag's form is a YouTube convention that may be
+            # nothing like a name anyone says aloud. Writing it here produced
+            # zero-occurrence entries on entities the caller only meant to point
+            # a tag at, and polluted the detection ruleset (issue #183, FR-004).
+            if link_entity_id is None:
+                entity_id_for_aliases = tag.entity_id
+                self_norm = (
+                    normalizer.normalize(entity_display_name)
+                    or entity_display_name.lower()
                 )
-            )
-            existing_db = existing_result.scalar_one_or_none()
 
-            if existing_db is None:
-                ea_create = EntityAliasCreate(
-                    entity_id=entity_id_for_aliases,
-                    alias_name=entity_display_name,
-                    alias_name_normalized=self_norm,
-                    alias_type=EntityAliasType.NAME_VARIANT,
-                    occurrence_count=0,
+                existing_result = await session.execute(
+                    select(EntityAliasDB).where(
+                        EntityAliasDB.entity_id == entity_id_for_aliases,
+                        EntityAliasDB.alias_name_normalized == self_norm,
+                    )
                 )
-                ea_db = await self._entity_alias_repo.create(session, obj_in=ea_create)
-                created_entity_alias_ids.append(ea_db.id)
+                existing_db = existing_result.scalar_one_or_none()
+
+                if existing_db is None:
+                    ea_create = EntityAliasCreate(
+                        entity_id=entity_id_for_aliases,
+                        alias_name=entity_display_name,
+                        alias_name_normalized=self_norm,
+                        alias_type=EntityAliasType.NAME_VARIANT,
+                        occurrence_count=0,
+                    )
+                    ea_db = await self._entity_alias_repo.create(
+                        session, obj_in=ea_create
+                    )
+                    created_entity_alias_ids.append(ea_db.id)
 
         elif entity_type in tag_only_types:
             # 5. Tag-only types: set entity_type only
@@ -1727,6 +1744,12 @@ class TagManagementService:
             if source_tag is not None:
                 source_tag.status = TagStatus.ACTIVE.value
                 source_tag.merged_into_id = None
+                # Merge clears entity_id; undo must put it back or reversing a
+                # merge would silently strip the entity link the source held.
+                # Older log entries predate the clearing and simply record null.
+                previous_entity_id = source_data.get("previous_entity_id")
+                if previous_entity_id is not None:
+                    source_tag.entity_id = uuid.UUID(previous_entity_id)
                 session.add(source_tag)
 
                 # Recalculate counts on source

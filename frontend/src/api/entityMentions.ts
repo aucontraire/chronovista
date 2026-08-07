@@ -684,25 +684,93 @@ export interface ClassifyTagResponse {
 // Classify tag fetcher
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Entity tags (Feature 064)
+// ---------------------------------------------------------------------------
+
+/** Outcome of attaching a canonical tag to an entity. */
+export interface AddEntityTagResult {
+  /** Which path the server took. It decides, not the client. */
+  operation: "link" | "merge";
+  operation_id: string;
+  /**
+   * The tag that now represents the entity. For a merge this is the
+   * pre-existing tag, not the one just supplied — the entity's tag always wins.
+   */
+  target_normalized_form: string;
+  /**
+   * The target's display form. The normalized form is lower-cased, and a
+   * message built from it reads as a different tag than the one shown
+   * immediately above it on the page.
+   */
+  target_canonical_form: string;
+  /** The entity's video count after the operation. */
+  entity_video_count: number;
+}
+
 /**
- * Classifies a raw tag as a named entity, creating or updating it as needed.
+ * Attaches a canonical tag to an entity.
+ *
+ * The server chooses between linking and merging from the entity's current
+ * state, so the request carries only the tag. Sending an `entity_type` is not
+ * possible by design: a value disagreeing with the target would be a conflict,
+ * and this page has no guarantee the two agree.
+ *
+ * @param entityId - The entity to attach to
+ * @param normalizedForm - Normalized form of the canonical tag
+ * @returns Which operation ran, the surviving tag, and the resulting video count
+ * @throws ApiError 404 if the entity or the tag does not exist
+ * @throws ApiError 409 if the tag belongs to another entity, is already merged,
+ *   or the entity holds more than one linked tag
+ * @throws ApiError 422 if the tag is already the entity's own
+ */
+export async function addEntityTag(
+  entityId: string,
+  normalizedForm: string
+): Promise<AddEntityTagResult> {
+  const body = await apiFetch<{ data: AddEntityTagResult }>(
+    `/entities/${entityId}/tags`,
+    {
+      method: "POST",
+      body: JSON.stringify({ normalized_form: normalizedForm }),
+    }
+  );
+  return body.data;
+}
+
+/**
+ * Classifies a canonical tag, either creating a new named entity or linking
+ * the tag to one that already exists.
+ *
+ * The two modes are mutually exclusive in their optional fields: `description`
+ * and `display_name` describe an entity being created, so the backend rejects
+ * either alongside `link_entity_id` rather than silently discarding it
+ * (issue #183).
  *
  * @param data.normalized_form - The canonical name / normalized tag text
- * @param data.entity_type - Entity type (e.g. "person", "organization", "place")
- * @param data.description - Optional human-readable description
+ * @param data.entity_type - Entity type (e.g. "person", "organization",
+ *   "place"). Required when creating; optional when linking, where the target
+ *   entity's own type is used. Sending a type that disagrees with the target
+ *   is a 409 rather than an override — the entity owns its type.
+ * @param data.description - Optional human-readable description (create only)
  * @param data.display_name - Optional entity display name, stored verbatim
  *   (no re-casing). When omitted, the backend falls back to its existing
  *   auto-derived (title-cased) name (Feature 057, FR-008/FR-009/FR-010).
  *   The tag is still matched/linked by `normalized_form` regardless of this
- *   value's casing (FR-011).
+ *   value's casing (FR-011). Create only.
+ * @param data.link_entity_id - Attach the tag to this existing entity instead
+ *   of creating one (issue #183).
  * @returns ClassifyTagResponse with entity_id and operation metadata
- * @throws ApiError with status 409 if the tag is already classified as a different type
+ * @throws ApiError with status 409 if the tag is already classified, if
+ *   `entity_type` disagrees with the link target, or if the target is inactive
+ * @throws ApiError with status 404 if `link_entity_id` names no entity
  */
 export async function classifyTag(data: {
   normalized_form: string;
-  entity_type: string;
+  entity_type?: string;
   description?: string;
   display_name?: string;
+  link_entity_id?: string;
 }): Promise<ClassifyTagResponse> {
   return apiFetch<ClassifyTagResponse>("/entities/classify", {
     method: "POST",
@@ -960,4 +1028,107 @@ export async function fetchCooccurringEntities(
     signal ? { externalSignal: signal } : {}
   );
   return res.data;
+}
+
+/** A canonical tag folded into the entity's tag by a curator's merge. */
+export interface MergedTagSummary {
+  canonical_form: string;
+  normalized_form: string;
+  /**
+   * Videos this tag held **when it was merged** — frozen, not live, and not
+   * additive with the parent's count since the sets may overlap.
+   */
+  contributed_video_count: number;
+  /** null means it cannot be un-merged from the interface. */
+  operation_id: string | null;
+  /** >1 means reversing that merge restores other tags too. */
+  operation_source_count: number;
+}
+
+/** A canonical tag that represents the entity. */
+export interface LinkedTagSummary {
+  canonical_form: string;
+  normalized_form: string;
+  video_count: number;
+  alias_count: number;
+  merged_tags: MergedTagSummary[];
+}
+
+/** The tags representing an entity. */
+export interface EntityTagsResult {
+  /**
+   * Normally exactly one. Empty means no tag is linked — itself the signal
+   * that the entity's video count omits every tag-associated video.
+   */
+  linked_tags: LinkedTagSummary[];
+  /** True when more than one tag is linked: a legacy state needing repair. */
+  needs_attention: boolean;
+}
+
+/**
+ * Fetches the tags representing an entity, each with what it has absorbed.
+ *
+ * @param entityId - The entity to inspect
+ * @returns Linked tags and whether the entity needs attention
+ * @throws ApiError 404 if the entity does not exist
+ */
+export async function fetchEntityTags(
+  entityId: string
+): Promise<EntityTagsResult> {
+  const body = await apiFetch<{ data: EntityTagsResult }>(
+    `/entities/${entityId}/tags`
+  );
+  return body.data;
+}
+
+/** Tags restored by reversing a merge. */
+export interface UnMergeResult {
+  restored: string[];
+  operation_id: string;
+}
+
+/**
+ * Reverses the merge that folded a tag into the entity's tag.
+ *
+ * Reverses the whole operation, so a merge that folded several tags restores
+ * all of them — which is why `confirmMultiSource` exists. The server refuses
+ * with 409 and names every tag that would return until it is set.
+ *
+ * @param entityId - The entity whose tag absorbed this one
+ * @param normalizedForm - The merged tag to restore
+ * @param confirmMultiSource - Acknowledge a multi-tag reversal
+ * @throws ApiError 409 when confirmation is required, or already reversed
+ * @throws ApiError 404 if no live merge for that tag exists on this entity
+ */
+export async function unMergeEntityTag(
+  entityId: string,
+  normalizedForm: string,
+  confirmMultiSource = false
+): Promise<UnMergeResult> {
+  const body = await apiFetch<{ data: UnMergeResult }>(
+    `/entities/${entityId}/tags/${encodeURIComponent(normalizedForm)}/un-merge`,
+    {
+      method: "POST",
+      body: JSON.stringify({ confirm_multi_source: confirmMultiSource }),
+    }
+  );
+  return body.data;
+}
+
+/**
+ * Stops a tag representing an entity. The tag itself is untouched.
+ *
+ * @param entityId - The entity to detach from
+ * @param normalizedForm - The linked tag
+ * @throws ApiError 409 if tags are merged into it and must be un-merged first
+ */
+export async function unlinkEntityTag(
+  entityId: string,
+  normalizedForm: string
+): Promise<{ unlinked: string }> {
+  const body = await apiFetch<{ data: { unlinked: string } }>(
+    `/entities/${entityId}/tags/${encodeURIComponent(normalizedForm)}`,
+    { method: "DELETE" }
+  );
+  return body.data;
 }

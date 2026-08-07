@@ -16,13 +16,14 @@ from unittest.mock import patch
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from uuid_utils import uuid7
 
 from chronovista.api.routers.canonical_tags import _request_counts
 from chronovista.db.models import (
     CanonicalTag,
     Channel,
+    NamedEntity,
     TagAlias,
     Video,
     VideoTag,
@@ -1499,3 +1500,189 @@ class TestRateLimiting:
                 f"Expected 200 for fresh_ip; got {fresh_response.status_code}. "
                 "Rate-limit counters must be independent per client IP."
             )
+
+
+class TestExcludeLinked:
+    """Tests for ?exclude_linked= on the list endpoint (Feature 064, FR-007).
+
+    One SQL condition covers two failure modes that are easy to conflate:
+    offering a tag that represents a *different* entity, which acting on would
+    steal it, and offering the entity's *own* tag, which cannot be merged into
+    itself. Both are asserted separately.
+    """
+
+    async def _link(
+        self,
+        factory: async_sessionmaker[AsyncSession],
+        normalized_form: str,
+        entity_name: str,
+    ) -> uuid.UUID:
+        """Point a seeded tag at a fresh entity; return the entity id."""
+        entity_id = uuid.UUID(bytes=uuid7().bytes)
+        async with factory() as session:
+            session.add(
+                NamedEntity(
+                    id=entity_id,
+                    canonical_name=entity_name,
+                    canonical_name_normalized=entity_name.lower(),
+                    entity_type="organization",
+                    status="active",
+                )
+            )
+            await session.commit()
+            tag = (
+                await session.execute(
+                    select(CanonicalTag).where(
+                        CanonicalTag.normalized_form == normalized_form
+                    )
+                )
+            ).scalar_one()
+            tag.entity_id = entity_id
+            session.add(tag)
+            await session.commit()
+        return entity_id
+
+    async def _unlink_all(
+        self, factory: async_sessionmaker[AsyncSession], entity_ids: list[uuid.UUID]
+    ) -> None:
+        async with factory() as session:
+            for eid in entity_ids:
+                await session.execute(
+                    CanonicalTag.__table__.update()
+                    .where(CanonicalTag.entity_id == eid)
+                    .values(entity_id=None)
+                )
+                await session.execute(
+                    NamedEntity.__table__.delete().where(NamedEntity.id == eid)
+                )
+            await session.commit()
+
+    async def test_omitting_the_parameter_changes_nothing(
+        self,
+        async_client: AsyncClient,
+        sample_data: dict[str, Any],
+        cleanup_test_data: None,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Existing callers must be byte-identical (research.md Decision 4)."""
+        eid = await self._link(
+            integration_session_factory, "music", "Ect064 Sound Board"
+        )
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                default = await async_client.get("/api/v1/canonical-tags")
+                explicit_false = await async_client.get(
+                    "/api/v1/canonical-tags?exclude_linked=false"
+                )
+            assert default.status_code == 200
+            assert default.json() == explicit_false.json()
+            forms = [t["normalized_form"] for t in default.json()["data"]]
+            assert "music" in forms, "the linked tag is still offered by default"
+        finally:
+            await self._unlink_all(integration_session_factory, [eid])
+
+    async def test_excludes_a_tag_linked_to_a_different_entity(
+        self,
+        async_client: AsyncClient,
+        sample_data: dict[str, Any],
+        cleanup_test_data: None,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Acting on another entity's tag would steal it (SC-005)."""
+        eid = await self._link(
+            integration_session_factory, "music", "Ect064 Sound Board"
+        )
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                response = await async_client.get(
+                    "/api/v1/canonical-tags?exclude_linked=true"
+                )
+            assert response.status_code == 200
+            forms = [t["normalized_form"] for t in response.json()["data"]]
+            assert "music" not in forms
+            assert "python" in forms, "unlinked tags are unaffected"
+        finally:
+            await self._unlink_all(integration_session_factory, [eid])
+
+    async def test_excludes_the_entitys_own_tag(
+        self,
+        async_client: AsyncClient,
+        sample_data: dict[str, Any],
+        cleanup_test_data: None,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """A tag cannot be merged into itself, so it must not be offered."""
+        eid = await self._link(
+            integration_session_factory, "new york", "Ect064 Harbour Board"
+        )
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                response = await async_client.get(
+                    "/api/v1/canonical-tags?q=new&exclude_linked=true"
+                )
+            assert response.status_code == 200
+            forms = [t["normalized_form"] for t in response.json()["data"]]
+            assert "new york" not in forms
+        finally:
+            await self._unlink_all(integration_session_factory, [eid])
+
+    async def test_the_total_count_reflects_the_exclusion(
+        self,
+        async_client: AsyncClient,
+        sample_data: dict[str, Any],
+        cleanup_test_data: None,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """A total that still counts excluded rows would drive wrong pagination."""
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            before = (await async_client.get("/api/v1/canonical-tags")).json()[
+                "pagination"
+            ]["total"]
+
+        eid = await self._link(
+            integration_session_factory, "music", "Ect064 Sound Board"
+        )
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                after = (
+                    await async_client.get("/api/v1/canonical-tags?exclude_linked=true")
+                ).json()["pagination"]["total"]
+            assert after == before - 1
+        finally:
+            await self._unlink_all(integration_session_factory, [eid])
+
+    async def test_fuzzy_suggestions_respect_the_exclusion(
+        self,
+        async_client: AsyncClient,
+        sample_data: dict[str, Any],
+        cleanup_test_data: None,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """The suggestion pool is a second, independent path to a tag name.
+
+        It queries canonical_tags directly rather than going through search, so
+        without its own filter it would offer exactly the tags the caller asked
+        to exclude — at the moment the main search returned nothing, which is
+        when a suggestion is most likely to be acted on.
+        """
+        eid = await self._link(
+            integration_session_factory, "music", "Ect064 Sound Board"
+        )
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                response = await async_client.get(
+                    "/api/v1/canonical-tags?q=muzik&exclude_linked=true"
+                )
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"] == [], "precondition: no direct matches"
+            suggested = [s["normalized_form"] for s in (body.get("suggestions") or [])]
+            assert "music" not in suggested
+        finally:
+            await self._unlink_all(integration_session_factory, [eid])

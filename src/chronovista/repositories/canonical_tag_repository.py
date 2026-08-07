@@ -17,6 +17,7 @@ from sqlalchemy.sql import Select
 
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.db.models import TagAlias as TagAliasDB
+from chronovista.db.models import TagOperationLog as TagOperationLogDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTag
 from chronovista.models.canonical_tag import CanonicalTagCreate, CanonicalTagUpdate
@@ -58,6 +59,7 @@ class CanonicalTagRepository(
         q: str | None = None,
         status: str = "active",
         match_mode: str = "prefix",
+        exclude_linked: bool = False,
         skip: int = 0,
         limit: int = 20,
     ) -> tuple[list[CanonicalTagDB], int]:
@@ -81,6 +83,13 @@ class CanonicalTagRepository(
             method exactly. Contains mode additionally orders results by a
             relevance tier (exact, then prefix, then mid-string) so that the
             most likely intended tag surfaces first (Feature 056).
+        exclude_linked : bool, optional
+            When True, omit tags that already carry an ``entity_id`` (default
+            False, leaving every existing caller unchanged). One condition
+            covers two cases the entity-tag surface must both avoid: offering a
+            tag that represents a *different* entity, which acting on would
+            steal it, and offering the entity's *own* tag, which cannot be
+            merged into itself (Feature 064, FR-007).
         skip : int, optional
             Number of rows to skip for pagination (default 0).
         limit : int, optional
@@ -95,6 +104,9 @@ class CanonicalTagRepository(
             Tiering only affects ordering — every matching row is returned.
         """
         base_query = select(CanonicalTagDB).where(CanonicalTagDB.status == status)
+
+        if exclude_linked:
+            base_query = base_query.where(CanonicalTagDB.entity_id.is_(None))
 
         contains = match_mode == "contains"
 
@@ -171,12 +183,120 @@ class CanonicalTagRepository(
 
         return items, total_count
 
+    async def get_linked_tags(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+    ) -> list[CanonicalTagDB]:
+        """
+        Return the **active** canonical tags linked to an entity.
+
+        Normally exactly one (Feature 064, FR-028 / invariant I1). Returns a
+        list rather than a single row because legacy data reached a two-tag
+        state that the browser can no longer create, and the entity page must
+        render it rather than raise (FR-011a).
+
+        The status filter is belt-and-braces: merging clears the source's
+        ``entity_id`` (FR-026), so a merged tag should never appear here. It is
+        kept so a regression in that clearing degrades to a stale row rather
+        than to an entity that silently appears to have two tags.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        entity_id : uuid.UUID
+            The named entity whose tags are wanted.
+
+        Returns
+        -------
+        list[CanonicalTagDB]
+            Active linked tags, largest video count first.
+        """
+        result = await session.execute(
+            select(CanonicalTagDB)
+            .where(
+                CanonicalTagDB.entity_id == entity_id,
+                CanonicalTagDB.status == "active",
+            )
+            .order_by(desc(CanonicalTagDB.video_count))
+        )
+        return list(result.scalars().all())
+
+    async def get_merged_into(
+        self,
+        session: AsyncSession,
+        target_id: uuid.UUID,
+    ) -> list[tuple[CanonicalTagDB, uuid.UUID | None, int]]:
+        """
+        Return the canonical tags merged into *target_id*, with their operation.
+
+        Only tags a curator merged. Raw-form variants produced by automatic
+        normalization are not included: those came from a data process rather
+        than a decision, and are not separately reversible (Feature 064,
+        FR-013).
+
+        The operation is found by containment against
+        ``tag_operation_logs.source_canonical_ids``, a top-level JSONB array of
+        the ids a merge absorbed. Operations already reversed are skipped, and
+        the most recent match wins — a tag can be merged, un-merged and merged
+        again, and only the live merge is reversible.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        target_id : uuid.UUID
+            The surviving canonical tag.
+
+        Returns
+        -------
+        list[tuple[CanonicalTagDB, uuid.UUID | None, int]]
+            ``(merged_tag, operation_id, source_count)`` per absorbed tag.
+            ``operation_id`` is None when no live operation is found, which
+            makes the tag un-reversible from the interface rather than
+            reversible by guess. ``source_count`` is how many tags that one
+            operation folded, so a caller can tell in advance whether reversing
+            it needs confirmation (FR-016).
+        """
+        merged_result = await session.execute(
+            select(CanonicalTagDB)
+            .where(CanonicalTagDB.merged_into_id == target_id)
+            .order_by(desc(CanonicalTagDB.video_count))
+        )
+        merged_tags = list(merged_result.scalars().all())
+
+        out: list[tuple[CanonicalTagDB, uuid.UUID | None, int]] = []
+        for tag in merged_tags:
+            op_row = (
+                await session.execute(
+                    select(
+                        TagOperationLogDB.id,
+                        func.jsonb_array_length(TagOperationLogDB.source_canonical_ids),
+                    )
+                    .where(
+                        TagOperationLogDB.operation_type == "merge",
+                        TagOperationLogDB.rolled_back.is_(False),
+                        TagOperationLogDB.source_canonical_ids.op("@>")(
+                            func.jsonb_build_array(str(tag.id))
+                        ),
+                    )
+                    .order_by(desc(TagOperationLogDB.performed_at))
+                    .limit(1)
+                )
+            ).first()
+            if op_row is None:
+                out.append((tag, None, 0))
+            else:
+                out.append((tag, op_row[0], int(op_row[1] or 0)))
+        return out
+
     async def get_by_normalized_form(
         self,
         session: AsyncSession,
         normalized_form: str,
         *,
-        status: str = "active",
+        status: str | None = "active",
     ) -> CanonicalTagDB | None:
         """
         Look up a single canonical tag by its unique normalized form.
@@ -195,12 +315,12 @@ class CanonicalTagRepository(
         CanonicalTagDB | None
             The matching canonical tag, or ``None`` if not found.
         """
-        result = await session.execute(
-            select(CanonicalTagDB).where(
-                CanonicalTagDB.normalized_form == normalized_form,
-                CanonicalTagDB.status == status,
-            )
+        query = select(CanonicalTagDB).where(
+            CanonicalTagDB.normalized_form == normalized_form
         )
+        if status is not None:
+            query = query.where(CanonicalTagDB.status == status)
+        result = await session.execute(query)
         return result.scalar_one_or_none()
 
     async def get_top_aliases(

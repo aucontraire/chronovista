@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-08-07
+
+### Added
+- **An entity's tags can be managed from its page.** An entity only counts tag-associated videos if a canonical tag points at it, and nothing in the browser could create that link — an entity built before its tags acquired videos stayed under-counted, with no control to fix it. The entity page gains a **Tags** section that shows which tag represents the entity, what that tag has absorbed, and lets you attach, un-merge and unlink. The server chooses between linking and merging from the entity's current state rather than taking the choice from the caller: with no tag the chosen one is linked, with one it is merged into it, and with several the request is refused because there is no defined target to merge into. Search excludes any tag already representing an entity, so a tag belonging to somewhere else is never offered and the entity's own tag cannot be merged into itself.
+- **`GET /api/v1/entities/{id}/tags`** returns the linked tag(s) with the tags merged into each, the operation that would reverse each merge, and whether the entity holds more than one link. A merged tag's video count is reported as what it contributed at merge time, not as a live figure — a merged tag owns no videos, so a live count would read zero and imply it brought nothing.
+- **`POST /api/v1/entities/{id}/tags`**, **`POST .../tags/{form}/un-merge`** and **`DELETE .../tags/{form}`** implement the three operations. Un-merge reverses the whole merge operation, so one that folded several tags restores all of them; it is refused until confirmed, and the refusal names every tag that would return, because a count alone cannot be judged.
+- **`exclude_linked` on `GET /api/v1/canonical-tags`**, defaulting to false so every existing caller is byte-identical.
+- **`make pre-push`** reproduces all four CI jobs locally in CI's order and stops at the first failure. It mirrors the workflow rather than composing the existing targets, because `quality` also runs isort (which CI does not) and `test-unit` selected a marker no test carried.
+- **Query timeouts on the three expensive entity reads** (co-occurring, entity videos, phonetic matches), raising `QueryTimeoutError` so a 504 flows through the RFC 7807 handler like every other error rather than as a bespoke response shape.
+
+### Changed
+- **Attaching a tag to an existing entity no longer creates an entity alias.** This applies to `POST /api/v1/entities/classify` with `link_entity_id` and to `chronovista tags classify --link-entity`. Entity aliases are curated patterns for detecting a name in transcripts and titles; a tag's form follows uploader convention and is frequently nothing anyone says aloud. The previous behaviour wrote one alias per link, producing zero-occurrence entries that polluted the detection ruleset for entities the caller only meant to point a tag at. Promoting a tag to a **new** entity still creates its self-alias — an entity's own name is a legitimate pattern.
+  Aliases created by the old behaviour are left alone. They are identifiable from `tag_operation_logs.rollback_data.created_entity_alias_ids` on classify operations and removable with `chronovista tags undo <operation_id>`; an operation that deleted aliases it never created would be indistinguishable from the defect itself.
+- **Merging a tag now clears its `entity_id`.** A merged tag owns no aliases and cannot reach a video, so it must not continue to claim an entity. Exactly one canonical tag may now carry a given `entity_id`, readable without a status filter.
+
+### Fixed
+- **Undoing a merge restores the source's entity link.** Paired with the change above: clearing `entity_id` on merge without restoring it on undo would not move the link, it would destroy it — on the path taken when something has already gone wrong. The rollback data already recorded the previous value; undo now reads it.
+- **`make test-unit` ran no tests at all.** It selected `-m "unit"`, a marker `pytest.ini` does not declare and no test carries, so it deselected all 8,167 and exited 0 — reporting success while running nothing. `make test-integration` had the same shape of defect, running 153 of 1,308 tests: it printed a plausible pass while skipping 88% of the suite. Both now select by directory, which is what their documentation always claimed.
+- **Repaired tag aliases stranded on merged canonical tags**, where a merge left rows pointing at a tag that holds no `entity_id`, so the two entity-association paths disagreed by exactly those videos.
+- **A missing entity no longer produces a 404 naming the canonical tag.** The service reports a missing entity and a missing tag with the same `ValueError("... not found")`, and the router's error mapping keys on that substring; both records are now resolved before the service is called.
+- **Error messages no longer contain command-line vocabulary.** Clients render the problem-details `detail` verbatim, so a service message ending "Use `--force` to override" reached the browser as advice about a flag no HTTP client has.
+- **The server-side query ceiling now sits below the client's.** Both were 10 seconds, so they raced and the client generally won — its budget covers the whole round trip while the server's covers the query alone — making the structured 504 effectively unreachable from a browser.
+- **A cancelled query no longer leaves its session unusable.** `asyncio.wait_for` cancels mid-flight, leaving the transaction failed, so the next statement raised `PendingRollbackError` instead of the timeout the caller expected.
+
+### Documentation
+- **[Make an entity count the videos its tags are on](user-guide/entity-tags.md)** — the tag workflow end to end, including how to undo each step.
+- **[Tags and aliases are not the same thing](architecture/tags-and-aliases.md)** — why these are two relationships rather than one, and what follows from that. This distinction is the root of every defect listed above.
+
 ## [0.63.0] - 2026-08-05
 
 Entity curation. Everything here serves one workflow: seeing why a mention matched, deciding it was wrong, and rebuilding without it.

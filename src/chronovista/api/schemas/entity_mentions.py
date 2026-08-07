@@ -530,6 +530,10 @@ class ClassifyTagRequest(BaseModel):
         the created entity's ``canonical_name`` is this value exactly (no
         auto re-casing); when omitted, the auto-derived name is used
         (Feature 057, FR-008..FR-011).
+    link_entity_id : UUID | None
+        Link the tag to this existing entity instead of creating one. When
+        given, ``entity_type`` may be omitted and is inferred from the target
+        entity, matching ``tags classify --link-entity`` (issue #183).
     """
 
     model_config = ConfigDict(strict=True)
@@ -540,7 +544,11 @@ class ClassifyTagRequest(BaseModel):
         max_length=500,
         description="Normalized form of the canonical tag",
     )
-    entity_type: str = Field(..., min_length=1, description="Entity type")
+    entity_type: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Entity type; optional when link_entity_id is given",
+    )
     description: str | None = Field(
         default=None,
         max_length=5000,
@@ -552,17 +560,260 @@ class ClassifyTagRequest(BaseModel):
         max_length=500,
         description="Optional verbatim entity display name",
     )
+    link_entity_id: UUID | None = Field(
+        default=None,
+        # This model is strict, and strict mode refuses to build a UUID from
+        # the string an HTTP client sends — FastAPI validates the parsed body
+        # in python mode, where a str is just a str. Same opt-out the
+        # EntityType fields use.
+        strict=False,
+        description="Link to this existing entity instead of creating one",
+    )
 
     @field_validator("entity_type")
     @classmethod
-    def validate_entity_type(cls, v: str) -> str:
-        """Ensure entity_type is a valid entity-producing type."""
+    def validate_entity_type(cls, v: str | None) -> str | None:
+        """Ensure entity_type, when given, is a valid entity-producing type."""
+        if v is None:
+            return v
         if v not in _ENTITY_PRODUCING_TYPES:
             raise ValueError(
                 f"entity_type must be one of: "
                 f"{', '.join(sorted(_ENTITY_PRODUCING_TYPES))}"
             )
         return v
+
+    @model_validator(mode="after")
+    def validate_type_or_link(self) -> ClassifyTagRequest:
+        """Mirror the CLI's rules for combining these fields.
+
+        ``entity_type`` is only optional in the linking case, where it is
+        inferred from the target entity.
+
+        ``description`` and ``display_name`` both describe an entity being
+        created. Pairing either with a link is refused rather than accepted,
+        because neither is inert there: the service ignores ``description``
+        outright, and ``display_name`` is worse — it becomes the name of a new
+        alias written onto the *target* entity, so a link request could inject
+        an arbitrary alias onto a record it was only supposed to point at.
+        """
+        if self.entity_type is None and self.link_entity_id is None:
+            raise ValueError(
+                "entity_type is required unless link_entity_id is provided"
+            )
+        if self.link_entity_id is not None:
+            for field in ("description", "display_name"):
+                if getattr(self, field) is not None:
+                    raise ValueError(
+                        f"{field} and link_entity_id are mutually exclusive; "
+                        f"{field} applies only when creating a new entity"
+                    )
+        return self
+
+
+class UnMergeRequest(BaseModel):
+    """Request body for reversing a merge (Feature 064, FR-015/FR-016).
+
+    Attributes
+    ----------
+    confirm_multi_source : bool
+        Acknowledges that the merge being reversed folded several tags, and
+        that reversing it restores all of them. Required only in that case;
+        every other un-merge proceeds without confirmation (FR-006).
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    confirm_multi_source: bool = Field(
+        default=False,
+        description="Proceed even though other tags will also be restored",
+    )
+
+
+class UnMergeResult(BaseModel):
+    """Which tags a reversal restored."""
+
+    model_config = ConfigDict(strict=True)
+
+    restored: list[str]
+    operation_id: str
+
+
+class UnMergeResponse(BaseModel):
+    """Envelope for :class:`UnMergeResult`."""
+
+    data: UnMergeResult
+
+
+class UnlinkResult(BaseModel):
+    """The tag no longer representing the entity."""
+
+    model_config = ConfigDict(strict=True)
+
+    unlinked: str
+
+
+class UnlinkResponse(BaseModel):
+    """Envelope for :class:`UnlinkResult`."""
+
+    data: UnlinkResult
+
+
+class MergedTagSummary(BaseModel):
+    """A canonical tag folded into the entity's tag by a curator's merge.
+
+    Attributes
+    ----------
+    canonical_form : str
+        Display form of the absorbed tag.
+    normalized_form : str
+        Its normalized form, used to address it for un-merging.
+    contributed_video_count : int
+        Videos this tag held **at the moment it was merged**. A frozen figure,
+        not a live count, and not additive with the parent's — the two video
+        sets may overlap. Labelled accordingly wherever it is shown (FR-014).
+    operation_id : str | None
+        The merge that absorbed it, if a live one is recorded. ``None`` means
+        the tag cannot be un-merged from the interface, rather than that it can
+        be un-merged by guessing which operation to reverse.
+    operation_source_count : int
+        How many tags that one operation folded. Greater than 1 means reversing
+        it restores others too, which requires confirmation (FR-016). Supplied
+        here so the interface knows without a second request.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    canonical_form: str
+    normalized_form: str
+    contributed_video_count: int
+    operation_id: str | None
+    operation_source_count: int
+
+
+class LinkedTagSummary(BaseModel):
+    """A canonical tag that represents the entity, plus what it has absorbed.
+
+    Attributes
+    ----------
+    canonical_form : str
+        Display form of the tag.
+    normalized_form : str
+        Its normalized form.
+    video_count : int
+        Current video count — live, unlike ``contributed_video_count`` above.
+    alias_count : int
+        Raw forms this tag owns, including any inherited by merging.
+    merged_tags : list[MergedTagSummary]
+        Tags merged into this one. Only curator merges; auto-normalized raw
+        forms are excluded (FR-013).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    canonical_form: str
+    normalized_form: str
+    video_count: int
+    alias_count: int
+    merged_tags: list[MergedTagSummary]
+
+
+class EntityTagsResult(BaseModel):
+    """The tags representing an entity.
+
+    Attributes
+    ----------
+    linked_tags : list[LinkedTagSummary]
+        Normally exactly one (FR-028 / invariant I1). Empty when no tag is
+        linked, which is itself the signal that the entity is under-counted
+        (FR-011). A list rather than a single value because legacy data reached
+        a multi-tag state the browser can no longer create, and the page must
+        render it rather than raise (FR-011a).
+    needs_attention : bool
+        True when more than one tag is linked.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    linked_tags: list[LinkedTagSummary]
+    needs_attention: bool
+
+
+class EntityTagsResponse(BaseModel):
+    """Envelope for :class:`EntityTagsResult`."""
+
+    data: EntityTagsResult
+
+
+class AddEntityTagRequest(BaseModel):
+    """Request body for attaching a canonical tag to an entity (Feature 064).
+
+    Carries only the tag. The server chooses between linking and merging from
+    the entity's current state (FR-001/FR-002) — the client never decides, so
+    that the rule "the entity's tag always wins" (FR-003) cannot be overridden
+    from a browser.
+
+    Deliberately has no ``entity_type``: it is inferred from the entity, and a
+    value disagreeing with the target is a conflict rather than an instruction.
+    No ``description`` or ``display_name`` either — those describe an entity
+    being created, and neither is inert on this path (FR-004).
+
+    Attributes
+    ----------
+    normalized_form : str
+        Normalized form of the canonical tag to attach.
+    """
+
+    # extra="forbid" rather than the default, which silently drops unknown
+    # fields. A caller sending display_name or entity_type here is working from
+    # a wrong model of the endpoint, and dropping it quietly leaves them
+    # believing it took effect. This feature exists because a field that looked
+    # inert was not — refusing is the honest answer (FR-004).
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    normalized_form: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Normalized form of the canonical tag to attach",
+    )
+
+
+class AddEntityTagResult(BaseModel):
+    """Outcome of attaching a tag, including which operation was chosen.
+
+    Attributes
+    ----------
+    operation : Literal["link", "merge"]
+        Which path the server took. Reported so the interface can word its
+        confirmation truthfully rather than guessing.
+    operation_id : str
+        Operation log id, usable to reverse this.
+    target_normalized_form : str
+        The tag that now represents the entity. For a merge this is the
+        pre-existing tag, not the one just supplied.
+    target_canonical_form : str
+        Its display form. Supplied because the normalized form is lower-cased
+        and a message built from it reads as a different tag than the one shown
+        immediately above it on the page.
+    entity_video_count : int
+        The entity's video count after the operation, so the caller can show
+        the consequence without a second request.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    operation: Literal["link", "merge"]
+    operation_id: str
+    target_normalized_form: str
+    target_canonical_form: str
+    entity_video_count: int
+
+
+class AddEntityTagResponse(BaseModel):
+    """Envelope for :class:`AddEntityTagResult`."""
+
+    data: AddEntityTagResult
 
 
 class UpdateEntityRequest(BaseModel):

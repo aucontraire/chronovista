@@ -1318,29 +1318,41 @@ class TagManagementService:
             # Create self-alias (entity display name as name_variant).
             # Tag aliases are NOT copied — they represent YouTube tag
             # variations (show names, SEO tags), not entity name variants.
-            entity_id_for_aliases = tag.entity_id
-            self_norm = (
-                normalizer.normalize(entity_display_name) or entity_display_name.lower()
-            )
-
-            existing_result = await session.execute(
-                select(EntityAliasDB).where(
-                    EntityAliasDB.entity_id == entity_id_for_aliases,
-                    EntityAliasDB.alias_name_normalized == self_norm,
+            #
+            # Skipped entirely when linking to an existing entity. A new entity
+            # needs a self-alias: its own name is a legitimate pattern to detect
+            # in transcripts. An entity that already exists has its own curated
+            # aliases, and the tag's form is a YouTube convention that may be
+            # nothing like a name anyone says aloud. Writing it here produced
+            # zero-occurrence entries on entities the caller only meant to point
+            # a tag at, and polluted the detection ruleset (issue #183, FR-004).
+            if link_entity_id is None:
+                entity_id_for_aliases = tag.entity_id
+                self_norm = (
+                    normalizer.normalize(entity_display_name)
+                    or entity_display_name.lower()
                 )
-            )
-            existing_db = existing_result.scalar_one_or_none()
 
-            if existing_db is None:
-                ea_create = EntityAliasCreate(
-                    entity_id=entity_id_for_aliases,
-                    alias_name=entity_display_name,
-                    alias_name_normalized=self_norm,
-                    alias_type=EntityAliasType.NAME_VARIANT,
-                    occurrence_count=0,
+                existing_result = await session.execute(
+                    select(EntityAliasDB).where(
+                        EntityAliasDB.entity_id == entity_id_for_aliases,
+                        EntityAliasDB.alias_name_normalized == self_norm,
+                    )
                 )
-                ea_db = await self._entity_alias_repo.create(session, obj_in=ea_create)
-                created_entity_alias_ids.append(ea_db.id)
+                existing_db = existing_result.scalar_one_or_none()
+
+                if existing_db is None:
+                    ea_create = EntityAliasCreate(
+                        entity_id=entity_id_for_aliases,
+                        alias_name=entity_display_name,
+                        alias_name_normalized=self_norm,
+                        alias_type=EntityAliasType.NAME_VARIANT,
+                        occurrence_count=0,
+                    )
+                    ea_db = await self._entity_alias_repo.create(
+                        session, obj_in=ea_create
+                    )
+                    created_entity_alias_ids.append(ea_db.id)
 
         elif entity_type in tag_only_types:
             # 5. Tag-only types: set entity_type only

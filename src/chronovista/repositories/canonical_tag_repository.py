@@ -58,6 +58,7 @@ class CanonicalTagRepository(
         q: str | None = None,
         status: str = "active",
         match_mode: str = "prefix",
+        exclude_linked: bool = False,
         skip: int = 0,
         limit: int = 20,
     ) -> tuple[list[CanonicalTagDB], int]:
@@ -81,6 +82,13 @@ class CanonicalTagRepository(
             method exactly. Contains mode additionally orders results by a
             relevance tier (exact, then prefix, then mid-string) so that the
             most likely intended tag surfaces first (Feature 056).
+        exclude_linked : bool, optional
+            When True, omit tags that already carry an ``entity_id`` (default
+            False, leaving every existing caller unchanged). One condition
+            covers two cases the entity-tag surface must both avoid: offering a
+            tag that represents a *different* entity, which acting on would
+            steal it, and offering the entity's *own* tag, which cannot be
+            merged into itself (Feature 064, FR-007).
         skip : int, optional
             Number of rows to skip for pagination (default 0).
         limit : int, optional
@@ -95,6 +103,9 @@ class CanonicalTagRepository(
             Tiering only affects ordering — every matching row is returned.
         """
         base_query = select(CanonicalTagDB).where(CanonicalTagDB.status == status)
+
+        if exclude_linked:
+            base_query = base_query.where(CanonicalTagDB.entity_id.is_(None))
 
         contains = match_mode == "contains"
 
@@ -170,6 +181,46 @@ class CanonicalTagRepository(
         items: list[CanonicalTagDB] = list(items_result.scalars().all())
 
         return items, total_count
+
+    async def get_linked_tags(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+    ) -> list[CanonicalTagDB]:
+        """
+        Return the **active** canonical tags linked to an entity.
+
+        Normally exactly one (Feature 064, FR-028 / invariant I1). Returns a
+        list rather than a single row because legacy data reached a two-tag
+        state that the browser can no longer create, and the entity page must
+        render it rather than raise (FR-011a).
+
+        The status filter is belt-and-braces: merging clears the source's
+        ``entity_id`` (FR-026), so a merged tag should never appear here. It is
+        kept so a regression in that clearing degrades to a stale row rather
+        than to an entity that silently appears to have two tags.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        entity_id : uuid.UUID
+            The named entity whose tags are wanted.
+
+        Returns
+        -------
+        list[CanonicalTagDB]
+            Active linked tags, largest video count first.
+        """
+        result = await session.execute(
+            select(CanonicalTagDB)
+            .where(
+                CanonicalTagDB.entity_id == entity_id,
+                CanonicalTagDB.status == "active",
+            )
+            .order_by(desc(CanonicalTagDB.video_count))
+        )
+        return list(result.scalars().all())
 
     async def get_by_normalized_form(
         self,

@@ -412,20 +412,35 @@ class TestClassifyLinkEntity:
         assert "--force" not in detail, "CLI vocabulary leaked into an API error"
         assert ENTITY_NAME in detail, "the error should name what holds the tag"
 
-    async def test_linking_records_the_tag_form_as_an_entity_alias(
+    async def test_linking_creates_no_entity_alias(
         self,
         async_client: AsyncClient,
         unlinked_tag: str,
         integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
-        """Pinning two side effects of linking, so they stay deliberate.
+        """Linking must not touch the entity's aliases at all (FR-004).
 
-        The service creates a self-alias on the target named after the tag,
-        which is what makes the linked form findable by mention detection, and
-        title-cases the tag's canonical form on the way through. Both are
-        inherited from the CLI path; neither is obvious from the endpoint.
+        This assertion is the inverse of what it was. The earlier version
+        pinned the alias creation as *correct*, on the reasoning that it made
+        the tag's form findable by mention detection. That reasoning is wrong:
+        entity aliases are curated patterns for detecting a name in transcripts,
+        while a tag form follows uploader convention and is frequently nothing
+        anyone says aloud. The behaviour produced zero-occurrence aliases on
+        entities the caller only meant to point a tag at.
+
+        A new entity still gets its own self-alias — its name is a legitimate
+        pattern. Only the linking path is suppressed.
         """
         entity_id = await _seed_entity(integration_session_factory)
+
+        async with integration_session_factory() as session:
+            before = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(EntityAliasDB)
+                    .where(EntityAliasDB.entity_id == entity_id)
+                )
+            ).scalar_one()
 
         response = await async_client.post(
             "/api/v1/entities/classify",
@@ -434,6 +449,18 @@ class TestClassifyLinkEntity:
         assert response.status_code == 201, response.text
 
         async with integration_session_factory() as session:
+            after = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(EntityAliasDB)
+                    .where(EntityAliasDB.entity_id == entity_id)
+                )
+            ).scalar_one()
+            assert after == before, (
+                "linking changed the entity's alias count; aliases are curated "
+                "detection patterns and no tag operation may write one (SC-003)"
+            )
+
             names = (
                 (
                     await session.execute(
@@ -445,8 +472,29 @@ class TestClassifyLinkEntity:
                 .scalars()
                 .all()
             )
-            assert ENTITY_NAME in names
+            assert ENTITY_NAME not in names
 
+    async def test_linking_still_title_cases_the_tag_form(
+        self,
+        async_client: AsyncClient,
+        unlinked_tag: str,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """The other side effect of linking, kept and pinned separately.
+
+        `auto_case` title-cases the tag's own canonical form on the way through.
+        That is a tag-side change and remains intended; it was only bundled with
+        the alias assertion because both were discovered at once.
+        """
+        entity_id = await _seed_entity(integration_session_factory)
+
+        response = await async_client.post(
+            "/api/v1/entities/classify",
+            json={"normalized_form": unlinked_tag, "link_entity_id": str(entity_id)},
+        )
+        assert response.status_code == 201, response.text
+
+        async with integration_session_factory() as session:
             tag = (
                 await session.execute(
                     select(CanonicalTagDB).where(

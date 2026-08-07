@@ -684,6 +684,54 @@ export interface ClassifyTagResponse {
 // Classify tag fetcher
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Entity tags (Feature 064)
+// ---------------------------------------------------------------------------
+
+/** Outcome of attaching a canonical tag to an entity. */
+export interface AddEntityTagResult {
+  /** Which path the server took. It decides, not the client. */
+  operation: "link" | "merge";
+  operation_id: string;
+  /**
+   * The tag that now represents the entity. For a merge this is the
+   * pre-existing tag, not the one just supplied — the entity's tag always wins.
+   */
+  target_normalized_form: string;
+  /** The entity's video count after the operation. */
+  entity_video_count: number;
+}
+
+/**
+ * Attaches a canonical tag to an entity.
+ *
+ * The server chooses between linking and merging from the entity's current
+ * state, so the request carries only the tag. Sending an `entity_type` is not
+ * possible by design: a value disagreeing with the target would be a conflict,
+ * and this page has no guarantee the two agree.
+ *
+ * @param entityId - The entity to attach to
+ * @param normalizedForm - Normalized form of the canonical tag
+ * @returns Which operation ran, the surviving tag, and the resulting video count
+ * @throws ApiError 404 if the entity or the tag does not exist
+ * @throws ApiError 409 if the tag belongs to another entity, is already merged,
+ *   or the entity holds more than one linked tag
+ * @throws ApiError 422 if the tag is already the entity's own
+ */
+export async function addEntityTag(
+  entityId: string,
+  normalizedForm: string
+): Promise<AddEntityTagResult> {
+  const body = await apiFetch<{ data: AddEntityTagResult }>(
+    `/entities/${entityId}/tags`,
+    {
+      method: "POST",
+      body: JSON.stringify({ normalized_form: normalizedForm }),
+    }
+  );
+  return body.data;
+}
+
 /**
  * Classifies a canonical tag, either creating a new named entity or linking
  * the tag to one that already exists.

@@ -677,6 +677,26 @@ class TestAddTagErrors:
         assert r.status_code == 409, r.text
         assert "merged" in r.json()["detail"]
 
+    async def test_fields_this_endpoint_does_not_accept_are_refused(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+    ) -> None:
+        """Unknown fields are rejected, not silently dropped (FR-004).
+
+        ``display_name`` and ``entity_type`` are exactly the fields a caller
+        would reach for from the older classify endpoint, and dropping them
+        quietly would leave that caller believing they took effect. On classify
+        one of them was not inert — it wrote an alias onto the target entity —
+        which is the defect this whole feature corrects.
+        """
+        for extra in ({"display_name": "Something Else"}, {"entity_type": "person"}):
+            r = await async_client.post(
+                f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+                json={"normalized_form": TAG_OTHER, **extra},
+            )
+            assert r.status_code == 422, f"{extra} was accepted: {r.text}"
+
     async def test_no_error_detail_contains_cli_vocabulary(
         self,
         async_client: AsyncClient,

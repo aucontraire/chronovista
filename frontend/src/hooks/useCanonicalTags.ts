@@ -37,13 +37,19 @@ async function fetchCanonicalTags(
   search: string,
   signal: AbortSignal,
   matchMode: MatchMode,
-  limit: number
+  limit: number,
+  excludeLinked: boolean
 ): Promise<CanonicalTagListResponse> {
   const params = new URLSearchParams({ q: search, limit: String(limit) });
   // Only send match_mode when it differs from the backend default ("prefix")
   // so the video filter's request stays byte-for-byte identical (FR-004).
   if (matchMode !== DEFAULT_MATCH_MODE) {
     params.set("match_mode", matchMode);
+  }
+  // Same rule: omitted unless asked for, so existing callers' requests are
+  // unchanged (Feature 064, FR-007).
+  if (excludeLinked) {
+    params.set("exclude_linked", "true");
   }
   const response = await fetch(
     `${API_BASE_URL}/canonical-tags?${params.toString()}`,
@@ -80,6 +86,12 @@ export interface UseCanonicalTagsOptions {
    * filter's existing behavior (FR-004). The merge UI passes `50` (FR-005).
    */
   limit?: number;
+  /**
+   * Omit tags that already represent a named entity. Defaults to `false`.
+   * The entity tag section sets it so a tag belonging to another entity — or
+   * to this one — is never offered (Feature 064, FR-007).
+   */
+  excludeLinked?: boolean;
 }
 
 export function useCanonicalTags(
@@ -96,6 +108,7 @@ export function useCanonicalTags(
 } {
   const matchMode = options.matchMode ?? DEFAULT_MATCH_MODE;
   const limit = options.limit ?? DEFAULT_LIMIT;
+  const excludeLinked = options.excludeLinked ?? false;
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -114,14 +127,26 @@ export function useCanonicalTags(
   // options are used, so the video filter's cache entries (and any code that
   // reads the ["canonical-tags", search] key directly) stay unaffected.
   const queryKey =
-    matchMode === DEFAULT_MATCH_MODE && limit === DEFAULT_LIMIT
+    matchMode === DEFAULT_MATCH_MODE && limit === DEFAULT_LIMIT && !excludeLinked
       ? (["canonical-tags", debouncedSearch] as const)
-      : (["canonical-tags", debouncedSearch, matchMode, limit] as const);
+      : !excludeLinked
+        ? // Feature 056's merge screen pins this exact 4-tuple. Appending a
+          // fifth element unconditionally would change its cache identity, so
+          // the extra segment appears only when the option is actually used —
+          // the same compatibility rule the request params follow.
+          (["canonical-tags", debouncedSearch, matchMode, limit] as const)
+        : ([
+            "canonical-tags",
+            debouncedSearch,
+            matchMode,
+            limit,
+            "exclude-linked",
+          ] as const);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey,
     queryFn: ({ signal }) =>
-      fetchCanonicalTags(debouncedSearch, signal, matchMode, limit),
+      fetchCanonicalTags(debouncedSearch, signal, matchMode, limit, excludeLinked),
     enabled: meetsMinLength,
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,

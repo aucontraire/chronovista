@@ -630,7 +630,12 @@ class AddEntityTagRequest(BaseModel):
         Normalized form of the canonical tag to attach.
     """
 
-    model_config = ConfigDict(strict=True)
+    # extra="forbid" rather than the default, which silently drops unknown
+    # fields. A caller sending display_name or entity_type here is working from
+    # a wrong model of the endpoint, and dropping it quietly leaves them
+    # believing it took effect. This feature exists because a field that looked
+    # inert was not — refusing is the honest answer (FR-004).
+    model_config = ConfigDict(strict=True, extra="forbid")
 
     normalized_form: str = Field(
         ...,

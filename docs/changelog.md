@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.65.1] - 2026-08-07
+
+### Fixed
+- **`entities scan --new-entities-only` now scopes every source, not just transcripts.** Two defects compounded. (1) `scan_metadata()` took no `new_entities_only` parameter and passed a hardcoded `False` to `_load_entity_patterns`, while `scan()` honoured it — so `--sources transcript,title,description` scoped the transcript half to zero-mention entities and silently ran the metadata half across every active entity. Measured: a dry run reported **139,845 mentions across 369 entities** where 27 were expected, and 277s instead of 31s. (2) With that fixed, the zero-mention set was still re-evaluated *per phase*: the transcript scan runs first and writes, so by the time the metadata scan loaded its patterns those entities no longer had zero mentions and were filtered out — **23 of 32 newly created entities ended up with transcript mentions only**, missing titles and descriptions entirely, which is the surface with 100% coverage rather than 2.4% and the one ASR does not mangle. The CLI now resolves the set once, before any phase runs, and passes it to both calls as explicit `entity_ids`. Backend-only; no schema change, no migration.
+- The two scan entry points maintain parallel filter parameters by hand and had drifted by exactly this one. A signature test now pins them together so the next drift fails in CI rather than in production.
+
+
 ## [0.65.0] - 2026-08-07
 
 ### Added

@@ -494,6 +494,7 @@ class EntityMentionScanService:
         batch_size: int = 500,
         dry_run: bool = False,
         full_rescan: bool = False,
+        new_entities_only: bool = False,
         entity_ids: list[uuid.UUID] | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> ScanResult:
@@ -550,7 +551,7 @@ class EntityMentionScanService:
             patterns = await self._load_entity_patterns(
                 session,
                 entity_type=entity_type,
-                new_entities_only=False,
+                new_entities_only=new_entities_only,
                 entity_ids=entity_ids,
             )
 

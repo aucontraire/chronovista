@@ -1072,6 +1072,31 @@ def scan_entities(
             effective_new_entities_only = False
             effective_entity_ids = [parsed_entity_uuid]
 
+        elif new_entities_only:
+            # Resolve the zero-mention set ONCE and express it as explicit ids.
+            #
+            # `--sources transcript,title,description` dispatches two service
+            # calls, and each would otherwise re-evaluate "has zero mentions"
+            # against the database. The transcript scan runs first and writes,
+            # so by the time the metadata scan loads its patterns those entities
+            # are no longer new and get filtered out — 23 of 32 entities ended up
+            # with transcript mentions only, missing titles and descriptions
+            # entirely, which is the surface with 100% coverage rather than 2.4%.
+            #
+            # Pinning the set up front makes the scope identical for every phase
+            # regardless of what earlier phases wrote.
+            async for session in db_manager.get_session(echo=False):
+                mention_repo = EntityMentionRepository()
+                effective_entity_ids = (
+                    await mention_repo.get_entities_with_zero_mentions(
+                        session, entity_type=entity_type
+                    )
+                )
+            effective_new_entities_only = False
+            if not effective_entity_ids:
+                console.print("[yellow]No entities with zero mentions.[/yellow]")
+                return
+
         # Determine which service calls to make based on parsed_sources
         transcript_sources = ["transcript"] if "transcript" in parsed_sources else []
         metadata_sources = [s for s in parsed_sources if s != "transcript"]
@@ -1111,6 +1136,7 @@ def scan_entities(
                         batch_size=batch_size,
                         dry_run=True,
                         full_rescan=full,
+                        new_entities_only=effective_new_entities_only,
                         entity_ids=effective_entity_ids,
                     )
 
@@ -1242,6 +1268,7 @@ def scan_entities(
                         batch_size=batch_size,
                         dry_run=False,
                         full_rescan=full,
+                        new_entities_only=effective_new_entities_only,
                         entity_ids=effective_entity_ids,
                         progress_callback=_progress_callback,
                     )

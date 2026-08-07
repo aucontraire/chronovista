@@ -80,6 +80,10 @@ COMMON_WORD_ALIASES = {
     "Mate",
     "Peek",
     "Sham",
+    # An ASR mis-transcription registered as an alias, and also a Python
+    # keyword: it fires on every `# type: ignore` pragma, which `mypy --strict`
+    # requires throughout the codebase.
+    "Type",
     "Web",
 }
 

@@ -272,6 +272,8 @@ data/
 /takeout/
 .cache/
 cache/
+transcripts/
+media/
 
 # Database backup files
 *.sql.bak

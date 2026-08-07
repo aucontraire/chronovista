@@ -116,8 +116,20 @@ capitalisation. Neither exclusion patterns nor case sensitivity separates those,
 because the text really is identical. Those need manual review of individual
 mentions.
 
+## The opposite problem
+
+This page is about an entity matching **too much**. If yours matches too
+*little* — a video count stuck far below what you expect, or an empty "Appears
+with" panel — the cause is usually a missing tag rather than a missing alias, and
+no amount of alias work will fix it. See
+[Make an entity count the videos its tags are on](entity-tags.md).
+
+The two are genuinely different relationships:
+[Tags and aliases are not the same thing](../architecture/tags-and-aliases.md).
+
 ## See also
 
+- [Make an entity count the videos its tags are on](entity-tags.md) — when the problem is missing associations, not over-matching
 - [Find entity intersections](entity-intersection.md) — querying entities once they are accurate
 - [Correct transcripts](corrections.md) — fixing a misheard name so its mentions are found at all
 - [Run the REST API](rest-api.md) — doing any of this programmatically

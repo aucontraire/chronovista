@@ -578,6 +578,55 @@ curl -X POST http://localhost:8000/api/v1/channels/UCuAXFkgsw1L7xaCfnd5JJOw/reco
 curl -X POST "http://localhost:8000/api/v1/channels/UCuAXFkgsw1L7xaCfnd5JJOw/recover?start_year=2015"
 ```
 
+#### Attach a Tag to an Entity
+
+An entity only counts tag-associated videos if a canonical tag points at it. The
+server decides whether to **link** the tag (the entity has none) or **merge** it
+into the existing one — the request carries only the tag, and `operation` in the
+response says which happened. See
+[Make an entity count the videos its tags are on](entity-tags.md).
+
+```bash
+ENTITY=019fdd5c-1b34-7561-ba7e-d393df76f4a4
+
+# What represents this entity today, and what it has absorbed
+curl "http://localhost:8000/api/v1/entities/$ENTITY/tags"
+
+# Find candidates. exclude_linked omits tags already representing an entity —
+# including this entity's own, which cannot be merged into itself.
+curl "http://localhost:8000/api/v1/canonical-tags?q=harbour&match_mode=contains&exclude_linked=true"
+
+# Attach. No entity_type: it is inferred, and a value disagreeing with the
+# target is a 409 rather than an override. Unknown fields are rejected.
+curl -X POST "http://localhost:8000/api/v1/entities/$ENTITY/tags" \
+  -H "Content-Type: application/json" \
+  -d '{"normalized_form": "harbour brd"}'
+```
+
+#### Undo a Tag Attachment
+
+```bash
+# Restore a merged tag. Reverses the whole operation, so a merge that folded
+# several tags restores all of them — refused with a 409 naming them until
+# confirmed.
+curl -X POST "http://localhost:8000/api/v1/entities/$ENTITY/tags/harbour%20brd/un-merge" \
+  -H "Content-Type: application/json" -d '{}'
+
+curl -X POST "http://localhost:8000/api/v1/entities/$ENTITY/tags/harbour%20brd/un-merge" \
+  -H "Content-Type: application/json" -d '{"confirm_multi_source": true}'
+
+# Stop a tag representing the entity. The tag itself is untouched and becomes
+# searchable again. Refused while anything is merged into it.
+curl -X DELETE "http://localhost:8000/api/v1/entities/$ENTITY/tags/harbour%20board"
+```
+
+!!! note "Reading the errors"
+    These endpoints refuse rather than guess, and the reason is always in the
+    problem-details `detail` string — which entity holds a tag, or which tags a
+    reversal would also restore. An error's `details` object is **not**
+    serialized into the response body, so parse `detail` rather than expecting
+    structured fields. See [Error responses](../api/error-responses.md).
+
 ### Using Python
 
 ```python

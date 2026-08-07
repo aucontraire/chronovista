@@ -139,6 +139,7 @@ nav:
       - Analyze topics: user-guide/topic-analytics.md
       - Find entity intersections: user-guide/entity-intersection.md
       - Fix an over-matching entity: user-guide/entity-curation.md
+      - Attach tags to an entity: user-guide/entity-tags.md
       - CLI workflows: user-guide/cli-overview.md
       - Run the REST API: user-guide/rest-api.md
       - Deploy with Docker: guides/migrating-to-docker.md
@@ -154,6 +155,7 @@ nav:
       - Architecture overview: architecture/overview.md
       - System design: architecture/system-design.md
       - Data model: architecture/data-model.md
+      - Tags and aliases: architecture/tags-and-aliases.md
       - API integration: architecture/api-integration.md
       - Frontend architecture: architecture/frontend-architecture.md
   - Contributing:

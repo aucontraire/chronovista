@@ -1074,3 +1074,55 @@ export async function fetchEntityTags(
   );
   return body.data;
 }
+
+/** Tags restored by reversing a merge. */
+export interface UnMergeResult {
+  restored: string[];
+  operation_id: string;
+}
+
+/**
+ * Reverses the merge that folded a tag into the entity's tag.
+ *
+ * Reverses the whole operation, so a merge that folded several tags restores
+ * all of them — which is why `confirmMultiSource` exists. The server refuses
+ * with 409 and names every tag that would return until it is set.
+ *
+ * @param entityId - The entity whose tag absorbed this one
+ * @param normalizedForm - The merged tag to restore
+ * @param confirmMultiSource - Acknowledge a multi-tag reversal
+ * @throws ApiError 409 when confirmation is required, or already reversed
+ * @throws ApiError 404 if no live merge for that tag exists on this entity
+ */
+export async function unMergeEntityTag(
+  entityId: string,
+  normalizedForm: string,
+  confirmMultiSource = false
+): Promise<UnMergeResult> {
+  const body = await apiFetch<{ data: UnMergeResult }>(
+    `/entities/${entityId}/tags/${encodeURIComponent(normalizedForm)}/un-merge`,
+    {
+      method: "POST",
+      body: JSON.stringify({ confirm_multi_source: confirmMultiSource }),
+    }
+  );
+  return body.data;
+}
+
+/**
+ * Stops a tag representing an entity. The tag itself is untouched.
+ *
+ * @param entityId - The entity to detach from
+ * @param normalizedForm - The linked tag
+ * @throws ApiError 409 if tags are merged into it and must be un-merged first
+ */
+export async function unlinkEntityTag(
+  entityId: string,
+  normalizedForm: string
+): Promise<{ unlinked: string }> {
+  const body = await apiFetch<{ data: { unlinked: string } }>(
+    `/entities/${entityId}/tags/${encodeURIComponent(normalizedForm)}`,
+    { method: "DELETE" }
+  );
+  return body.data;
+}

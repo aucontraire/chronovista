@@ -611,6 +611,54 @@ class ClassifyTagRequest(BaseModel):
         return self
 
 
+class UnMergeRequest(BaseModel):
+    """Request body for reversing a merge (Feature 064, FR-015/FR-016).
+
+    Attributes
+    ----------
+    confirm_multi_source : bool
+        Acknowledges that the merge being reversed folded several tags, and
+        that reversing it restores all of them. Required only in that case;
+        every other un-merge proceeds without confirmation (FR-006).
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    confirm_multi_source: bool = Field(
+        default=False,
+        description="Proceed even though other tags will also be restored",
+    )
+
+
+class UnMergeResult(BaseModel):
+    """Which tags a reversal restored."""
+
+    model_config = ConfigDict(strict=True)
+
+    restored: list[str]
+    operation_id: str
+
+
+class UnMergeResponse(BaseModel):
+    """Envelope for :class:`UnMergeResult`."""
+
+    data: UnMergeResult
+
+
+class UnlinkResult(BaseModel):
+    """The tag no longer representing the entity."""
+
+    model_config = ConfigDict(strict=True)
+
+    unlinked: str
+
+
+class UnlinkResponse(BaseModel):
+    """Envelope for :class:`UnlinkResult`."""
+
+    data: UnlinkResult
+
+
 class MergedTagSummary(BaseModel):
     """A canonical tag folded into the entity's tag by a curator's merge.
 

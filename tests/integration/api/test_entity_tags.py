@@ -928,3 +928,287 @@ class TestGetEntityTags:
             f"/api/v1/entities/{entity_with_tag['entity_id']}/tags"
         )
         assert r.json()["data"]["linked_tags"][0]["merged_tags"] == []
+
+
+# ---------------------------------------------------------------------------
+# US4 — un-merge and unlink (T043-T046, T049)
+# ---------------------------------------------------------------------------
+
+
+class TestUnMerge:
+    async def test_restores_the_tag_and_its_link(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """FR-015 and FR-027 — status, merged_into_id, raw forms, entity link."""
+        # Give the source an entity link before merging, so FR-027's restore is
+        # exercised rather than trivially satisfied by it being null.
+        async with integration_session_factory() as s:
+            other = await s.get(CanonicalTagDB, entity_with_tag["other_id"])
+            assert other is not None
+            other.entity_id = None
+            s.add(other)
+            await s.commit()
+
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        r = await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}/un-merge",
+            json={},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["data"]["restored"] == [TAG_OTHER]
+
+        async with integration_session_factory() as s:
+            tag = await s.get(CanonicalTagDB, entity_with_tag["other_id"])
+            assert tag is not None
+            assert tag.status == "active"
+            assert tag.merged_into_id is None
+            forms = (
+                (
+                    await s.execute(
+                        select(TagAliasDB.raw_form).where(
+                            TagAliasDB.canonical_tag_id == tag.id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert len(forms) == 2, "its own raw forms did not come back"
+
+    async def test_forms_that_arrived_later_stay_on_the_target(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """Only the forms recorded at merge time return (data-model §Un-merge).
+
+        A form that landed on the target afterwards was never the source's, and
+        handing it over would be inventing history.
+        """
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        async with integration_session_factory() as s:
+            s.add(
+                TagAliasDB(
+                    id=uuid.UUID(bytes=uuid7().bytes),
+                    raw_form=f"{PREFIX} Arrived Later",
+                    normalized_form=TAG_MAIN,
+                    canonical_tag_id=entity_with_tag["main_id"],
+                    creation_method="auto_normalize",
+                    occurrence_count=1,
+                )
+            )
+            await s.commit()
+
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}/un-merge",
+            json={},
+        )
+
+        async with integration_session_factory() as s:
+            target_forms = (
+                (
+                    await s.execute(
+                        select(TagAliasDB.raw_form).where(
+                            TagAliasDB.canonical_tag_id == entity_with_tag["main_id"]
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert f"{PREFIX} Arrived Later" in target_forms
+
+    async def test_the_restored_tag_is_searchable_again(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+    ) -> None:
+        """FR-019, SC-006 — the loop closes without the CLI."""
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        gone = await async_client.get(
+            f"/api/v1/canonical-tags?q={PREFIX}&match_mode=contains&exclude_linked=true"
+        )
+        assert TAG_OTHER not in [t["normalized_form"] for t in gone.json()["data"]]
+
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}/un-merge",
+            json={},
+        )
+        back = await async_client.get(
+            f"/api/v1/canonical-tags?q={PREFIX}&match_mode=contains&exclude_linked=true"
+        )
+        assert TAG_OTHER in [t["normalized_form"] for t in back.json()["data"]]
+
+    async def test_a_multi_source_merge_names_every_tag_it_would_restore(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """FR-016 — a count alone cannot be judged, so the names are required."""
+        from chronovista.repositories.canonical_tag_repository import (
+            CanonicalTagRepository,
+        )
+        from chronovista.repositories.entity_alias_repository import (
+            EntityAliasRepository,
+        )
+        from chronovista.repositories.named_entity_repository import (
+            NamedEntityRepository,
+        )
+        from chronovista.repositories.tag_alias_repository import TagAliasRepository
+        from chronovista.repositories.tag_operation_log_repository import (
+            TagOperationLogRepository,
+        )
+        from chronovista.services.tag_management import TagManagementService
+
+        service = TagManagementService(
+            canonical_tag_repo=CanonicalTagRepository(),
+            tag_alias_repo=TagAliasRepository(),
+            named_entity_repo=NamedEntityRepository(),
+            entity_alias_repo=EntityAliasRepository(),
+            operation_log_repo=TagOperationLogRepository(),
+        )
+        async with integration_session_factory() as s:
+            await service.merge(s, [TAG_OTHER, TAG_THIRD], TAG_MAIN)
+            await s.commit()
+
+        r = await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}/un-merge",
+            json={},
+        )
+        assert r.status_code == 409, r.text
+        detail = r.json()["detail"]
+        assert "1 other tag" in detail
+        # The name, not just the number — whether this is acceptable depends on
+        # which tag comes back.
+        assert TAG_THIRD.title() in detail or TAG_THIRD in detail
+
+        confirmed = await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}/un-merge",
+            json={"confirm_multi_source": True},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+
+    async def test_a_second_reversal_is_refused(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+    ) -> None:
+        """FR-031 — preconditions are re-checked against current state."""
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        first = await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}/un-merge",
+            json={},
+        )
+        assert first.status_code == 200, first.text
+        second = await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}/un-merge",
+            json={},
+        )
+        assert second.status_code == 404, second.text
+
+    async def test_a_tag_merged_elsewhere_cannot_be_reversed_from_here(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """One entity's page must not mutate another entity's tag group."""
+        async with integration_session_factory() as s:
+            third = await s.get(CanonicalTagDB, entity_with_tag["third_id"])
+            other = await s.get(CanonicalTagDB, entity_with_tag["other_id"])
+            assert third is not None and other is not None
+            third.status = "merged"
+            third.merged_into_id = other.id  # merged into an *unlinked* tag
+            s.add(third)
+            await s.commit()
+
+        r = await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_THIRD}/un-merge",
+            json={},
+        )
+        assert r.status_code == 404, r.text
+
+
+class TestUnlink:
+    async def test_clears_the_link_without_deleting_the_tag(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """FR-018 — the tag returns to the pool rather than being deprecated."""
+        r = await async_client.delete(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_MAIN}"
+        )
+        assert r.status_code == 200, r.text
+
+        async with integration_session_factory() as s:
+            tag = await s.get(CanonicalTagDB, entity_with_tag["main_id"])
+            assert tag is not None
+            assert tag.entity_id is None
+            assert tag.status == "active", "unlink must not deprecate the tag"
+
+    async def test_is_refused_while_tags_are_merged_into_it(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+    ) -> None:
+        """FR-017 — unlinking would strand the whole group's raw forms.
+
+        Those forms live on this tag now, so a single click naming one tag
+        would take every merged tag's videos away from the entity too.
+        """
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        r = await async_client.delete(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_MAIN}"
+        )
+        assert r.status_code == 409, r.text
+        assert "Un-merge" in r.json()["detail"]
+
+    async def test_permitted_once_the_group_is_empty(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+    ) -> None:
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags",
+            json={"normalized_form": TAG_OTHER},
+        )
+        await async_client.post(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}/un-merge",
+            json={},
+        )
+        r = await async_client.delete(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_MAIN}"
+        )
+        assert r.status_code == 200, r.text
+
+    async def test_a_tag_not_representing_this_entity_is_a_404(
+        self,
+        async_client: AsyncClient,
+        entity_with_tag: dict[str, Any],
+    ) -> None:
+        r = await async_client.delete(
+            f"/api/v1/entities/{entity_with_tag['entity_id']}/tags/{TAG_OTHER}"
+        )
+        assert r.status_code == 404, r.text

@@ -22,7 +22,12 @@
 import { useId, useRef, useState } from "react";
 
 import { useCanonicalTags } from "../../hooks/useCanonicalTags";
-import { useAddEntityTag, useEntityTags } from "../../hooks/useEntityTags";
+import {
+  useAddEntityTag,
+  useEntityTags,
+  useUnlinkEntityTag,
+  useUnMergeEntityTag,
+} from "../../hooks/useEntityTags";
 import type { LinkedTagSummary } from "../../api/entityMentions";
 import type { CanonicalTagListItem } from "../../types/canonical-tags";
 
@@ -45,6 +50,15 @@ export function EntityTagSection({
   const [highlighted, setHighlighted] = useState(-1);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Off by default (FR-012): the group's history is corrective detail, not the
+  // first thing a curator needs.
+  const [showAbsorbed, setShowAbsorbed] = useState(false);
+  // Set when the server refuses a multi-source reversal, so the confirmation
+  // repeats the tags it named rather than a bare "are you sure?".
+  const [pendingUnMerge, setPendingUnMerge] = useState<{
+    normalizedForm: string;
+    detail: string;
+  } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const headingId = useId();
@@ -55,6 +69,8 @@ export function EntityTagSection({
 
   const addTag = useAddEntityTag(entityId);
   const { data: tagData, isLoading: isLoadingTags } = useEntityTags(entityId);
+  const unMerge = useUnMergeEntityTag(entityId);
+  const unlink = useUnlinkEntityTag(entityId);
 
   // Read the list defensively. This section sits inside a much larger page, and
   // a shape it did not expect must degrade to "show no tags" rather than throw
@@ -117,6 +133,50 @@ export function EntityTagSection({
       }
       default:
         break;
+    }
+  }
+
+  /** Shared error wording: the server names the obstacle, we do not guess. */
+  function describeFailure(err: unknown, fallback: string): string {
+    const detail = (err as { detail?: string } | null)?.detail;
+    return detail ?? fallback;
+  }
+
+  async function handleUnMerge(normalizedForm: string, confirmed = false) {
+    setSuccessMsg(null);
+    setErrorMsg(null);
+    try {
+      await unMerge.mutateAsync({
+        normalizedForm,
+        confirmMultiSource: confirmed,
+      });
+      setPendingUnMerge(null);
+      setSuccessMsg(`Un-merged "${normalizedForm}". It is searchable again.`);
+    } catch (err: unknown) {
+      const status = (err as { status?: number } | null)?.status;
+      const detail = describeFailure(err, "Could not un-merge that tag.");
+      // A 409 naming other tags is a confirmation prompt, not a failure: the
+      // operation folded several at once and the curator has now been told
+      // which ones return.
+      if (status === 409 && detail.includes("also restores")) {
+        setPendingUnMerge({ normalizedForm, detail });
+      } else {
+        setPendingUnMerge(null);
+        setErrorMsg(detail);
+      }
+    }
+  }
+
+  async function handleUnlink(normalizedForm: string) {
+    setSuccessMsg(null);
+    setErrorMsg(null);
+    try {
+      await unlink.mutateAsync(normalizedForm);
+      setSuccessMsg(
+        `Unlinked "${normalizedForm}". It no longer represents ${entityName}.`
+      );
+    } catch (err: unknown) {
+      setErrorMsg(describeFailure(err, "Could not unlink that tag."));
     }
   }
 
@@ -203,26 +263,63 @@ export function EntityTagSection({
                       </span>
                     </div>
 
-                    {linked.merged_tags.length > 0 && (
-                      <ul className="mt-1 ml-4 space-y-0.5">
+                    <div className="mt-1 flex flex-wrap items-center gap-3">
+                      {linked.merged_tags.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAbsorbed((v) => !v)}
+                          aria-expanded={showAbsorbed}
+                          className="text-xs text-blue-700 hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                        >
+                          {showAbsorbed ? "Hide" : "Show"}{" "}
+                          {linked.merged_tags.length} merged tag
+                          {linked.merged_tags.length === 1 ? "" : "s"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleUnlink(linked.normalized_form)}
+                        disabled={unlink.isPending}
+                        className="text-xs text-slate-500 hover:text-red-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                      >
+                        Unlink
+                      </button>
+                    </div>
+
+                    {showAbsorbed && linked.merged_tags.length > 0 && (
+                      <ul className="mt-2 ml-4 space-y-1">
                         {linked.merged_tags.map((m) => (
                           <li
                             key={m.normalized_form}
-                            className="text-xs text-slate-500"
+                            className="flex flex-wrap items-baseline gap-2 text-xs text-slate-500"
                           >
-                            <span className="text-slate-400">↳</span>{" "}
-                            {m.canonical_form}{" "}
-                            {/*
-                              "brought", not "has": a merged tag owns no videos
-                              now, and this is what it contributed at merge
-                              time. Saying "has" would read as a live count and
-                              invite adding it to the parent's, which double
-                              counts any overlap.
-                            */}
-                            <span className="text-slate-400">
-                              (brought {m.contributed_video_count} video
-                              {m.contributed_video_count === 1 ? "" : "s"})
+                            <span>
+                              <span className="text-slate-400">↳</span>{" "}
+                              {m.canonical_form}{" "}
+                              {/*
+                                "brought", not "has": a merged tag owns no
+                                videos now, and this is what it contributed at
+                                merge time. Saying "has" would read as a live
+                                count and invite adding it to the parent's,
+                                which double counts any overlap.
+                              */}
+                              <span className="text-slate-400">
+                                (brought {m.contributed_video_count} video
+                                {m.contributed_video_count === 1 ? "" : "s"})
+                              </span>
                             </span>
+                            {m.operation_id !== null && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleUnMerge(m.normalized_form)
+                                }
+                                disabled={unMerge.isPending}
+                                className="text-blue-700 hover:text-blue-900 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded"
+                              >
+                                Un-merge
+                              </button>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -363,6 +460,34 @@ export function EntityTagSection({
             >
               Cancel
             </button>
+          </div>
+        )}
+
+        {pendingUnMerge && (
+          <div
+            className="mt-3 px-3 py-2 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg"
+            role="alert"
+          >
+            <p>{pendingUnMerge.detail}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  void handleUnMerge(pendingUnMerge.normalizedForm, true)
+                }
+                disabled={unMerge.isPending}
+                className="px-3 py-1 text-sm font-medium text-white bg-amber-700 rounded-lg hover:bg-amber-800 disabled:opacity-50"
+              >
+                Un-merge all of them
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingUnMerge(null)}
+                className="text-sm text-slate-600 hover:text-slate-900"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 

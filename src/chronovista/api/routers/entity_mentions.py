@@ -53,6 +53,11 @@ from chronovista.api.schemas.entity_mentions import (
     ScanJobResponse,
     ScanRequest,
     ScanResultData,
+    UnlinkResponse,
+    UnlinkResult,
+    UnMergeRequest,
+    UnMergeResponse,
+    UnMergeResult,
     UpdateEntityAliasRequest,
     UpdateEntityRequest,
     VideoEntitiesResponse,
@@ -2457,3 +2462,197 @@ async def get_entity_tags(
             needs_attention=len(summaries) > 1,
         )
     )
+
+
+@router.post(
+    "/entities/{entity_id}/tags/{normalized_form}/un-merge",
+    summary="Restore a tag that was merged into the entity's tag",
+    response_model=UnMergeResponse,
+)
+async def un_merge_entity_tag(
+    entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
+    normalized_form: str = Path(..., description="Normalized form of the merged tag"),
+    body: UnMergeRequest = Body(default_factory=UnMergeRequest),
+    session: AsyncSession = Depends(get_db),
+) -> UnMergeResponse:
+    """Reverse the merge that folded a tag into the entity's tag (FR-015).
+
+    Reverses the whole operation rather than extracting one tag: undo restores
+    the original row — status, ``merged_into_id``, its own raw forms and its
+    entity link — whereas splitting would fabricate a different tag with a
+    recomputed name and leave the original tombstone behind.
+
+    Because the unit is the operation, a merge that folded several tags at once
+    restores all of them. 465 of 489 merges took a single source, so this is
+    rare; where it applies the caller must confirm, having been told **which**
+    tags return, since a count alone cannot be judged (FR-016).
+
+    Parameters
+    ----------
+    entity_id : uuid.UUID
+        The entity whose tag absorbed this one.
+    normalized_form : str
+        The merged tag to restore.
+    body : UnMergeRequest
+        ``confirm_multi_source`` acknowledges a multi-tag reversal.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    UnMergeResponse
+        The tags restored and the operation reversed.
+
+    Raises
+    ------
+    NotFoundError
+        The entity, the tag, or a live merge for it does not exist (404).
+    ConflictError
+        Confirmation is required, or the merge was already reversed (409).
+    """
+    entity = await session.get(NamedEntityDB, entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
+
+    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    if not linked:
+        raise NotFoundError(
+            resource_type="CanonicalTag",
+            identifier=normalized_form,
+            hint="This entity has no linked tag, so nothing is merged into one.",
+        )
+
+    # Only tags merged into *this entity's* tag may be reversed here. Reversing
+    # an arbitrary merge would let one entity's page mutate another's group.
+    candidates = [
+        (tag, op_id, count)
+        for parent in linked
+        for tag, op_id, count in await _canonical_tag_repo.get_merged_into(
+            session, parent.id
+        )
+        if tag.normalized_form == normalized_form
+    ]
+    if not candidates:
+        raise NotFoundError(
+            resource_type="CanonicalTag",
+            identifier=normalized_form,
+            hint="No tag by that name is merged into this entity's tag.",
+        )
+
+    tag, operation_id, source_count = candidates[0]
+    if operation_id is None:
+        raise ConflictError(
+            message=(
+                f"'{tag.canonical_form}' is merged, but no reversible operation "
+                f"is recorded for it. It must be un-merged with the CLI."
+            ),
+        )
+
+    if source_count > 1 and not body.confirm_multi_source:
+        siblings = await _canonical_tag_repo.get_merged_into(session, linked[0].id)
+        names = sorted(t.canonical_form for t, op, _ in siblings if op == operation_id)
+        raise ConflictError(
+            message=(
+                f"Un-merging '{tag.canonical_form}' also restores "
+                f"{source_count - 1} other tag"
+                f"{'' if source_count == 2 else 's'}, because they were merged "
+                f"in one operation: {', '.join(names)}."
+            ),
+            details={"restored_tags": names, "confirm_field": "confirm_multi_source"},
+        )
+
+    try:
+        await _tag_mgmt_service.undo(session, operation_id)
+    except ValueError as exc:
+        # Preconditions are re-checked against current state, not the state at
+        # merge time (FR-031) — the service refuses if the operation was
+        # already reversed since this page loaded.
+        raise ConflictError(message=str(exc)) from exc
+
+    await session.commit()
+
+    restored = await _canonical_tag_repo.get_merged_into(session, linked[0].id)
+    still_merged = {t.normalized_form for t, _, _ in restored}
+    return UnMergeResponse(
+        data=UnMergeResult(
+            restored=[normalized_form] if normalized_form not in still_merged else [],
+            operation_id=str(operation_id),
+        )
+    )
+
+
+@router.delete(
+    "/entities/{entity_id}/tags/{normalized_form}",
+    summary="Stop a tag representing an entity",
+    response_model=UnlinkResponse,
+)
+async def unlink_entity_tag(
+    entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
+    normalized_form: str = Path(..., description="Normalized form of the linked tag"),
+    session: AsyncSession = Depends(get_db),
+) -> UnlinkResponse:
+    """Clear a tag's entity link, leaving the tag itself intact (FR-018).
+
+    The tag is neither deleted nor deprecated — it returns to the searchable
+    pool, so a tag attached to the wrong entity can be corrected rather than
+    stranded (FR-019).
+
+    Refused while anything is merged into it (FR-017): those tags' raw forms
+    live on this one, so unlinking would take the whole group's videos away
+    from the entity in a single click that names only one tag.
+
+    Parameters
+    ----------
+    entity_id : uuid.UUID
+        The entity to detach from.
+    normalized_form : str
+        The linked tag.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    UnlinkResponse
+        The tag that no longer represents the entity.
+
+    Raises
+    ------
+    NotFoundError
+        The entity does not exist, or that tag does not represent it (404).
+    ConflictError
+        Tags are merged into it and must be un-merged first (409).
+    """
+    entity = await session.get(NamedEntityDB, entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
+
+    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    target = next((t for t in linked if t.normalized_form == normalized_form), None)
+    if target is None:
+        raise NotFoundError(
+            resource_type="CanonicalTag",
+            identifier=normalized_form,
+            hint="That tag does not represent this entity.",
+        )
+
+    merged = await _canonical_tag_repo.get_merged_into(session, target.id)
+    if merged:
+        raise ConflictError(
+            message=(
+                f"{len(merged)} tag{'' if len(merged) == 1 else 's'} "
+                f"{'is' if len(merged) == 1 else 'are'} merged into "
+                f"'{target.canonical_form}'. Un-merge "
+                f"{'it' if len(merged) == 1 else 'them'} first — their raw "
+                f"forms live on this tag, so unlinking would take their videos "
+                f"from this entity too."
+            ),
+            details={
+                "merged_normalized_forms": [t.normalized_form for t, _, _ in merged]
+            },
+        )
+
+    target.entity_id = None
+    session.add(target)
+    await session.commit()
+
+    return UnlinkResponse(data=UnlinkResult(unlinked=normalized_form))

@@ -26,13 +26,22 @@ vi.mock("../../../hooks/useEntityTags", async (importOriginal) => {
 vi.mock("../../../api/entityMentions", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../api/entityMentions")>();
-  return { ...actual, addEntityTag: vi.fn() };
+  return {
+    ...actual,
+    addEntityTag: vi.fn(),
+    unMergeEntityTag: vi.fn(),
+    unlinkEntityTag: vi.fn(),
+  };
 });
 
 import { EntityTagSection } from "../EntityTagSection";
 import { useCanonicalTags } from "../../../hooks/useCanonicalTags";
 import { useEntityTags } from "../../../hooks/useEntityTags";
-import { addEntityTag } from "../../../api/entityMentions";
+import {
+  addEntityTag,
+  unlinkEntityTag,
+  unMergeEntityTag,
+} from "../../../api/entityMentions";
 
 const ENTITY_ID = "entity-uuid-064";
 const ENTITY_NAME = "Harbour Board";
@@ -82,6 +91,22 @@ function tagsResult(linked: unknown[], needsAttention = false) {
     isLoading: false,
   } as unknown as ReturnType<typeof useEntityTags>;
 }
+
+const WITH_MERGED = {
+  canonical_form: "Harbour Board",
+  normalized_form: "harbour board",
+  video_count: 12,
+  alias_count: 4,
+  merged_tags: [
+    {
+      canonical_form: "Harbour Brd",
+      normalized_form: "harbour brd",
+      contributed_video_count: 3,
+      operation_id: "op-1" as string | null,
+      operation_source_count: 1,
+    },
+  ],
+};
 
 const LINKED_TAG = {
   canonical_form: "Harbour Board",
@@ -283,29 +308,126 @@ describe("EntityTagSection", () => {
     ).toBeInTheDocument();
   });
 
-  it("lists what the tag absorbed, as a contribution not a live count", () => {
+  it("keeps what the tag absorbed behind a disclosure, closed by default", async () => {
+    const user = userEvent.setup();
+    vi.mocked(useEntityTags).mockReturnValue(tagsResult([WITH_MERGED]));
+    renderSection();
+
+    // FR-012: the group's history is corrective detail, not the first thing a
+    // curator needs.
+    expect(section().queryByText(/brought 3 videos/)).not.toBeInTheDocument();
+    const toggle = section().getByRole("button", { name: /Show 1 merged tag/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(section().getByText(/Harbour Brd/)).toBeInTheDocument();
+    // "brought" not "has": a merged tag owns no videos now, and wording it as
+    // a live count invites adding it to the parent's, double counting overlap.
+    expect(section().getByText(/brought 3 videos/)).toBeInTheDocument();
+  });
+
+  it("uses the two verbs distinctly", async () => {
+    const user = userEvent.setup();
+    vi.mocked(useEntityTags).mockReturnValue(tagsResult([WITH_MERGED]));
+    renderSection();
+
+    // Un-merge acts on a tag inside the group; Unlink empties the entity of
+    // tags. Naming both "remove" is the conflation this feature corrects.
+    expect(section().getByRole("button", { name: "Unlink" })).toBeInTheDocument();
+    await user.click(section().getByRole("button", { name: /Show 1 merged tag/ }));
+    expect(
+      section().getByRole("button", { name: "Un-merge" })
+    ).toBeInTheDocument();
+  });
+
+  it("un-merges a tag and says it is searchable again", async () => {
+    const user = userEvent.setup();
+    vi.mocked(useEntityTags).mockReturnValue(tagsResult([WITH_MERGED]));
+    vi.mocked(unMergeEntityTag).mockResolvedValue({
+      restored: ["harbour brd"],
+      operation_id: "op-1",
+    });
+    renderSection();
+
+    await user.click(section().getByRole("button", { name: /Show 1 merged tag/ }));
+    await user.click(section().getByRole("button", { name: "Un-merge" }));
+
+    await waitFor(() => expect(unMergeEntityTag).toHaveBeenCalled());
+    expect(vi.mocked(unMergeEntityTag).mock.calls[0]).toEqual([
+      ENTITY_ID,
+      "harbour brd",
+      false,
+    ]);
+    expect(await section().findByText(/searchable again/)).toBeInTheDocument();
+  });
+
+  it("turns a multi-source refusal into a confirmation naming the tags", async () => {
+    const user = userEvent.setup();
+    vi.mocked(useEntityTags).mockReturnValue(tagsResult([WITH_MERGED]));
+    vi.mocked(unMergeEntityTag)
+      .mockRejectedValueOnce({
+        status: 409,
+        detail:
+          "Un-merging 'Harbour Brd' also restores 1 other tag, because they were merged in one operation: The Harbour Board.",
+      })
+      .mockResolvedValueOnce({ restored: ["harbour brd"], operation_id: "op-1" });
+    renderSection();
+
+    await user.click(section().getByRole("button", { name: /Show 1 merged tag/ }));
+    await user.click(section().getByRole("button", { name: "Un-merge" }));
+
+    // FR-016: a count alone cannot be judged, so the prompt repeats the names
+    // the server supplied rather than asking a bare "are you sure?".
+    const prompt = await section().findByRole("alert");
+    expect(prompt).toHaveTextContent("The Harbour Board");
+
+    await user.click(section().getByRole("button", { name: /Un-merge all of them/ }));
+
+    await waitFor(() =>
+      expect(vi.mocked(unMergeEntityTag).mock.calls[1]).toEqual([
+        ENTITY_ID,
+        "harbour brd",
+        true,
+      ])
+    );
+  });
+
+  it("surfaces the reason when unlink is refused", async () => {
+    const user = userEvent.setup();
+    vi.mocked(useEntityTags).mockReturnValue(tagsResult([WITH_MERGED]));
+    vi.mocked(unlinkEntityTag).mockRejectedValue({
+      status: 409,
+      detail:
+        "1 tag is merged into 'Harbour Board'. Un-merge it first — their raw forms live on this tag.",
+    });
+    renderSection();
+
+    await user.click(section().getByRole("button", { name: "Unlink" }));
+
+    expect(await section().findByRole("alert")).toHaveTextContent(
+      /Un-merge it first/
+    );
+  });
+
+  it("offers no un-merge control when no operation can reverse it", async () => {
+    const user = userEvent.setup();
     vi.mocked(useEntityTags).mockReturnValue(
       tagsResult([
         {
-          ...LINKED_TAG,
-          merged_tags: [
-            {
-              canonical_form: "Harbour Brd",
-              normalized_form: "harbour brd",
-              contributed_video_count: 3,
-              operation_id: "op-1",
-              operation_source_count: 1,
-            },
-          ],
+          ...WITH_MERGED,
+          merged_tags: [{ ...WITH_MERGED.merged_tags[0], operation_id: null }],
         },
       ])
     );
     renderSection();
 
-    expect(section().getByText(/Harbour Brd/)).toBeInTheDocument();
-    // "brought" not "has": a merged tag owns no videos now, and wording it as
-    // a live count invites adding it to the parent's, double counting overlap.
-    expect(section().getByText(/brought 3 videos/)).toBeInTheDocument();
+    await user.click(section().getByRole("button", { name: /Show 1 merged tag/ }));
+    // Offering a control that cannot work is worse than omitting it.
+    expect(
+      section().queryByRole("button", { name: "Un-merge" })
+    ).not.toBeInTheDocument();
   });
 
   it("flags an entity carrying more than one linked tag", () => {

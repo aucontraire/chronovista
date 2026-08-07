@@ -53,7 +53,8 @@ chronovista follows these principles:
 
 ```bash
 # Quality checks
-make quality          # All checks
+make pre-push         # Reproduce every CI job locally (run this before pushing)
+make quality          # format-check + lint + type-check
 make format           # Format code
 make lint             # Linting
 make type-check       # mypy

@@ -13,6 +13,16 @@ chronovista maintains **90%+ test coverage** with:
 
 ## Running Tests
 
+### Before pushing
+
+```bash
+make pre-push
+```
+
+Runs every CI job locally in CI's order — lint, format, types, backend unit,
+frontend, backend integration — and stops at the first failure. This is the one
+to run before opening a pull request; the commands below are for iterating.
+
 ### Quick Commands
 
 ```bash

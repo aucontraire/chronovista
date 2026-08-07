@@ -16,9 +16,8 @@ poetry run pre-commit install
 # Create feature branch
 git checkout -b feature/your-feature
 
-# Make changes and test
-make quality
-make test
+# Make changes, then reproduce CI locally before pushing
+make pre-push
 
 # Submit pull request
 ```
@@ -44,11 +43,28 @@ See [Development Setup](development/setup.md) for detailed instructions.
 ### 4. Test Your Changes
 
 ```bash
-# Run all quality checks
-make quality
+# Reproduce every CI job locally, in CI's order, stopping at the first failure
+make pre-push
+```
 
-# Run tests with coverage
-make test-cov
+This mirrors `.github/workflows/test.yml` step for step: ruff, black, mypy
+`--strict`, backend unit tests, frontend type check and tests, and backend
+integration tests. A green run here is the closest thing to a guarantee that CI
+will agree. It needs the development database running (`make dev-db-up`) and
+fails rather than skipping if it is not — a skipped job cannot tell you anything.
+
+Prefer it over running the individual targets by hand. `make quality` also runs
+isort, which CI does not, so it can fail on something CI would pass; and a
+mistyped flag in a hand-run `pytest` can report success having collected no
+tests at all.
+
+While iterating, the narrower targets are still useful:
+
+```bash
+make format       # Apply black + isort
+make lint         # ruff only
+make type-check   # mypy only
+make test-cov     # Full suite with the 90% coverage threshold
 ```
 
 ### 5. Submit Pull Request

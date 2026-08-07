@@ -359,6 +359,59 @@ class TestClassifyLinkEntity:
             assert tag.entity_id is None, "a rejected link must not be written"
             assert tag.entity_type is None
 
+    async def test_error_bodies_carry_a_usable_detail_for_clients(
+        self,
+        async_client: AsyncClient,
+        unlinked_tag: str,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """The web client renders ``detail`` verbatim, so its wording is API.
+
+        ``EntityDetailPage`` shows the problem-details ``detail`` to the user
+        because only the server knows which entity or type is in the way. That
+        makes these strings user-facing, and two things must hold: the field is
+        populated at all, and it does not speak CLI. The service's own message
+        for an already-classified tag ends "Use --force to override.", a flag
+        no HTTP client has.
+        """
+        entity_id = await _seed_entity(integration_session_factory)
+
+        mismatch = await async_client.post(
+            "/api/v1/entities/classify",
+            json={
+                "normalized_form": unlinked_tag,
+                "entity_type": "person",
+                "link_entity_id": str(entity_id),
+            },
+        )
+        assert mismatch.status_code == 409
+        assert "organization" in mismatch.json()["detail"]
+
+        missing = await async_client.post(
+            "/api/v1/entities/classify",
+            json={
+                "normalized_form": unlinked_tag,
+                "link_entity_id": str(uuid.UUID(bytes=uuid7().bytes)),
+            },
+        )
+        assert missing.status_code == 404
+        assert "NamedEntity" in missing.json()["detail"]
+
+        # Link once, then again — the second is the already-classified path.
+        first = await async_client.post(
+            "/api/v1/entities/classify",
+            json={"normalized_form": unlinked_tag, "link_entity_id": str(entity_id)},
+        )
+        assert first.status_code == 201, first.text
+        second = await async_client.post(
+            "/api/v1/entities/classify",
+            json={"normalized_form": unlinked_tag, "link_entity_id": str(entity_id)},
+        )
+        assert second.status_code == 409
+        detail = second.json()["detail"]
+        assert "--force" not in detail, "CLI vocabulary leaked into an API error"
+        assert ENTITY_NAME in detail, "the error should name what holds the tag"
+
     async def test_linking_records_the_tag_form_as_an_entity_alias(
         self,
         async_client: AsyncClient,

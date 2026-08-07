@@ -685,24 +685,38 @@ export interface ClassifyTagResponse {
 // ---------------------------------------------------------------------------
 
 /**
- * Classifies a raw tag as a named entity, creating or updating it as needed.
+ * Classifies a canonical tag, either creating a new named entity or linking
+ * the tag to one that already exists.
+ *
+ * The two modes are mutually exclusive in their optional fields: `description`
+ * and `display_name` describe an entity being created, so the backend rejects
+ * either alongside `link_entity_id` rather than silently discarding it
+ * (issue #183).
  *
  * @param data.normalized_form - The canonical name / normalized tag text
- * @param data.entity_type - Entity type (e.g. "person", "organization", "place")
- * @param data.description - Optional human-readable description
+ * @param data.entity_type - Entity type (e.g. "person", "organization",
+ *   "place"). Required when creating; optional when linking, where the target
+ *   entity's own type is used. Sending a type that disagrees with the target
+ *   is a 409 rather than an override — the entity owns its type.
+ * @param data.description - Optional human-readable description (create only)
  * @param data.display_name - Optional entity display name, stored verbatim
  *   (no re-casing). When omitted, the backend falls back to its existing
  *   auto-derived (title-cased) name (Feature 057, FR-008/FR-009/FR-010).
  *   The tag is still matched/linked by `normalized_form` regardless of this
- *   value's casing (FR-011).
+ *   value's casing (FR-011). Create only.
+ * @param data.link_entity_id - Attach the tag to this existing entity instead
+ *   of creating one (issue #183).
  * @returns ClassifyTagResponse with entity_id and operation metadata
- * @throws ApiError with status 409 if the tag is already classified as a different type
+ * @throws ApiError with status 409 if the tag is already classified, if
+ *   `entity_type` disagrees with the link target, or if the target is inactive
+ * @throws ApiError with status 404 if `link_entity_id` names no entity
  */
 export async function classifyTag(data: {
   normalized_form: string;
-  entity_type: string;
+  entity_type?: string;
   description?: string;
   display_name?: string;
+  link_entity_id?: string;
 }): Promise<ClassifyTagResponse> {
   return apiFetch<ClassifyTagResponse>("/entities/classify", {
     method: "POST",

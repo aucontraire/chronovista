@@ -1456,8 +1456,24 @@ async def classify_tag(
                         "description": entity.description,
                     }
 
+            # The service's message ends "Use --force to override." — correct
+            # for the CLI, meaningless over HTTP, where no such flag exists.
+            # Clients surface `detail` directly to users, so rewrite it here
+            # and name the entity holding the tag instead, which is the part
+            # someone can act on.
+            claimed_by = (
+                existing_entity_data["canonical_name"] if existing_entity_data else None
+            )
+            conflict_message = (
+                f"Tag '{body.normalized_form}' is already linked to " f"'{claimed_by}'."
+                if claimed_by
+                else (
+                    f"Tag '{body.normalized_form}' is already classified and "
+                    f"cannot be reassigned here."
+                )
+            )
             raise ConflictError(
-                message=error_msg,
+                message=conflict_message,
                 details=(
                     {"existing_entity": existing_entity_data}
                     if existing_entity_data

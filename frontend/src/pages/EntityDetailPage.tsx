@@ -28,7 +28,13 @@ import {
 } from "../hooks/useEntityMentions";
 import { apiFetch } from "../api/config";
 import type { EntityDetail, EntityAliasSummary, UpdateEntityRequest } from "../api/entityMentions";
-import { createEntityAlias, updateEntityAlias } from "../api/entityMentions";
+import {
+  classifyTag,
+  createEntityAlias,
+  updateEntityAlias,
+} from "../api/entityMentions";
+import { useCanonicalTags } from "../hooks/useCanonicalTags";
+import type { CanonicalTagListItem } from "../types/canonical-tags";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhoneticVariantsSection } from "../components/corrections/PhoneticVariantsSection";
 import { ExclusionPatternsSection } from "../components/corrections/ExclusionPatternsSection";
@@ -619,6 +625,227 @@ const ALIAS_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "translated_name", label: "Translation" },
   { value: "former_name", label: "Former name" },
 ];
+
+interface LinkExistingTagSectionProps {
+  entityId: string;
+  entityName: string;
+  /** Called after a successful link so the parent can refetch counts. */
+  onLinked: () => void;
+}
+
+/**
+ * Attach an existing canonical tag to this entity (issue #183).
+ *
+ * The tag surface can promote a tag to a *new* entity and this page can add an
+ * alias, but neither connects two records that both already exist. An entity
+ * created before its tags acquired videos has no `canonical_tags.entity_id`
+ * pointing at it, so its video count omits every tag-associated video — and
+ * the recovery path a curator reaches for ("this entity looks empty, link its
+ * tag") had no control to click.
+ *
+ * Deliberately write-only: `EntityDetail` does not carry the tags already
+ * linked, and adding that is a backend change beyond this one. The success
+ * message therefore states the consequence — how many videos the linked tag
+ * brings — because the video count above is the only other evidence anything
+ * happened.
+ */
+function LinkExistingTagSection({
+  entityId,
+  entityName,
+  onLinked,
+}: LinkExistingTagSectionProps) {
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<CanonicalTagListItem | null>(null);
+  const [isPending, setIsPending] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Contains-mode matches mid-string, which is what finds a tag whose form
+  // differs from the entity's name by a prefix (Feature 056, FR-005).
+  const { tags, isLoading, isRateLimited } = useCanonicalTags(query, {
+    matchMode: "contains",
+    limit: 20,
+  });
+
+  const trimmed = query.trim();
+  const showResults = trimmed.length >= 2 && !selected;
+
+  async function handleLink() {
+    if (selected === null) return;
+
+    setIsPending(true);
+    setSuccessMsg(null);
+    setErrorMsg(null);
+
+    try {
+      await classifyTag({
+        normalized_form: selected.normalized_form,
+        link_entity_id: entityId,
+      });
+      const n = selected.video_count;
+      setSuccessMsg(
+        `Linked "${selected.canonical_form}" — ${n} ${n === 1 ? "video" : "videos"} ` +
+          `now count toward ${entityName}.`
+      );
+      setSelected(null);
+      setQuery("");
+      onLinked();
+    } catch (err: unknown) {
+      const status = (err as { status?: number } | null)?.status;
+      // The server's detail names the specific obstacle — which entity already
+      // claims the tag, or what type the target actually is. A generic message
+      // would strand the user with no next step.
+      const detail = (err as { detail?: string } | null)?.detail;
+      if (status === 409) {
+        setErrorMsg(
+          detail ??
+            "That tag is already linked to an entity. Open the tag to see which one."
+        );
+      } else if (status === 404) {
+        setErrorMsg("That tag no longer exists. Search again.");
+      } else {
+        setErrorMsg("Could not link the tag. Please try again.");
+      }
+    } finally {
+      setIsPending(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="entity-link-tag-heading" className="mb-6">
+      <h2
+        id="entity-link-tag-heading"
+        className="text-lg font-semibold text-gray-900 mb-3"
+      >
+        Link an existing tag
+      </h2>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <p className="text-sm text-slate-600 mb-3">
+          Attach a canonical tag to this entity so its videos count toward it.
+          Use this when the entity and the tag both already exist.
+        </p>
+
+        <label
+          htmlFor="link-tag-search"
+          className="block text-sm font-medium text-slate-900"
+        >
+          Search tags
+        </label>
+        <input
+          id="link-tag-search"
+          type="text"
+          value={selected ? selected.canonical_form : query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSelected(null);
+            setErrorMsg(null);
+          }}
+          disabled={isPending}
+          placeholder="Type at least 2 characters..."
+          aria-describedby="link-tag-hint"
+          className="w-full mt-1 px-3 py-2 text-sm border border-slate-300 rounded-lg text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"
+        />
+        <p id="link-tag-hint" className="mt-1 text-xs text-slate-500">
+          Matches the canonical form and its variations at any position.
+        </p>
+
+        {/*
+          Mounted only while a search is active, rather than always. An
+          always-present live region is the usual advice — content injected
+          into an existing region announces more reliably than one that
+          appears with its content already in it — but this page has other
+          status regions, and a permanently empty one here makes
+          `getByRole("status")` ambiguous for every other feature on it.
+
+          Gating on `showResults` keeps the useful half of that advice:
+          typing flips it true while the request is still in flight, so the
+          region is in the DOM before the count arrives.
+        */}
+        {showResults && (
+          <div role="status" aria-live="polite" className="sr-only">
+            {isLoading
+              ? ""
+              : `${tags.length} tag${tags.length === 1 ? "" : "s"} found`}
+          </div>
+        )}
+
+        {isRateLimited && (
+          <p className="mt-2 text-sm text-amber-700">
+            Too many searches. Pause a moment and try again.
+          </p>
+        )}
+
+        {showResults && !isLoading && tags.length === 0 && (
+          <p className="mt-2 text-sm text-slate-500">
+            No tags found matching &ldquo;{trimmed}&rdquo;.
+          </p>
+        )}
+
+        {showResults && tags.length > 0 && (
+          <ul className="mt-2 max-h-56 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-lg">
+            {tags.map((tag) => (
+              <li key={tag.normalized_form}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelected(tag);
+                    setErrorMsg(null);
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+                >
+                  <span className="block text-sm text-slate-900">
+                    {tag.canonical_form}
+                  </span>
+                  <span className="block text-xs text-slate-500">
+                    {tag.video_count} video{tag.video_count === 1 ? "" : "s"} ·{" "}
+                    {tag.alias_count} alias{tag.alias_count === 1 ? "" : "es"}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {selected && (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => void handleLink()}
+              disabled={isPending}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            >
+              {isPending
+                ? "Linking..."
+                : `Link "${selected.canonical_form}" to ${entityName}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelected(null);
+                setQuery("");
+              }}
+              disabled={isPending}
+              className="text-sm text-slate-600 hover:text-slate-900 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {successMsg && (
+          <p className="mt-3 text-sm text-green-700" role="status">
+            {successMsg}
+          </p>
+        )}
+        {errorMsg && (
+          <p className="mt-3 text-sm text-red-700" role="alert">
+            {errorMsg}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
 
 interface AddAliasFormProps {
   entityId: string;
@@ -1492,6 +1719,24 @@ export function EntityDetailPage() {
           )}
         </div>
       </section>
+
+      {/* Link an existing tag section (#183) */}
+      {entityId && (
+        <LinkExistingTagSection
+          entityId={entityId}
+          entityName={entity.canonical_name}
+          onLinked={() => {
+            // The link changes which videos count toward this entity, so both
+            // the detail header and the video list below it are now stale.
+            void queryClient.invalidateQueries({
+              queryKey: ["entity-detail", entityId],
+            });
+            void queryClient.invalidateQueries({
+              queryKey: ["entity-videos", entityId],
+            });
+          }}
+        />
+      )}
 
       {/* Exclusion Patterns section */}
       {entityId && (

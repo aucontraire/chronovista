@@ -191,11 +191,22 @@ test-cov-dev:
 		--cov-report=term-missing \
 		--cov-report=html
 
+# Both select by directory rather than by marker. Selecting by marker meant
+# `test-unit` filtered on "unit", which no test carries and pytest.ini does not
+# declare: it deselected all 8,167 tests, collected none, and exited 0. And
+# `test-integration` filtered on "integration", a marker only 153 of the 1,308
+# tests under tests/integration/ actually carry — it ran 12% of the suite while
+# printing a pass.
+#
+# No marker exclusions here, unlike `pre-push`. That target mirrors CI, which
+# skips the docker and auth tests because a runner has neither Docker
+# credentials nor YouTube authentication. Locally you have both, so these run
+# everything; tests needing a database skip themselves when it is absent.
 test-unit:
-	$(POETRY_RUN) pytest $(TEST_DIR) -v -m "unit"
+	$(POETRY_RUN) pytest $(TEST_DIR)/unit/ -v
 
 test-integration:
-	$(POETRY_RUN) pytest $(TEST_DIR) -v -m "integration"
+	$(POETRY_RUN) pytest $(TEST_DIR)/integration/ -v
 
 test-integration-reset:
 	@echo "🔄 Resetting integration test database..."

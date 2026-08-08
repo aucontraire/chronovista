@@ -210,7 +210,7 @@ chronovista implements a sophisticated **layered architecture** with modern Pyth
 | API Integration | google-api-python-client, google-auth |
 | Testing | pytest, pytest-asyncio, hypothesis, factory-boy |
 | Type Checking | mypy (strict mode) |
-| Code Quality | ruff, black, isort |
+| Code Quality | ruff (lint + import order), black |
 
 ## License
 

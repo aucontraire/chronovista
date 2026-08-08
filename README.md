@@ -228,7 +228,7 @@ cd frontend && npm test    # Frontend suite
 <summary><b>Other commands</b></summary>
 
 ```bash
-make format            # black + isort
+make format            # black + ruff import sorting
 make lint              # ruff
 make type-check        # mypy --strict
 make db-upgrade        # Run migrations

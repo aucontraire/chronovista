@@ -7,9 +7,13 @@ Formatting, linting, and code style guidelines.
 | Tool | Purpose |
 |------|---------|
 | Black | Code formatting |
-| isort | Import sorting |
-| ruff | Linting |
+| ruff | Linting **and import sorting** (the `I` rule) |
 | mypy | Type checking |
+
+Import ordering belongs to ruff alone. Standalone `isort` is not installed and
+must not be reintroduced: it was configured separately from ruff, the two
+disagreed, and satisfying `isort` pushed files into a state ruff's `I` rule
+rejects — so obeying the tooling broke the check CI actually runs.
 
 ## Quick Commands
 
@@ -45,14 +49,25 @@ poetry run black src/ tests/
 poetry run black --check src/
 ```
 
-## isort Configuration
+## Import Sorting (ruff)
 
 ```toml
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 88
-known_first_party = ["chronovista"]
+[tool.ruff.lint]
+select = ["I", ...]          # "I" is the isort ruleset, reimplemented in ruff
+
+[tool.ruff.lint.isort]
+known-first-party = ["chronovista"]
+known-third-party = ["typer", "sqlalchemy", "pydantic", "google", "alembic"]
+```
+
+### Usage
+
+```bash
+# Check import order (part of `make lint`)
+poetry run ruff check --select I src/chronovista/ tests/
+
+# Fix it (part of `make format`)
+poetry run ruff check --select I --fix src/chronovista/ tests/
 ```
 
 ### Import Order

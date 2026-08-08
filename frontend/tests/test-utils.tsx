@@ -25,11 +25,6 @@ export function createTestQueryClient(): QueryClient {
         retry: false,
       },
     },
-    logger: {
-      log: () => {},
-      warn: () => {},
-      error: () => {},
-    },
   });
 }
 
@@ -41,8 +36,12 @@ import { useLocation } from 'react-router-dom';
 interface AllProvidersProps {
   children: ReactNode;
   queryClient?: QueryClient;
-  initialEntries?: string[];
-  path?: string;
+  // Explicitly `| undefined`: under `exactOptionalPropertyTypes`, `?:` alone means
+  // "may be absent", not "may be undefined". `renderWithProviders` destructures
+  // these out of its options object and forwards them positionally, so they arrive
+  // as an explicit `undefined` whenever the caller omits them.
+  initialEntries?: string[] | undefined;
+  path?: string | undefined;
 }
 
 // Global variable to track current location in tests

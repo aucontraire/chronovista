@@ -127,15 +127,13 @@ extend-exclude = '''
 )/
 '''
 
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 88
-known_first_party = ["chronovista"]
-known_third_party = ["typer", "sqlalchemy", "pydantic", "google", "alembic"]
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
-default_section = "THIRDPARTY"
-skip_glob = ["*/migrations/*"]
+# Import ordering is owned by ruff's `I` rule — see [tool.ruff.lint.isort] below.
+#
+# The standalone [tool.isort] config that lived here has been removed rather than
+# kept in sync. No gate ran it (CI, pre-commit and the Makefile all use ruff), but
+# its presence implied it was the project standard: running `isort` reordered 64
+# files into a state ruff's `I` rule rejects, so "fixing" the imports broke the
+# check that is actually enforced. Two formatters over one concern is the bug.
 
 [tool.mypy]
 python_version = "3.11"

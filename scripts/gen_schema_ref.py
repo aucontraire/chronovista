@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import mkdocs_gen_files
 from sqlalchemy import Table
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CheckConstraint, UniqueConstraint
@@ -142,12 +141,21 @@ def _render_table(table: Table, doc: str | None) -> list[str]:
         joined = ", ".join(f"`{c.name}`" for c in pk_cols)
         lines += [f"**Composite primary key:** {joined}", ""]
 
+    # `Table.constraints` is a set, so iteration follows object hashes and varies
+    # between processes. Sort by name or the same models render a different file
+    # on every run — a diff that looks like schema drift and is only reordering.
+    #
+    # Filter into a list first, then sort in place: `sorted()` over a generator
+    # drops the `isinstance` narrowing a comprehension keeps. `str(...)` because
+    # SQLAlchemy types `name` as `str | _NoneName | None`, which is not orderable.
     multi_unique = [
         c
         for c in table.constraints
         if isinstance(c, UniqueConstraint) and len(c.columns) > 1
     ]
+    multi_unique.sort(key=lambda c: str(c.name or ""))
     checks = [c for c in table.constraints if isinstance(c, CheckConstraint)]
+    checks.sort(key=lambda c: str(c.name or ""))
     if multi_unique or checks:
         lines.append("**Constraints:**")
         lines.append("")
@@ -216,6 +224,12 @@ def render_schema() -> str:
 
 
 def main() -> None:
+    # Imported here, not at module scope: `mkdocs_gen_files` lives in the docs
+    # dependency group, which the backend CI job does not install. Rendering
+    # needs only SQLAlchemy metadata, so importing this module — from a test,
+    # say — must not require the docs toolchain.
+    import mkdocs_gen_files
+
     with mkdocs_gen_files.open("reference/schema.md", "w") as fd:
         fd.write(render_schema())
     mkdocs_gen_files.set_edit_path(
@@ -223,4 +237,9 @@ def main() -> None:
     )
 
 
-main()
+# Runs on execution, not on import. mkdocs-gen-files executes this file with
+# `runpy.run_path`, which sets `__name__` to "<run_path>" rather than
+# "__main__" — so a bare `if __name__ == "__main__"` guard would silently stop
+# generating the page. Importing the module writes nothing.
+if __name__ in {"__main__", "<run_path>"}:
+    main()

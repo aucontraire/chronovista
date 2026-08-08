@@ -292,9 +292,15 @@ backups/
 specs/
 src/chronovista/docs/
 
-# Frontend generated files (Orval)
-frontend/src/api/*.ts
-!frontend/src/api/config.ts
+# Frontend generated files (Orval). Orval writes only into this directory —
+# see `target` in frontend/orval.config.ts. Everything directly under
+# frontend/src/api is hand-written and belongs in git.
+#
+# This replaces `frontend/src/api/*.ts` with a single `!config.ts` exception,
+# which silently ignored the other five hand-written modules; they survive only
+# because they were tracked before the rule was added. A new module was ignored
+# with no error, which is how one was nearly lost during Feature 061.
+frontend/src/api/generated/
 
 # Frontend dependencies and build
 frontend/node_modules/

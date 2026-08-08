@@ -76,6 +76,9 @@ COMMON_WORD_ALIASES = {
     "Crystal",
     "Fork",
     "Hack",
+    # Fires on "shared helper", "test helper", "helper function" — unavoidable
+    # vocabulary in a codebase, and it blocked a refactor commit message.
+    "Helper",
     "John",
     "Mate",
     "Peek",

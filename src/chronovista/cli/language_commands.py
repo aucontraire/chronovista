@@ -65,7 +65,6 @@ from typing import Any
 import typer
 import yaml
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,6 +78,7 @@ from ..repositories.user_language_preference_repository import (
     UserLanguagePreferenceRepository,
 )
 from ..utils.fuzzy import find_similar
+from .errors import display_panel
 
 # -------------------------------------------------------------------------
 # Terminal Detection and Configuration (T086-T087)
@@ -668,13 +668,7 @@ def _format_table_output(
 
     if is_tty:
         # Rich formatted output
-        console.print(
-            Panel(
-                "Language Preferences",
-                title_align="center",
-                border_style="blue",
-            )
-        )
+        display_panel("Language Preferences", title_align="center", border_style="blue")
         console.print()
     else:
         # Plain text output
@@ -1058,12 +1052,8 @@ def _show_first_run_defaults(detected_locale: LanguageCode) -> tuple[bool, list[
     ...     print(f"Using defaults: {langs}")
     """
     # Display setup header
-    console.print(
-        Panel(
-            "Language Preferences Setup",
-            title_align="center",
-            border_style="blue",
-        )
+    display_panel(
+        "Language Preferences Setup", title_align="center", border_style="blue"
     )
     console.print()
 
@@ -1263,12 +1253,8 @@ def _show_confirmation_summary(
     # Displays formatted panel
     """
     console.print()
-    console.print(
-        Panel(
-            "Preferences Saved Successfully",
-            title_align="center",
-            border_style="green",
-        )
+    display_panel(
+        "Preferences Saved Successfully", title_align="center", border_style="green"
     )
     console.print()
 
@@ -1399,13 +1385,11 @@ def _show_upgrade_prompt() -> bool:
     ...     pass
     """
     console.print()
-    console.print(
-        Panel(
-            "[blue]chronovista now supports intelligent transcript management.[/blue]\n\n"
-            "Would you like to configure your language preferences now?",
-            title="Language Preferences Not Configured",
-            border_style="yellow",
-        )
+    display_panel(
+        "[blue]chronovista now supports intelligent transcript management.[/blue]\n\n"
+        "Would you like to configure your language preferences now?",
+        title="Language Preferences Not Configured",
+        border_style="yellow",
     )
     console.print()
 

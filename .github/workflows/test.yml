@@ -155,5 +155,14 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test
         run: NO_COLOR=1 poetry run alembic upgrade head
 
+      # Fails if the ORM models and the migrated schema have drifted — i.e. if a
+      # model changed without a migration, or a migration created something the
+      # models do not declare. The step above proves the migrations *run*; this
+      # one proves they produce the schema the application actually expects.
+      - name: Verify no model/migration drift (alembic check)
+        env:
+          DATABASE_URL: postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test
+        run: NO_COLOR=1 poetry run alembic check
+
       - name: Run integration tests
         run: NO_COLOR=1 poetry run pytest tests/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow and not auth and not db"

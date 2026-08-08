@@ -24,6 +24,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -33,11 +34,34 @@ from uuid_utils import uuid7
 
 from chronovista.models.enums import TagOperationType
 
+# `TranscriptSegment` declares a column named `text`, which shadows the imported
+# `text()` inside that class body. This alias is how its `__table_args__` reach
+# the SQL construct; everywhere else `text` is unambiguous.
+sql_text = text
+
 
 class Base(DeclarativeBase):
     """Base class for all database models."""
 
     pass
+
+
+# The GIN trigram indexes declared below use the `gin_trgm_ops` operator class,
+# which only exists once `pg_trgm` is installed. Migrations create the extension
+# (052, 056), but `create_all()` does not run migrations — so without this hook a
+# schema built straight from the ORM fails with:
+#
+#     operator class "gin_trgm_ops" does not exist for access method "gin"
+#
+# Registered on the metadata rather than at each call site: `create_all()` is
+# invoked from the app, the integration conftests and the model unit tests, and
+# any future caller would hit the same wall. Guarded on the dialect so the
+# SQLite path used by some model tests is untouched.
+@event.listens_for(Base.metadata, "before_create")
+def _ensure_pg_trgm(target: Any, connection: Any, **kwargs: Any) -> None:
+    """Install `pg_trgm` before `create_all()` builds the GIN trigram indexes."""
+    if connection.dialect.name == "postgresql":
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
 
 
 class Channel(Base):
@@ -89,6 +113,16 @@ class Channel(Base):
     )
     channel_topics: Mapped[list[ChannelTopic]] = relationship(
         "ChannelTopic", back_populates="channel"
+    )
+
+    # Table indexes (declared so autogenerate round-trips them)
+    __table_args__ = (
+        Index("idx_channels_availability_status", "availability_status"),
+        Index(
+            "idx_channels_needs_enrichment",
+            "channel_id",
+            postgresql_where=text("subscriber_count IS NULL"),
+        ),
     )
 
 
@@ -232,6 +266,24 @@ class Video(Base):
         "PlaylistMembership", back_populates="video"
     )
 
+    # Table indexes (declared so autogenerate round-trips them)
+    __table_args__ = (
+        Index("idx_videos_availability_status", "availability_status"),
+        Index("idx_videos_category_id", "category_id"),
+        Index(
+            "idx_videos_channel_hint",
+            "channel_name_hint",
+            postgresql_where=text(
+                "channel_id IS NULL AND channel_name_hint IS NOT NULL"
+            ),
+        ),
+        Index(
+            "idx_videos_null_channel",
+            "video_id",
+            postgresql_where=text("channel_id IS NULL"),
+        ),
+    )
+
 
 class UserLanguagePreference(Base):
     """User language preferences for content consumption and learning."""
@@ -358,6 +410,18 @@ class VideoTranscript(Base):
         order_by="TranscriptCorrection.corrected_at.desc()",
     )
 
+    # Table indexes (declared so autogenerate round-trips them)
+    __table_args__ = (
+        Index(
+            "ix_video_transcripts_has_timestamps_true",
+            "has_timestamps",
+            postgresql_where=text("has_timestamps = true"),
+        ),
+        Index("ix_video_transcripts_segment_count", "segment_count"),
+        Index("ix_video_transcripts_source", "source"),
+        Index("ix_video_transcripts_total_duration", "total_duration"),
+    )
+
 
 class TranscriptSegment(Base):
     """Individual timed text segment from a video transcript."""
@@ -399,6 +463,35 @@ class TranscriptSegment(Base):
         CheckConstraint(
             "sequence_number >= 0", name="chk_segment_sequence_non_negative"
         ),
+        Index(
+            "idx_segments_corrected_text_trgm",
+            "corrected_text",
+            postgresql_using="gin",
+            postgresql_ops={"corrected_text": "gin_trgm_ops"},
+            postgresql_where=sql_text("corrected_text IS NOT NULL"),
+        ),
+        Index(
+            "idx_segments_text_trgm",
+            "text",
+            postgresql_using="gin",
+            postgresql_ops={"text": "gin_trgm_ops"},
+        ),
+        Index(
+            "idx_transcript_segments_corrected",
+            "video_id",
+            "language_code",
+            "has_correction",
+        ),
+        Index(
+            "idx_transcript_segments_lookup", "video_id", "language_code", "start_time"
+        ),
+        Index(
+            "idx_transcript_segments_time_range",
+            "video_id",
+            "language_code",
+            "start_time",
+            "end_time",
+        ),
     )
 
     # Relationships
@@ -431,6 +524,9 @@ class VideoTag(Base):
 
     # Relationships
     video: Mapped[Video] = relationship("Video", back_populates="tags")
+
+    # Table indexes (declared so autogenerate round-trips them)
+    __table_args__ = (Index("idx_video_tags_tag", "tag"),)
 
 
 class VideoLocalization(Base):
@@ -502,21 +598,36 @@ class TopicCategory(Base):
     )  # youtube, custom
 
     # Dynamic topic resolution fields (Option 4 implementation)
+    # Uniqueness comes from the partial unique index in __table_args__
+    # (idx_topic_categories_wikipedia_url, WHERE wikipedia_url IS NOT NULL),
+    # which is what the migrations actually build. `unique=True` here would
+    # additionally declare a UNIQUE *constraint* that no migration created.
     wikipedia_url: Mapped[str | None] = mapped_column(
-        String(500), unique=True, nullable=True
-    )  # Full Wikipedia URL from YouTube API
+        String(500),
+        nullable=True,
+        comment="Full Wikipedia URL (e.g., https://en.wikipedia.org/wiki/Music)",
+    )
     normalized_name: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )  # Lowercase, no underscores for matching
+        String(255),
+        nullable=True,
+        comment="Lowercase category name with no underscores for lookups",
+    )
     source: Mapped[str] = mapped_column(
-        String(20), default="seeded", nullable=False
-    )  # 'seeded' or 'dynamic'
+        String(20),
+        default="seeded",
+        nullable=False,
+        comment="Origin of topic: 'seeded' or 'dynamic'",
+    )
     last_seen_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )  # Last time seen in API response
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Last time this topic was seen in API response",
+    )
     occurrence_count: Mapped[int] = mapped_column(
-        Integer, default=1
-    )  # How many times seen
+        Integer,
+        default=1,
+        comment="Number of times this topic has been encountered",
+    )
 
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -542,6 +653,18 @@ class TopicCategory(Base):
         "TopicAlias", back_populates="topic_category", cascade="all, delete-orphan"
     )
 
+    # Table indexes (declared so autogenerate round-trips them)
+    __table_args__ = (
+        Index("idx_topic_categories_normalized_name", "normalized_name"),
+        Index("idx_topic_categories_source", "source"),
+        Index(
+            "idx_topic_categories_wikipedia_url",
+            "wikipedia_url",
+            unique=True,
+            postgresql_where=text("wikipedia_url IS NOT NULL"),
+        ),
+    )
+
 
 class TopicAlias(Base):
     """Alias mappings for topic name variations (spelling, redirects, synonyms)."""
@@ -549,29 +672,39 @@ class TopicAlias(Base):
     __tablename__ = "topic_aliases"
 
     # Primary key - the alias itself (e.g., "humour")
-    alias: Mapped[str] = mapped_column(String(255), primary_key=True)
+    alias: Mapped[str] = mapped_column(
+        String(255), primary_key=True, comment="Alias name (e.g., 'humour')"
+    )
 
     # Foreign key to the canonical topic
     topic_id: Mapped[str] = mapped_column(
         String(50),
         ForeignKey("topic_categories.topic_id", ondelete="CASCADE"),
         nullable=False,
+        comment="Reference to canonical topic",
     )
 
     # Alias type for categorization
     alias_type: Mapped[str] = mapped_column(
-        String(20), nullable=False
-    )  # 'spelling', 'redirect', 'synonym'
+        String(20),
+        nullable=False,
+        comment="Type: 'spelling', 'redirect', or 'synonym'",
+    )
 
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True),
+        server_default=func.now(),
+        comment="When this alias was created",
     )
 
     # Relationship back to topic
     topic_category: Mapped[TopicCategory] = relationship(
         "TopicCategory", back_populates="aliases"
     )
+
+    # Table indexes (declared so autogenerate round-trips them)
+    __table_args__ = (Index("idx_topic_aliases_topic_id", "topic_id"),)
 
 
 class VideoTopic(Base):
@@ -602,6 +735,9 @@ class VideoTopic(Base):
     topic_category: Mapped[TopicCategory] = relationship(
         "TopicCategory", back_populates="video_topics"
     )
+
+    # Table indexes (declared so autogenerate round-trips them)
+    __table_args__ = (Index("idx_video_topics_topic_id", "topic_id"),)
 
 
 class ChannelTopic(Base):
@@ -730,8 +866,10 @@ class Playlist(Base):
 
     # Playlist type (for system playlist handling)
     playlist_type: Mapped[str] = mapped_column(
-        String(20), default="regular"
-    )  # PlaylistType enum value: regular, liked, watch_later, history, favorites
+        String(20),
+        default="regular",
+        comment="PlaylistType enum: regular, liked, watch_later, history, favorites",
+    )
 
     # Timestamps
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -857,6 +995,9 @@ class NamedEntity(Base):
             "confidence >= 0.0 AND confidence <= 1.0",
             name="chk_entity_confidence_range",
         ),
+        Index("idx_named_entities_normalized", "canonical_name_normalized"),
+        Index("idx_named_entities_status", "status"),
+        Index("idx_named_entities_type", "entity_type"),
     )
 
     # Relationships
@@ -902,7 +1043,15 @@ class EntityAlias(Base):
     # means case-insensitive. True restricts this one alias to the exact
     # casing in alias_name — for aliases that collide with an ordinary word.
     case_sensitive: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=text("false")
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+        comment=(
+            "When true, this alias matches only the exact casing stored in "
+            "alias_name. Defaults to false (case-insensitive), which is the "
+            "historical behaviour for every alias."
+        ),
     )
 
     # Usage statistics
@@ -925,6 +1074,9 @@ class EntityAlias(Base):
             "alias_type IN ('name_variant', 'abbreviation', 'nickname', 'asr_error', 'translated_name', 'former_name')",
             name="chk_alias_type_valid",
         ),
+        Index("idx_entity_aliases_entity_id", "entity_id"),
+        Index("idx_entity_aliases_normalized", "alias_name_normalized"),
+        Index("idx_entity_aliases_type", "alias_type"),
     )
 
     # Relationships
@@ -995,6 +1147,34 @@ class CanonicalTag(Base):
         CheckConstraint(
             "canonical_form != ''", name="chk_canonical_tag_canonical_form_not_empty"
         ),
+        Index(
+            "idx_canonical_tags_active_normalized",
+            "normalized_form",
+            postgresql_where=text("status = 'active'"),
+        ),
+        Index(
+            "idx_canonical_tags_canonical_form_trgm",
+            "canonical_form",
+            postgresql_using="gin",
+            postgresql_ops={"canonical_form": "gin_trgm_ops"},
+        ),
+        Index(
+            "idx_canonical_tags_canonical_pattern",
+            "canonical_form",
+            postgresql_ops={"canonical_form": "varchar_pattern_ops"},
+        ),
+        Index(
+            "idx_canonical_tags_entity_id",
+            "entity_id",
+            postgresql_where=text("entity_id IS NOT NULL"),
+        ),
+        Index(
+            "idx_canonical_tags_normalized_form_trgm",
+            "normalized_form",
+            postgresql_using="gin",
+            postgresql_ops={"normalized_form": "gin_trgm_ops"},
+        ),
+        Index("idx_canonical_tags_video_count_desc", text("video_count DESC")),
     )
 
     # Relationships
@@ -1061,6 +1241,19 @@ class TagAlias(Base):
         CheckConstraint(
             "occurrence_count >= 1", name="chk_tag_alias_occurrence_count_positive"
         ),
+        Index("idx_tag_aliases_canonical_id", "canonical_tag_id"),
+        Index("idx_tag_aliases_normalized", "normalized_form"),
+        Index(
+            "idx_tag_aliases_raw_form_trgm",
+            "raw_form",
+            postgresql_using="gin",
+            postgresql_ops={"raw_form": "gin_trgm_ops"},
+        ),
+        Index(
+            "idx_tag_aliases_raw_pattern",
+            "raw_form",
+            postgresql_ops={"raw_form": "varchar_pattern_ops"},
+        ),
     )
 
     # Relationships
@@ -1121,6 +1314,7 @@ class TagOperationLog(Base):
             + ")",
             name="chk_tag_operation_type_valid",
         ),
+        Index("idx_tag_operation_logs_performed_at", "performed_at"),
     )
 
 
@@ -1229,6 +1423,18 @@ class TranscriptCorrection(Base):
         CheckConstraint(
             "version_number >= 1",
             name="chk_transcript_corrections_version_number_positive",
+        ),
+        Index(
+            "idx_transcript_corrections_lookup",
+            "video_id",
+            "language_code",
+            "corrected_at",
+        ),
+        Index("idx_transcript_corrections_segment", "segment_id", "corrected_at"),
+        Index(
+            "ix_transcript_corrections_batch_id",
+            "batch_id",
+            postgresql_where=text("batch_id IS NOT NULL"),
         ),
     )
 

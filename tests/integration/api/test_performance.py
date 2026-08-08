@@ -5,9 +5,10 @@ Tests SC-008: System supports at least 10 concurrent API requests without degrad
 This test suite validates that the FastAPI application can handle concurrent
 requests without errors, timeouts, or significant performance degradation.
 
-NOTE: Tests are designed to avoid event loop conflicts with SQLAlchemy by
-primarily testing stateless endpoints. Database-heavy concurrency tests are
-marked separately.
+Concurrency here leans on stateless endpoints where it can. Note that the
+integration database is shared and is not reset between runs, so running two
+pytest processes against it at once produces foreign-key failures that look like
+application bugs and are not.
 """
 
 import asyncio
@@ -170,12 +171,22 @@ class TestConcurrentRequestsCore:
         ), f"Average request duration {avg_duration:.2f}s exceeds 5s threshold"
 
 
-@pytest.mark.xfail(
-    reason="Event loop conflicts with SQLAlchemy connection pool in concurrent tests",
-    strict=False,
-)
 class TestConcurrentRequestsWithAuth:
-    """Test SC-008: Concurrent authenticated requests (may have event loop issues)."""
+    """Test SC-008: Concurrent authenticated requests.
+
+    Previously marked ``xfail(strict=False)`` for "event loop conflicts with
+    SQLAlchemy connection pool in concurrent tests". That no longer reproduces:
+    the tests pass in isolation, across this file, and in the full integration
+    suite on a freshly reset database.
+
+    The one configuration where they failed had 175 *other* integration tests
+    failing alongside them, from foreign-key violations caused by two pytest
+    processes sharing the one integration database — an artefact of how the run
+    was invoked, not a property of these tests.
+
+    ``strict=False`` is why it lasted: an unexpected pass is reported but never
+    fails the build, so a marker can outlive its cause indefinitely.
+    """
 
     async def test_10_concurrent_authenticated_requests(
         self, async_client: AsyncClient
@@ -184,10 +195,6 @@ class TestConcurrentRequestsWithAuth:
 
         Validates that authenticated endpoints can handle concurrent
         requests without errors or authentication issues.
-
-        NOTE: This test may fail due to SQLAlchemy event loop conflicts
-        when run with other tests. This is a known limitation of the test
-        infrastructure, not the application itself.
         """
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True
@@ -225,8 +232,6 @@ class TestConcurrentRequestsWithAuth:
 
         Validates that the system can handle concurrent requests to
         different endpoints without cross-contamination or errors.
-
-        NOTE: This test may fail due to SQLAlchemy event loop conflicts.
         """
         with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
             mock_oauth.is_authenticated.return_value = True

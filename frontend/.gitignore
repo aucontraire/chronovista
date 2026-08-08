@@ -5,14 +5,15 @@ node_modules/
 dist/
 build/
 
-# Generated API client (regenerated from OpenAPI)
-src/api/*.ts
-!src/api/config.ts
-!src/api/batchCorrections.ts
-!src/api/entityMentions.ts
-!src/api/onboarding.ts
-!src/api/settings.ts
-!src/api/overview.ts
+# Generated API client (regenerated from OpenAPI by `make generate-api`).
+#
+# Orval writes only into this directory — see `target` in orval.config.ts. The
+# modules directly under src/api are hand-written and tracked.
+#
+# This replaces an ignore-all-then-whitelist rule over `src/api/*.ts`, which
+# required every new hand-written module to be added by hand or it was silently
+# untracked. Separating generated output by directory removes that step.
+src/api/generated/
 
 # Environment
 .env

@@ -545,10 +545,29 @@ export-requirements:
 # Frontend API Generation
 # NOTE: Requires backend to be running on port 8765 before execution
 # Start with: make dev-backend (in separate terminal) OR make dev
+# The spec is fetched to a temp file and validated before it replaces
+# contracts/openapi.json, and orval only runs if that succeeded. The old form,
+#
+#     curl -s http://localhost:8765/openapi.json > contracts/openapi.json
+#
+# had two failure modes that both ended with orval running against rubbish:
+# the shell truncates the target file before curl runs, so a connection failure
+# leaves an empty spec; and `curl -s` exits 0 on any HTTP response, so a proxy
+# error page or an HTML 404 is written out as if it were the spec.
+#
+# That matters because orval writes into frontend/src/api, where the API client
+# is hand-written, not generated. See `clean` in frontend/orval.config.ts.
+API_SPEC_URL ?= http://localhost:8765/openapi.json
+
 generate-api:
-	@echo "Exporting OpenAPI spec..."
-	@echo "NOTE: Backend must be running on port 8765"
-	curl -s http://localhost:8765/openapi.json > contracts/openapi.json
+	@echo "Exporting OpenAPI spec from $(API_SPEC_URL)..."
+	@set -e; \
+	tmp=contracts/openapi.json.tmp; \
+	trap 'rm -f $$tmp' EXIT; \
+	curl --fail --silent --show-error $(API_SPEC_URL) -o $$tmp; \
+	python3 -c "import json,sys; d=json.load(open('$$tmp')); sys.exit(0 if isinstance(d, dict) and d.get('openapi') and d.get('paths') else 1)" 2>/dev/null \
+		|| { echo "❌ $(API_SPEC_URL) did not return an OpenAPI document — refusing to generate."; exit 1; }; \
+	mv $$tmp contracts/openapi.json
 	@echo "Generating TypeScript client..."
 	cd frontend && npm run generate-api
 	@echo "API client generated successfully!"

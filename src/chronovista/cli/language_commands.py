@@ -65,7 +65,6 @@ from typing import Any
 import typer
 import yaml
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,6 +78,7 @@ from ..repositories.user_language_preference_repository import (
     UserLanguagePreferenceRepository,
 )
 from ..utils.fuzzy import find_similar
+from .errors import display_panel
 
 # -------------------------------------------------------------------------
 # Terminal Detection and Configuration (T086-T087)
@@ -201,7 +201,7 @@ def _current_user_id() -> str:
     """
 
     async def _run() -> str:
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             return await _resolve_user_id(session)
         raise RuntimeError("no database session available")
 
@@ -568,11 +568,9 @@ async def _get_preferences(user_id: str) -> list[UserLanguagePreference]:
     """
     repo = UserLanguagePreferenceRepository()
 
-    async for session in db_manager.get_session():
+    async with db_manager.session() as session:
         db_prefs = await repo.get_user_preferences(session, user_id)
         return [UserLanguagePreference.model_validate(p) for p in db_prefs]
-
-    return []
 
 
 # -------------------------------------------------------------------------
@@ -668,13 +666,7 @@ def _format_table_output(
 
     if is_tty:
         # Rich formatted output
-        console.print(
-            Panel(
-                "Language Preferences",
-                title_align="center",
-                border_style="blue",
-            )
-        )
+        display_panel("Language Preferences", title_align="center", border_style="blue")
         console.print()
     else:
         # Plain text output
@@ -1058,12 +1050,8 @@ def _show_first_run_defaults(detected_locale: LanguageCode) -> tuple[bool, list[
     ...     print(f"Using defaults: {langs}")
     """
     # Display setup header
-    console.print(
-        Panel(
-            "Language Preferences Setup",
-            title_align="center",
-            border_style="blue",
-        )
+    display_panel(
+        "Language Preferences Setup", title_align="center", border_style="blue"
     )
     console.print()
 
@@ -1263,12 +1251,8 @@ def _show_confirmation_summary(
     # Displays formatted panel
     """
     console.print()
-    console.print(
-        Panel(
-            "Preferences Saved Successfully",
-            title_align="center",
-            border_style="green",
-        )
+    display_panel(
+        "Preferences Saved Successfully", title_align="center", border_style="green"
     )
     console.print()
 
@@ -1370,7 +1354,7 @@ async def _save_preferences(
 
     # Save all preferences atomically
     repo = UserLanguagePreferenceRepository()
-    async for session in db_manager.get_session():
+    async with db_manager.session() as session:
         await repo.save_preferences(session, user_id, preferences_to_save)
         await session.commit()
 
@@ -1399,13 +1383,11 @@ def _show_upgrade_prompt() -> bool:
     ...     pass
     """
     console.print()
-    console.print(
-        Panel(
-            "[blue]chronovista now supports intelligent transcript management.[/blue]\n\n"
-            "Would you like to configure your language preferences now?",
-            title="Language Preferences Not Configured",
-            border_style="yellow",
-        )
+    display_panel(
+        "[blue]chronovista now supports intelligent transcript management.[/blue]\n\n"
+        "Would you like to configure your language preferences now?",
+        title="Language Preferences Not Configured",
+        border_style="yellow",
     )
     console.print()
 
@@ -1968,7 +1950,7 @@ async def _shift_priorities(
     """
     repo = UserLanguagePreferenceRepository()
 
-    async for session in db_manager.get_session():
+    async with db_manager.session() as session:
         # Get all preferences of this type
         prefs = await repo.get_preferences_by_type(session, user_id, pref_type)
 
@@ -2020,7 +2002,7 @@ async def _add_language_preference(
     """
     repo = UserLanguagePreferenceRepository()
 
-    async for session in db_manager.get_session():
+    async with db_manager.session() as session:
         # Get existing preferences
         all_prefs = await repo.get_user_preferences(session, user_id)
 
@@ -2065,9 +2047,6 @@ async def _add_language_preference(
         await session.commit()
 
         return (calculated_priority, auto_download)
-
-    # Fallback return (should not reach here)
-    return (1, False)
 
 
 @language_app.command()
@@ -2196,7 +2175,7 @@ async def _compact_priorities(user_id: str, pref_type: LanguagePreferenceType) -
     """
     repo = UserLanguagePreferenceRepository()
 
-    async for session in db_manager.get_session():
+    async with db_manager.session() as session:
         # Get all preferences of this type, sorted by priority
         prefs = await repo.get_preferences_by_type(session, user_id, pref_type)
 
@@ -2246,7 +2225,7 @@ def remove(
         tuple[bool, str | None, LanguagePreferenceType | None]
     ):
         """Helper to check and remove preference."""
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Get existing preference
             existing = await repo.get_by_composite_key(
                 session, await _resolve_user_id(session), lang_code
@@ -2279,8 +2258,6 @@ def remove(
 
             await session.commit()
             return (True, display_name, pref_type)
-
-        return (False, None, None)
 
     # Execute removal
     found, display_name, pref_type = asyncio.run(_remove_preference())
@@ -2338,7 +2315,7 @@ def reset(
         async def _reset_preferences() -> tuple[int, bool]:
             """Helper to count and reset preferences."""
             repo = UserLanguagePreferenceRepository()
-            async for session in db_manager.get_session():
+            async with db_manager.session() as session:
                 # Get count of existing preferences
                 existing = await repo.get_user_preferences(
                     session, await _resolve_user_id(session)
@@ -2364,8 +2341,6 @@ def reset(
                 )
                 await session.commit()
                 return (deleted_count, True)
-
-            return (0, False)
 
         # Execute reset
         count, success = asyncio.run(_reset_preferences())

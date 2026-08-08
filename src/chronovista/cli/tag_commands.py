@@ -17,9 +17,9 @@ if TYPE_CHECKING:
 
 import typer
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 
+from chronovista.cli.errors import display_panel
 from chronovista.config.database import db_manager
 from chronovista.models.video_tag import VideoTagSearchFilters
 from chronovista.repositories.video_repository import VideoRepository
@@ -48,18 +48,16 @@ def list_tags(
         try:
             tag_repo = VideoTagRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get popular tags
                 popular_tags = await tag_repo.get_popular_tags(session, limit=limit)
 
                 if not popular_tags:
-                    console.print(
-                        Panel(
-                            "[yellow]No tags found in database[/yellow]\n"
-                            "Use 'chronovista enrich videos' to populate tags from YouTube API",
-                            title="No Tags",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        "[yellow]No tags found in database[/yellow]\n"
+                        "Use 'chronovista enrich videos' to populate tags from YouTube API",
+                        title="No Tags",
+                        border_style="yellow",
                     )
                     return
 
@@ -81,12 +79,10 @@ def list_tags(
                 console.print(tag_table)
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error listing tags: {str(e)}[/red]",
-                    title="Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error listing tags: {str(e)}[/red]",
+                title="Error",
+                border_style="red",
             )
 
     asyncio.run(run_list())
@@ -110,18 +106,16 @@ def show_tag(
         try:
             tag_repo = VideoTagRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get video count for the tag
                 video_count = await tag_repo.get_tag_video_count(session, tag)
 
                 if video_count == 0:
-                    console.print(
-                        Panel(
-                            f"[red]Tag '{tag}' not found[/red]\n"
-                            "Use 'chronovista tags search' to find similar tags",
-                            title="Tag Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Tag '{tag}' not found[/red]\n"
+                        "Use 'chronovista tags search' to find similar tags",
+                        title="Tag Not Found",
+                        border_style="red",
                     )
                     return
 
@@ -134,12 +128,10 @@ def show_tag(
                 details = f"[bold]Tag:[/bold] {tag}\n"
                 details += f"[bold]Videos with this tag:[/bold] {video_count:,}"
 
-                console.print(
-                    Panel(
-                        details,
-                        title=f"Tag: {tag[:50]}{'...' if len(tag) > 50 else ''}",
-                        border_style="blue",
-                    )
+                display_panel(
+                    details,
+                    title=f"Tag: {tag[:50]}{'...' if len(tag) > 50 else ''}",
+                    border_style="blue",
                 )
 
                 # Show related tags if any
@@ -163,12 +155,10 @@ def show_tag(
                     console.print(related_table)
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error showing tag: {str(e)}[/red]",
-                    title="Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error showing tag: {str(e)}[/red]",
+                title="Error",
+                border_style="red",
             )
 
     asyncio.run(run_show())
@@ -193,19 +183,17 @@ def videos_by_tag(
             tag_repo = VideoTagRepository()
             video_repo = VideoRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get video IDs with this tag
                 video_ids = await tag_repo.find_videos_by_tags(
                     session, [tag], match_all=False
                 )
 
                 if not video_ids:
-                    console.print(
-                        Panel(
-                            f"[yellow]No videos found with tag '{tag}'[/yellow]",
-                            title="No Videos",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        f"[yellow]No videos found with tag '{tag}'[/yellow]",
+                        title="No Videos",
+                        border_style="yellow",
                     )
                     return
 
@@ -245,12 +233,10 @@ def videos_by_tag(
                     )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error finding videos: {str(e)}[/red]",
-                    title="Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error finding videos: {str(e)}[/red]",
+                title="Error",
+                border_style="red",
             )
 
     asyncio.run(run_videos())
@@ -274,18 +260,16 @@ def search_tags(
         try:
             tag_repo = VideoTagRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Search using filters
                 filters = VideoTagSearchFilters(tag_pattern=pattern)
                 results = await tag_repo.search_tags(session, filters)
 
                 if not results:
-                    console.print(
-                        Panel(
-                            f"[yellow]No tags found matching '{pattern}'[/yellow]",
-                            title="No Results",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        f"[yellow]No tags found matching '{pattern}'[/yellow]",
+                        title="No Results",
+                        border_style="yellow",
                     )
                     return
 
@@ -315,12 +299,10 @@ def search_tags(
                 console.print(search_table)
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error searching tags: {str(e)}[/red]",
-                    title="Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error searching tags: {str(e)}[/red]",
+                title="Error",
+                border_style="red",
             )
 
     asyncio.run(run_search())
@@ -334,17 +316,15 @@ def tag_stats() -> None:
         try:
             tag_repo = VideoTagRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 stats = await tag_repo.get_video_tag_statistics(session)
 
                 if stats.total_tags == 0:
-                    console.print(
-                        Panel(
-                            "[yellow]No tags found in database[/yellow]\n"
-                            "Use 'chronovista enrich videos' to populate tags from YouTube API",
-                            title="No Tags",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        "[yellow]No tags found in database[/yellow]\n"
+                        "Use 'chronovista enrich videos' to populate tags from YouTube API",
+                        title="No Tags",
+                        border_style="yellow",
                     )
                     return
 
@@ -353,13 +333,7 @@ def tag_stats() -> None:
 [bold]Unique Tags:[/bold] {stats.unique_tags:,}
 [bold]Avg Tags per Video:[/bold] {stats.avg_tags_per_video:.1f}"""
 
-                console.print(
-                    Panel(
-                        summary,
-                        title="Tag Statistics",
-                        border_style="blue",
-                    )
-                )
+                display_panel(summary, title="Tag Statistics", border_style="blue")
 
                 # Most common tags table
                 if stats.most_common_tags:
@@ -379,12 +353,10 @@ def tag_stats() -> None:
                     console.print(common_table)
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error getting tag statistics: {str(e)}[/red]",
-                    title="Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error getting tag statistics: {str(e)}[/red]",
+                title="Error",
+                border_style="red",
             )
 
     asyncio.run(run_stats())
@@ -406,17 +378,15 @@ def tags_by_video(
             tag_repo = VideoTagRepository()
             video_repo = VideoRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get video info
                 video = await video_repo.get_by_video_id(session, video_id)
 
                 if not video:
-                    console.print(
-                        Panel(
-                            f"[red]Video '{video_id}' not found[/red]",
-                            title="Video Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Video '{video_id}' not found[/red]",
+                        title="Video Not Found",
+                        border_style="red",
                     )
                     return
 
@@ -424,25 +394,21 @@ def tags_by_video(
                 tags = await tag_repo.get_by_video_id(session, video_id)
 
                 if not tags:
-                    console.print(
-                        Panel(
-                            f"[yellow]No tags found for video '{video_id}'[/yellow]\n"
-                            f"Title: {video.title}",
-                            title="No Tags",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        f"[yellow]No tags found for video '{video_id}'[/yellow]\n"
+                        f"Title: {video.title}",
+                        title="No Tags",
+                        border_style="yellow",
                     )
                     return
 
                 # Video info panel
-                console.print(
-                    Panel(
-                        f"[bold]Video ID:[/bold] {video.video_id}\n"
-                        f"[bold]Title:[/bold] {video.title[:80]}{'...' if len(video.title) > 80 else ''}\n"
-                        f"[bold]Tag Count:[/bold] {len(tags)}",
-                        title="Video Info",
-                        border_style="blue",
-                    )
+                display_panel(
+                    f"[bold]Video ID:[/bold] {video.video_id}\n"
+                    f"[bold]Title:[/bold] {video.title[:80]}{'...' if len(video.title) > 80 else ''}\n"
+                    f"[bold]Tag Count:[/bold] {len(tags)}",
+                    title="Video Info",
+                    border_style="blue",
                 )
 
                 # Tags table
@@ -468,12 +434,10 @@ def tags_by_video(
                 console.print(tags_table)
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error getting tags: {str(e)}[/red]",
-                    title="Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error getting tags: {str(e)}[/red]",
+                title="Error",
+                border_style="red",
             )
 
     asyncio.run(run_by_video())
@@ -522,7 +486,7 @@ def normalize_tags(
         normalization_service = TagNormalizationService()
         backfill_service = TagBackfillService(normalization_service)
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             if incremental:
                 metrics = await backfill_service.run_incremental_backfill(
                     session,
@@ -563,13 +527,11 @@ def _render_incremental_output(
 
     # FR-009: no-op when nothing to process
     if tags_processed == 0:
-        console.print(
-            Panel(
-                "[green]No unresolved tags found.[/green]\n"
-                "All tags in video_tags already have tag_aliases entries.",
-                title="Incremental Tag Normalization",
-                border_style="green",
-            )
+        display_panel(
+            "[green]No unresolved tags found.[/green]\n"
+            "All tags in video_tags already have tag_aliases entries.",
+            title="Incremental Tag Normalization",
+            border_style="green",
         )
         return
 
@@ -605,12 +567,10 @@ def _render_dry_run_output(metrics: dict[str, Any]) -> None:
         f"[bold]Reused canonical tags:[/bold]  {canonical_tags_reused:,}",
         f"[bold]Skipped (no normal.):[/bold]   {skipped:,}",
     ]
-    console.print(
-        Panel(
-            "\n".join(summary_lines),
-            title="[yellow]Dry Run — Incremental Tag Normalization[/yellow]",
-            border_style="yellow",
-        )
+    display_panel(
+        "\n".join(summary_lines),
+        title="[yellow]Dry Run — Incremental Tag Normalization[/yellow]",
+        border_style="yellow",
     )
 
     if not ta_records:
@@ -661,12 +621,10 @@ def _render_live_output(metrics: dict[str, Any]) -> None:
         f"[bold]Tags skipped:[/bold]            {skipped:>7,}",
         f"[bold]Duration:[/bold]                {elapsed_str:>7}",
     ]
-    console.print(
-        Panel(
-            "\n".join(summary_lines),
-            title="[green]Incremental Tag Normalization Complete[/green]",
-            border_style="green",
-        )
+    display_panel(
+        "\n".join(summary_lines),
+        title="[green]Incremental Tag Normalization Complete[/green]",
+        border_style="green",
     )
 
 
@@ -693,7 +651,7 @@ def analyze_tags(
         normalization_service = TagNormalizationService()
         backfill_service = TagBackfillService(normalization_service)
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             await backfill_service.run_analysis(
                 session, output_format=output_format, console=console
             )
@@ -721,7 +679,7 @@ def recount_tags(
         normalization_service = TagNormalizationService()
         backfill_service = TagBackfillService(normalization_service)
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             await backfill_service.run_recount(
                 session, dry_run=dry_run, console=console
             )
@@ -810,7 +768,7 @@ def merge_tags(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             try:
                 result: MergeResult = await service.merge(
                     session,
@@ -831,21 +789,15 @@ def merge_tags(
                 if result.entity_hint:
                     details += f"\n\n[yellow]{result.entity_hint}[/yellow]"
 
-                console.print(
-                    Panel(
-                        details,
-                        title="[green]Merge Successful[/green]",
-                        border_style="green",
-                    )
+                display_panel(
+                    details,
+                    title="[green]Merge Successful[/green]",
+                    border_style="green",
                 )
             except ValueError as e:
                 logger.warning("Merge validation failed: %s", e)
-                console.print(
-                    Panel(
-                        f"[red]{e}[/red]",
-                        title="Merge Failed",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]{e}[/red]", title="Merge Failed", border_style="red"
                 )
                 raise typer.Exit(code=1) from e
 
@@ -877,7 +829,7 @@ def split_tag(
         service = _create_tag_management_service()
         alias_list = [a.strip() for a in aliases.split(",") if a.strip()]
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             try:
                 result: SplitResult = await service.split(
                     session,
@@ -899,21 +851,15 @@ def split_tag(
                     f"[bold]Operation ID:[/bold] {result.operation_id}"
                 )
 
-                console.print(
-                    Panel(
-                        details,
-                        title="[green]Split Successful[/green]",
-                        border_style="green",
-                    )
+                display_panel(
+                    details,
+                    title="[green]Split Successful[/green]",
+                    border_style="green",
                 )
             except ValueError as e:
                 logger.warning("Split validation failed: %s", e)
-                console.print(
-                    Panel(
-                        f"[red]{e}[/red]",
-                        title="Split Failed",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]{e}[/red]", title="Split Failed", border_style="red"
                 )
                 raise typer.Exit(code=1) from e
 
@@ -940,7 +886,7 @@ def rename_tag(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             try:
                 result: RenameResult = await service.rename(
                     session,
@@ -957,21 +903,15 @@ def rename_tag(
                     f"[bold]Operation ID:[/bold] {result.operation_id}"
                 )
 
-                console.print(
-                    Panel(
-                        details,
-                        title="[green]Rename Successful[/green]",
-                        border_style="green",
-                    )
+                display_panel(
+                    details,
+                    title="[green]Rename Successful[/green]",
+                    border_style="green",
                 )
             except ValueError as e:
                 logger.warning("Rename validation failed: %s", e)
-                console.print(
-                    Panel(
-                        f"[red]{e}[/red]",
-                        title="Rename Failed",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]{e}[/red]", title="Rename Failed", border_style="red"
                 )
                 raise typer.Exit(code=1) from e
 
@@ -1000,40 +940,34 @@ def deprecate_tag(
 
     # Mutual exclusivity check
     if list_deprecated and normalized_form is not None:
-        console.print(
-            Panel(
-                "[red]Cannot use --list together with a tag argument.[/red]",
-                title="Invalid Usage",
-                border_style="red",
-            )
+        display_panel(
+            "[red]Cannot use --list together with a tag argument.[/red]",
+            title="Invalid Usage",
+            border_style="red",
         )
         raise typer.Exit(code=2)
 
     if not list_deprecated and normalized_form is None:
-        console.print(
-            Panel(
-                "[red]Provide a tag to deprecate or use --list to see "
-                "deprecated tags.[/red]",
-                title="Invalid Usage",
-                border_style="red",
-            )
+        display_panel(
+            "[red]Provide a tag to deprecate or use --list to see "
+            "deprecated tags.[/red]",
+            title="Invalid Usage",
+            border_style="red",
         )
         raise typer.Exit(code=2)
 
     async def _run() -> None:
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             if list_deprecated:
                 deprecated_tags = await service.list_deprecated(session)
 
                 if not deprecated_tags:
-                    console.print(
-                        Panel(
-                            "[yellow]No deprecated tags found.[/yellow]",
-                            title="Deprecated Tags",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        "[yellow]No deprecated tags found.[/yellow]",
+                        title="Deprecated Tags",
+                        border_style="yellow",
                     )
                     return
 
@@ -1075,21 +1009,15 @@ def deprecate_tag(
                         f"[bold]Operation ID:[/bold] {result.operation_id}"
                     )
 
-                    console.print(
-                        Panel(
-                            details,
-                            title="[green]Deprecate Successful[/green]",
-                            border_style="green",
-                        )
+                    display_panel(
+                        details,
+                        title="[green]Deprecate Successful[/green]",
+                        border_style="green",
                     )
                 except ValueError as e:
                     logger.warning("Deprecate validation failed: %s", e)
-                    console.print(
-                        Panel(
-                            f"[red]{e}[/red]",
-                            title="Deprecate Failed",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]{e}[/red]", title="Deprecate Failed", border_style="red"
                     )
                     raise typer.Exit(code=1) from e
 
@@ -1117,16 +1045,14 @@ def undo_operation(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             if list_ops:
                 operations = await service.list_recent_operations(session, limit=20)
                 if not operations:
-                    console.print(
-                        Panel(
-                            "[yellow]No operations found in the audit log[/yellow]",
-                            title="No Operations",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        "[yellow]No operations found in the audit log[/yellow]",
+                        title="No Operations",
+                        border_style="yellow",
                     )
                     return
 
@@ -1168,25 +1094,21 @@ def undo_operation(
                 return
 
             if operation_id is None:
-                console.print(
-                    Panel(
-                        "[red]Provide an operation ID or use --list to see "
-                        "recent operations[/red]",
-                        title="Missing Argument",
-                        border_style="red",
-                    )
+                display_panel(
+                    "[red]Provide an operation ID or use --list to see "
+                    "recent operations[/red]",
+                    title="Missing Argument",
+                    border_style="red",
                 )
                 raise typer.Exit(code=2)
 
             try:
                 op_uuid = uuid.UUID(operation_id)
             except ValueError:
-                console.print(
-                    Panel(
-                        f"[red]Invalid UUID: '{operation_id}'[/red]",
-                        title="Invalid Operation ID",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]Invalid UUID: '{operation_id}'[/red]",
+                    title="Invalid Operation ID",
+                    border_style="red",
                 )
                 raise typer.Exit(code=1) from None
 
@@ -1200,31 +1122,21 @@ def undo_operation(
                     f"[bold]Operation ID:[/bold] {result.operation_id}"
                 )
 
-                console.print(
-                    Panel(
-                        details,
-                        title="[green]Undo Successful[/green]",
-                        border_style="green",
-                    )
+                display_panel(
+                    details,
+                    title="[green]Undo Successful[/green]",
+                    border_style="green",
                 )
             except ValueError as e:
                 logger.warning("Undo validation failed: %s", e)
-                console.print(
-                    Panel(
-                        f"[red]{e}[/red]",
-                        title="Undo Failed",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]{e}[/red]", title="Undo Failed", border_style="red"
                 )
                 raise typer.Exit(code=1) from e
             except UndoNotImplementedError as e:
                 logger.warning("Undo not implemented: %s", e)
-                console.print(
-                    Panel(
-                        f"[red]{e}[/red]",
-                        title="Undo Not Available",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]{e}[/red]", title="Undo Not Available", border_style="red"
                 )
                 raise typer.Exit(code=1) from e
 
@@ -1285,48 +1197,40 @@ def classify_tag(
 
     # Mutual exclusivity check
     if top is not None and normalized_form is not None:
-        console.print(
-            Panel(
-                "[red]Cannot use --top together with a tag argument. "
-                "Use either --top N or provide a normalized form with --type.[/red]",
-                title="Invalid Usage",
-                border_style="red",
-            )
+        display_panel(
+            "[red]Cannot use --top together with a tag argument. "
+            "Use either --top N or provide a normalized form with --type.[/red]",
+            title="Invalid Usage",
+            border_style="red",
         )
         raise typer.Exit(code=2)
 
     if top is None and normalized_form is None:
-        console.print(
-            Panel(
-                "[red]Provide a tag to classify with --type, or use --top N "
-                "to see top unclassified tags.[/red]",
-                title="Invalid Usage",
-                border_style="red",
-            )
+        display_panel(
+            "[red]Provide a tag to classify with --type, or use --top N "
+            "to see top unclassified tags.[/red]",
+            title="Invalid Usage",
+            border_style="red",
         )
         raise typer.Exit(code=2)
 
     if normalized_form is not None and entity_type is None and link_entity is None:
-        console.print(
-            Panel(
-                "[red]--type is required when classifying a tag. "
-                "Valid values: person, organization, place, event, work, "
-                "technical_term, concept, other, topic, descriptor. "
-                "Or use --link-entity to infer the type from an existing entity.[/red]",
-                title="Missing --type",
-                border_style="red",
-            )
+        display_panel(
+            "[red]--type is required when classifying a tag. "
+            "Valid values: person, organization, place, event, work, "
+            "technical_term, concept, other, topic, descriptor. "
+            "Or use --link-entity to infer the type from an existing entity.[/red]",
+            title="Missing --type",
+            border_style="red",
         )
         raise typer.Exit(code=2)
 
     if link_entity is not None and description is not None:
-        console.print(
-            Panel(
-                "[red]--description and --link-entity are mutually exclusive. "
-                "--description applies to new entity creation.[/red]",
-                title="Invalid Usage",
-                border_style="red",
-            )
+        display_panel(
+            "[red]--description and --link-entity are mutually exclusive. "
+            "--description applies to new entity creation.[/red]",
+            title="Invalid Usage",
+            border_style="red",
         )
         raise typer.Exit(code=2)
 
@@ -1342,18 +1246,16 @@ def classify_tag(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             if top is not None:
                 # Show top unclassified tags
                 tags = await service.classify_top_unclassified(session, limit=top)
 
                 if not tags:
-                    console.print(
-                        Panel(
-                            "[yellow]No unclassified tags found.[/yellow]",
-                            title="Unclassified Tags",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        "[yellow]No unclassified tags found.[/yellow]",
+                        title="Unclassified Tags",
+                        border_style="yellow",
                     )
                     return
 
@@ -1403,13 +1305,11 @@ def classify_tag(
                                 resolved_entity_id = found_entity.id
 
                     if resolved_entity_id is None:
-                        console.print(
-                            Panel(
-                                f"[red]Entity '{link_entity}' not found. "
-                                "Provide a valid entity name or UUID.[/red]",
-                                title="Entity Not Found",
-                                border_style="red",
-                            )
+                        display_panel(
+                            f"[red]Entity '{link_entity}' not found. "
+                            "Provide a valid entity name or UUID.[/red]",
+                            title="Entity Not Found",
+                            border_style="red",
                         )
                         raise typer.Exit(code=1)
 
@@ -1425,13 +1325,11 @@ def classify_tag(
                             effective_entity_type = found.entity_type
 
                 if effective_entity_type is None:
-                    console.print(
-                        Panel(
-                            "[red]Could not determine entity type. "
-                            "Provide --type explicitly.[/red]",
-                            title="Missing --type",
-                            border_style="red",
-                        )
+                    display_panel(
+                        "[red]Could not determine entity type. "
+                        "Provide --type explicitly.[/red]",
+                        title="Missing --type",
+                        border_style="red",
                     )
                     raise typer.Exit(code=2)
 
@@ -1440,13 +1338,11 @@ def classify_tag(
                     parsed_type = EntityType(effective_entity_type)
                 except ValueError:
                     valid_types = ", ".join(t.value for t in EntityType)
-                    console.print(
-                        Panel(
-                            f"[red]Invalid entity type '{effective_entity_type}'. "
-                            f"Valid values: {valid_types}[/red]",
-                            title="Invalid --type",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Invalid entity type '{effective_entity_type}'. "
+                        f"Valid values: {valid_types}[/red]",
+                        title="Invalid --type",
+                        border_style="red",
                     )
                     raise typer.Exit(code=1) from None
 
@@ -1472,21 +1368,15 @@ def classify_tag(
                         f"[bold]Operation ID:[/bold] {result.operation_id}"
                     )
 
-                    console.print(
-                        Panel(
-                            details,
-                            title="[green]Classify Successful[/green]",
-                            border_style="green",
-                        )
+                    display_panel(
+                        details,
+                        title="[green]Classify Successful[/green]",
+                        border_style="green",
                     )
                 except ValueError as e:
                     logger.warning("Classify validation failed: %s", e)
-                    console.print(
-                        Panel(
-                            f"[red]{e}[/red]",
-                            title="Classify Failed",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]{e}[/red]", title="Classify Failed", border_style="red"
                     )
                     raise typer.Exit(code=1) from e
 
@@ -1522,7 +1412,7 @@ def review_collisions(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             collisions: list[CollisionGroup] = await service.get_collisions(
                 session,
                 limit=limit,
@@ -1553,14 +1443,12 @@ def review_collisions(
             )
 
             for i, collision in enumerate(collisions, 1):
-                console.print(
-                    Panel(
-                        f"[bold]Canonical form:[/bold] {collision.canonical_form}\n"
-                        f"[bold]Normalized form:[/bold] {collision.normalized_form}\n"
-                        f"[bold]Total occurrences:[/bold] {collision.total_occurrence_count}",
-                        title=f"[yellow]Collision {i}/{len(collisions)}[/yellow]",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    f"[bold]Canonical form:[/bold] {collision.canonical_form}\n"
+                    f"[bold]Normalized form:[/bold] {collision.normalized_form}\n"
+                    f"[bold]Total occurrences:[/bold] {collision.total_occurrence_count}",
+                    title=f"[yellow]Collision {i}/{len(collisions)}[/yellow]",
+                    border_style="yellow",
                 )
 
                 # Show aliases table
@@ -1650,7 +1538,7 @@ def repair_orphaned_aliases(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # The service owns the transaction here: a dry run has to roll back
             # inside, so the CLI must not commit on its behalf.
             report: OrphanRepairReport = await service.repair_orphaned_aliases(
@@ -1664,12 +1552,10 @@ def repair_orphaned_aliases(
             )
 
             if report.repaired_count == 0 and report.skipped_count == 0:
-                console.print(
-                    Panel(
-                        "No aliases are stranded on merged canonical tags.",
-                        title="Nothing to repair",
-                        border_style="green",
-                    )
+                display_panel(
+                    "No aliases are stranded on merged canonical tags.",
+                    title="Nothing to repair",
+                    border_style="green",
                 )
                 return
 
@@ -1696,12 +1582,10 @@ def repair_orphaned_aliases(
                     f"[dim]Reverse with: chronovista tags undo "
                     f"{report.operation_id}[/dim]"
                 )
-            console.print(
-                Panel(
-                    "\n".join(lines),
-                    title=title,
-                    border_style="yellow" if report.dry_run else "green",
-                )
+            display_panel(
+                "\n".join(lines),
+                title=title,
+                border_style="yellow" if report.dry_run else "green",
             )
 
     asyncio.run(_run())

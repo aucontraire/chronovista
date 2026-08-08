@@ -14,7 +14,6 @@ from typing import Any
 
 import typer
 from rich.console import Console
-from rich.panel import Panel
 from rich.progress import (
     BarColumn,
     Progress,
@@ -27,6 +26,7 @@ from rich.table import Table
 from rich.tree import Tree
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.cli.errors import display_panel
 from chronovista.config.database import db_manager
 from chronovista.config.settings import settings
 from chronovista.repositories.channel_repository import ChannelRepository
@@ -170,18 +170,16 @@ def list_topics(
     async def run_list() -> None:
         try:
             topic_repo = TopicCategoryRepository()
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get topics with pagination
                 topics = await topic_repo.get_multi(session, skip=0, limit=limit)
 
                 if not topics:
-                    console.print(
-                        Panel(
-                            "[yellow]No topics found in database[/yellow]\n"
-                            "Use 'chronovista sync' to populate topic data from YouTube API",
-                            title="No Topics",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        "[yellow]No topics found in database[/yellow]\n"
+                        "Use 'chronovista sync' to populate topic data from YouTube API",
+                        title="No Topics",
+                        border_style="yellow",
                     )
                     return
 
@@ -205,12 +203,10 @@ def list_topics(
                 console.print(topic_table)
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error listing topics: {str(e)}[/red]",
-                    title="Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error listing topics: {str(e)}[/red]",
+                title="Error",
+                border_style="red",
             )
 
     asyncio.run(run_list())
@@ -225,18 +221,16 @@ def show_topic(
     async def run_show() -> None:
         try:
             topic_repo = TopicCategoryRepository()
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, topic
                 )
 
                 if not resolved_topic:
-                    console.print(
-                        Panel(
-                            f"[red]Topic '{topic}' not found[/red]",
-                            title="Topic Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Topic '{topic}' not found[/red]",
+                        title="Topic Not Found",
+                        border_style="red",
                     )
                     return
 
@@ -247,21 +241,17 @@ def show_topic(
 [bold]Parent Topic:[/bold] {resolved_topic.parent_topic_id or 'None'}
 [bold]Created:[/bold] {resolved_topic.created_at.strftime('%Y-%m-%d %H:%M:%S')}"""
 
-                console.print(
-                    Panel(
-                        details,
-                        title=f"Topic: {resolved_topic.category_name}",
-                        border_style="blue",
-                    )
+                display_panel(
+                    details,
+                    title=f"Topic: {resolved_topic.category_name}",
+                    border_style="blue",
                 )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error showing topic: {str(e)}[/red]",
-                    title="Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error showing topic: {str(e)}[/red]",
+                title="Error",
+                border_style="red",
             )
 
     asyncio.run(run_show())
@@ -282,18 +272,16 @@ def channels_by_topic(
             channel_topic_repo = ChannelTopicRepository()
             channel_repo = ChannelRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Resolve topic by ID or name
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, topic
                 )
                 if not resolved_topic:
-                    console.print(
-                        Panel(
-                            f"[red]Topic '{topic}' not found[/red]",
-                            title="Topic Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Topic '{topic}' not found[/red]",
+                        title="Topic Not Found",
+                        border_style="red",
                     )
                     return
 
@@ -303,12 +291,10 @@ def channels_by_topic(
                 )
 
                 if not channel_ids:
-                    console.print(
-                        Panel(
-                            f"[yellow]No channels found for topic '{resolved_topic.category_name}'[/yellow]",
-                            title="No Channels",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        f"[yellow]No channels found for topic '{resolved_topic.category_name}'[/yellow]",
+                        title="No Channels",
+                        border_style="yellow",
                     )
                     return
 
@@ -340,12 +326,10 @@ def channels_by_topic(
                 console.print(channels_table)
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error finding channels: {str(e)}[/red]",
-                    title="Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error finding channels: {str(e)}[/red]",
+                title="Error",
+                border_style="red",
             )
 
     asyncio.run(run_channels())
@@ -366,18 +350,16 @@ def videos_by_topic(
             video_topic_repo = VideoTopicRepository()
             video_repo = VideoRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Resolve topic by ID or name
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, topic
                 )
                 if not resolved_topic:
-                    console.print(
-                        Panel(
-                            f"[red]Topic '{topic}' not found[/red]",
-                            title="Topic Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Topic '{topic}' not found[/red]",
+                        title="Topic Not Found",
+                        border_style="red",
                     )
                     return
 
@@ -387,12 +369,10 @@ def videos_by_topic(
                 )
 
                 if not video_ids:
-                    console.print(
-                        Panel(
-                            f"[yellow]No videos found for topic '{resolved_topic.category_name}'[/yellow]",
-                            title="No Videos",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        f"[yellow]No videos found for topic '{resolved_topic.category_name}'[/yellow]",
+                        title="No Videos",
+                        border_style="yellow",
                     )
                     return
 
@@ -431,12 +411,10 @@ def videos_by_topic(
                 console.print(videos_table)
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error finding videos: {str(e)}[/red]",
-                    title="Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error finding videos: {str(e)}[/red]",
+                title="Error",
+                border_style="red",
             )
 
     asyncio.run(run_videos())
@@ -463,14 +441,12 @@ def popular_topics(
             # Validate metric parameter
             valid_metrics = ["videos", "channels", "combined"]
             if metric not in valid_metrics:
-                console.print(
-                    Panel(
-                        f"[red]❌ Invalid metric '{metric}'.[/red]\n"
-                        f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_metrics)}\n"
-                        f"[dim]Example: chronovista topics popular --metric videos[/dim]",
-                        title="Invalid Parameter",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]❌ Invalid metric '{metric}'.[/red]\n"
+                    f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_metrics)}\n"
+                    f"[dim]Example: chronovista topics popular --metric videos[/dim]",
+                    title="Invalid Parameter",
+                    border_style="red",
                 )
                 return
 
@@ -482,12 +458,10 @@ def popular_topics(
             )
 
             if not popular_topics_list:
-                console.print(
-                    Panel(
-                        "[yellow]No topics found with associated content[/yellow]",
-                        title="No Data",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    "[yellow]No topics found with associated content[/yellow]",
+                    title="No Data",
+                    border_style="yellow",
                 )
                 return
 
@@ -575,12 +549,10 @@ def popular_topics(
             )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error analyzing topic popularity: {str(e)}[/red]",
-                    title="Analytics Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error analyzing topic popularity: {str(e)}[/red]",
+                title="Analytics Error",
+                border_style="red",
             )
 
     asyncio.run(run_popular())
@@ -605,27 +577,23 @@ def related_topics(
 
             # Validate confidence parameter
             if not 0.0 <= min_confidence <= 1.0:
-                console.print(
-                    Panel(
-                        f"[red]Invalid confidence score '{min_confidence}'. Must be between 0.0 and 1.0[/red]",
-                        title="Invalid Parameter",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]Invalid confidence score '{min_confidence}'. Must be between 0.0 and 1.0[/red]",
+                    title="Invalid Parameter",
+                    border_style="red",
                 )
                 return
 
             # Resolve topic by ID or name
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, topic
                 )
                 if not resolved_topic:
-                    console.print(
-                        Panel(
-                            f"[red]Topic '{topic}' not found[/red]",
-                            title="Topic Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Topic '{topic}' not found[/red]",
+                        title="Topic Not Found",
+                        border_style="red",
                     )
                     return
 
@@ -640,24 +608,20 @@ def related_topics(
             )
 
             if not relationships.relationships:
-                console.print(
-                    Panel(
-                        f"[yellow]No related topics found for '{topic_name}' with confidence >= {min_confidence}[/yellow]\n"
-                        f"Try lowering the minimum confidence score or ensure the topic has associated content.",
-                        title="No Related Topics",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    f"[yellow]No related topics found for '{topic_name}' with confidence >= {min_confidence}[/yellow]\n"
+                    f"Try lowering the minimum confidence score or ensure the topic has associated content.",
+                    title="No Related Topics",
+                    border_style="yellow",
                 )
                 return
 
             # Display source topic info
-            console.print(
-                Panel(
-                    f"[bold cyan]{relationships.source_category_name}[/bold cyan] (ID: {relationships.source_topic_id})\n"
-                    f"📺 {relationships.total_videos:,} videos • 📢 {relationships.total_channels:,} channels",
-                    title="Source Topic",
-                    border_style="cyan",
-                )
+            display_panel(
+                f"[bold cyan]{relationships.source_category_name}[/bold cyan] (ID: {relationships.source_topic_id})\n"
+                f"📺 {relationships.total_videos:,} videos • 📢 {relationships.total_channels:,} channels",
+                title="Source Topic",
+                border_style="cyan",
             )
 
             # Create relationships table
@@ -727,12 +691,10 @@ def related_topics(
             )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error analyzing topic relationships: {str(e)}[/red]",
-                    title="Analytics Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error analyzing topic relationships: {str(e)}[/red]",
+                title="Analytics Error",
+                border_style="red",
             )
 
     asyncio.run(run_related())
@@ -755,17 +717,15 @@ def topic_overlap(
             topic_repo = TopicCategoryRepository()
 
             # Resolve topics by ID or name
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_topic1 = await resolve_topic_identifier(
                     session, topic_repo, topic1
                 )
                 if not resolved_topic1:
-                    console.print(
-                        Panel(
-                            f"[red]Topic '{topic1}' not found[/red]",
-                            title="Topic Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Topic '{topic1}' not found[/red]",
+                        title="Topic Not Found",
+                        border_style="red",
                     )
                     return
 
@@ -773,12 +733,10 @@ def topic_overlap(
                     session, topic_repo, topic2
                 )
                 if not resolved_topic2:
-                    console.print(
-                        Panel(
-                            f"[red]Topic '{topic2}' not found[/red]",
-                            title="Topic Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Topic '{topic2}' not found[/red]",
+                        title="Topic Not Found",
+                        border_style="red",
                     )
                     return
 
@@ -789,12 +747,10 @@ def topic_overlap(
 
             # Validate that topics are different
             if topic1_id == topic2_id:
-                console.print(
-                    Panel(
-                        "[red]Cannot compare a topic with itself. Please provide two different topics.[/red]",
-                        title="Invalid Comparison",
-                        border_style="red",
-                    )
+                display_panel(
+                    "[red]Cannot compare a topic with itself. Please provide two different topics.[/red]",
+                    title="Invalid Comparison",
+                    border_style="red",
                 )
                 return
 
@@ -808,15 +764,13 @@ def topic_overlap(
             )
 
             # Display topic information
-            console.print(
-                Panel(
-                    f"[bold cyan]Topic 1:[/bold cyan] {overlap.topic1_name} (ID: {overlap.topic1_id})\n"
-                    f"📺 {overlap.topic1_videos:,} videos • 📢 {overlap.topic1_channels:,} channels\n\n"
-                    f"[bold cyan]Topic 2:[/bold cyan] {overlap.topic2_name} (ID: {overlap.topic2_id})\n"
-                    f"📺 {overlap.topic2_videos:,} videos • 📢 {overlap.topic2_channels:,} channels",
-                    title="Topic Comparison",
-                    border_style="cyan",
-                )
+            display_panel(
+                f"[bold cyan]Topic 1:[/bold cyan] {overlap.topic1_name} (ID: {overlap.topic1_id})\n"
+                f"📺 {overlap.topic1_videos:,} videos • 📢 {overlap.topic1_channels:,} channels\n\n"
+                f"[bold cyan]Topic 2:[/bold cyan] {overlap.topic2_name} (ID: {overlap.topic2_id})\n"
+                f"📺 {overlap.topic2_videos:,} videos • 📢 {overlap.topic2_channels:,} channels",
+                title="Topic Comparison",
+                border_style="cyan",
             )
 
             # Create overlap analysis table
@@ -865,15 +819,13 @@ def topic_overlap(
             else:
                 strength_style = "[dim]"
 
-            console.print(
-                Panel(
-                    f"[bold]Overall Similarity Metrics:[/bold]\n\n"
-                    f"🎯 Jaccard Similarity: [bold cyan]{jaccard_pct:.2f}%[/bold cyan]\n"
-                    f"📈 Overlap Strength: {strength_style}{overlap.overlap_strength.title()}[/]\n\n"
-                    f"[dim]The Jaccard similarity measures how similar the two topics are based on their shared content.[/dim]",
-                    title="Similarity Analysis",
-                    border_style="magenta",
-                )
+            display_panel(
+                f"[bold]Overall Similarity Metrics:[/bold]\n\n"
+                f"🎯 Jaccard Similarity: [bold cyan]{jaccard_pct:.2f}%[/bold cyan]\n"
+                f"📈 Overlap Strength: {strength_style}{overlap.overlap_strength.title()}[/]\n\n"
+                f"[dim]The Jaccard similarity measures how similar the two topics are based on their shared content.[/dim]",
+                title="Similarity Analysis",
+                border_style="magenta",
             )
 
             # Provide interpretation
@@ -893,12 +845,10 @@ def topic_overlap(
             console.print(f"\n[dim]💡 Interpretation: {interpretation}[/dim]")
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error analyzing topic overlap: {str(e)}[/red]",
-                    title="Analytics Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error analyzing topic overlap: {str(e)}[/red]",
+                title="Analytics Error",
+                border_style="red",
             )
 
     asyncio.run(run_overlap())
@@ -929,27 +879,23 @@ def similar_topics(
 
             # Validate similarity parameter
             if not 0.0 <= _min_similarity <= 1.0:
-                console.print(
-                    Panel(
-                        f"[red]Invalid similarity score '{_min_similarity}'. Must be between 0.0 and 1.0[/red]",
-                        title="Invalid Parameter",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]Invalid similarity score '{_min_similarity}'. Must be between 0.0 and 1.0[/red]",
+                    title="Invalid Parameter",
+                    border_style="red",
                 )
                 return
 
             # Resolve topic by ID or name
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, _topic
                 )
                 if not resolved_topic:
-                    console.print(
-                        Panel(
-                            f"[red]Topic '{_topic}' not found[/red]",
-                            title="Topic Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Topic '{_topic}' not found[/red]",
+                        title="Topic Not Found",
+                        border_style="red",
                     )
                     return
 
@@ -964,23 +910,19 @@ def similar_topics(
             )
 
             if not similar_topics_list:
-                console.print(
-                    Panel(
-                        f"[yellow]No similar topics found for '{topic_name}' with similarity >= {_min_similarity}[/yellow]\n"
-                        f"Try lowering the minimum similarity score or ensure the topic has associated content.",
-                        title="No Similar Topics",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    f"[yellow]No similar topics found for '{topic_name}' with similarity >= {_min_similarity}[/yellow]\n"
+                    f"Try lowering the minimum similarity score or ensure the topic has associated content.",
+                    title="No Similar Topics",
+                    border_style="yellow",
                 )
                 return
 
             # Display source topic info
-            console.print(
-                Panel(
-                    f"[bold cyan]Source Topic:[/bold cyan] {topic_name} (ID: {topic_id})",
-                    title="Finding Similar Topics",
-                    border_style="cyan",
-                )
+            display_panel(
+                f"[bold cyan]Source Topic:[/bold cyan] {topic_name} (ID: {topic_id})",
+                title="Finding Similar Topics",
+                border_style="cyan",
             )
 
             # Create similarity table
@@ -1049,12 +991,10 @@ def similar_topics(
             )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error analyzing topic similarity: {str(e)}[/red]",
-                    title="Analytics Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error analyzing topic similarity: {str(e)}[/red]",
+                title="Analytics Error",
+                border_style="red",
             )
 
     asyncio.run(run_similar())
@@ -1082,14 +1022,12 @@ def export_topics(
             # Validate format
             valid_formats = ["csv", "json"]
             if format not in valid_formats:
-                console.print(
-                    Panel(
-                        f"[red]❌ Invalid format '{format}'.[/red]\n"
-                        f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_formats)}\n"
-                        f"[dim]Example: chronovista topics export --format csv[/dim]",
-                        title="Invalid Parameter",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]❌ Invalid format '{format}'.[/red]\n"
+                    f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_formats)}\n"
+                    f"[dim]Example: chronovista topics export --format csv[/dim]",
+                    title="Invalid Parameter",
+                    border_style="red",
                 )
                 return
 
@@ -1115,7 +1053,7 @@ def export_topics(
             video_repo = VideoRepository()
             channel_repo = ChannelRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 export_data = {}
 
                 # Export topic categories
@@ -1246,35 +1184,31 @@ def export_topics(
                             writer.writerows(channel_topic_data)
 
                 # Show export summary
-                console.print(
-                    Panel(
-                        f"[bold green]✅ Export Complete![/bold green]\n\n"
-                        f"📄 Format: {format.upper()}\n"
-                        f"📁 Output: {output_path.absolute()}\n"
-                        f"🏷️ Topics: {len(topic_data)} categories\n"
-                        + (
-                            f"📺 Video associations: {len(video_topic_data)}\n"
-                            if include_videos
-                            else ""
-                        )
-                        + (
-                            f"📢 Channel associations: {len(channel_topic_data)}\n"
-                            if include_channels
-                            else ""
-                        )
-                        + "\n[dim]Data includes topic metadata and association details for analysis.[/dim]",
-                        title="Export Summary",
-                        border_style="green",
+                display_panel(
+                    f"[bold green]✅ Export Complete![/bold green]\n\n"
+                    f"📄 Format: {format.upper()}\n"
+                    f"📁 Output: {output_path.absolute()}\n"
+                    f"🏷️ Topics: {len(topic_data)} categories\n"
+                    + (
+                        f"📺 Video associations: {len(video_topic_data)}\n"
+                        if include_videos
+                        else ""
                     )
+                    + (
+                        f"📢 Channel associations: {len(channel_topic_data)}\n"
+                        if include_channels
+                        else ""
+                    )
+                    + "\n[dim]Data includes topic metadata and association details for analysis.[/dim]",
+                    title="Export Summary",
+                    border_style="green",
                 )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error exporting topic data: {str(e)}[/red]",
-                    title="Export Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error exporting topic data: {str(e)}[/red]",
+                title="Export Error",
+                border_style="red",
             )
 
     asyncio.run(run_export())
@@ -1310,26 +1244,22 @@ def topic_graph_export(
             # Validate format
             valid_formats = ["dot", "json"]
             if format not in valid_formats:
-                console.print(
-                    Panel(
-                        f"[red]❌ Invalid format '{format}'.[/red]\n"
-                        f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_formats)}\n"
-                        f"[dim]Example: chronovista topics graph --format dot[/dim]",
-                        title="Invalid Parameter",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]❌ Invalid format '{format}'.[/red]\n"
+                    f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_formats)}\n"
+                    f"[dim]Example: chronovista topics graph --format dot[/dim]",
+                    title="Invalid Parameter",
+                    border_style="red",
                 )
                 return
 
-            console.print(
-                Panel(
-                    "[bold cyan]🕸️ Topic Relationship Graph Export[/bold cyan]\n\n"
-                    f"Generating {format.upper()} graph with {limit} topics.\n"
-                    f"Including relationships with ≥{min_confidence:.1f} confidence.",
-                    title="Graph Export",
-                    border_style="cyan",
-                    padding=(1, 2),
-                )
+            display_panel(
+                "[bold cyan]🕸️ Topic Relationship Graph Export[/bold cyan]\n\n"
+                f"Generating {format.upper()} graph with {limit} topics.\n"
+                f"Including relationships with ≥{min_confidence:.1f} confidence.",
+                title="Graph Export",
+                border_style="cyan",
+                padding=(1, 2),
             )
 
             analytics_service = TopicAnalyticsService()
@@ -1361,20 +1291,18 @@ def topic_graph_export(
                     # Write DOT file
                     output_path.write_text(graph_content, encoding="utf-8")
 
-                    console.print(
-                        Panel(
-                            f"[bold green]✅ DOT Graph Export Complete![/bold green]\n\n"
-                            f"📄 File: {output_path}\n"
-                            f"🕸️ Topics: {limit}\n"
-                            f"🔗 Min Confidence: {min_confidence:.1f}\n"
-                            f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-                            f"[bold yellow]💡 Visualization Tips:[/bold yellow]\n"
-                            f"• Use Graphviz: [dim]dot -Tpng {output_path} -o graph.png[/dim]\n"
-                            f"• Online viewer: [dim]https://dreampuf.github.io/GraphvizOnline/[/dim]\n"
-                            f"• VS Code: Install Graphviz Preview extension",
-                            title="Export Complete",
-                            border_style="green",
-                        )
+                    display_panel(
+                        f"[bold green]✅ DOT Graph Export Complete![/bold green]\n\n"
+                        f"📄 File: {output_path}\n"
+                        f"🕸️ Topics: {limit}\n"
+                        f"🔗 Min Confidence: {min_confidence:.1f}\n"
+                        f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                        f"[bold yellow]💡 Visualization Tips:[/bold yellow]\n"
+                        f"• Use Graphviz: [dim]dot -Tpng {output_path} -o graph.png[/dim]\n"
+                        f"• Online viewer: [dim]https://dreampuf.github.io/GraphvizOnline/[/dim]\n"
+                        f"• VS Code: Install Graphviz Preview extension",
+                        title="Export Complete",
+                        border_style="green",
                     )
 
                 elif format == "json":
@@ -1397,35 +1325,31 @@ def topic_graph_export(
                     with open(output_path, "w", encoding="utf-8") as f:
                         json.dump(graph_data, f, indent=2, ensure_ascii=False)
 
-                    console.print(
-                        Panel(
-                            f"[bold green]✅ JSON Graph Export Complete![/bold green]\n\n"
-                            f"📄 File: {output_path}\n"
-                            f"🕸️ Nodes: {graph_data['metadata']['total_topics']}\n"
-                            f"🔗 Links: {graph_data['metadata']['total_links']}\n"
-                            f"⚖️ Min Confidence: {min_confidence:.1f}\n"
-                            f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-                            f"[bold yellow]💡 Visualization Tips:[/bold yellow]\n"
-                            f"• D3.js Force Layout: Compatible format\n"
-                            f"• NetworkX Python: [dim]import json; nx.from_dict_of_lists()[/dim]\n"
-                            f"• Cytoscape: Convert nodes/links format\n"
-                            f"• Observable: Upload to observablehq.com",
-                            title="Export Complete",
-                            border_style="green",
-                        )
+                    display_panel(
+                        f"[bold green]✅ JSON Graph Export Complete![/bold green]\n\n"
+                        f"📄 File: {output_path}\n"
+                        f"🕸️ Nodes: {graph_data['metadata']['total_topics']}\n"
+                        f"🔗 Links: {graph_data['metadata']['total_links']}\n"
+                        f"⚖️ Min Confidence: {min_confidence:.1f}\n"
+                        f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                        f"[bold yellow]💡 Visualization Tips:[/bold yellow]\n"
+                        f"• D3.js Force Layout: Compatible format\n"
+                        f"• NetworkX Python: [dim]import json; nx.from_dict_of_lists()[/dim]\n"
+                        f"• Cytoscape: Convert nodes/links format\n"
+                        f"• Observable: Upload to observablehq.com",
+                        title="Export Complete",
+                        border_style="green",
                     )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Error generating graph: {str(e)}[/red]\n\n"
-                    "[yellow]💡 Try:[/yellow]\n"
-                    "• Check if topics exist: [dim]chronovista topics list[/dim]\n"
-                    "• Reduce --limit or --min-confidence\n"
-                    "• Ensure database contains topic relationships",
-                    title="Graph Export Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]❌ Error generating graph: {str(e)}[/red]\n\n"
+                "[yellow]💡 Try:[/yellow]\n"
+                "• Check if topics exist: [dim]chronovista topics list[/dim]\n"
+                "• Reduce --limit or --min-confidence\n"
+                "• Ensure database contains topic relationships",
+                title="Graph Export Error",
+                border_style="red",
             )
 
     asyncio.run(run_graph_export())
@@ -1455,26 +1379,22 @@ def topic_heatmap_export(
             # Validate period
             valid_periods = ["monthly", "weekly", "daily"]
             if period not in valid_periods:
-                console.print(
-                    Panel(
-                        f"[red]❌ Invalid period '{period}'.[/red]\n"
-                        f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_periods)}\n"
-                        f"[dim]Example: chronovista topics heatmap --period monthly[/dim]",
-                        title="Invalid Parameter",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]❌ Invalid period '{period}'.[/red]\n"
+                    f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_periods)}\n"
+                    f"[dim]Example: chronovista topics heatmap --period monthly[/dim]",
+                    title="Invalid Parameter",
+                    border_style="red",
                 )
                 return
 
-            console.print(
-                Panel(
-                    "[bold orange1]🔥 Topic Activity Heatmap Export[/bold orange1]\n\n"
-                    f"Generating {period} heatmap data for the last {months_back} months.\n"
-                    "Creating time-series activity matrix for visualization.",
-                    title="Heatmap Export",
-                    border_style="orange1",
-                    padding=(1, 2),
-                )
+            display_panel(
+                "[bold orange1]🔥 Topic Activity Heatmap Export[/bold orange1]\n\n"
+                f"Generating {period} heatmap data for the last {months_back} months.\n"
+                "Creating time-series activity matrix for visualization.",
+                title="Heatmap Export",
+                border_style="orange1",
+                padding=(1, 2),
             )
 
             analytics_service = TopicAnalyticsService()
@@ -1493,17 +1413,15 @@ def topic_heatmap_export(
                 )
 
                 if not trends:
-                    console.print(
-                        Panel(
-                            "[yellow]📊 No trend data found[/yellow]\n\n"
-                            "Heatmap requires:\n"
-                            "• Video upload dates in database\n"
-                            "• User interaction timestamps\n"
-                            "• Topic associations\n\n"
-                            "Try: [dim]chronovista sync all[/dim]",
-                            title="No Data",
-                            border_style="yellow",
-                        )
+                    display_panel(
+                        "[yellow]📊 No trend data found[/yellow]\n\n"
+                        "Heatmap requires:\n"
+                        "• Video upload dates in database\n"
+                        "• User interaction timestamps\n"
+                        "• Topic associations\n\n"
+                        "Try: [dim]chronovista sync all[/dim]",
+                        title="No Data",
+                        border_style="yellow",
                     )
                     return
 
@@ -1574,35 +1492,31 @@ def topic_heatmap_export(
                 with open(output_path, "w", encoding="utf-8") as f:
                     json.dump(heatmap_data, f, indent=2, ensure_ascii=False)
 
-                console.print(
-                    Panel(
-                        f"[bold green]✅ Heatmap Export Complete![/bold green]\n\n"
-                        f"📄 File: {output_path}\n"
-                        f"🏷️ Topics: {len(heatmap_data['topics'])}\n"
-                        f"📅 Periods: {len(sorted_periods)} {period} periods\n"
-                        f"📊 Data Points: {len(heatmap_data['topics']) * len(sorted_periods)}\n"
-                        f"⌚ Time Range: {months_back} months\n\n"
-                        f"[bold yellow]💡 Visualization Tips:[/bold yellow]\n"
-                        f"• Python: [dim]seaborn.heatmap(data)[/dim]\n"
-                        f"• JavaScript: [dim]D3.js heatmap, Chart.js matrix[/dim]\n"
-                        f"• R: [dim]ggplot2 + geom_tile()[/dim]\n"
-                        f"• Excel: Import JSON, create pivot heatmap",
-                        title="Export Complete",
-                        border_style="green",
-                    )
+                display_panel(
+                    f"[bold green]✅ Heatmap Export Complete![/bold green]\n\n"
+                    f"📄 File: {output_path}\n"
+                    f"🏷️ Topics: {len(heatmap_data['topics'])}\n"
+                    f"📅 Periods: {len(sorted_periods)} {period} periods\n"
+                    f"📊 Data Points: {len(heatmap_data['topics']) * len(sorted_periods)}\n"
+                    f"⌚ Time Range: {months_back} months\n\n"
+                    f"[bold yellow]💡 Visualization Tips:[/bold yellow]\n"
+                    f"• Python: [dim]seaborn.heatmap(data)[/dim]\n"
+                    f"• JavaScript: [dim]D3.js heatmap, Chart.js matrix[/dim]\n"
+                    f"• R: [dim]ggplot2 + geom_tile()[/dim]\n"
+                    f"• Excel: Import JSON, create pivot heatmap",
+                    title="Export Complete",
+                    border_style="green",
                 )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Error generating heatmap: {str(e)}[/red]\n\n"
-                    "[yellow]💡 Try:[/yellow]\n"
-                    "• Check topic trends: [dim]chronovista topics trends[/dim]\n"
-                    "• Reduce months_back parameter\n"
-                    "• Ensure database contains temporal data",
-                    title="Heatmap Export Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]❌ Error generating heatmap: {str(e)}[/red]\n\n"
+                "[yellow]💡 Try:[/yellow]\n"
+                "• Check topic trends: [dim]chronovista topics trends[/dim]\n"
+                "• Reduce months_back parameter\n"
+                "• Ensure database contains temporal data",
+                title="Heatmap Export Error",
+                border_style="red",
             )
 
     asyncio.run(run_heatmap_export())
@@ -1629,14 +1543,12 @@ def topic_chart(
             # Validate metric parameter
             valid_metrics = ["videos", "channels", "combined"]
             if metric not in valid_metrics:
-                console.print(
-                    Panel(
-                        f"[red]❌ Invalid metric '{metric}'.[/red]\n"
-                        f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_metrics)}\n"
-                        f"[dim]Example: chronovista topics chart --metric videos[/dim]",
-                        title="Invalid Parameter",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]❌ Invalid metric '{metric}'.[/red]\n"
+                    f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_metrics)}\n"
+                    f"[dim]Example: chronovista topics chart --metric videos[/dim]",
+                    title="Invalid Parameter",
+                    border_style="red",
                 )
                 return
 
@@ -1650,12 +1562,10 @@ def topic_chart(
             )
 
             if not popular_topics_list:
-                console.print(
-                    Panel(
-                        "[yellow]No topics found with associated content[/yellow]",
-                        title="No Data",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    "[yellow]No topics found with associated content[/yellow]",
+                    title="No Data",
+                    border_style="yellow",
                 )
                 return
 
@@ -1676,23 +1586,19 @@ def topic_chart(
                 unit = "items"
 
             if max_value == 0:
-                console.print(
-                    Panel(
-                        "[yellow]No content found for the selected metric[/yellow]",
-                        title="No Data",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    "[yellow]No content found for the selected metric[/yellow]",
+                    title="No Data",
+                    border_style="yellow",
                 )
                 return
 
             # Display chart header
-            console.print(
-                Panel(
-                    f"[bold cyan]Topic Popularity Chart - {metric.title()}[/bold cyan]\n"
-                    f"Showing top {len(popular_topics_list)} topics by {unit} count",
-                    title="📊 ASCII Bar Chart",
-                    border_style="cyan",
-                )
+            display_panel(
+                f"[bold cyan]Topic Popularity Chart - {metric.title()}[/bold cyan]\n"
+                f"Showing top {len(popular_topics_list)} topics by {unit} count",
+                title="📊 ASCII Bar Chart",
+                border_style="cyan",
             )
 
             # Generate ASCII bars
@@ -1747,26 +1653,22 @@ def topic_chart(
             )
 
             console.print()
-            console.print(
-                Panel(
-                    f"[bold]Chart Statistics:[/bold]\n\n"
-                    f"📊 Total {unit}: [bold cyan]{total_content:,}[/bold cyan]\n"
-                    f"📈 Average per topic: [bold yellow]{avg_content:.1f}[/bold yellow]\n"
-                    f"🏆 Highest: [bold green]{max_value:,}[/bold green] ({popular_topics_list[0].category_name})\n"
-                    f"📉 Lowest: [bold red]{getattr(popular_topics_list[-1], value_key):,}[/bold red] ({popular_topics_list[-1].category_name})\n\n"
-                    f"[dim]Chart shows relative distribution of {unit} across topics[/dim]",
-                    title="📈 Summary",
-                    border_style="magenta",
-                )
+            display_panel(
+                f"[bold]Chart Statistics:[/bold]\n\n"
+                f"📊 Total {unit}: [bold cyan]{total_content:,}[/bold cyan]\n"
+                f"📈 Average per topic: [bold yellow]{avg_content:.1f}[/bold yellow]\n"
+                f"🏆 Highest: [bold green]{max_value:,}[/bold green] ({popular_topics_list[0].category_name})\n"
+                f"📉 Lowest: [bold red]{getattr(popular_topics_list[-1], value_key):,}[/bold red] ({popular_topics_list[-1].category_name})\n\n"
+                f"[dim]Chart shows relative distribution of {unit} across topics[/dim]",
+                title="📈 Summary",
+                border_style="magenta",
             )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error generating topic chart: {str(e)}[/red]",
-                    title="Chart Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error generating topic chart: {str(e)}[/red]",
+                title="Chart Error",
+                border_style="red",
             )
 
     asyncio.run(run_chart())
@@ -1785,17 +1687,15 @@ async def show_full_hierarchy(
 
     from chronovista.repositories.video_topic_repository import VideoTopicRepository
 
-    async for session in db_manager.get_session(echo=False):
+    async with db_manager.session(echo=False) as session:
         # Get root (parent) topics
         parents = await topic_repo.get_root_topics(session)
 
         if not parents:
-            console.print(
-                Panel(
-                    "[yellow]No topics found. Run 'chronovista seed topics' first.[/yellow]",
-                    title="No Topics",
-                    border_style="yellow",
-                )
+            display_panel(
+                "[yellow]No topics found. Run 'chronovista seed topics' first.[/yellow]",
+                title="No Topics",
+                border_style="yellow",
             )
             return
 
@@ -1853,13 +1753,8 @@ async def show_full_hierarchy(
 
         # Display
         console.print()
-        console.print(
-            Panel(
-                tree,
-                title="🌳 Topic Hierarchy",
-                border_style="green",
-                padding=(1, 2),
-            )
+        display_panel(
+            tree, title="🌳 Topic Hierarchy", border_style="green", padding=(1, 2)
         )
 
         # Summary
@@ -1909,12 +1804,10 @@ def topic_tree(
 
             # Validate confidence parameter
             if not 0.0 <= min_confidence <= 1.0:
-                console.print(
-                    Panel(
-                        f"[red]Invalid confidence score '{min_confidence}'. Must be between 0.0 and 1.0[/red]",
-                        title="Invalid Parameter",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]Invalid confidence score '{min_confidence}'. Must be between 0.0 and 1.0[/red]",
+                    title="Invalid Parameter",
+                    border_style="red",
                 )
                 return
 
@@ -1923,18 +1816,15 @@ def topic_tree(
             )
 
             # Get the root topic information
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 root_topic = await topic_repo.get(session, topic_id)
                 if not root_topic:
-                    console.print(
-                        Panel(
-                            f"[red]Topic '{topic_id}' not found[/red]",
-                            title="Topic Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Topic '{topic_id}' not found[/red]",
+                        title="Topic Not Found",
+                        border_style="red",
                     )
                     return
-                break
 
             # Create the root of the tree
             # We already validated root_topic is not None above
@@ -1968,13 +1858,11 @@ def topic_tree(
 
             # Display the tree
             console.print()
-            console.print(
-                Panel(
-                    tree,
-                    title="🌳 Topic Relationship Tree",
-                    border_style="green",
-                    padding=(1, 2),
-                )
+            display_panel(
+                tree,
+                title="🌳 Topic Relationship Tree",
+                border_style="green",
+                padding=(1, 2),
             )
 
             # Show tree statistics
@@ -1989,12 +1877,10 @@ def topic_tree(
             )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error building topic tree: {str(e)}[/red]",
-                    title="Tree Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error building topic tree: {str(e)}[/red]",
+                title="Tree Error",
+                border_style="red",
             )
 
     asyncio.run(run_tree())
@@ -2127,15 +2013,13 @@ def interactive_topic_exploration(
 
     async def run_interactive() -> None:
         try:
-            console.print(
-                Panel(
-                    "[bold cyan]🔍 Interactive Topic Explorer[/bold cyan]\n\n"
-                    "Discover and analyze topics through an interactive interface.\n"
-                    "Browse topics, view analytics, and explore relationships!",
-                    title="Welcome to Topic Explorer",
-                    border_style="cyan",
-                    padding=(1, 2),
-                )
+            display_panel(
+                "[bold cyan]🔍 Interactive Topic Explorer[/bold cyan]\n\n"
+                "Discover and analyze topics through an interactive interface.\n"
+                "Browse topics, view analytics, and explore relationships!",
+                title="Welcome to Topic Explorer",
+                border_style="cyan",
+                padding=(1, 2),
             )
 
             topic_repo = TopicCategoryRepository()
@@ -2155,7 +2039,7 @@ def interactive_topic_exploration(
                     "Loading topics from database...", total=100
                 )
 
-                async for session in db_manager.get_session(echo=False):
+                async with db_manager.session(echo=False) as session:
                     # Get all topics
                     progress.update(
                         load_task,
@@ -2190,16 +2074,13 @@ def interactive_topic_exploration(
                         load_task, advance=25, description="Ready for exploration!"
                     )
                     await asyncio.sleep(0.3)
-                    break
 
             if not topics:
-                console.print(
-                    Panel(
-                        "[yellow]No topics found in database[/yellow]\n"
-                        "Use 'chronovista sync topics' to populate topic data first.",
-                        title="No Topics Available",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    "[yellow]No topics found in database[/yellow]\n"
+                    "Use 'chronovista sync topics' to populate topic data first.",
+                    title="No Topics Available",
+                    border_style="yellow",
                 )
                 return
 
@@ -2287,18 +2168,16 @@ def interactive_topic_exploration(
 
                 # Process user input
                 if user_input.lower() == "help":
-                    console.print(
-                        Panel(
-                            "[bold]Interactive Topic Explorer Commands:[/bold]\n\n"
-                            "• [cyan]1,2,3[/cyan] - Select topics by index (comma-separated)\n"
-                            "• [cyan]show[/cyan] - Display detailed analysis of selected topics\n"
-                            "• [cyan]clear[/cyan] - Clear all selected topics\n"
-                            "• [cyan]done[/cyan] - Finish selection and exit\n"
-                            "• [cyan]help[/cyan] - Show this help message\n\n"
-                            "[dim]Example: Type '1,5,10' to select topics at positions 1, 5, and 10[/dim]",
-                            title="Help",
-                            border_style="blue",
-                        )
+                    display_panel(
+                        "[bold]Interactive Topic Explorer Commands:[/bold]\n\n"
+                        "• [cyan]1,2,3[/cyan] - Select topics by index (comma-separated)\n"
+                        "• [cyan]show[/cyan] - Display detailed analysis of selected topics\n"
+                        "• [cyan]clear[/cyan] - Clear all selected topics\n"
+                        "• [cyan]done[/cyan] - Finish selection and exit\n"
+                        "• [cyan]help[/cyan] - Show this help message\n\n"
+                        "[dim]Example: Type '1,5,10' to select topics at positions 1, 5, and 10[/dim]",
+                        title="Help",
+                        border_style="blue",
                     )
                     continue
 
@@ -2407,12 +2286,10 @@ def interactive_topic_exploration(
                 "\n\n[yellow]👋 Interactive exploration cancelled by user[/yellow]"
             )
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]Error during interactive exploration: {str(e)}[/red]",
-                    title="Exploration Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]Error during interactive exploration: {str(e)}[/red]",
+                title="Exploration Error",
+                border_style="red",
             )
 
     asyncio.run(run_interactive())
@@ -2439,15 +2316,13 @@ def topic_discovery_analysis(
 
     async def run_discovery() -> None:
         try:
-            console.print(
-                Panel(
-                    "[bold magenta]🔍 Topic Discovery Analytics[/bold magenta]\n\n"
-                    "Analyze how users discover and engage with different topics.\n"
-                    "Understand discovery patterns, entry points, and retention rates!",
-                    title="Discovery Analytics",
-                    border_style="magenta",
-                    padding=(1, 2),
-                )
+            display_panel(
+                "[bold magenta]🔍 Topic Discovery Analytics[/bold magenta]\n\n"
+                "Analyze how users discover and engage with different topics.\n"
+                "Understand discovery patterns, entry points, and retention rates!",
+                title="Discovery Analytics",
+                border_style="magenta",
+                padding=(1, 2),
             )
 
             analytics_service = TopicAnalyticsService()
@@ -2464,17 +2339,15 @@ def topic_discovery_analysis(
                 )
 
             if analysis.total_users == 0:
-                console.print(
-                    Panel(
-                        "[yellow]📊 No user interaction data found[/yellow]\n\n"
-                        "Discovery analytics requires:\n"
-                        "• User watch history data\n"
-                        "• Video-topic associations\n"
-                        "• User interaction tracking\n\n"
-                        "Try running [cyan]chronovista sync history[/cyan] first to import watch data.",
-                        title="Insufficient Data",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    "[yellow]📊 No user interaction data found[/yellow]\n\n"
+                    "Discovery analytics requires:\n"
+                    "• User watch history data\n"
+                    "• Video-topic associations\n"
+                    "• User interaction tracking\n\n"
+                    "Try running [cyan]chronovista sync history[/cyan] first to import watch data.",
+                    title="Insufficient Data",
+                    border_style="yellow",
                 )
                 return
 
@@ -2641,12 +2514,10 @@ def topic_discovery_analysis(
             )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Error during discovery analysis: {e}[/red]",
-                    title="Analysis Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]❌ Error during discovery analysis: {e}[/red]",
+                title="Analysis Error",
+                border_style="red",
             )
 
     asyncio.run(run_discovery())
@@ -2679,28 +2550,24 @@ def topic_trends_analysis(
 
     async def run_trends() -> None:
         try:
-            console.print(
-                Panel(
-                    "[bold blue]📈 Topic Trends Analytics[/bold blue]\n\n"
-                    "Analyze how topic popularity changes over time.\n"
-                    "Discover growing trends, declining topics, and seasonal patterns!",
-                    title="Trends Analytics",
-                    border_style="blue",
-                    padding=(1, 2),
-                )
+            display_panel(
+                "[bold blue]📈 Topic Trends Analytics[/bold blue]\n\n"
+                "Analyze how topic popularity changes over time.\n"
+                "Discover growing trends, declining topics, and seasonal patterns!",
+                title="Trends Analytics",
+                border_style="blue",
+                padding=(1, 2),
             )
 
             # Validate period parameter
             valid_periods = ["monthly", "weekly", "daily"]
             if period not in valid_periods:
-                console.print(
-                    Panel(
-                        f"[red]❌ Invalid period '{period}'.[/red]\n"
-                        f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_periods)}\n"
-                        f"[dim]Example: chronovista topics trends --period monthly[/dim]",
-                        title="Invalid Parameter",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]❌ Invalid period '{period}'.[/red]\n"
+                    f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_periods)}\n"
+                    f"[dim]Example: chronovista topics trends --period monthly[/dim]",
+                    title="Invalid Parameter",
+                    border_style="red",
                 )
                 return
 
@@ -2708,14 +2575,12 @@ def topic_trends_analysis(
             if trend_direction:
                 valid_directions = ["growing", "declining", "stable"]
                 if trend_direction not in valid_directions:
-                    console.print(
-                        Panel(
-                            f"[red]❌ Invalid trend direction '{trend_direction}'.[/red]\n"
-                            f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_directions)}\n"
-                            f"[dim]Example: chronovista topics trends --filter growing[/dim]",
-                            title="Invalid Parameter",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]❌ Invalid trend direction '{trend_direction}'.[/red]\n"
+                        f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_directions)}\n"
+                        f"[dim]Example: chronovista topics trends --filter growing[/dim]",
+                        title="Invalid Parameter",
+                        border_style="red",
                     )
                     return
 
@@ -2736,17 +2601,15 @@ def topic_trends_analysis(
                 )
 
             if not trends:
-                console.print(
-                    Panel(
-                        "[yellow]📊 No trend data found[/yellow]\n\n"
-                        "Trend analysis requires:\n"
-                        "• Historical video upload data\n"
-                        "• User interaction history\n"
-                        "• Video-topic associations over time\n\n"
-                        "Try running [cyan]chronovista sync history[/cyan] and [cyan]chronovista sync liked[/cyan] first.",
-                        title="Insufficient Data",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    "[yellow]📊 No trend data found[/yellow]\n\n"
+                    "Trend analysis requires:\n"
+                    "• Historical video upload data\n"
+                    "• User interaction history\n"
+                    "• Video-topic associations over time\n\n"
+                    "Try running [cyan]chronovista sync history[/cyan] and [cyan]chronovista sync liked[/cyan] first.",
+                    title="Insufficient Data",
+                    border_style="yellow",
                 )
                 return
 
@@ -2903,12 +2766,10 @@ def topic_trends_analysis(
             )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Error during trends analysis: {e}[/red]",
-                    title="Analysis Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]❌ Error during trends analysis: {e}[/red]",
+                title="Analysis Error",
+                border_style="red",
             )
 
     asyncio.run(run_trends())
@@ -2930,15 +2791,13 @@ def topic_insights_analysis(
 
     async def run_insights() -> None:
         try:
-            console.print(
-                Panel(
-                    "[bold green]🎯 Personalized Topic Insights[/bold green]\n\n"
-                    "Discover your topic interests, emerging patterns, and personalized recommendations.\n"
-                    "Get insights into your content consumption habits and explore new interests!",
-                    title="Topic Insights",
-                    border_style="green",
-                    padding=(1, 2),
-                )
+            display_panel(
+                "[bold green]🎯 Personalized Topic Insights[/bold green]\n\n"
+                "Discover your topic interests, emerging patterns, and personalized recommendations.\n"
+                "Get insights into your content consumption habits and explore new interests!",
+                title="Topic Insights",
+                border_style="green",
+                padding=(1, 2),
             )
 
             analytics_service = TopicAnalyticsService()
@@ -2958,17 +2817,15 @@ def topic_insights_analysis(
                 )
 
             if insights.topics_explored == 0:
-                console.print(
-                    Panel(
-                        f"[yellow]📊 No user data found for user '{user_id or 'the current user'}'[/yellow]\n\n"
-                        "Personalized insights require:\n"
-                        "• User watch history with video interactions\n"
-                        "• Video-topic associations\n"
-                        "• User engagement data (likes, completion rates)\n\n"
-                        "Try running [cyan]chronovista sync history[/cyan] first to import user data.",
-                        title="No User Data",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    f"[yellow]📊 No user data found for user '{user_id or 'the current user'}'[/yellow]\n\n"
+                    "Personalized insights require:\n"
+                    "• User watch history with video interactions\n"
+                    "• Video-topic associations\n"
+                    "• User engagement data (likes, completion rates)\n\n"
+                    "Try running [cyan]chronovista sync history[/cyan] first to import user data.",
+                    title="No User Data",
+                    border_style="yellow",
                 )
                 return
 
@@ -3234,12 +3091,10 @@ def topic_insights_analysis(
             )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Error during insights analysis: {e}[/red]",
-                    title="Analysis Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]❌ Error during insights analysis: {e}[/red]",
+                title="Analysis Error",
+                border_style="red",
             )
 
     asyncio.run(run_insights())
@@ -3355,16 +3210,14 @@ async def export_selected_topics(selected_topics: list[Any], console: Console) -
         progress.update(export_task, description="Export complete!")
         await asyncio.sleep(0.3)
 
-    console.print(
-        Panel(
-            f"[bold green]✅ Export Complete![/bold green]\n\n"
-            f"📄 File: {filename}\n"
-            f"🏷️ Topics: {len(selected_topics)}\n"
-            f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-            f"[dim]File saved in current directory[/dim]",
-            title="Export Summary",
-            border_style="green",
-        )
+    display_panel(
+        f"[bold green]✅ Export Complete![/bold green]\n\n"
+        f"📄 File: {filename}\n"
+        f"🏷️ Topics: {len(selected_topics)}\n"
+        f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"[dim]File saved in current directory[/dim]",
+        title="Export Summary",
+        border_style="green",
     )
 
 
@@ -3398,14 +3251,12 @@ def topic_engagement_analysis(
                 "avg_comments",
             ]
             if sort_by not in valid_sorts:
-                console.print(
-                    Panel(
-                        f"[red]❌ Invalid sort field '{sort_by}'.[/red]\n"
-                        f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_sorts)}\n"
-                        f"[dim]Example: chronovista topics engagement --sort-by engagement_score[/dim]",
-                        title="Invalid Parameter",
-                        border_style="red",
-                    )
+                display_panel(
+                    f"[red]❌ Invalid sort field '{sort_by}'.[/red]\n"
+                    f"[yellow]💡 Valid options:[/yellow] {', '.join(valid_sorts)}\n"
+                    f"[dim]Example: chronovista topics engagement --sort-by engagement_score[/dim]",
+                    title="Invalid Parameter",
+                    border_style="red",
                 )
                 return
 
@@ -3429,16 +3280,14 @@ def topic_engagement_analysis(
                 )
 
             if not engagement_data:
-                console.print(
-                    Panel(
-                        "[yellow]No engagement data found.[/yellow]\n"
-                        "This could be because:\n"
-                        "• No topics have engagement metrics (likes, views, comments)\n"
-                        "• The specified topic doesn't exist\n"
-                        "• All videos have been deleted",
-                        title="No Engagement Data",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    "[yellow]No engagement data found.[/yellow]\n"
+                    "This could be because:\n"
+                    "• No topics have engagement metrics (likes, views, comments)\n"
+                    "• The specified topic doesn't exist\n"
+                    "• All videos have been deleted",
+                    title="No Engagement Data",
+                    border_style="yellow",
                 )
                 return
 
@@ -3455,15 +3304,13 @@ def topic_engagement_analysis(
             else:
                 title = f"📊 Topic Engagement Analysis (Top {len(engagement_data)})"
 
-            console.print(
-                Panel(
-                    f"[bold cyan]Analysis Details[/bold cyan]\n"
-                    f"📈 Topics analyzed: {len(engagement_data)}\n"
-                    f"🔄 Sorted by: {sort_by}\n"
-                    f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                    title=title,
-                    border_style="cyan",
-                )
+            display_panel(
+                f"[bold cyan]Analysis Details[/bold cyan]\n"
+                f"📈 Topics analyzed: {len(engagement_data)}\n"
+                f"🔄 Sorted by: {sort_by}\n"
+                f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                title=title,
+                border_style="cyan",
             )
 
             # Create engagement table
@@ -3543,21 +3390,17 @@ def topic_engagement_analysis(
                 insights.append(f"📊 Average engagement score: {avg_score:.1f}")
 
                 if insights:
-                    console.print(
-                        Panel(
-                            "\n".join(f"• {insight}" for insight in insights),
-                            title="💡 Engagement Insights",
-                            border_style="blue",
-                        )
+                    display_panel(
+                        "\n".join(f"• {insight}" for insight in insights),
+                        title="💡 Engagement Insights",
+                        border_style="blue",
                     )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Error during engagement analysis: {e}[/red]",
-                    title="Analysis Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]❌ Error during engagement analysis: {e}[/red]",
+                title="Analysis Error",
+                border_style="red",
             )
 
     asyncio.run(run_engagement())
@@ -3578,17 +3421,15 @@ def channel_engagement_analysis(
             topic_repo = TopicCategoryRepository()
 
             # Resolve topic by ID or name first
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, topic
                 )
                 if not resolved_topic:
-                    console.print(
-                        Panel(
-                            f"[red]Topic '{topic}' not found[/red]",
-                            title="Topic Not Found",
-                            border_style="red",
-                        )
+                    display_panel(
+                        f"[red]Topic '{topic}' not found[/red]",
+                        title="Topic Not Found",
+                        border_style="red",
                     )
                     return
 
@@ -3610,28 +3451,24 @@ def channel_engagement_analysis(
                 )
 
             if not channel_data:
-                console.print(
-                    Panel(
-                        f"[yellow]No channel engagement data found for topic '{topic_name}'.[/yellow]\n"
-                        "This could be because:\n"
-                        "• No channels have videos with engagement metrics for this topic\n"
-                        "• All videos have been deleted",
-                        title="No Channel Data",
-                        border_style="yellow",
-                    )
+                display_panel(
+                    f"[yellow]No channel engagement data found for topic '{topic_name}'.[/yellow]\n"
+                    "This could be because:\n"
+                    "• No channels have videos with engagement metrics for this topic\n"
+                    "• All videos have been deleted",
+                    title="No Channel Data",
+                    border_style="yellow",
                 )
                 return
 
             # Display results
-            console.print(
-                Panel(
-                    f"[bold cyan]Channel Engagement Analysis[/bold cyan]\n"
-                    f"🎯 Topic: {topic_name} (ID: {topic_id})\n"
-                    f"📊 Channels analyzed: {len(channel_data)}\n"
-                    f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                    title="🏢 Channel Performance",
-                    border_style="cyan",
-                )
+            display_panel(
+                f"[bold cyan]Channel Engagement Analysis[/bold cyan]\n"
+                f"🎯 Topic: {topic_name} (ID: {topic_id})\n"
+                f"📊 Channels analyzed: {len(channel_data)}\n"
+                f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                title="🏢 Channel Performance",
+                border_style="cyan",
             )
 
             # Create channel engagement table
@@ -3687,23 +3524,19 @@ def channel_engagement_analysis(
                     channel_data
                 )
 
-                console.print(
-                    Panel(
-                        f"🏆 Top performer: {top_channel['channel_name']} ({top_channel['engagement_rate']:.2f}% engagement)\n"
-                        f"📊 Total videos analyzed: {total_videos}\n"
-                        f"📈 Average engagement rate: {avg_engagement:.2f}%",
-                        title="📊 Channel Insights",
-                        border_style="blue",
-                    )
+                display_panel(
+                    f"🏆 Top performer: {top_channel['channel_name']} ({top_channel['engagement_rate']:.2f}% engagement)\n"
+                    f"📊 Total videos analyzed: {total_videos}\n"
+                    f"📈 Average engagement rate: {avg_engagement:.2f}%",
+                    title="📊 Channel Insights",
+                    border_style="blue",
                 )
 
         except Exception as e:
-            console.print(
-                Panel(
-                    f"[red]❌ Error during channel engagement analysis: {e}[/red]",
-                    title="Analysis Error",
-                    border_style="red",
-                )
+            display_panel(
+                f"[red]❌ Error during channel engagement analysis: {e}[/red]",
+                title="Analysis Error",
+                border_style="red",
             )
 
     asyncio.run(run_channel_engagement())

@@ -27,7 +27,9 @@ Examples:
 
 from __future__ import annotations
 
-from rich.console import Console
+from typing import Any
+
+from rich.console import Console, RenderableType
 from rich.panel import Panel
 
 # Module-level console for CLI error display
@@ -378,6 +380,65 @@ def display_info_panel(
             border_style="blue",
         )
     )
+
+
+def display_panel(
+    content: RenderableType,
+    title: str | None = None,
+    border_style: str | None = None,
+    padding: tuple[int, int] | None = None,
+    title_align: str | None = None,
+) -> None:
+    """
+    Print pre-formatted content in a Rich panel.
+
+    The unopinionated primitive underneath the ``display_*_panel`` helpers above.
+    Those choose a category, a colour and a message format; this one chooses
+    nothing. It exists because the CLI modules construct
+    ``console.print(Panel(...))`` inline 134 times, and that repetition — not the
+    formatting — is the duplication worth removing.
+
+    Use this when the caller already owns its markup, which is the case for
+    every existing call site. Prefer :func:`display_error_panel` and its
+    siblings for *new* code, where the standardized ``Error: <category>: ...``
+    format is wanted.
+
+    Only the arguments actually supplied are forwarded, so Rich's own defaults
+    apply exactly as they do today. That is what makes replacing an inline
+    ``Panel(...)`` byte-identical rather than merely similar.
+
+    Parameters
+    ----------
+    content : RenderableType
+        Panel body. Usually a markup string, but Rich accepts any renderable and
+        two call sites pass a ``Tree`` — narrowing this to ``str`` would have
+        made the refactor a type error rather than a rewrite.
+    title : str | None
+        Panel title. Omitted entirely when None, as ~24 call sites do.
+    border_style : str | None
+        Border colour. Omitted when None.
+    padding : tuple[int, int] | None
+        Rich padding, used by a handful of call sites.
+    title_align : str | None
+        Title alignment. Forwarded verbatim; note a few call sites pass it
+        without a title, where Rich has nothing to align. Preserved as-is
+        rather than quietly dropped, so this stays a pure refactor.
+
+    Examples
+    --------
+    >>> display_panel("[red]Something failed[/red]", title="Error", border_style="red")
+    """
+    kwargs: dict[str, Any] = {}
+    if title is not None:
+        kwargs["title"] = title
+    if border_style is not None:
+        kwargs["border_style"] = border_style
+    if padding is not None:
+        kwargs["padding"] = padding
+    if title_align is not None:
+        kwargs["title_align"] = title_align
+
+    console.print(Panel(content, **kwargs))
 
 
 # =============================================================================

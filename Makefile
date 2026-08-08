@@ -208,11 +208,24 @@ test-unit:
 test-integration:
 	$(POETRY_RUN) pytest $(TEST_DIR)/integration/ -v
 
+# Alembic's env.py builds a SYNC engine, so migrations need psycopg2 — which
+# lives in the optional `database` group and is NOT installed by a plain
+# `poetry install`. Checked up front: without it the drop and create succeed and
+# only the migration step fails, leaving an empty database that the integration
+# suite then populates via `create_all` — so the reset looks broken-but-harmless
+# and the real cause is three steps up the output.
 test-integration-reset:
+	@$(POETRY_RUN) python -c "import psycopg2" 2>/dev/null || \
+		(echo "❌ psycopg2 is not installed, so Alembic cannot run." && \
+		 echo "   It is in the optional 'database' group:" && \
+		 echo "       poetry install --with database" && exit 1)
 	@echo "🔄 Resetting integration test database..."
 	@echo "🗑️  Dropping existing integration test database..."
 	@docker exec chronovista-postgres-dev psql -U dev_user -d chronovista_dev -c "DROP DATABASE IF EXISTS chronovista_integration_test;" || \
-		(echo "❌ Could not connect to development database. Make sure it's running with 'make dev-db-up'" && exit 1)
+		(echo "❌ Could not drop the integration database." && \
+		 echo "   If it is running, the usual cause is an open connection — close" && \
+		 echo "   any psql session or test run holding it. If it is not running:" && \
+		 echo "       make dev-db-up" && exit 1)
 	@echo "🆕 Creating fresh integration test database..."
 	@docker exec chronovista-postgres-dev psql -U dev_user -d chronovista_dev -c "CREATE DATABASE chronovista_integration_test;"
 	@echo "📋 Running migrations on integration test database..."

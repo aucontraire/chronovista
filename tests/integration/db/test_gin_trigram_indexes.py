@@ -11,11 +11,15 @@ This test suite validates that migration b2d4f6a8c0e1
    ``transcript_segments.corrected_text WHERE corrected_text IS NOT NULL``
 
 Unlike the ORM-based schema tests, these tests query the database catalog
-directly (``pg_indexes``, ``pg_extension``) and therefore MUST run against
-the dev database where Alembic migrations have been applied.
-The integration test database created via ``Base.metadata.create_all()``
-does NOT include GIN indexes (the ORM models carry no index declarations for
-these — they are migration-only DDL objects).
+directly (``pg_indexes``, ``pg_extension``) and therefore run against the dev
+database where Alembic migrations have been applied — which is what makes them
+a test of the *migration* rather than of the models.
+
+Note the models now declare these indexes too, so ``create_all()`` builds them
+as well; that was not true when this suite was written. Reconciling the two was
+the point of the `alembic check` gate. Pointing these tests at the dev database
+is still correct: it is the only build that proves the migration itself creates
+them.
 
 Connection
 ----------
@@ -73,10 +77,10 @@ async def dev_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Provide an async database session connected to the dev database.
 
-    The dev database has real Alembic migrations applied, which is required
-    to verify GIN index existence.  The per-function ``db_session`` fixture
-    from ``conftest.py`` uses ``create_all()`` which does NOT create these
-    migration-only indexes.
+    The dev database has real Alembic migrations applied, which is what makes
+    this a test of the migration. The per-function ``db_session`` fixture from
+    ``conftest.py`` uses ``create_all()``, which now builds these indexes too —
+    so only the dev database proves the *migration* creates them.
 
     Scope is ``"function"`` (not ``"module"``) because pytest-asyncio
     creates a new event loop per test function under ``asyncio_mode=auto``;

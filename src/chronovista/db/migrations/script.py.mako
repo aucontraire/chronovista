@@ -8,9 +8,8 @@ Create Date: ${create_date}
 from __future__ import annotations
 
 import sqlalchemy as sa
-${imports if imports else ""}
-
 from alembic import op
+${imports if imports else ""}
 
 # revision identifiers, used by Alembic.
 revision = ${repr(up_revision)}

@@ -29,7 +29,7 @@ help:
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  lint              - Run linting (ruff)"
-	@echo "  format            - Format code (black + isort)"
+	@echo "  format            - Format code (black + ruff import sort)"
 	@echo "  format-check      - Check formatting without modifying files"
 	@echo "  type-check        - Run type checking (mypy)"
 	@echo "  quality           - Run all checks (format-check + lint + type-check)"
@@ -228,19 +228,26 @@ test-fast:
 	$(POETRY_RUN) pytest $(TEST_DIR) -v --tb=short -x -q --disable-warnings --no-header --no-cov
 
 # Code quality targets
+#
+# These mirror the static checks in .github/workflows/test.yml. Import ordering is
+# owned by ruff's `I` rule (enabled in pyproject) — standalone isort is deliberately
+# NOT run here. The two tools are configured separately and disagree, so satisfying
+# isort pushes files into a state ruff rejects, breaking the gate CI actually runs.
 lint:
-	$(POETRY_RUN) ruff check $(SRC_DIR) $(TEST_DIR)
+	$(POETRY_RUN) ruff check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
 
 format:
-	$(POETRY_RUN) black $(SRC_DIR) $(TEST_DIR)
-	$(POETRY_RUN) isort $(SRC_DIR) $(TEST_DIR)
+	$(POETRY_RUN) black $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
+	$(POETRY_RUN) ruff check --select I --fix $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
 
 format-check:
-	$(POETRY_RUN) black --check $(SRC_DIR) $(TEST_DIR)
-	$(POETRY_RUN) isort --check-only $(SRC_DIR) $(TEST_DIR)
+	$(POETRY_RUN) black --check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
 
+# --strict, and src only. CI does not type-check tests/; running them here reports
+# 69 errors that no gate enforces, which makes the target unpassable and trains
+# people to ignore it.
 type-check:
-	$(POETRY_RUN) mypy $(SRC_DIR)/ $(TEST_DIR)/
+	$(POETRY_RUN) mypy $(SRC_DIR)/$(PACKAGE_NAME)/ --strict --no-error-summary
 
 quality: format-check lint type-check
 	@echo "✅ All quality checks passed!"
@@ -252,12 +259,13 @@ pre-commit:
 # predicts a green CI run. Drift between the two defeats the whole purpose —
 # when you change one, change the other.
 #
-# Deliberately does NOT reuse `quality` or `test-unit`, despite the overlap:
-#   - `quality` also runs isort, which CI does not, so it can fail on something
-#     CI would pass.
-#   - `test-unit` selects `-m "unit"`, a marker no test in this repo carries. It
-#     collects zero tests and exits 0 — the exact false green this target exists
-#     to prevent.
+# Deliberately does NOT reuse `test-unit`, despite the overlap: it selects
+# `-m "unit"`, a marker no test in this repo carries. It collects zero tests and
+# exits 0 — the exact false green this target exists to prevent.
+#
+# `quality` now runs the same three static checks as CI, so the steps below
+# duplicate it on purpose: this target must stay readable as a literal
+# transcription of the workflow, not a call into something that could drift.
 pre-push:
 	@echo "==> [1/6] ruff"
 	$(POETRY_RUN) ruff check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
@@ -460,10 +468,9 @@ ci-test:
 		--tb=short
 
 ci-quality:
-	$(POETRY_RUN) ruff check $(SRC_DIR) $(TEST_DIR) --output-format=github
-	$(POETRY_RUN) black --check $(SRC_DIR) $(TEST_DIR)
-	$(POETRY_RUN) isort --check-only $(SRC_DIR) $(TEST_DIR)
-	$(POETRY_RUN) mypy $(SRC_DIR)
+	$(POETRY_RUN) ruff check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/ --output-format=github
+	$(POETRY_RUN) black --check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
+	$(POETRY_RUN) mypy $(SRC_DIR)/$(PACKAGE_NAME)/ --strict --no-error-summary
 
 ci: ci-quality ci-test
 	@echo "✅ CI checks complete!"

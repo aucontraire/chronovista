@@ -48,7 +48,7 @@ def list_tags(
         try:
             tag_repo = VideoTagRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get popular tags
                 popular_tags = await tag_repo.get_popular_tags(session, limit=limit)
 
@@ -106,7 +106,7 @@ def show_tag(
         try:
             tag_repo = VideoTagRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get video count for the tag
                 video_count = await tag_repo.get_tag_video_count(session, tag)
 
@@ -183,7 +183,7 @@ def videos_by_tag(
             tag_repo = VideoTagRepository()
             video_repo = VideoRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get video IDs with this tag
                 video_ids = await tag_repo.find_videos_by_tags(
                     session, [tag], match_all=False
@@ -260,7 +260,7 @@ def search_tags(
         try:
             tag_repo = VideoTagRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Search using filters
                 filters = VideoTagSearchFilters(tag_pattern=pattern)
                 results = await tag_repo.search_tags(session, filters)
@@ -316,7 +316,7 @@ def tag_stats() -> None:
         try:
             tag_repo = VideoTagRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 stats = await tag_repo.get_video_tag_statistics(session)
 
                 if stats.total_tags == 0:
@@ -378,7 +378,7 @@ def tags_by_video(
             tag_repo = VideoTagRepository()
             video_repo = VideoRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get video info
                 video = await video_repo.get_by_video_id(session, video_id)
 
@@ -486,7 +486,7 @@ def normalize_tags(
         normalization_service = TagNormalizationService()
         backfill_service = TagBackfillService(normalization_service)
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             if incremental:
                 metrics = await backfill_service.run_incremental_backfill(
                     session,
@@ -651,7 +651,7 @@ def analyze_tags(
         normalization_service = TagNormalizationService()
         backfill_service = TagBackfillService(normalization_service)
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             await backfill_service.run_analysis(
                 session, output_format=output_format, console=console
             )
@@ -679,7 +679,7 @@ def recount_tags(
         normalization_service = TagNormalizationService()
         backfill_service = TagBackfillService(normalization_service)
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             await backfill_service.run_recount(
                 session, dry_run=dry_run, console=console
             )
@@ -768,7 +768,7 @@ def merge_tags(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             try:
                 result: MergeResult = await service.merge(
                     session,
@@ -829,7 +829,7 @@ def split_tag(
         service = _create_tag_management_service()
         alias_list = [a.strip() for a in aliases.split(",") if a.strip()]
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             try:
                 result: SplitResult = await service.split(
                     session,
@@ -886,7 +886,7 @@ def rename_tag(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             try:
                 result: RenameResult = await service.rename(
                     session,
@@ -959,7 +959,7 @@ def deprecate_tag(
     async def _run() -> None:
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             if list_deprecated:
                 deprecated_tags = await service.list_deprecated(session)
 
@@ -1045,7 +1045,7 @@ def undo_operation(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             if list_ops:
                 operations = await service.list_recent_operations(session, limit=20)
                 if not operations:
@@ -1246,7 +1246,7 @@ def classify_tag(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             if top is not None:
                 # Show top unclassified tags
                 tags = await service.classify_top_unclassified(session, limit=top)
@@ -1412,7 +1412,7 @@ def review_collisions(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             collisions: list[CollisionGroup] = await service.get_collisions(
                 session,
                 limit=limit,
@@ -1538,7 +1538,7 @@ def repair_orphaned_aliases(
 
         service = _create_tag_management_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # The service owns the transaction here: a dry run has to roll back
             # inside, so the CLI must not commit on its behalf.
             report: OrphanRepairReport = await service.repair_orphaned_aliases(

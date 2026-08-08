@@ -170,7 +170,7 @@ def list_topics(
     async def run_list() -> None:
         try:
             topic_repo = TopicCategoryRepository()
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get topics with pagination
                 topics = await topic_repo.get_multi(session, skip=0, limit=limit)
 
@@ -221,7 +221,7 @@ def show_topic(
     async def run_show() -> None:
         try:
             topic_repo = TopicCategoryRepository()
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, topic
                 )
@@ -272,7 +272,7 @@ def channels_by_topic(
             channel_topic_repo = ChannelTopicRepository()
             channel_repo = ChannelRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Resolve topic by ID or name
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, topic
@@ -350,7 +350,7 @@ def videos_by_topic(
             video_topic_repo = VideoTopicRepository()
             video_repo = VideoRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Resolve topic by ID or name
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, topic
@@ -585,7 +585,7 @@ def related_topics(
                 return
 
             # Resolve topic by ID or name
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, topic
                 )
@@ -717,7 +717,7 @@ def topic_overlap(
             topic_repo = TopicCategoryRepository()
 
             # Resolve topics by ID or name
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_topic1 = await resolve_topic_identifier(
                     session, topic_repo, topic1
                 )
@@ -887,7 +887,7 @@ def similar_topics(
                 return
 
             # Resolve topic by ID or name
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, _topic
                 )
@@ -1053,7 +1053,7 @@ def export_topics(
             video_repo = VideoRepository()
             channel_repo = ChannelRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 export_data = {}
 
                 # Export topic categories
@@ -1687,7 +1687,7 @@ async def show_full_hierarchy(
 
     from chronovista.repositories.video_topic_repository import VideoTopicRepository
 
-    async for session in db_manager.get_session(echo=False):
+    async with db_manager.session(echo=False) as session:
         # Get root (parent) topics
         parents = await topic_repo.get_root_topics(session)
 
@@ -1816,7 +1816,7 @@ def topic_tree(
             )
 
             # Get the root topic information
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 root_topic = await topic_repo.get(session, topic_id)
                 if not root_topic:
                     display_panel(
@@ -1825,7 +1825,6 @@ def topic_tree(
                         border_style="red",
                     )
                     return
-                break
 
             # Create the root of the tree
             # We already validated root_topic is not None above
@@ -2040,7 +2039,7 @@ def interactive_topic_exploration(
                     "Loading topics from database...", total=100
                 )
 
-                async for session in db_manager.get_session(echo=False):
+                async with db_manager.session(echo=False) as session:
                     # Get all topics
                     progress.update(
                         load_task,
@@ -2075,7 +2074,6 @@ def interactive_topic_exploration(
                         load_task, advance=25, description="Ready for exploration!"
                     )
                     await asyncio.sleep(0.3)
-                    break
 
             if not topics:
                 display_panel(
@@ -3423,7 +3421,7 @@ def channel_engagement_analysis(
             topic_repo = TopicCategoryRepository()
 
             # Resolve topic by ID or name first
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_topic = await resolve_topic_identifier(
                     session, topic_repo, topic
                 )

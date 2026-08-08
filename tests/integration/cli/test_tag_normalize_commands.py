@@ -12,11 +12,9 @@ internally via asyncio.run().
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 from typer.testing import CliRunner
 
 from chronovista.cli.main import app
@@ -73,13 +71,11 @@ class TestTagsNormalizeCommand:
             # Create async session mock
             mock_session = AsyncMock()
 
-            # Mock get_session to yield the mock session
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            # Mock session() — an async context manager, not a generator
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             # Mock the backfill service
             with patch(
@@ -109,12 +105,10 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_backfill",
@@ -134,12 +128,10 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_backfill",
@@ -158,12 +150,10 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_backfill",
@@ -182,12 +172,10 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_backfill",
@@ -211,12 +199,10 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_backfill",
@@ -252,12 +238,10 @@ class TestTagsNormalizeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_backfill",
@@ -282,12 +266,10 @@ class TestTagsAnalyzeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_analysis",
@@ -307,12 +289,10 @@ class TestTagsAnalyzeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_analysis",
@@ -339,12 +319,10 @@ class TestTagsAnalyzeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_analysis",
@@ -362,12 +340,10 @@ class TestTagsAnalyzeCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_analysis",
@@ -400,12 +376,10 @@ class TestTagsRecountCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_recount",
@@ -433,12 +407,10 @@ class TestTagsRecountCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_recount",
@@ -461,12 +433,10 @@ class TestTagsRecountCommand:
         with patch("chronovista.cli.tag_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
 
-            async def mock_get_session(
-                echo: bool = False,
-            ) -> AsyncGenerator[AsyncSession, None]:
-                yield mock_session
-
-            mock_db_manager.get_session.return_value = mock_get_session()
+            session_cm = MagicMock()
+            session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_db_manager.session.return_value = session_cm
 
             with patch(
                 "chronovista.services.tag_backfill.TagBackfillService.run_recount",

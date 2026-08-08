@@ -414,7 +414,7 @@ Audit log for tag normalization and management operations.
 
 **Constraints:**
 
-- CHECK `chk_tag_operation_type_valid`: `operation_type IN ('merge', 'split', 'rename', 'delete', 'create')`
+- CHECK `chk_tag_operation_type_valid`: `operation_type IN ('merge', 'split', 'rename', 'delete', 'create', 'repair')`
 
 ## Named Entities
 
@@ -463,6 +463,7 @@ Alternative names and variations for named entities.
 | `alias_name` | VARCHAR(500) | no |  |  |
 | `alias_name_normalized` | VARCHAR(500) | no |  |  |
 | `alias_type` | VARCHAR(30) | no | `'name_variant'` |  |
+| `case_sensitive` | BOOLEAN | no | `false` |  |
 | `occurrence_count` | INTEGER | no | `0` |  |
 | `first_seen_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 | `last_seen_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |

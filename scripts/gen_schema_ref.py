@@ -142,12 +142,21 @@ def _render_table(table: Table, doc: str | None) -> list[str]:
         joined = ", ".join(f"`{c.name}`" for c in pk_cols)
         lines += [f"**Composite primary key:** {joined}", ""]
 
+    # `Table.constraints` is a set, so iteration follows object hashes and varies
+    # between processes. Sort by name or the same models render a different file
+    # on every run — a diff that looks like schema drift and is only reordering.
+    #
+    # Filter into a list first, then sort in place: `sorted()` over a generator
+    # drops the `isinstance` narrowing a comprehension keeps. `str(...)` because
+    # SQLAlchemy types `name` as `str | _NoneName | None`, which is not orderable.
     multi_unique = [
         c
         for c in table.constraints
         if isinstance(c, UniqueConstraint) and len(c.columns) > 1
     ]
+    multi_unique.sort(key=lambda c: str(c.name or ""))
     checks = [c for c in table.constraints if isinstance(c, CheckConstraint)]
+    checks.sort(key=lambda c: str(c.name or ""))
     if multi_unique or checks:
         lines.append("**Constraints:**")
         lines.append("")

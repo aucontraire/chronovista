@@ -26,7 +26,7 @@ Thanks for your interest in contributing! This guide covers the basics.
 2. Make your changes
 3. Run quality checks before committing:
    ```bash
-   make quality    # format (black + isort) + lint (ruff) + type-check (mypy)
+   make quality    # format (black) + lint (ruff, incl. import order) + type-check (mypy --strict)
    make test       # run backend tests
    ```
 4. Commit using [conventional commits](https://www.conventionalcommits.org/):
@@ -44,7 +44,7 @@ Thanks for your interest in contributing! This guide covers the basics.
 - **Async by default** for I/O operations
 - **NumPy-style docstrings** for public functions and classes
 - **90%+ test coverage** on new code
-- **black** formatting, **isort** imports, **ruff** linting
+- **black** formatting, **ruff** linting and import ordering (the `I` rule)
 
 ## Running Tests
 

@@ -36,11 +36,11 @@ Complete reference for all Makefile targets. Run `make help` for a quick summary
 
 | Target | Description |
 |--------|-------------|
-| `make lint` | Run ruff linter on src and tests |
-| `make format` | Format code with Black and sort imports with isort |
+| `make lint` | Run ruff on src and tests |
+| `make format` | Format with Black, sort imports with ruff's `I` rule |
 | `make format-check` | Check formatting without modifying files |
-| `make type-check` | Run mypy type checker on src and tests |
-| `make quality` | Run all quality checks (format-check + lint + type-check) |
+| `make type-check` | Run mypy `--strict` on src, as CI does |
+| `make quality` | format-check + lint + type-check — the same three static checks CI runs |
 | `make pre-commit` | Run all pre-commit hooks on all files |
 | `make quick-check` | Quick formatting and lint check (src only) |
 

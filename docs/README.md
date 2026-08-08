@@ -78,7 +78,7 @@ Recovery commands (video and channel metadata recovery from the Wayback Machine)
 - [Frontend Development](development/frontend-development.md) - Frontend tests (vitest), scripts, patterns
 - [Makefile Reference](development/makefile-reference.md) - All 67 Makefile targets
 - [Type Checking](development/type-checking.md) - mypy strict mode guide
-- [Code Style](development/code-style.md) - Black, isort, ruff conventions
+- [Code Style](development/code-style.md) - Black and ruff conventions
 - [Documentation](development/documentation.md) - Writing and building docs
 
 ### Maintaining

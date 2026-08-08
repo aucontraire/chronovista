@@ -46,7 +46,7 @@ chronovista follows these principles:
 | Test Coverage | >= 90% |
 | mypy | Strict mode |
 | Black | Formatted |
-| isort | Sorted imports |
+| ruff `I` rule | Sorted imports |
 | ruff | No errors |
 
 ## Quick Commands

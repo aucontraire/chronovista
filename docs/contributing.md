@@ -53,17 +53,16 @@ integration tests. A green run here is the closest thing to a guarantee that CI
 will agree. It needs the development database running (`make dev-db-up`) and
 fails rather than skipping if it is not — a skipped job cannot tell you anything.
 
-Prefer it over running the individual targets by hand. `make quality` also runs
-isort, which CI does not, so it can fail on something CI would pass; and a
-mistyped flag in a hand-run `pytest` can report success having collected no
-tests at all.
+Prefer it over running the individual targets by hand: a mistyped flag in a
+hand-run `pytest` can report success having collected no tests at all.
+`make quality` runs the same three static checks as CI, but not the test jobs.
 
 While iterating, the narrower targets are still useful:
 
 ```bash
-make format       # Apply black + isort
+make format       # Apply black + ruff import sorting
 make lint         # ruff only
-make type-check   # mypy only
+make type-check   # mypy --strict on src, as CI runs it
 make test-cov     # Full suite with the 90% coverage threshold
 ```
 

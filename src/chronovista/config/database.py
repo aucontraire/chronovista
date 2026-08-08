@@ -4,7 +4,8 @@ Database configuration and connection management.
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.ext.asyncio import (
@@ -69,15 +70,33 @@ class DatabaseManager:
             )
         return self._session_factory
 
-    async def get_session(
-        self, echo: bool | None = None
-    ) -> AsyncGenerator[AsyncSession, None]:
-        """Get async database session."""
+    @asynccontextmanager
+    async def session(self, echo: bool | None = None) -> AsyncIterator[AsyncSession]:
+        """Session scope that commits on success and rolls back on failure.
+
+        Prefer this over :meth:`get_session`. Because it is a context manager,
+        leaving the block early — ``return``, ``break``, an exception — is
+        ordinary control flow, and the commit still runs::
+
+            async with db_manager.session() as session:
+                await repo.create(session, obj_in=thing)
+                return thing          # committed
+
+        The generator form cannot offer that. Exiting an ``async for`` loop
+        early throws ``GeneratorExit`` at the suspended ``yield``, so the
+        ``await session.commit()`` after it never runs and the write is lost
+        with no error at the call site.
+
+        ``except BaseException`` rather than ``except Exception``: both
+        ``GeneratorExit`` and ``asyncio.CancelledError`` derive from
+        ``BaseException``, so the narrower form left a cancelled request — a
+        client disconnecting mid-write — with no rollback at all.
+        """
+        temp_engine: AsyncEngine | None = None
+
         if echo is not None:
-            # Create a temporary session factory with custom echo setting
+            # A distinct engine, because `echo` is fixed at engine construction.
             self.get_engine()
-            # Create a new engine with custom echo setting
-            database_url = settings.effective_database_url
             engine_kwargs = {
                 "echo": echo,
                 "future": True,
@@ -85,35 +104,43 @@ class DatabaseManager:
                 "pool_recycle": 3600,
                 **self._pool_kwargs(),
             }
-
-            temp_engine = create_async_engine(database_url, **engine_kwargs)
-            temp_session_factory = async_sessionmaker(
+            temp_engine = create_async_engine(
+                settings.effective_database_url, **engine_kwargs
+            )
+            session_factory = async_sessionmaker(
                 bind=temp_engine,
                 class_=AsyncSession,
                 expire_on_commit=False,
             )
-
-            async with temp_session_factory() as session:
-                try:
-                    yield session
-                    await session.commit()
-                except Exception:
-                    await session.rollback()
-                    raise
-                finally:
-                    await session.close()
-                    await temp_engine.dispose()
         else:
             session_factory = self.get_session_factory()
-            async with session_factory() as session:
-                try:
-                    yield session
-                    await session.commit()
-                except Exception:
-                    await session.rollback()
-                    raise
-                finally:
-                    await session.close()
+
+        # One commit/rollback path for both branches. They were duplicated, so
+        # the `except Exception` defect existed — and had to be fixed — twice.
+        async with session_factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except BaseException:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
+                if temp_engine is not None:
+                    await temp_engine.dispose()
+
+    async def get_session(
+        self, echo: bool | None = None
+    ) -> AsyncGenerator[AsyncSession, None]:
+        """Generator form of :meth:`session`, for FastAPI's ``Depends``.
+
+        FastAPI dependencies must be generators, so this form has to exist. It
+        carries the early-exit hazard described in :meth:`session`: consumers
+        writing ``async for s in db_manager.get_session(): ... break`` skip the
+        commit. New code should use ``async with db_manager.session()``.
+        """
+        async with self.session(echo=echo) as session:
+            yield session
 
     async def close(self) -> None:
         """Close database connections."""

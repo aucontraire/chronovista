@@ -291,7 +291,7 @@ pre-push:
 	@echo "==> [5/6] frontend type check + tests"
 	cd frontend && npm run typecheck && npx vitest run
 	@echo "==> [6/6] backend integration tests"
-	@docker exec chronovista-postgres-dev pg_isready -U dev_user -q 2>/dev/null || \
+	@docker exec chronovista-postgres-dev pg_isready -U dev_user -d chronovista_integration_test -q 2>/dev/null || \
 		(echo "❌ Integration database unreachable. Start it with 'make dev-db-up'." && \
 		 echo "   Not skipping: CI runs this job, so passing without it would be a false green." && \
 		 exit 1)

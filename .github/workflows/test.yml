@@ -117,8 +117,19 @@ jobs:
           POSTGRES_DB: chronovista_integration_test
         ports:
           - 5434:5432
+        # `-d` matters only for the logs, and that is reason enough. Without it
+        # pg_isready connects to a database named after the user, which does not
+        # exist, so the server logs `FATAL: database "dev_user" does not exist`
+        # every interval for the life of the job.
+        #
+        # It is not a stronger check: pg_isready exits 0 whenever the *server*
+        # responds, and a missing database is still a response — verified,
+        # `pg_isready -d no_such_db` also exits 0. So this changes nothing about
+        # what is detected. What it removes is a recurring FATAL that reads
+        # exactly like a real connection failure, which is the kind of noise
+        # that gets a genuine startup problem dismissed.
         options: >-
-          --health-cmd="pg_isready -U dev_user"
+          --health-cmd="pg_isready -U dev_user -d chronovista_integration_test"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5

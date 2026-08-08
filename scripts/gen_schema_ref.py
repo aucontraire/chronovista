@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import mkdocs_gen_files
 from sqlalchemy import Table
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CheckConstraint, UniqueConstraint
@@ -225,6 +224,12 @@ def render_schema() -> str:
 
 
 def main() -> None:
+    # Imported here, not at module scope: `mkdocs_gen_files` lives in the docs
+    # dependency group, which the backend CI job does not install. Rendering
+    # needs only SQLAlchemy metadata, so importing this module — from a test,
+    # say — must not require the docs toolchain.
+    import mkdocs_gen_files
+
     with mkdocs_gen_files.open("reference/schema.md", "w") as fd:
         fd.write(render_schema())
     mkdocs_gen_files.set_edit_path(
@@ -232,4 +237,9 @@ def main() -> None:
     )
 
 
-main()
+# Runs on execution, not on import. mkdocs-gen-files executes this file with
+# `runpy.run_path`, which sets `__name__` to "<run_path>" rather than
+# "__main__" — so a bare `if __name__ == "__main__"` guard would silently stop
+# generating the page. Importing the module writes nothing.
+if __name__ in {"__main__", "<run_path>"}:
+    main()

@@ -293,7 +293,10 @@ class TestTopicCommandsLimitValidation:
             assert result.exit_code == 0, f"Limit {limit} should be valid"
             mock_asyncio.assert_called_once()
 
-    def test_invalid_limit_values(self, runner: CliRunner) -> None:
+    @patch("chronovista.cli.topic_commands.asyncio.run")
+    def test_invalid_limit_values(
+        self, mock_asyncio: MagicMock, runner: CliRunner
+    ) -> None:
         """Test that invalid limit values are handled correctly."""
         invalid_limits = ["abc", "-1", "0", ""]
 
@@ -1021,7 +1024,10 @@ class TestTopicInsightsCommand:
             assert result.exit_code == 0, f"Command {cmd_args} should succeed"
             mock_asyncio.assert_called_once()
 
-    def test_insights_invalid_limit_values(self, runner: CliRunner) -> None:
+    @patch("chronovista.cli.topic_commands.asyncio.run")
+    def test_insights_invalid_limit_values(
+        self, mock_asyncio: MagicMock, runner: CliRunner
+    ) -> None:
         """Test insights command with invalid limit values."""
         invalid_limits = ["abc", "-1", "0", ""]
 
@@ -1146,7 +1152,10 @@ class TestTopicGraphCommand:
         assert result.exit_code == 0
         mock_asyncio.assert_called_once()
 
-    def test_graph_format_validation(self, runner: CliRunner) -> None:
+    @patch("chronovista.cli.topic_commands.asyncio.run")
+    def test_graph_format_validation(
+        self, mock_asyncio: MagicMock, runner: CliRunner
+    ) -> None:
         """Test graph command format validation."""
         # Valid formats should work
         valid_formats = ["dot", "json"]
@@ -1159,7 +1168,10 @@ class TestTopicGraphCommand:
         # Should either succeed (handled gracefully) or fail with proper error
         assert result.exit_code in [0, 1], "Invalid format should be handled gracefully"
 
-    def test_graph_confidence_validation(self, runner: CliRunner) -> None:
+    @patch("chronovista.cli.topic_commands.asyncio.run")
+    def test_graph_confidence_validation(
+        self, mock_asyncio: MagicMock, runner: CliRunner
+    ) -> None:
         """Test graph command confidence score validation."""
         # Valid confidence scores
         valid_scores = ["0.0", "0.1", "0.5", "0.9", "1.0"]
@@ -1328,7 +1340,10 @@ class TestTopicHeatmapCommand:
         assert result.exit_code == 0
         mock_asyncio.assert_called_once()
 
-    def test_heatmap_period_validation(self, runner: CliRunner) -> None:
+    @patch("chronovista.cli.topic_commands.asyncio.run")
+    def test_heatmap_period_validation(
+        self, mock_asyncio: MagicMock, runner: CliRunner
+    ) -> None:
         """Test heatmap command period validation."""
         # Valid periods should work
         valid_periods = ["monthly", "weekly", "daily"]
@@ -1341,7 +1356,10 @@ class TestTopicHeatmapCommand:
         # Should either succeed (handled gracefully) or fail with proper error
         assert result.exit_code in [0, 1], "Invalid period should be handled gracefully"
 
-    def test_heatmap_months_back_validation(self, runner: CliRunner) -> None:
+    @patch("chronovista.cli.topic_commands.asyncio.run")
+    def test_heatmap_months_back_validation(
+        self, mock_asyncio: MagicMock, runner: CliRunner
+    ) -> None:
         """Test heatmap command months_back validation."""
         # Valid months_back values (1-60 range)
         valid_months = ["1", "6", "12", "24", "60"]

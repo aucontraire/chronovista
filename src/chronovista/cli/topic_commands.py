@@ -208,6 +208,7 @@ def list_topics(
                 title="Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_list())
 
@@ -253,6 +254,7 @@ def show_topic(
                 title="Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_show())
 
@@ -331,6 +333,7 @@ def channels_by_topic(
                 title="Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_channels())
 
@@ -416,6 +419,7 @@ def videos_by_topic(
                 title="Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_videos())
 
@@ -554,6 +558,7 @@ def popular_topics(
                 title="Analytics Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_popular())
 
@@ -696,6 +701,7 @@ def related_topics(
                 title="Analytics Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_related())
 
@@ -850,6 +856,7 @@ def topic_overlap(
                 title="Analytics Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_overlap())
 
@@ -996,6 +1003,7 @@ def similar_topics(
                 title="Analytics Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_similar())
 
@@ -1210,6 +1218,7 @@ def export_topics(
                 title="Export Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_export())
 
@@ -1351,6 +1360,7 @@ def topic_graph_export(
                 title="Graph Export Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_graph_export())
 
@@ -1518,6 +1528,7 @@ def topic_heatmap_export(
                 title="Heatmap Export Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_heatmap_export())
 
@@ -1670,6 +1681,7 @@ def topic_chart(
                 title="Chart Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_chart())
 
@@ -1882,6 +1894,7 @@ def topic_tree(
                 title="Tree Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_tree())
 
@@ -2291,6 +2304,7 @@ def interactive_topic_exploration(
                 title="Exploration Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_interactive())
 
@@ -2519,6 +2533,7 @@ def topic_discovery_analysis(
                 title="Analysis Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_discovery())
 
@@ -2771,6 +2786,7 @@ def topic_trends_analysis(
                 title="Analysis Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_trends())
 
@@ -3096,6 +3112,7 @@ def topic_insights_analysis(
                 title="Analysis Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_insights())
 
@@ -3402,6 +3419,7 @@ def topic_engagement_analysis(
                 title="Analysis Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_engagement())
 
@@ -3538,5 +3556,6 @@ def channel_engagement_analysis(
                 title="Analysis Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_channel_engagement())

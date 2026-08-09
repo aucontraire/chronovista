@@ -195,6 +195,7 @@ def list_categories(
                     border_style="red",
                 )
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_list())
 
@@ -256,6 +257,7 @@ def show_category(
                     border_style="red",
                 )
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_show())
 
@@ -378,5 +380,6 @@ def videos_by_category(
                     border_style="red",
                 )
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_videos())

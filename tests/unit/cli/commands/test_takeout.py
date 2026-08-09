@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import typer
 
 # Mark all async tests in this module
 from chronovista.cli.commands.takeout import (
@@ -846,9 +847,13 @@ class TestFileInspectionFunctions:
             f.write("invalid json content")
 
         with patch("chronovista.cli.commands.takeout.console") as mock_console:
-            await _inspect_json_file(
-                json_file, limit=10, progress=mock_progress, task_id="test_task"
-            )
+            # Malformed input fails the command rather than reporting success
+            # (#198). The helper runs inside `inspect_file`'s coroutine, so the
+            # Exit propagates out through asyncio.run to typer.
+            with pytest.raises(typer.Exit):
+                await _inspect_json_file(
+                    json_file, limit=10, progress=mock_progress, task_id="test_task"
+                )
 
         mock_console.print.assert_called()
 

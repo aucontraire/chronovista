@@ -68,7 +68,7 @@ class TestAuthAppCommands:
 
         result = runner.invoke(auth_app, ["login"])
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         mock_console.print.assert_called()
 
     @patch("chronovista.cli.auth_commands.youtube_oauth")
@@ -121,7 +121,7 @@ class TestAuthAppCommands:
 
         result = runner.invoke(auth_app, ["logout"])
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         mock_oauth.revoke_credentials.assert_called_once()
         mock_console.print.assert_called()
 
@@ -242,8 +242,8 @@ class TestAuthCommandsErrorHandling:
 
         result = runner.invoke(auth_app, ["login"])
 
-        # Should handle exception gracefully
-        assert result.exit_code == 0
+        # The exception is displayed and the command fails (#198)
+        assert result.exit_code == 1
         mock_console.print.assert_called()
 
     @patch("chronovista.cli.auth_commands.youtube_oauth")
@@ -254,8 +254,8 @@ class TestAuthCommandsErrorHandling:
 
         result = runner.invoke(auth_app, ["status"])
 
-        # Should handle exception gracefully
-        assert result.exit_code == 0
+        # The exception is displayed and the command fails (#198)
+        assert result.exit_code == 1
         mock_console.print.assert_called()
 
     @patch("chronovista.cli.auth_commands.youtube_oauth")
@@ -271,8 +271,8 @@ class TestAuthCommandsErrorHandling:
 
         result = runner.invoke(auth_app, ["logout"])
 
-        # Should handle exception gracefully
-        assert result.exit_code == 0
+        # The exception is displayed and the command fails (#198)
+        assert result.exit_code == 1
         mock_console.print.assert_called()
 
     @patch("chronovista.cli.auth_commands.console.print")
@@ -414,7 +414,7 @@ class TestAuthCommandsEdgeCases:
 
         result = runner.invoke(auth_app, ["login"])
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         mock_console.print.assert_called()
 
     @patch("chronovista.cli.auth_commands.youtube_oauth")
@@ -509,7 +509,7 @@ class TestAuthRefreshCommand:
 
         result = runner.invoke(auth_app, ["refresh"])
 
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         mock_console.print.assert_called()
 
     def test_refresh_command_help(self, runner):

@@ -50,8 +50,19 @@ class OutputFormat(str, Enum):
     CSV = "csv"
 
 
-class SortOrder(str, Enum):
-    """Sort order options for playlist list command."""
+class PlaylistListSortField(str, Enum):
+    """Sort key for `playlist list`.
+
+    Named a *field*, not an *order*, to match the convention the API layer
+    already uses: ``SortOrder`` means direction (``ASC``/``DESC``) and lives in
+    ``api/schemas/sorting.py``, while the key to sort by is a
+    ``<Thing>SortField`` (``PlaylistSortField``, ``VideoSortField``,
+    ``ChannelVideoSortField``). This enum holds keys, so it was the odd one out.
+
+    Not merged into the API's ``PlaylistSortField``: that one offers
+    ``CREATED_AT``/``VIDEO_COUNT`` where this offers ``VIDEOS``/``STATUS``, and
+    reconciling them would change values a shipped endpoint accepts.
+    """
 
     TITLE = "title"
     VIDEOS = "videos"
@@ -90,8 +101,8 @@ def list(
         "--format",
         help="Output format",
     ),
-    sort: SortOrder = typer.Option(
-        SortOrder.TITLE,
+    sort: PlaylistListSortField = typer.Option(
+        PlaylistListSortField.TITLE,
         "--sort",
         help="Sort order: title (alphabetical), videos (by count), status (linked first)",
     ),
@@ -146,15 +157,15 @@ def list(
                 stats = await repository.get_link_statistics(session)
 
                 # Apply sorting based on --sort flag
-                if sort == SortOrder.TITLE:
+                if sort == PlaylistListSortField.TITLE:
                     # Alphabetical by title (A-Z)
                     playlists = sorted(playlists, key=lambda p: p.title.lower())
-                elif sort == SortOrder.VIDEOS:
+                elif sort == PlaylistListSortField.VIDEOS:
                     # By video count (descending)
                     playlists = sorted(
                         playlists, key=lambda p: p.video_count, reverse=True
                     )
-                elif sort == SortOrder.STATUS:
+                elif sort == PlaylistListSortField.STATUS:
                     # Linked first, then unlinked, then alphabetical within each group
                     # A playlist is "linked" if playlist_id starts with "PL" or is a system ID
                     playlists = sorted(

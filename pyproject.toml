@@ -198,37 +198,16 @@ disallow_incomplete_defs = false
 module = "tests.factories.*"
 follow_imports = "skip"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*", "*Test"]
-python_functions = ["test_*"]
-addopts = [
-    "-v",
-    "--strict-markers",
-    "--strict-config",
-    "--cov=chronovista",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
-    "--cov-fail-under=90"
-]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-    "auth: marks tests that require authentication",
-    "db: marks tests that require database",
-    "asyncio: marks tests as async (automatically marked via pytestmark)",
-    "docker: marks tests requiring Docker (deselect with '-m \"not docker\"')"
-]
-asyncio_mode = "auto"
-filterwarnings = [
-    "error",
-    "ignore::UserWarning",
-    "ignore::DeprecationWarning",
-    "ignore::PendingDeprecationWarning"
-]
+# pytest is configured in pytest.ini, NOT here.
+#
+# Do not re-add [tool.pytest.ini_options]. pytest stops at the first config it
+# finds and pytest.ini has the highest precedence, so a block here is read by
+# nobody — confirm with the `configfile:` line in pytest's own header. A block
+# that lived here for the life of the project declared `--cov-fail-under=90`,
+# which never once ran, and a `unit` marker that no test carries. It read as
+# authoritative and was inert; that is worse than absent.
+#
+# [tool.coverage.*] below IS live — coverage reads pyproject.toml directly.
 
 [tool.coverage.run]
 source = ["src/chronovista"]

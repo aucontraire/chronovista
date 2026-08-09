@@ -678,7 +678,10 @@ class TestTopicDiscoveryCommand:
             ), f"Min interactions {interactions} should be valid"
             mock_asyncio.assert_called_once()
 
-    def test_discovery_invalid_method(self, runner: CliRunner) -> None:
+    @patch("chronovista.cli.topic_commands.asyncio.run")
+    def test_discovery_invalid_method(
+        self, mock_asyncio: MagicMock, runner: CliRunner
+    ) -> None:
         """Test discovery command with invalid method values."""
         # Note: The validation happens inside the async function,
         # so the command may still succeed at the CLI level
@@ -1540,7 +1543,10 @@ class TestTopicEngagementCommand:
         assert result.exit_code == 0
         mock_asyncio.assert_called_once()
 
-    def test_engagement_sort_validation(self, runner: CliRunner) -> None:
+    @patch("chronovista.cli.topic_commands.asyncio.run")
+    def test_engagement_sort_validation(
+        self, mock_asyncio: MagicMock, runner: CliRunner
+    ) -> None:
         """Test engagement command sort parameter validation."""
         # Valid sort options should work
         valid_sorts = [

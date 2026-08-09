@@ -38,6 +38,11 @@ logger = logging.getLogger(__name__)
 # Minimum alias length before a warning is emitted.
 _MIN_ALIAS_LENGTH = 3
 
+# Consecutive failed fetches at the same cursor before a scan gives up. Keyset
+# pagination cannot skip a batch it never received, so the choice is retry or
+# stop; this bounds the retry.
+_MAX_FETCH_RETRIES = 3
+
 
 def _fold_diacritics(raw: str) -> tuple[str, list[int]]:
     """Fold accents off a string and map folded positions back to raw ones.
@@ -278,7 +283,8 @@ class EntityMentionScanService:
             matched_entity_ids: set[uuid.UUID] = set()
             matched_video_ids: set[str] = set()
 
-            offset = 0
+            last_id = 0
+            fetch_failures_at_cursor = 0
             while True:
                 try:
                     batch_rows = await self._fetch_segment_batch(
@@ -286,17 +292,32 @@ class EntityMentionScanService:
                         video_ids=video_ids,
                         language_code=language_code,
                         batch_size=batch_size,
-                        offset=offset,
+                        after_id=last_id,
                     )
                 except Exception:
+                    # Under OFFSET pagination a failed fetch could be skipped by
+                    # advancing the offset. A cursor has no such fixed stride:
+                    # the ids to skip are exactly the ones the failed query did
+                    # not return. Retrying is the only way forward, so bound it
+                    # rather than spin.
                     logger.warning(
-                        "Failed to fetch segment batch at offset=%d",
-                        offset,
+                        "Failed to fetch segment batch after id=%d",
+                        last_id,
                         exc_info=True,
                     )
                     result.failed_batches += 1
-                    offset += batch_size
+                    fetch_failures_at_cursor += 1
+                    if fetch_failures_at_cursor >= _MAX_FETCH_RETRIES:
+                        logger.error(
+                            "Aborting scan: %d consecutive fetch failures after "
+                            "id=%d. Scanned %d segments before stopping.",
+                            fetch_failures_at_cursor,
+                            last_id,
+                            result.segments_scanned,
+                        )
+                        break
                     continue
+                fetch_failures_at_cursor = 0
 
                 if not batch_rows:
                     break
@@ -325,12 +346,14 @@ class EntityMentionScanService:
                     )
                 except Exception:
                     logger.warning(
-                        "Failed to process segment batch at offset=%d",
-                        offset,
+                        "Failed to process segment batch after id=%d",
+                        last_id,
                         exc_info=True,
                     )
                     result.failed_batches += 1
-                    offset += batch_size
+                    # The rows are in hand, so the batch can still be skipped
+                    # exactly as before: advance past the ones just fetched.
+                    last_id = batch_rows[-1].id
                     if progress_callback:
                         progress_callback(
                             result.segments_scanned, result.mentions_found
@@ -361,7 +384,7 @@ class EntityMentionScanService:
                 if progress_callback:
                     progress_callback(result.segments_scanned, result.mentions_found)
 
-                offset += batch_size
+                last_id = batch_rows[-1].id
 
                 # If dry-run and we have reached the limit, stop early
                 if (
@@ -605,24 +628,36 @@ class EntityMentionScanService:
             matched_entity_ids: set[uuid.UUID] = set()
             matched_video_ids: set[str] = set()
 
-            offset = 0
+            last_video_id = ""
+            fetch_failures_at_cursor = 0
             while True:
                 try:
                     batch_rows = await self._fetch_video_batch(
                         session,
                         video_ids=video_ids,
                         batch_size=batch_size,
-                        offset=offset,
+                        after_video_id=last_video_id,
                     )
                 except Exception:
                     logger.warning(
-                        "Failed to fetch video batch at offset=%d",
-                        offset,
+                        "Failed to fetch video batch after video_id=%r",
+                        last_video_id,
                         exc_info=True,
                     )
                     result.failed_batches += 1
-                    offset += batch_size
+                    fetch_failures_at_cursor += 1
+                    if fetch_failures_at_cursor >= _MAX_FETCH_RETRIES:
+                        logger.error(
+                            "Aborting metadata scan: %d consecutive fetch "
+                            "failures after video_id=%r. Scanned %d videos "
+                            "before stopping.",
+                            fetch_failures_at_cursor,
+                            last_video_id,
+                            result.segments_scanned,
+                        )
+                        break
                     continue
+                fetch_failures_at_cursor = 0
 
                 if not batch_rows:
                     break
@@ -639,12 +674,12 @@ class EntityMentionScanService:
                     )
                 except Exception:
                     logger.warning(
-                        "Failed to process video batch at offset=%d",
-                        offset,
+                        "Failed to process video batch after video_id=%r",
+                        last_video_id,
                         exc_info=True,
                     )
                     result.failed_batches += 1
-                    offset += batch_size
+                    last_video_id = batch_rows[-1].video_id
                     if progress_callback:
                         progress_callback(
                             result.segments_scanned, result.mentions_found
@@ -670,7 +705,7 @@ class EntityMentionScanService:
                 if progress_callback:
                     progress_callback(result.segments_scanned, result.mentions_found)
 
-                offset += batch_size
+                last_video_id = batch_rows[-1].video_id
 
             result.unique_entities = len(matched_entity_ids)
             result.unique_videos = len(matched_video_ids)
@@ -721,9 +756,15 @@ class EntityMentionScanService:
         session: AsyncSession,
         video_ids: list[str] | None,
         batch_size: int,
-        offset: int,
+        after_video_id: str,
     ) -> list[Any]:
         """Fetch a batch of video rows for metadata scanning.
+
+        Keyset-paginated on ``video_id`` for the same reason as
+        :meth:`_fetch_segment_batch` — see that method for the measurements.
+        The videos table is far smaller than transcript_segments, so the win
+        here is small today; it is fixed alongside because it is the identical
+        defect and grows the same way.
 
         Parameters
         ----------
@@ -733,8 +774,10 @@ class EntityMentionScanService:
             Optional video ID filter.
         batch_size : int
             Maximum videos per batch.
-        offset : int
-            Pagination offset.
+        after_video_id : str
+            Exclusive lower bound on video_id; pass ``""`` to start. Ordering
+            and seeking use the same collation, so the comparison agrees with
+            the ORDER BY and no row is visited twice or skipped.
 
         Returns
         -------
@@ -751,8 +794,9 @@ class EntityMentionScanService:
         if video_ids is not None:
             stmt = stmt.where(VideoDB.video_id.in_(video_ids))
 
+        stmt = stmt.where(VideoDB.video_id > after_video_id)
         stmt = stmt.order_by(VideoDB.video_id.asc())
-        stmt = stmt.limit(batch_size).offset(offset)
+        stmt = stmt.limit(batch_size)
 
         result = await session.execute(stmt)
         return list(result.all())
@@ -1138,9 +1182,16 @@ class EntityMentionScanService:
         video_ids: list[str] | None,
         language_code: str | None,
         batch_size: int,
-        offset: int,
+        after_id: int,
     ) -> list[Any]:
         """Fetch a batch of transcript segments with effective text.
+
+        Paginates by primary key (``id > after_id``) rather than by ``OFFSET``.
+        ``OFFSET n`` makes PostgreSQL walk and discard n rows to reach each
+        window, so per-batch cost grows with depth and total scan cost grows
+        with the *square* of the corpus.  Measured on a 1.9M-segment corpus,
+        the same 500 rows took 11 ms at offset 0 and 531 ms at offset 1.8M.
+        Seeking on the indexed key holds every batch at the offset-0 price.
 
         Parameters
         ----------
@@ -1152,8 +1203,10 @@ class EntityMentionScanService:
             Optional language filter.
         batch_size : int
             Maximum segments per batch.
-        offset : int
-            Pagination offset.
+        after_id : int
+            Exclusive lower bound on segment id; pass 0 to start. Ids are a
+            monotonic sequence, so ordering by id and seeking past the last id
+            of the previous batch visits every row exactly once.
 
         Returns
         -------
@@ -1185,8 +1238,9 @@ class EntityMentionScanService:
         if language_code is not None:
             stmt = stmt.where(TranscriptSegmentDB.language_code == language_code)
 
+        stmt = stmt.where(TranscriptSegmentDB.id > after_id)
         stmt = stmt.order_by(TranscriptSegmentDB.id.asc())
-        stmt = stmt.limit(batch_size).offset(offset)
+        stmt = stmt.limit(batch_size)
 
         result = await session.execute(stmt)
         return list(result.all())

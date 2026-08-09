@@ -686,7 +686,7 @@ class TestFilterParameters:
             video_ids: list[str] | None,
             language_code: str | None,
             batch_size: int,
-            offset: int,
+            after_id: int,
         ) -> list[Any]:
             captured.append({"video_ids": video_ids, "language_code": language_code})
             return []  # End loop
@@ -720,7 +720,7 @@ class TestFilterParameters:
             video_ids: list[str] | None,
             language_code: str | None,
             batch_size: int,
-            offset: int,
+            after_id: int,
         ) -> list[Any]:
             captured.append({"language_code": language_code})
             return []
@@ -801,7 +801,7 @@ class TestBatchProcessing:
             video_ids: Any,
             language_code: Any,
             batch_size: int,
-            offset: int,
+            after_id: int,
         ) -> list[Any]:
             nonlocal batch_idx
             result = batches[batch_idx] if batch_idx < len(batches) else []
@@ -1739,7 +1739,7 @@ class TestFailedBatchHandling:
             video_ids: Any,
             language_code: Any,
             batch_size: int,
-            offset: int,
+            after_id: int,
         ) -> list[Any]:
             nonlocal fetch_calls
             fetch_calls += 1
@@ -3042,6 +3042,137 @@ class TestTranscriptMentionContext:
         assert "discutió" in context
 
 
+class TestKeysetPagination:
+    """The scan pages by primary key, never by OFFSET.
+
+    OFFSET pagination made a full scan cost grow with the square of the
+    corpus: PostgreSQL walks and discards n rows to reach each window, so the
+    same 500 rows cost 11 ms at offset 0 and 531 ms at offset 1.8M on a
+    1.9M-segment corpus.  A single-entity scan reads every segment (the entity
+    filter narrows the patterns, not the rows), so this hit every scan.
+
+    These tests pin the two properties that make the seek correct, because a
+    test double that merely accepts ``after_id`` and returns canned batches
+    would keep passing if the cursor never advanced at all.
+    """
+
+    async def test_cursor_advances_to_last_id_of_previous_batch(self) -> None:
+        """Each fetch must resume strictly after the last id already seen.
+
+        This is the property that makes the seek both complete and duplicate
+        free.  If the cursor stalled, the same batch would be re-fetched
+        forever; if it overshot, rows would be skipped silently.
+        """
+        from chronovista.services.entity_mention_scan_service import _EntityPattern
+
+        fake_pattern = _EntityPattern(
+            entity_id=_make_uuid(),
+            canonical_name="Bar",
+            entity_type="person",
+            pg_pattern="Bar",
+            alias_names=["Bar"],
+            exclusion_patterns=[],
+        )
+
+        session = AsyncMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        svc = _build_service(_make_session_factory(session))
+
+        batches = [
+            [_make_segment_row(seg_id=i) for i in (3, 7, 11)],
+            [_make_segment_row(seg_id=i) for i in (12, 40)],
+            [],
+        ]
+        seen_after_ids: list[int] = []
+        batch_idx = 0
+
+        async def fetch_batches(
+            _session: Any,
+            video_ids: Any,
+            language_code: Any,
+            batch_size: int,
+            after_id: int,
+        ) -> list[Any]:
+            nonlocal batch_idx
+            seen_after_ids.append(after_id)
+            result = batches[batch_idx] if batch_idx < len(batches) else []
+            batch_idx += 1
+            return result
+
+        svc._mention_repo.update_entity_counters = AsyncMock()
+        svc._mention_repo.update_alias_counters = AsyncMock()
+        with (
+            patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
+            patch.object(svc, "_fetch_segment_batch", side_effect=fetch_batches),
+            patch.object(svc, "_scan_batch", return_value=([], 0, [], 0, 0)),
+        ):
+            await svc.scan()
+
+        # Starts at 0, then resumes from the highest id of each prior batch.
+        assert seen_after_ids == [0, 11, 40]
+
+    async def test_fetch_query_seeks_by_id_and_uses_no_offset(self) -> None:
+        """The emitted SQL must carry the keyset predicate and no OFFSET.
+
+        Asserting on the statement rather than the result is what catches a
+        regression to ``.offset(...)``: both forms return the same rows for
+        the first page, so a row-level assertion cannot tell them apart.
+        """
+        captured: dict[str, Any] = {}
+
+        async def capture_execute(stmt: Any) -> Any:
+            captured["stmt"] = stmt
+            mock_result = MagicMock()
+            mock_result.all.return_value = []
+            return mock_result
+
+        session = AsyncMock()
+        session.execute = capture_execute
+        svc = _build_service(_make_session_factory(session))
+
+        await svc._fetch_segment_batch(
+            session,
+            video_ids=None,
+            language_code=None,
+            batch_size=10,
+            after_id=4242,
+        )
+
+        sql = str(captured["stmt"]).upper()
+        assert "OFFSET" not in sql
+        assert "TRANSCRIPT_SEGMENTS.ID >" in sql
+        assert "ORDER BY TRANSCRIPT_SEGMENTS.ID ASC" in sql
+
+    async def test_metadata_fetch_query_seeks_by_video_id_and_uses_no_offset(
+        self,
+    ) -> None:
+        """The title/description scan pages the same way, on video_id."""
+        captured: dict[str, Any] = {}
+
+        async def capture_execute(stmt: Any) -> Any:
+            captured["stmt"] = stmt
+            mock_result = MagicMock()
+            mock_result.all.return_value = []
+            return mock_result
+
+        session = AsyncMock()
+        session.execute = capture_execute
+        svc = _build_service(_make_session_factory(session))
+
+        await svc._fetch_video_batch(
+            session,
+            video_ids=None,
+            batch_size=10,
+            after_video_id="abc123",
+        )
+
+        sql = str(captured["stmt"]).upper()
+        assert "OFFSET" not in sql
+        assert "VIDEOS.VIDEO_ID >" in sql
+        assert "ORDER BY VIDEOS.VIDEO_ID ASC" in sql
+
+
 class TestScanUsesCorrectedTranscriptText:
     """The scan reads corrected transcript text where a correction exists.
 
@@ -3073,7 +3204,7 @@ class TestScanUsesCorrectedTranscriptText:
             video_ids=None,
             language_code=None,
             batch_size=10,
-            offset=0,
+            after_id=0,
         )
 
         sql = str(captured["stmt"])
@@ -3104,7 +3235,7 @@ class TestScanUsesCorrectedTranscriptText:
             video_ids=None,
             language_code=None,
             batch_size=10,
-            offset=0,
+            after_id=0,
         )
 
         sql = str(captured["stmt"])

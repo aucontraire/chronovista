@@ -199,7 +199,9 @@ See the [Architecture Overview](https://aucontraire.github.io/chronovista/archit
 
 ### Engineering Practice
 
-The codebase holds production standards for AI-collaborated code, enforced in CI: strict typing (mypy strict, zero `Any` in public APIs), Pydantic-first modeling, the repository pattern with async I/O throughout, `black` and `ruff` formatting gates, and >90% test coverage. Anti-slop constraints are explicit — minimal diffs, file and abstraction budgets, and the Rule of Three against premature abstraction.
+The codebase holds production standards for AI-collaborated code, enforced in CI: strict typing (mypy strict, zero `Any` in public APIs), Pydantic-first modeling, the repository pattern with async I/O throughout, `black` and `ruff` formatting gates, and a coverage floor that cannot regress. Anti-slop constraints are explicit — minimal diffs, file and abstraction budgets, and the Rule of Three against premature abstraction.
+
+Coverage is **76.9%** across 8,100+ backend tests, measured on the combined unit and integration runs and gated in CI as a ratchet — it can rise, not fall. The figure is unevenly distributed, and the shape matters more than the average: models 94%, repositories 93%, services 82%, API 78% — against **CLI at 55%**, which is over half of all uncovered statements on its own. Frontend adds 3,700+ tests.
 
 The standard that took longest to learn is **cross-feature data contract verification**. A mutation that changes data ownership must be re-queried through every downstream consumer path, and a mock test for an UPDATE must inspect the SQL `SET` clause rather than the return value — a column silently absent from `SET` returns success while writing nothing. This was added after integration bugs in Features 030–032 exposed a gap at the seam *between* features, where each side was individually correct. The tests enforcing it are in `tests/unit/api/test_entity_update_sql_columns.py` and `tests/integration/api/test_entity_rename_cross_feature.py`.
 

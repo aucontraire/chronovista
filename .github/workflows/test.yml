@@ -37,8 +37,20 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
+      # `-o addopts=...` replaces pytest.ini's addopts wholesale, so --cov has to
+      # be passed explicitly here rather than inherited from config.
       - name: Run unit tests
-        run: NO_COLOR=1 poetry run pytest tests/unit/ -x -q -o "addopts=-v --strict-markers --strict-config" -m "not db"
+        env:
+          COVERAGE_FILE: .coverage.unit
+        run: NO_COLOR=1 poetry run pytest tests/unit/ -x -q -o "addopts=-v --strict-markers --strict-config" -m "not db" --cov=chronovista --cov-report=
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: .coverage.unit
+          include-hidden-files: true
+          retention-days: 1
 
   mypy:
     name: Type Check (mypy)
@@ -176,4 +188,63 @@ jobs:
         run: NO_COLOR=1 poetry run alembic check
 
       - name: Run integration tests
-        run: NO_COLOR=1 poetry run pytest tests/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow and not auth and not db"
+        env:
+          COVERAGE_FILE: .coverage.integration
+        run: NO_COLOR=1 poetry run pytest tests/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow and not auth and not db" --cov=chronovista --cov-report=
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-integration
+          path: .coverage.integration
+          include-hidden-files: true
+          retention-days: 1
+
+  # Coverage is gated on the *combined* unit + integration figure, not on either
+  # job alone. Gating the unit job by itself would mark code that is legitimately
+  # covered at the seam as uncovered, and the way to satisfy that gate is to
+  # write mock-heavy unit tests for things integration tests already exercise
+  # for real — the exact trade this project decided against.
+  #
+  # The threshold is a ratchet at roughly the current figure, not an aspiration.
+  # Raise it when coverage rises; never lower it to make a red build green.
+  coverage:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [unit-tests, integration-tests]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
+          restore-keys: poetry-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+
+      # Both jobs check out to the same path on the same runner image, so the
+      # absolute file paths recorded in the two data files line up and combine
+      # needs no --relative remapping.
+      - name: Combine and report
+        run: |
+          poetry run coverage combine .coverage.unit .coverage.integration
+          poetry run coverage report --precision=2 --fail-under=76

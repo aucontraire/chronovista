@@ -18,7 +18,7 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  test              - Run all tests with verbose output"
-	@echo "  test-cov          - Run tests with coverage report (90% threshold)"
+	@echo "  test-cov          - Run tests with coverage report ($(COV_MIN)% threshold)"
 	@echo "  test-cov-dev      - Run tests with coverage (no threshold)"
 	@echo "  test-unit         - Run unit tests only"
 	@echo "  test-integration  - Run integration tests only"
@@ -125,6 +125,8 @@ POETRY_RUN := $(POETRY) run
 PACKAGE_NAME := chronovista
 SRC_DIR := src
 TEST_DIR := tests
+# Keep in step with the --fail-under in the CI "Coverage Gate" job.
+COV_MIN := 76
 DOCS_DIR := docs
 
 # Poetry verification target
@@ -177,13 +179,16 @@ clean:
 test:
 	$(POETRY_RUN) pytest $(TEST_DIR) -v
 
+# Threshold matches the CI Coverage Gate. It was 90 for the life of the project
+# and would have failed every run — nothing invoked this target, and the CI jobs
+# override addopts, so no build ever measured coverage at all.
 test-cov:
 	$(POETRY_RUN) pytest $(TEST_DIR) \
 		--cov=$(PACKAGE_NAME) \
 		--cov-report=term-missing \
 		--cov-report=html \
 		--cov-report=xml \
-		--cov-fail-under=90
+		--cov-fail-under=$(COV_MIN)
 
 test-cov-dev:
 	$(POETRY_RUN) pytest $(TEST_DIR) \
@@ -477,7 +482,7 @@ ci-test:
 		--cov=$(PACKAGE_NAME) \
 		--cov-report=xml \
 		--cov-report=term \
-		--cov-fail-under=90 \
+		--cov-fail-under=$(COV_MIN) \
 		--tb=short
 
 ci-quality:

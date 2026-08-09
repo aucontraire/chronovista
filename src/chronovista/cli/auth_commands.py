@@ -115,6 +115,7 @@ def login() -> None:
                 border_style="red",
             )
         )
+        raise typer.Exit(1) from e
 
 
 @auth_app.command()
@@ -161,6 +162,7 @@ def logout() -> None:
                 border_style="red",
             )
         )
+        raise typer.Exit(1) from e
 
 
 @auth_app.command()
@@ -246,6 +248,7 @@ def status() -> None:
                 border_style="red",
             )
         )
+        raise typer.Exit(1) from e
 
 
 @auth_app.command()
@@ -285,3 +288,4 @@ def refresh() -> None:
                 border_style="red",
             )
         )
+        raise typer.Exit(1) from e

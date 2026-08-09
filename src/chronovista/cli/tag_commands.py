@@ -84,6 +84,7 @@ def list_tags(
                 title="Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_list())
 
@@ -160,6 +161,7 @@ def show_tag(
                 title="Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_show())
 
@@ -238,6 +240,7 @@ def videos_by_tag(
                 title="Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_videos())
 
@@ -304,6 +307,7 @@ def search_tags(
                 title="Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_search())
 
@@ -358,6 +362,7 @@ def tag_stats() -> None:
                 title="Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_stats())
 
@@ -439,6 +444,7 @@ def tags_by_video(
                 title="Error",
                 border_style="red",
             )
+            raise typer.Exit(1) from e
 
     asyncio.run(run_by_video())
 

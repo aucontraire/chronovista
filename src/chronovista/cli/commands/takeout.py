@@ -372,6 +372,7 @@ async def _peek_playlists(
 
     except Exception as e:
         console.print(f"❌ Error analyzing playlists: {e}")
+        raise typer.Exit(1) from e
 
 
 async def _show_detailed_playlist(
@@ -594,6 +595,7 @@ async def _peek_watch_history(
 
     except Exception as e:
         console.print(f"❌ Error analyzing watch history: {e}")
+        raise typer.Exit(1) from e
 
 
 async def _peek_subscriptions(
@@ -683,6 +685,7 @@ async def _peek_subscriptions(
 
     except Exception as e:
         console.print(f"❌ Error analyzing subscriptions: {e}")
+        raise typer.Exit(1) from e
 
 
 async def _apply_topic_filters(
@@ -1061,6 +1064,7 @@ async def _inspect_csv_file(
 
     except Exception as e:
         console.print(f"❌ Error reading CSV file: {e}")
+        raise typer.Exit(1) from e
 
 
 async def _inspect_json_file(
@@ -1086,8 +1090,10 @@ async def _inspect_json_file(
 
     except json.JSONDecodeError as e:
         console.print(f"❌ Invalid JSON file: {e}")
+        raise typer.Exit(1) from e
     except Exception as e:
         console.print(f"❌ Error reading JSON file: {e}")
+        raise typer.Exit(1) from e
 
 
 def _detect_csv_type(file_path: Path, headers: list[str] | None) -> str:
@@ -1865,6 +1871,7 @@ async def _peek_comments(
 
     except Exception as e:
         console.print(f"❌ Error analyzing comments: {e}")
+        raise typer.Exit(1) from e
 
 
 async def _peek_live_chats(
@@ -2142,6 +2149,7 @@ async def _peek_live_chats(
 
     except Exception as e:
         console.print(f"❌ Error analyzing live chats: {e}")
+        raise typer.Exit(1) from e
 
 
 @takeout_app.command("seed")

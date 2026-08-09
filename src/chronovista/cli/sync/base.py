@@ -341,6 +341,7 @@ def run_sync_operation(
         )
         logger.error(f"Unexpected error during {operation_name}: {e}")
         return None
+        raise typer.Exit(1) from e
 
 
 def display_sync_results(

@@ -6,6 +6,7 @@ full transcript text from corrected segments, listing batches, and
 reverting entire batches.
 """
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Query
@@ -66,6 +67,22 @@ _correction_service = TranscriptCorrectionService(
     segment_repo=_segment_repo,
     transcript_repo=_transcript_repo,
 )
+logger = logging.getLogger(__name__)
+
+# How many correction pairs diff-analysis will tokenise.
+#
+# `limit` used to truncate the pattern list *before* word-level extraction,
+# which can only lose tokens: 106 pairs against the default limit of 100
+# dropped six, and with them one token that no longer appeared in the response
+# at all. Since the endpoint returns tokens rather than patterns, and the
+# pattern fetch is cheap once the remaining-match counts are skipped (~0.12s
+# for 106 pairs), it now tokenises everything and applies `limit` to the
+# result — which is what that parameter has always claimed to do.
+#
+# The cap exists so the work stays bounded if the correction corpus grows. It
+# is logged when it bites rather than silently truncating.
+_PATTERN_TOKENISE_CAP = 1000
+
 _batch_service = BatchCorrectionService(
     correction_service=_correction_service,
     segment_repo=_segment_repo,
@@ -507,7 +524,9 @@ async def get_diff_analysis(
     min_occurrences : int
         Minimum number of occurrences for a pattern to be included (1-50).
     limit : int
-        Maximum number of patterns to return (1-500).
+        Maximum number of error patterns to return (1-500). Applied to the
+        response, after every correction pair has been tokenised — truncating
+        beforehand dropped tokens that were never derived at all.
     show_completed : bool
         Whether to include patterns with no remaining un-corrected matches.
     entity_name : str | None
@@ -523,12 +542,25 @@ async def get_diff_analysis(
     """
     # Always fetch all patterns (including completed) so we can extract
     # word-level tokens and recompute remaining_matches at the token level.
+    #
+    # with_remaining=False because this endpoint reads only original_text,
+    # corrected_text and occurrences — it recomputes remaining matches per
+    # token below, since the segment-level figure does not survive word-level
+    # extraction. Computing it here was the single largest cost in the
+    # request, and the result was discarded.
     patterns = await _batch_service.get_patterns(
         session,
         min_occurrences=min_occurrences,
-        limit=limit,
+        limit=_PATTERN_TOKENISE_CAP,
         show_completed=True,
+        with_remaining=False,
     )
+    if len(patterns) == _PATTERN_TOKENISE_CAP:
+        logger.warning(
+            "diff-analysis hit the pattern cap (%d); tokens from further "
+            "correction pairs are not represented in this response.",
+            _PATTERN_TOKENISE_CAP,
+        )
 
     # Aggregate word-level token pairs across all patterns.
     # Key: (error_token, canonical_form) -> frequency
@@ -623,7 +655,10 @@ async def get_diff_analysis(
     # Sort by remaining_matches DESC so actionable patterns come first
     results.sort(key=lambda r: r.remaining_matches, reverse=True)
 
-    return ApiResponse[list[DiffErrorPatternResponse]](data=results)
+    # `limit` now bounds what is returned rather than what is tokenised.
+    # Applied after the sort, so it keeps the most actionable patterns instead
+    # of dropping tokens before they were ever derived.
+    return ApiResponse[list[DiffErrorPatternResponse]](data=results[:limit])
 
 
 # ═══════════════════════════════════════════════════════════════════════════

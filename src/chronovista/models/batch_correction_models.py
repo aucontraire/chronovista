@@ -242,9 +242,14 @@ class CorrectionPattern(BaseModel):
         The corrected text that replaced the original.
     occurrences : int
         Number of times this correction has been applied (must be >= 0).
-    remaining_matches : int
+    remaining_matches : int | None
         Number of remaining segments that still contain the original text
-        (must be >= 0).
+        (must be >= 0), or ``None`` when the caller asked not to compute it.
+
+        ``None`` means *unknown*, never *zero*. Counting this is by far the
+        most expensive part of pattern discovery, and callers that never read
+        it can skip it; representing "not computed" as 0 would make a skipped
+        count indistinguishable from a correction that has been fully applied.
     """
 
     original_text: str = Field(
@@ -260,10 +265,13 @@ class CorrectionPattern(BaseModel):
         ge=0,
         description="Number of times this correction has been applied",
     )
-    remaining_matches: int = Field(
+    remaining_matches: int | None = Field(
         ...,
         ge=0,
-        description="Number of remaining segments still containing the original text",
+        description=(
+            "Number of remaining segments still containing the original text, "
+            "or null when not computed. Null means unknown, not zero."
+        ),
     )
 
     model_config = ConfigDict(frozen=True)

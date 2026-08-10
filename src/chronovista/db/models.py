@@ -26,7 +26,11 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+
+# First ARRAY columns in this schema (ADR-011 fields_written). JSONB is the
+# house pattern for structured columns, but a flat list of column names is
+# what a Postgres array is for, and it queries with = ANY(...) directly.
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
@@ -1590,6 +1594,92 @@ class EntityMention(Base):
     )
 
 
+class VideoRecoverySource(Base):
+    """One recovery source that contributed to a video's metadata — ADR-011.
+
+    Append-only. A video whose title came from Takeout, description from Wayback
+    and duration from Filmot has three rows here, and no pass may erase
+    another's.
+
+    Replaces the single-valued ``videos.recovery_source``, which was correct
+    while there was exactly one source (ADR-007 defined ``recovered_at`` as
+    "when archive recovery was last attempted") and became lossy when a second
+    arrived. On 2026-08-09 a Filmot pass overwrote 92 rows' earlier attribution,
+    taking the Wayback snapshot timestamp with it because that timestamp was
+    encoded *inside* the source string as ``wayback:20210101080938``.
+
+    ``videos.recovery_source`` is retained as a denormalised "most recent" for
+    cheap reads, and is derived from this table rather than authoritative.
+    """
+
+    __tablename__ = "video_recovery_sources"
+
+    video_id: Mapped[str] = mapped_column(
+        String(20),
+        ForeignKey("videos.video_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    # 'takeout' | 'wayback' | 'filmot' | 'sync'. Not an enum: a new source
+    # should not require a migration, and the set is expected to grow.
+    source: Mapped[str] = mapped_column(String(50), primary_key=True)
+
+    # Source-specific identifier — e.g. a Wayback snapshot timestamp. Separate
+    # from `source` precisely because packing both into one string is what
+    # destroyed the timestamps this table exists to preserve.
+    source_detail: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    recovered_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    # Which columns this pass actually wrote. Best-effort: a pass that does not
+    # populate it degrades to "this source touched this row", which is still
+    # more than the previous schema could say. Consumers must treat it as a
+    # hint, never a guarantee.
+    fields_written: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+
+    __table_args__ = (
+        Index("idx_video_recovery_sources_source", "source"),
+        {
+            "comment": "Append-only provenance: which sources contributed to a video (ADR-011)"
+        },
+    )
+
+
+class ChannelRecoverySource(Base):
+    """One recovery source that contributed to a channel's metadata — ADR-011.
+
+    Same shape and same rules as :class:`VideoRecoverySource`; see there for the
+    reasoning. 275 channels currently exist only because a recovery pass created
+    them, and that fact should survive the next pass.
+    """
+
+    __tablename__ = "channel_recovery_sources"
+
+    channel_id: Mapped[str] = mapped_column(
+        String(24),
+        ForeignKey("channels.channel_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    source: Mapped[str] = mapped_column(String(50), primary_key=True)
+    source_detail: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    recovered_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    fields_written: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String), nullable=True
+    )
+
+    __table_args__ = (
+        Index("idx_channel_recovery_sources_source", "source"),
+        {
+            "comment": "Append-only provenance: which sources contributed to a channel (ADR-011)"
+        },
+    )
+
+
 # Export all models
 __all__ = [
     "Base",
@@ -1616,4 +1706,6 @@ __all__ = [
     "TagOperationLog",
     "TranscriptCorrection",
     "EntityMention",
+    "VideoRecoverySource",
+    "ChannelRecoverySource",
 ]

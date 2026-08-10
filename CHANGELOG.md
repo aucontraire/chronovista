@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-08-10
+
+### Added
+- **Recovery provenance is now recorded additively.** When a video or channel is deleted, its metadata can still be reconstructed from archives — but more than one source contributes, and no single one is sufficient: a description comes only from the web archive, a duration only from the third-party index, and a title from any of them. Provenance was a single column that each pass overwrote, so whichever ran last claimed the whole row. Two new append-only tables, `video_recovery_sources` and `channel_recovery_sources`, hold one row per (target, source), so a later pass adds to the record instead of replacing it.
+- **`source` and `source_detail` are separate columns.** The previous convention packed both into one string (`source:snapshot_timestamp`), which is why overwriting the source destroyed the archive capture timestamps along with the attribution. The model refuses a `source` containing `:` outright rather than storing a value that would look fine and be unqueryable.
+- **`fields_written`** records which columns a pass actually wrote. Best-effort and explicitly a hint: a pass that does not populate it still records that it touched the row, which is more than the previous model could express.
+- **[Where recovered metadata came from](docs/architecture/recovery-provenance.md)** — why this is stored additively, what the denormalised column is for, and the three questions this deliberately does not answer.
+
+### Changed
+- **`videos.recovery_source` and `recovered_at` are now derived.** They are retained, and the API exposes them unchanged, so the video detail endpoint still needs no join per row. They now hold a projection of the join table — the most recent contributor — recomputed from it rather than from whatever the caller passed. This is deliberately a second copy of a fact, which is the pattern that caused the original problem; the mitigation is that exactly one code path writes them. That projection still rebuilds the packed `source:detail` form for existing readers, and the column can be dropped once none depend on it.
+
+### Fixed
+- **Restored the attribution of 92 rows** that a bulk import had relabelled. No video data had been lost — the titles and descriptions written by the earlier pass were intact — but the record of where they came from, including the archive capture timestamps, was gone. The repair adds the original source *alongside* the importer's rather than replacing it, so both facts are true; under the previous single-column model that restore was not possible to do correctly, since writing the old value back would have erased the fact that the importer also contributed.
+
 ## [0.65.0] - 2026-08-07
 
 ### Added

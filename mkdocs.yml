@@ -156,6 +156,7 @@ nav:
       - System design: architecture/system-design.md
       - Data model: architecture/data-model.md
       - Tags and aliases: architecture/tags-and-aliases.md
+      - Recovery provenance: architecture/recovery-provenance.md
       - API integration: architecture/api-integration.md
       - Frontend architecture: architecture/frontend-architecture.md
   - Contributing:

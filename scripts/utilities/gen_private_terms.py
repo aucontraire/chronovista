@@ -75,6 +75,9 @@ ALLOWLIST = {
 COMMON_WORD_ALIASES = {
     "Crystal",
     "Fork",
+    # An ASR mis-transcription of a surname, and also an English verb: it fires
+    # on "rules gain higher confidence" in prose and on changelog entries.
+    "Gain",
     "Hack",
     # Fires on "shared helper", "test helper", "helper function" — unavoidable
     # vocabulary in a codebase, and it blocked a refactor commit message.
@@ -83,11 +86,40 @@ COMMON_WORD_ALIASES = {
     "Mate",
     "Peek",
     "Sham",
+    # An ASR mis-transcription of a surname, and also a Tailwind colour: it
+    # fires on every `bg-teal-100` / `text-teal-700` class in the frontend.
+    "Teal",
     # An ASR mis-transcription registered as an alias, and also a Python
     # keyword: it fires on every `# type: ignore` pragma, which `mypy --strict`
     # requires throughout the codebase.
     "Type",
     "Web",
+}
+
+# Real entities that have served as fixture and example data since early in the
+# project, and are reviewed and accepted rather than overlooked.
+#
+# Listed separately again because the reason differs from both sets above:
+# these are neither this project's subject matter nor word collisions. They are
+# globally-known public figures chosen as generic YouTube examples — a
+# late-night host for channel/video/transcript factories, a former head of
+# state for a capitalisation demo — and they occur across roughly sixteen
+# tracked files that predate the commit hook.
+#
+# The judgement, made deliberately on 2026-08-10: what these disclose about the
+# owner is close to nothing, because they are the names anyone reaches for when
+# inventing a plausible YouTube record. Weigh that against a whole-tree audit
+# that reports thirty-two known-reviewed hits every time it runs — an audit
+# whose output is mostly noise is one that gets skimmed, and skimming is how a
+# real leak passes.
+#
+# The cost is real and stated plainly: a future commit that genuinely leaks
+# something about these two specific people will NOT be caught. That is
+# accepted. Do not extend this set to buy silence — every addition is a blind
+# spot, and the correct fix for a new name is to use a placeholder instead.
+FIXTURE_ENTITIES = {
+    "Barack Obama",
+    "Stephen Colbert",
 }
 
 QUERY = text(
@@ -108,7 +140,8 @@ async def main(dsn: str) -> int:
             # other casings ("Openai" beside "OpenAI"), and an exact-set
             # subtraction leaves those behind for the case-insensitive matcher
             # to flag — allowlisting a term must allowlist all its spellings.
-            blocked = {a.casefold() for a in ALLOWLIST | COMMON_WORD_ALIASES}
+            excluded = ALLOWLIST | COMMON_WORD_ALIASES | FIXTURE_ENTITIES
+            blocked = {a.casefold() for a in excluded}
             terms = sorted(
                 {
                     r.term.strip()
@@ -126,7 +159,15 @@ async def main(dsn: str) -> int:
     terms = [t for t in terms if len(t) > 1]
 
     OUTPUT.write_text("\n".join(terms) + "\n", encoding="utf-8")
-    print(f"Wrote {len(terms)} terms to {OUTPUT.name} ({len(ALLOWLIST)} allowlisted)")
+    # Report every exclusion set, not just the first. The previous message
+    # counted ALLOWLIST alone, which understated how much is unguarded — the
+    # opposite of what a tool like this should round towards.
+    print(
+        f"Wrote {len(terms)} terms to {OUTPUT.name}\n"
+        f"  excluded: {len(ALLOWLIST)} toolchain, "
+        f"{len(COMMON_WORD_ALIASES)} word collisions, "
+        f"{len(FIXTURE_ENTITIES)} accepted fixture entities"
+    )
     return 0
 
 

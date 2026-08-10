@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Generic
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from typing_extensions import TypeVar
@@ -125,6 +125,62 @@ class BaseSQLAlchemyRepository(
     ) -> list[ModelType]:
         """Get multiple entities with pagination."""
         result = await session.execute(select(self.model).offset(skip).limit(limit))
+        return list(result.scalars().all())
+
+    async def get_multi_after(
+        self,
+        session: AsyncSession,
+        *,
+        after: Any = None,
+        limit: int = 100,
+    ) -> list[ModelType]:
+        """Get a batch of entities after *after*, ordered by primary key.
+
+        Keyset pagination, for walking a whole table. Prefer this over
+        ``get_multi(skip=...)`` in a loop: ``OFFSET n`` makes PostgreSQL walk
+        and discard n rows to reach each window, so the per-batch cost grows
+        with depth and a full walk costs O(rows²). Seeking on the indexed key
+        keeps every batch the same price.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        after : Any, optional
+            Exclusive lower bound — the primary key of the last row of the
+            previous batch. ``None`` starts from the beginning.
+        limit : int, optional
+            Maximum rows to return (default 100).
+
+        Returns
+        -------
+        list[ModelType]
+            Up to *limit* entities in ascending primary-key order. An empty
+            list means the walk is finished.
+
+        Raises
+        ------
+        NotImplementedError
+            If the model has a composite primary key. Seeking on one would
+            need tuple comparison against the full key, and returning rows
+            ordered by only its first column would silently skip or repeat
+            rows sharing that value — a wrong answer rather than a slow one.
+        """
+        primary_key = inspect(self.model).primary_key
+        if len(primary_key) != 1:
+            columns = ", ".join(c.name for c in primary_key)
+            raise NotImplementedError(
+                f"{type(self).__name__}.get_multi_after() needs a single-column "
+                f"primary key; {self.model.__name__} has ({columns}). Walk it "
+                "with an explicit keyset statement over the full key instead."
+            )
+
+        pk_column = primary_key[0]
+        stmt = select(self.model).order_by(pk_column.asc()).limit(limit)
+        if after is not None:
+            stmt = stmt.where(pk_column > after)
+
+        result = await session.execute(stmt)
         return list(result.scalars().all())
 
     async def update(

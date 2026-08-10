@@ -966,17 +966,17 @@ class ImageCacheService:
         count_result = await session.execute(select(func.count()).select_from(VideoDB))
         total = count_result.scalar_one()
 
-        # Stream video IDs in 1,000-row batches
+        # Stream video IDs in 1,000-row batches, seeking on the primary key
+        # rather than counting past rows: OFFSET n discards n rows to reach
+        # each window, so a full walk costs O(rows²) (#202, #204).
         batch_size = 1000
-        offset = 0
+        after: str | None = None
 
         while True:
-            result = await session.execute(
-                select(VideoDB.video_id)
-                .order_by(VideoDB.video_id)
-                .offset(offset)
-                .limit(batch_size)
-            )
+            stmt = select(VideoDB.video_id).order_by(VideoDB.video_id).limit(batch_size)
+            if after is not None:
+                stmt = stmt.where(VideoDB.video_id > after)
+            result = await session.execute(stmt)
             batch = result.scalars().all()
             if not batch:
                 break
@@ -1035,7 +1035,8 @@ class ImageCacheService:
                 if delay > 0:
                     await asyncio.sleep(delay)
 
-            offset += batch_size
+            # Advance from the last row returned, not by a fixed stride.
+            after = batch[-1]
 
         return WarmResult(
             downloaded=downloaded,

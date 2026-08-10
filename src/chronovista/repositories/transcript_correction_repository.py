@@ -15,7 +15,7 @@ import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, case, distinct, func, select
+from sqlalchemy import and_, case, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
@@ -571,10 +571,26 @@ class TranscriptCorrectionRepository(
 
         patterns: list[CorrectionPattern] = []
         for row in pairs:
+            # One count per pair, and `limit` is applied after this loop, so
+            # every pair is scanned however few are returned. Filtering the RAW
+            # text/corrected_text columns first gives PostgreSQL an
+            # index-eligible predicate (idx_segments_text_trgm /
+            # idx_segments_corrected_text_trgm); the CASE expression alone is
+            # opaque to those indexes and turns each iteration into a parallel
+            # seq scan of the whole segment corpus.
             remaining_stmt = (
                 select(func.count())
                 .select_from(TranscriptSegmentDB)
-                .where(effective_text.contains(row.original_text))
+                .where(
+                    or_(
+                        TranscriptSegmentDB.text.contains(row.original_text),
+                        TranscriptSegmentDB.corrected_text.contains(row.original_text),
+                    ),
+                    # The super-set is a candidate filter only. This keeps the
+                    # exact semantics: a segment whose raw text matches but
+                    # whose correction removed the phrase is not remaining.
+                    effective_text.contains(row.original_text),
+                )
             )
             remaining_result = await session.execute(remaining_stmt)
             remaining = remaining_result.scalar_one()

@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.main import app
+from chronovista.api.routers.batch_corrections import _PATTERN_TOKENISE_CAP
 from chronovista.models.batch_correction_models import CorrectionPattern
 
 # CRITICAL: This line ensures async tests work with coverage
@@ -162,6 +163,72 @@ class TestGetDiffAnalysis:
         assert data[0]["remaining_matches"] == 3
         assert data[0]["entity_id"] == str(entity_id)
         assert data[0]["entity_name"] == "Johnson"
+
+    @patch(
+        "chronovista.api.routers.batch_corrections._find_entity_by_name",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "chronovista.api.routers.batch_corrections._batch_service",
+        new_callable=MagicMock,
+    )
+    async def test_limit_truncates_the_response(
+        self,
+        mock_service: MagicMock,
+        mock_find_entity: AsyncMock,
+        client: AsyncClient,
+    ) -> None:
+        """`limit` bounds what is returned, now that it no longer bounds
+        what is tokenised.
+
+        Moving it off the pattern fetch would otherwise make it a silent
+        no-op: the endpoint would accept the parameter and ignore it.
+        """
+        patterns = [
+            _make_pattern(original_text=f"err{i}", corrected_text=f"Fix{i}")
+            for i in range(5)
+        ]
+        mock_service.get_patterns = AsyncMock(return_value=patterns)
+        mock_find_entity.return_value = (None, None)
+
+        response = await client.get(self.BASE_URL, params={"limit": 2})
+
+        assert response.status_code == 200
+        assert len(response.json()["data"]) == 2
+
+    @patch(
+        "chronovista.api.routers.batch_corrections._find_entity_by_name",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "chronovista.api.routers.batch_corrections._batch_service",
+        new_callable=MagicMock,
+    )
+    async def test_every_pattern_is_tokenised_regardless_of_limit(
+        self,
+        mock_service: MagicMock,
+        mock_find_entity: AsyncMock,
+        client: AsyncClient,
+    ) -> None:
+        """A small limit must not stop tokens being derived.
+
+        This is the defect the cap replaced: truncating the pattern list
+        before word-level extraction removed tokens from the response that
+        were never computed in the first place, so no amount of paging could
+        reach them.
+        """
+        patterns = [
+            _make_pattern(original_text=f"err{i}", corrected_text=f"Fix{i}")
+            for i in range(5)
+        ]
+        mock_service.get_patterns = AsyncMock(return_value=patterns)
+        mock_find_entity.return_value = (None, None)
+
+        await client.get(self.BASE_URL, params={"limit": 1})
+
+        assert (
+            mock_service.get_patterns.call_args.kwargs["limit"] == _PATTERN_TOKENISE_CAP
+        )
 
     @patch(
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
@@ -315,9 +382,20 @@ class TestGetDiffAnalysis:
         mock_service.get_patterns.assert_awaited_once()
         call_kwargs = mock_service.get_patterns.call_args.kwargs
         assert call_kwargs["min_occurrences"] == 5
-        assert call_kwargs["limit"] == 50
+        # NOT the caller's limit. Truncating patterns before word-level
+        # extraction drops tokens that are never derived at all — measured as
+        # one token missing from the response entirely, because 106 correction
+        # pairs exceeded the default limit of 100. Every pair is tokenised and
+        # `limit` is applied to the response instead.
+        assert call_kwargs["limit"] == _PATTERN_TOKENISE_CAP
         # Always True — token-level filtering happens after word_level_diff
         assert call_kwargs["show_completed"] is True
+        # Always False — this endpoint recomputes remaining matches per token
+        # and never reads the segment-level figure. Asking for it cost ~3.5s
+        # per request and the result was discarded, so this is pinned: the
+        # saving is invisible in the response and nothing else would catch
+        # its loss.
+        assert call_kwargs["with_remaining"] is False
 
     @patch(
         "chronovista.api.routers.batch_corrections._find_entity_by_name",

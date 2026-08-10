@@ -902,7 +902,11 @@ def patterns(
                     _truncate_end(p.original_text, 80),
                     _truncate_end(p.corrected_text, 80),
                     f"{p.occurrences:,}",
-                    f"{p.remaining_matches:,}",
+                    # This command asks for the counts, so they are present.
+                    # An em dash rather than 0 if that ever changes: unknown
+                    # and none-remaining are different facts, and printing 0
+                    # for the first would read as "fully corrected".
+                    "—" if p.remaining_matches is None else f"{p.remaining_matches:,}",
                     suggested,
                 )
 

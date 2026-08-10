@@ -1438,6 +1438,7 @@ class BatchCorrectionService:
         min_occurrences: int = 2,
         limit: int = 25,
         show_completed: bool = False,
+        with_remaining: bool = True,
     ) -> list[CorrectionPattern]:
         """
         Discover recurring correction patterns.
@@ -1452,11 +1453,17 @@ class BatchCorrectionService:
             Maximum patterns to return (default 25).
         show_completed : bool, optional
             Include patterns with zero remaining matches (default False).
+        with_remaining : bool, optional
+            If ``False``, skip the per-pair remaining-match counts — the
+            dominant cost of this call — leaving ``remaining_matches`` as
+            ``None`` and ordering by ``occurrences``. Callers that do not read
+            the count should pass ``False``.
 
         Returns
         -------
         list[CorrectionPattern]
-            Patterns sorted by remaining_matches DESC.
+            Patterns sorted by remaining_matches DESC, or by occurrences DESC
+            when ``with_remaining=False``.
         """
         _start_time = time.monotonic()
         logger.info(
@@ -1471,6 +1478,7 @@ class BatchCorrectionService:
             min_occurrences=min_occurrences,
             limit=limit,
             show_completed=show_completed,
+            with_remaining=with_remaining,
         )
 
         _elapsed = time.monotonic() - _start_time

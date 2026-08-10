@@ -1771,6 +1771,10 @@ class TestGetPatterns:
             min_occurrences=2,
             limit=25,
             show_completed=False,
+            # Defaults to counting: opting out is the caller's decision, and
+            # a service that silently skipped it would change every existing
+            # caller's results.
+            with_remaining=True,
         )
         assert len(result) == 1
         assert result[0].original_text == "teh"
@@ -1809,6 +1813,7 @@ class TestGetPatterns:
             min_occurrences=5,
             limit=10,
             show_completed=True,
+            with_remaining=True,
         )
 
     async def test_empty_patterns(
@@ -1880,7 +1885,7 @@ class TestGetPatterns:
         mock_session: AsyncMock,
         mock_correction_repo: AsyncMock,
     ) -> None:
-        """Default parameters are min_occurrences=2, limit=25, show_completed=False."""
+        """Defaults: min_occurrences=2, limit=25, show_completed=False, counting on."""
         mock_correction_repo.get_correction_patterns.return_value = []
 
         await service.get_patterns(mock_session)
@@ -1890,6 +1895,7 @@ class TestGetPatterns:
             min_occurrences=2,
             limit=25,
             show_completed=False,
+            with_remaining=True,
         )
 
     async def test_show_completed_true(

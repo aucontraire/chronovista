@@ -504,6 +504,7 @@ class TranscriptCorrectionRepository(
         min_occurrences: int = 2,
         limit: int = 25,
         show_completed: bool = False,
+        with_remaining: bool = True,
     ) -> list[CorrectionPattern]:
         """
         Discover recurring correction patterns across all transcripts.
@@ -514,6 +515,13 @@ class TranscriptCorrectionRepository(
         by scanning transcript segments whose *effective text* (respecting
         ``has_correction``) still contains the original text — i.e. segments
         that have not yet been corrected.
+
+        That count is the expensive part: one query per pair, and ``limit`` is
+        applied afterwards, so every pair is counted however few are returned.
+        Measured over 106 pairs on a ~2M-segment corpus it was 4.68s against
+        0.13s for the grouping query — and 101 of those 106 counts came back
+        zero. Callers that never read ``remaining_matches`` should pass
+        ``with_remaining=False``.
 
         Parameters
         ----------
@@ -527,13 +535,32 @@ class TranscriptCorrectionRepository(
         show_completed : bool, optional
             If ``False`` (default), exclude patterns where
             ``remaining_matches == 0`` (all instances already corrected).
+        with_remaining : bool, optional
+            If ``True`` (default), count remaining matches per pair and order
+            by that count. If ``False``, skip the counts entirely, leave
+            ``remaining_matches`` as ``None`` and order by ``occurrences``.
 
         Returns
         -------
         list[CorrectionPattern]
-            Patterns sorted by ``remaining_matches`` DESC (highest-impact
-            first), limited to *limit* rows.
+            Patterns limited to *limit* rows, sorted by ``remaining_matches``
+            DESC when it was computed and by ``occurrences`` DESC otherwise.
+
+        Raises
+        ------
+        ValueError
+            If ``show_completed=False`` is combined with
+            ``with_remaining=False``. Excluding fully-applied patterns is a
+            filter on a count that would not be computed, so the combination
+            has no coherent meaning and silently returning everything would
+            be worse than refusing.
         """
+        if not with_remaining and not show_completed:
+            raise ValueError(
+                "show_completed=False requires with_remaining=True: patterns "
+                "cannot be filtered by a remaining-match count that is not "
+                "computed."
+            )
         revert_value = CorrectionType.REVERT.value
 
         # ---- Step 1: grouped pairs with occurrence counts ----
@@ -561,6 +588,24 @@ class TranscriptCorrectionRepository(
 
         if not pairs:
             return []
+
+        if not with_remaining:
+            # The whole cost of this method is the loop below. Skipping it is
+            # not an optimisation of the counting — it is not counting.
+            # Ordering falls back to `occurrences`, which the grouping query
+            # already produced, and which does not tie 95% of rows the way a
+            # remaining-match count does once most corrections are applied.
+            uncounted: list[CorrectionPattern] = [
+                CorrectionPattern(
+                    original_text=row.original_text,
+                    corrected_text=row.corrected_text,
+                    occurrences=row.occurrences,
+                    remaining_matches=None,
+                )
+                for row in pairs
+            ]
+            uncounted.sort(key=lambda p: p.occurrences, reverse=True)
+            return uncounted[:limit]
 
         # ---- Step 2: remaining_matches for each pair ----
         # Build the effective text expression for transcript segments
@@ -607,8 +652,10 @@ class TranscriptCorrectionRepository(
                 )
             )
 
-        # Sort by remaining_matches DESC, then limit
-        patterns.sort(key=lambda p: p.remaining_matches, reverse=True)
+        # Sort by remaining_matches DESC, then limit. Every pattern on this
+        # path has a computed count; the `or 0` satisfies the optional type
+        # without inventing an ordering for a value that cannot occur here.
+        patterns.sort(key=lambda p: p.remaining_matches or 0, reverse=True)
         return patterns[:limit]
 
     async def get_by_batch_id(

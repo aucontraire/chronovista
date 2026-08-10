@@ -359,6 +359,10 @@ class TestCrossSegmentDiscoveryDiscover:
             min_occurrences=3,
             limit=200,
             show_completed=True,
+            # Only `original_text` is read from these patterns, so the
+            # per-pair remaining-match counts would be computed and thrown
+            # away. Pinned here because the saving is invisible in the result.
+            with_remaining=False,
         )
 
     # (b) min_corrections forwarded to get_patterns

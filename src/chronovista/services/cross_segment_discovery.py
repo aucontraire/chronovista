@@ -863,11 +863,14 @@ class CrossSegmentDiscovery:
         list[CrossSegmentCandidate]
             Candidates with ``discovery_source='correction_pattern'``.
         """
+        # with_remaining=False: only `original_text` is read below, so the
+        # per-pair remaining-match counts would be computed and discarded.
         patterns = await self._batch_service.get_patterns(
             session,
             min_occurrences=min_corrections,
             limit=200,
             show_completed=True,
+            with_remaining=False,
         )
 
         if not patterns:

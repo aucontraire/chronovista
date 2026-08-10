@@ -801,6 +801,19 @@ class UserVideo(Base):
     # Relationships
     video: Mapped[Video] = relationship("Video", back_populates="user_videos")
 
+    __table_args__ = (
+        # The primary key is (user_id, video_id), so a lookup keyed on
+        # video_id alone cannot use it — the leading column is absent from the
+        # predicate. The playlist detail page batch-loads the watched flag for
+        # its current page with `WHERE video_id IN (...)`, which therefore
+        # seq-scanned the whole table to resolve at most 100 ids.
+        #
+        # Feature 060 sharpened this: it collapsed watch history to a single
+        # identity, so `user_id` now has cardinality 1 and the primary key
+        # discriminates nothing at all.
+        Index("ix_user_videos_video_id", "video_id"),
+    )
+
 
 class AppIdentity(Base):
     """Singleton row holding the canonical local-user identity (Feature 060).

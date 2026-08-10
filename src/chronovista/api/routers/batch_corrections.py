@@ -9,7 +9,7 @@ reverting entire batches.
 import uuid
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
@@ -563,14 +563,35 @@ async def get_diff_analysis(
     # Build response items with entity enrichment.
     results: list[DiffErrorPatternResponse] = []
     for (error_token, canonical_form), freq in aggregated.items():
-        # Token-level remaining_matches query
-        remaining_stmt = (
-            select(func.count())
-            .select_from(TranscriptSegmentDB)
-            .where(effective_text.contains(error_token))
-        )
-        remaining_result = await session.execute(remaining_stmt)
-        remaining = remaining_result.scalar_one()
+        # An empty error_token reaches here whenever the canonical form is
+        # non-empty (the skip above requires *both* to be empty), and
+        # `contains("")` compiles to LIKE '%%', which matches every row in the
+        # corpus. That is both a meaningless count and the single most
+        # expensive query this loop can issue.
+        if not error_token:
+            remaining = 0
+        else:
+            remaining_stmt = (
+                select(func.count())
+                .select_from(TranscriptSegmentDB)
+                .where(
+                    # Index-eligible super-set on the RAW columns so PostgreSQL
+                    # can use the pg_trgm GIN indexes (idx_segments_text_trgm /
+                    # idx_segments_corrected_text_trgm). A CASE expression is
+                    # opaque to them and forces a parallel seq scan of ~2M rows
+                    # — once per token. Same fix as #150.
+                    or_(
+                        TranscriptSegmentDB.text.contains(error_token),
+                        TranscriptSegmentDB.corrected_text.contains(error_token),
+                    ),
+                    # Exact predicate, re-checked against the super-set. A
+                    # segment whose raw text matches but whose correction
+                    # removed the token must not be counted, so this stays.
+                    effective_text.contains(error_token),
+                )
+            )
+            remaining_result = await session.execute(remaining_stmt)
+            remaining = remaining_result.scalar_one()
 
         # Apply show_completed filter at the token level
         if not show_completed and remaining == 0:

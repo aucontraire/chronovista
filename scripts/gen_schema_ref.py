@@ -75,6 +75,13 @@ GROUPS: list[tuple[str, str, list[str]]] = [
             "entity_operation_logs",
         ],
     ),
+    (
+        "Recovery Provenance",
+        "Append-only record of which archive sources contributed metadata to a "
+        "deleted video or channel, so one recovery pass cannot erase another's "
+        "attribution.",
+        ["video_recovery_sources", "channel_recovery_sources"],
+    ),
 ]
 
 

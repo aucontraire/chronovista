@@ -61,6 +61,7 @@ erDiagram
 | **Topics** | `topic_categories`, `topic_aliases`, `video_topics`, `channel_topics` | YouTube's topic taxonomy and its associations |
 | **Tags and Normalization** | `video_tags`, `channel_keywords`, `canonical_tags`, `tag_aliases`, `tag_operation_logs` | Raw tags plus the canonical layer that collapses spelling variants |
 | **Named Entities** | `named_entities`, `entity_aliases`, `entity_mentions`, `entity_operation_logs` | Curated entities, their aliases, and every mention found |
+| **Recovery Provenance** | `video_recovery_sources`, `channel_recovery_sources` | Which archive sources contributed metadata to a deleted video or channel — append-only, so one pass cannot erase another's attribution ([why](recovery-provenance.md)) |
 
 ## Design Decisions
 

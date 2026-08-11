@@ -11,7 +11,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -26,6 +27,78 @@ from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Video as VideoDB
 
 logger = logging.getLogger(__name__)
+
+
+def iter_cached_files(
+    directory: Path, suffix: str, *, recursive: bool
+) -> Iterator[tuple[Path, os.stat_result]]:
+    """Yield ``(path, stat)`` for every file under *directory* ending in *suffix*.
+
+    Uses ``os.walk`` / ``os.scandir`` rather than ``pathlib``'s ``glob`` and
+    ``rglob``, and tolerates entries that vanish mid-iteration.
+
+    WHY NOT rglob
+    -------------
+    Before Python 3.13, ``pathlib``'s recursive glob raises ``FileNotFoundError``
+    when a directory entry disappears between enumeration and the follow-up
+    ``stat`` (CPython bpo-33428, fixed by GH-116380). On Docker's overlay2
+    filesystem that race fires readily: the video cache holds roughly 16,000
+    thumbnails across ~1,439 sharded prefix directories, and the failure landed
+    on a different random directory each run — the signature of a race rather
+    than a corrupt tree. The container runs Python 3.11.
+
+    ``os.walk`` swallows errors from its own ``scandir`` iteration and keeps
+    going, but a ``stat`` on a file that has since been removed still raises, so
+    that call is guarded here too. A vanished file is skipped rather than
+    counted at zero bytes: cache entries are evicted concurrently, and a stats
+    call that crashes is worse than one that omits a file being deleted as it
+    reads.
+
+    Parameters
+    ----------
+    directory : Path
+        Root to scan. A non-directory yields nothing.
+    suffix : str
+        Filename suffix to match, e.g. ``".jpg"``.
+    recursive : bool
+        Descend into subdirectories. The video cache is sharded by prefix and
+        needs this; the channel cache is flat and does not.
+
+    Yields
+    ------
+    tuple[Path, os.stat_result]
+        Each matching file and its stat, already resolved so callers need no
+        second syscall that could fail on its own.
+    """
+    if not directory.is_dir():
+        return
+
+    if recursive:
+        for root, _dirs, files in os.walk(directory):
+            for name in files:
+                if not name.endswith(suffix):
+                    continue
+                path = Path(root) / name
+                try:
+                    yield path, os.stat(path)
+                except OSError:
+                    continue
+        return
+
+    try:
+        entries = list(os.scandir(directory))
+    except OSError:
+        return
+    for entry in entries:
+        if not entry.name.endswith(suffix):
+            continue
+        try:
+            if not entry.is_file():
+                continue
+            yield Path(entry.path), entry.stat()
+        except OSError:
+            continue
+
 
 # ---------------------------------------------------------------------------
 # Maximum image size: 5 MB (FR-029)
@@ -1078,31 +1151,25 @@ class ImageCacheService:
             if newest_mtime is None or mtime > newest_mtime:
                 newest_mtime = mtime
 
-        # Scan channels directory
+        # Scan channels directory (flat)
         channels_dir = self._config.channels_dir
-        if channels_dir.is_dir():
-            for path in channels_dir.glob("*.jpg"):
-                if path.is_file():
-                    channel_count += 1
-                    stat = path.stat()
-                    total_size_bytes += stat.st_size
-                    _update_mtime(stat.st_mtime)
-            for path in channels_dir.glob("*.missing"):
-                if path.is_file():
-                    channel_missing_count += 1
+        for _path, stat in iter_cached_files(channels_dir, ".jpg", recursive=False):
+            channel_count += 1
+            total_size_bytes += stat.st_size
+            _update_mtime(stat.st_mtime)
+        for _path, _stat in iter_cached_files(
+            channels_dir, ".missing", recursive=False
+        ):
+            channel_missing_count += 1
 
-        # Scan videos directory (recursive due to sharding)
+        # Scan videos directory (recursive due to prefix sharding)
         videos_dir = self._config.videos_dir
-        if videos_dir.is_dir():
-            for path in videos_dir.rglob("*.jpg"):
-                if path.is_file():
-                    video_count += 1
-                    stat = path.stat()
-                    total_size_bytes += stat.st_size
-                    _update_mtime(stat.st_mtime)
-            for path in videos_dir.rglob("*.missing"):
-                if path.is_file():
-                    video_missing_count += 1
+        for _path, stat in iter_cached_files(videos_dir, ".jpg", recursive=True):
+            video_count += 1
+            total_size_bytes += stat.st_size
+            _update_mtime(stat.st_mtime)
+        for _path, _stat in iter_cached_files(videos_dir, ".missing", recursive=True):
+            video_missing_count += 1
 
         oldest_file = (
             datetime.fromtimestamp(oldest_mtime) if oldest_mtime is not None else None
@@ -1176,7 +1243,7 @@ class ImageCacheService:
         directory : Path
             Directory to purge.
         recursive : bool
-            If ``True``, use ``rglob`` to scan subdirectories.
+            If ``True``, descend into subdirectories.
 
         Returns
         -------
@@ -1184,25 +1251,21 @@ class ImageCacheService:
             Total bytes freed.
         """
         bytes_freed = 0
-        if not directory.is_dir():
-            return bytes_freed
 
-        glob_fn = directory.rglob if recursive else directory.glob
-
-        for pattern in ("*.jpg", "*.missing"):
-            for path in glob_fn(pattern):
-                if not path.is_file():
-                    continue
+        for suffix in (".jpg", ".missing"):
+            for path, stat in iter_cached_files(directory, suffix, recursive=recursive):
                 try:
-                    size = path.stat().st_size
                     path.unlink()
-                    bytes_freed += size
                 except OSError:
                     logger.warning(
                         "Failed to delete cached file: %s",
                         path,
                         exc_info=True,
                     )
+                    continue
+                # Counted only after the unlink succeeds — the previous version
+                # could add a file's size and then fail to remove it.
+                bytes_freed += stat.st_size
 
         return bytes_freed
 

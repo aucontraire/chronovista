@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from datetime import datetime
 
@@ -125,59 +124,21 @@ async def get_cache_status() -> ApiResponse[CacheStatusResponse]:
     ApiResponse[CacheStatusResponse]
         Cache statistics including counts, size, and file timestamps.
     """
-    # ImageCacheService.get_stats() uses pathlib.rglob which fails on Docker
-    # overlayfs with many prefix directories.  Use os.walk instead.
-    channel_count = 0
-    video_count = 0
-    total_size_bytes = 0
-    oldest_mtime: float | None = None
-    newest_mtime: float | None = None
-
-    def _update_mtime(mtime: float) -> None:
-        nonlocal oldest_mtime, newest_mtime
-        if oldest_mtime is None or mtime < oldest_mtime:
-            oldest_mtime = mtime
-        if newest_mtime is None or mtime > newest_mtime:
-            newest_mtime = mtime
-
-    channels_dir = _image_cache_config.channels_dir
-    if channels_dir.is_dir():
-        for entry in os.scandir(channels_dir):
-            if entry.name.endswith(".jpg") and entry.is_file():
-                channel_count += 1
-                stat = entry.stat()
-                total_size_bytes += stat.st_size
-                _update_mtime(stat.st_mtime)
-
-    videos_dir = _image_cache_config.videos_dir
-    if videos_dir.is_dir():
-        for root, _dirs, files in os.walk(videos_dir):
-            for fname in files:
-                if fname.endswith(".jpg"):
-                    video_count += 1
-                    fpath = os.path.join(root, fname)
-                    try:
-                        stat = os.stat(fpath)
-                        total_size_bytes += stat.st_size
-                        _update_mtime(stat.st_mtime)
-                    except OSError:
-                        pass
-
-    oldest_file = (
-        datetime.fromtimestamp(oldest_mtime) if oldest_mtime is not None else None
-    )
-    newest_file = (
-        datetime.fromtimestamp(newest_mtime) if newest_mtime is not None else None
-    )
+    # This endpoint used to walk the cache itself, because
+    # ImageCacheService.get_stats() reached for pathlib's rglob, which raises
+    # FileNotFoundError on Docker overlay2 when an entry disappears mid-scan.
+    # The service now walks with os.walk and tolerates that, so there is one
+    # implementation again rather than two that could drift apart.
+    stats = await _image_cache_service.get_stats()
 
     response = CacheStatusResponse(
-        channel_count=channel_count,
-        video_count=video_count,
-        total_count=channel_count + video_count,
-        total_size_bytes=total_size_bytes,
-        total_size_display=_format_size_display(total_size_bytes),
-        oldest_file=oldest_file,
-        newest_file=newest_file,
+        channel_count=stats.channel_count,
+        video_count=stats.video_count,
+        total_count=stats.channel_count + stats.video_count,
+        total_size_bytes=stats.total_size_bytes,
+        total_size_display=_format_size_display(stats.total_size_bytes),
+        oldest_file=stats.oldest_file,
+        newest_file=stats.newest_file,
     )
     return ApiResponse[CacheStatusResponse](data=response)
 

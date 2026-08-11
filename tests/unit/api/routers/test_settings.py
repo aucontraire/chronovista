@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -19,6 +19,7 @@ from chronovista.api.deps import get_db, require_auth
 from chronovista.api.main import app
 from chronovista.api.schemas.sync import SyncOperationType
 from chronovista.models.enums import LanguageCode
+from chronovista.services.image_cache import CacheStats
 
 # CRITICAL: This line ensures async tests work with coverage
 
@@ -190,278 +191,150 @@ class TestGetSupportedLanguages:
 
 
 class TestGetCacheStatus:
-    """Tests for GET /api/v1/settings/cache endpoint."""
+    """Tests for GET /api/v1/settings/cache endpoint.
+
+    This endpoint used to walk the cache directories itself, because
+    ``ImageCacheService.get_stats()`` reached for ``pathlib``'s ``rglob``,
+    which raises ``FileNotFoundError`` on Docker overlay2 when an entry
+    disappears mid-scan (#101). The service now walks with ``os.walk`` and
+    tolerates that, so the router delegates and the duplicate is gone.
+
+    These tests moved with it. They previously patched ``os.scandir``,
+    ``os.walk``, ``os.path.join`` and ``os.stat`` to drive the router's own
+    loop; that loop no longer exists, and mocking the ``os`` module to test a
+    router was never testing much anyway. What the router owes its caller now
+    is the mapping from ``CacheStats`` to ``CacheStatusResponse``, which is
+    what these assert. The walking itself is covered against a real directory
+    tree in ``tests/unit/services/test_image_cache_walk.py``.
+    """
+
+    @staticmethod
+    def _stats(**overrides: object) -> CacheStats:
+        base: dict[str, object] = {
+            "channel_count": 0,
+            "channel_missing_count": 0,
+            "video_count": 0,
+            "video_missing_count": 0,
+            "total_size_bytes": 0,
+            "oldest_file": None,
+            "newest_file": None,
+        }
+        base.update(overrides)
+        return CacheStats(**base)  # type: ignore[arg-type]
+
+    def _patched(self, stats: CacheStats) -> object:
+        return patch(
+            "chronovista.api.routers.settings._image_cache_service.get_stats",
+            new=AsyncMock(return_value=stats),
+        )
 
     async def test_returns_200_with_api_response_envelope(
         self, async_client: AsyncClient
     ) -> None:
-        """Test endpoint returns 200 with data wrapped in ApiResponse envelope."""
-        mock_entry = MagicMock()
-        mock_entry.name = "UCtest.jpg"
-        mock_entry.is_file.return_value = True
-        mock_stat = MagicMock()
-        mock_stat.st_size = 1024
-        mock_stat.st_mtime = 1700000000.0
-        mock_entry.stat.return_value = mock_stat
-
-        with (
-            patch(
-                "chronovista.api.routers.settings._image_cache_config"
-            ) as mock_config,
-            patch("os.scandir", return_value=[mock_entry]),
-            patch("os.walk", return_value=[]),
-        ):
-            mock_config.channels_dir.is_dir.return_value = True
-            mock_config.videos_dir.is_dir.return_value = False
-
+        with self._patched(self._stats(channel_count=1, total_size_bytes=1024)):
             response = await async_client.get("/api/v1/settings/cache")
 
         assert response.status_code == 200
-        body = response.json()
-        assert "data" in body
+        assert "data" in response.json()
 
     async def test_response_contains_all_required_fields(
         self, async_client: AsyncClient
     ) -> None:
-        """Test cache status response includes all required fields."""
-        with (
-            patch(
-                "chronovista.api.routers.settings._image_cache_config"
-            ) as mock_config,
-            patch("os.scandir", return_value=[]),
-            patch("os.walk", return_value=[]),
-        ):
-            mock_config.channels_dir.is_dir.return_value = False
-            mock_config.videos_dir.is_dir.return_value = False
-
+        with self._patched(self._stats()):
             response = await async_client.get("/api/v1/settings/cache")
 
-        assert response.status_code == 200
         data = response.json()["data"]
-        required_fields = [
+        for field in (
             "channel_count",
             "video_count",
             "total_count",
             "total_size_bytes",
             "total_size_display",
-        ]
-        for field in required_fields:
-            assert field in data, f"Missing required field: {field}"
+            "oldest_file",
+            "newest_file",
+        ):
+            assert field in data, f"missing field: {field}"
 
-    async def test_empty_cache_directories_returns_zero_counts(
+    async def test_empty_cache_returns_zero_counts(
         self, async_client: AsyncClient
     ) -> None:
-        """Test that empty cache directories result in zero counts."""
-        with (
-            patch(
-                "chronovista.api.routers.settings._image_cache_config"
-            ) as mock_config,
-            patch("os.scandir", return_value=[]),
-            patch("os.walk", return_value=[]),
-        ):
-            mock_config.channels_dir.is_dir.return_value = True
-            mock_config.videos_dir.is_dir.return_value = True
-
+        with self._patched(self._stats()):
             response = await async_client.get("/api/v1/settings/cache")
 
-        assert response.status_code == 200
         data = response.json()["data"]
         assert data["channel_count"] == 0
         assert data["video_count"] == 0
         assert data["total_count"] == 0
         assert data["total_size_bytes"] == 0
 
-    async def test_non_existent_dirs_return_zero_counts(
+    async def test_counts_are_passed_through_unchanged(
         self, async_client: AsyncClient
     ) -> None:
-        """Test that non-existent cache directories result in zero counts."""
-        with patch(
-            "chronovista.api.routers.settings._image_cache_config"
-        ) as mock_config:
-            mock_config.channels_dir.is_dir.return_value = False
-            mock_config.videos_dir.is_dir.return_value = False
-
-            response = await async_client.get("/api/v1/settings/cache")
-
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data["channel_count"] == 0
-        assert data["video_count"] == 0
-        assert data["total_count"] == 0
-        assert data["total_size_bytes"] == 0
-
-    async def test_channel_images_counted_correctly(
-        self, async_client: AsyncClient
-    ) -> None:
-        """Test that .jpg files in channels dir are counted correctly."""
-        mtime = 1700000000.0
-
-        def _make_entry(name: str, is_jpg: bool = True) -> MagicMock:
-            entry = MagicMock()
-            entry.name = name
-            entry.is_file.return_value = is_jpg
-            stat = MagicMock()
-            stat.st_size = 2048
-            stat.st_mtime = mtime
-            entry.stat.return_value = stat
-            return entry
-
-        # Two valid .jpg files, one non-jpg that should be skipped
-        entries = [
-            _make_entry("UCchannel1.jpg"),
-            _make_entry("UCchannel2.jpg"),
-            _make_entry("UCchannel3.png"),  # not .jpg — should be skipped
-        ]
-
-        with (
-            patch(
-                "chronovista.api.routers.settings._image_cache_config"
-            ) as mock_config,
-            patch("os.scandir", return_value=entries),
-            patch("os.walk", return_value=[]),
+        with self._patched(
+            self._stats(channel_count=2, video_count=3, total_size_bytes=4096)
         ):
-            mock_config.channels_dir.is_dir.return_value = True
-            mock_config.videos_dir.is_dir.return_value = False
-
             response = await async_client.get("/api/v1/settings/cache")
 
-        assert response.status_code == 200
         data = response.json()["data"]
         assert data["channel_count"] == 2
-        assert data["video_count"] == 0
-        assert data["total_count"] == 2
-        assert data["total_size_bytes"] == 4096  # 2 * 2048
-
-    async def test_video_images_counted_correctly(
-        self, async_client: AsyncClient
-    ) -> None:
-        """Test that .jpg files in videos dir subtree are counted correctly."""
-        mtime = 1700000000.0
-
-        walk_output = [
-            ("/videos/ab", ["c"], ["abcvideo1.jpg", "abcvideo2.jpg"]),
-            ("/videos/cd", [], ["cdvideo3.jpg"]),
-        ]
-
-        video_stat = MagicMock()
-        video_stat.st_size = 4096
-        video_stat.st_mtime = mtime
-
-        with (
-            patch(
-                "chronovista.api.routers.settings._image_cache_config"
-            ) as mock_config,
-            patch("os.scandir", return_value=[]),
-            patch("os.walk", return_value=walk_output),
-            patch("os.path.join", side_effect=lambda *args: "/".join(args)),
-            patch("os.stat", return_value=video_stat),
-        ):
-            mock_config.channels_dir.is_dir.return_value = False
-            mock_config.videos_dir.is_dir.return_value = True
-
-            response = await async_client.get("/api/v1/settings/cache")
-
-        assert response.status_code == 200
-        data = response.json()["data"]
         assert data["video_count"] == 3
-        assert data["channel_count"] == 0
-        assert data["total_count"] == 3
+        assert data["total_size_bytes"] == 4096
 
-    async def test_total_count_equals_sum_of_channel_and_video(
+    async def test_total_count_is_the_sum_of_both(
         self, async_client: AsyncClient
     ) -> None:
-        """Test total_count equals channel_count + video_count."""
-        mtime = 1700000000.0
-
-        channel_entry = MagicMock()
-        channel_entry.name = "UCtest.jpg"
-        channel_entry.is_file.return_value = True
-        ch_stat = MagicMock()
-        ch_stat.st_size = 1024
-        ch_stat.st_mtime = mtime
-        channel_entry.stat.return_value = ch_stat
-
-        walk_output: list[tuple[str, list[str], list[str]]] = [
-            ("/videos/ab", [], ["abcvideo.jpg"])
-        ]
-
-        video_stat = MagicMock()
-        video_stat.st_size = 2048
-        video_stat.st_mtime = mtime
-
-        with (
-            patch(
-                "chronovista.api.routers.settings._image_cache_config"
-            ) as mock_config,
-            patch("os.scandir", return_value=[channel_entry]),
-            patch("os.walk", return_value=walk_output),
-            patch("os.path.join", side_effect=lambda *args: "/".join(args)),
-            patch("os.stat", return_value=video_stat),
-        ):
-            mock_config.channels_dir.is_dir.return_value = True
-            mock_config.videos_dir.is_dir.return_value = True
-
+        """The one figure the router derives rather than forwards."""
+        with self._patched(self._stats(channel_count=7, video_count=11)):
             response = await async_client.get("/api/v1/settings/cache")
 
-        assert response.status_code == 200
         data = response.json()["data"]
-        assert data["total_count"] == data["channel_count"] + data["video_count"]
+        assert data["total_count"] == 18
+
+    async def test_missing_markers_are_not_counted_as_cached_images(
+        self, async_client: AsyncClient
+    ) -> None:
+        """`.missing` markers record a failed fetch, not a cached image.
+
+        `CacheStatusResponse` has no field for them, so the risk is that a
+        future mapping quietly folds them into the counts and inflates what
+        the Settings page reports as cached.
+        """
+        with self._patched(
+            self._stats(
+                channel_count=1,
+                video_count=1,
+                channel_missing_count=50,
+                video_missing_count=60,
+            )
+        ):
+            response = await async_client.get("/api/v1/settings/cache")
+
+        data = response.json()["data"]
+        assert data["channel_count"] == 1
+        assert data["video_count"] == 1
         assert data["total_count"] == 2
 
-    async def test_oldest_and_newest_file_are_null_when_cache_empty(
+    async def test_size_display_is_human_readable(
         self, async_client: AsyncClient
     ) -> None:
-        """Test oldest_file and newest_file are null when no cached images exist."""
-        with (
-            patch(
-                "chronovista.api.routers.settings._image_cache_config"
-            ) as mock_config,
-            patch("os.scandir", return_value=[]),
-            patch("os.walk", return_value=[]),
-        ):
-            mock_config.channels_dir.is_dir.return_value = True
-            mock_config.videos_dir.is_dir.return_value = True
-
+        with self._patched(self._stats(total_size_bytes=2 * 1024 * 1024)):
             response = await async_client.get("/api/v1/settings/cache")
 
-        assert response.status_code == 200
-        data = response.json()["data"]
-        assert data.get("oldest_file") is None
-        assert data.get("newest_file") is None
-
-    async def test_size_display_uses_human_readable_format(
-        self, async_client: AsyncClient
-    ) -> None:
-        """Test total_size_display is a human-readable string (not raw bytes)."""
-        mtime = 1700000000.0
-
-        entry = MagicMock()
-        entry.name = "UCtest.jpg"
-        entry.is_file.return_value = True
-        stat = MagicMock()
-        # 2 MB
-        stat.st_size = 2 * 1024 * 1024
-        stat.st_mtime = mtime
-        entry.stat.return_value = stat
-
-        with (
-            patch(
-                "chronovista.api.routers.settings._image_cache_config"
-            ) as mock_config,
-            patch("os.scandir", return_value=[entry]),
-            patch("os.walk", return_value=[]),
-        ):
-            mock_config.channels_dir.is_dir.return_value = True
-            mock_config.videos_dir.is_dir.return_value = False
-
-            response = await async_client.get("/api/v1/settings/cache")
-
-        assert response.status_code == 200
-        data = response.json()["data"]
-        display = data["total_size_display"]
+        display = response.json()["data"]["total_size_display"]
         assert isinstance(display, str)
-        # 2 MB should be represented with "MB" suffix
         assert "MB" in display, f"Expected MB in display string, got: {display}"
+
+    async def test_timestamps_are_forwarded(self, async_client: AsyncClient) -> None:
+        oldest = datetime(2026, 1, 2, 3, 4, 5)
+        newest = datetime(2026, 6, 7, 8, 9, 10)
+        with self._patched(self._stats(oldest_file=oldest, newest_file=newest)):
+            response = await async_client.get("/api/v1/settings/cache")
+
+        data = response.json()["data"]
+        assert data["oldest_file"] is not None
+        assert data["newest_file"] is not None
+        assert data["oldest_file"].startswith("2026-01-02")
+        assert data["newest_file"].startswith("2026-06-07")
 
     async def test_requires_authentication(
         self, async_client_no_auth: AsyncClient
@@ -474,11 +347,6 @@ class TestGetCacheStatus:
             response = await async_client_no_auth.get("/api/v1/settings/cache")
 
         assert response.status_code == 401
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# DELETE /settings/cache Tests (auth required)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class TestClearCache:

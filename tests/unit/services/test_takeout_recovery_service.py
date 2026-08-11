@@ -61,12 +61,12 @@ class TestRecoverFromHistoricalTakeouts:
     def mock_repositories(self) -> tuple[MagicMock, MagicMock]:
         """Create mock video and channel repositories."""
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(return_value=[])
+        video_repo.get_multi_after = AsyncMock(return_value=[])
         video_repo.update = AsyncMock()
 
         channel_repo = MagicMock()
         channel_repo.get = AsyncMock(return_value=None)
-        channel_repo.get_multi = AsyncMock(return_value=[])
+        channel_repo.get_multi_after = AsyncMock(return_value=[])
         channel_repo.create = AsyncMock()
         channel_repo.update = AsyncMock()
 
@@ -239,7 +239,7 @@ class TestRecoverVideos:
         mock_video.channel_id = "UCplaceholder"
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
         video_repo.update = AsyncMock()
 
         channel_repo = MagicMock()
@@ -281,7 +281,7 @@ class TestRecoverVideos:
         mock_video.channel_id = "UCreal"  # Has channel_id already
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
 
         service = TakeoutRecoveryService(
             video_repository=video_repo,
@@ -319,7 +319,7 @@ class TestRecoverVideos:
         mock_channel.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
         video_repo.update = AsyncMock()
 
         channel_repo = MagicMock()
@@ -367,7 +367,7 @@ class TestRecoverVideos:
         mock_channel.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
         video_repo.update = AsyncMock()
 
         channel_repo = MagicMock()
@@ -412,7 +412,7 @@ class TestRecoverVideos:
         mock_video.channel_id = None  # NULL channel_id
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
         video_repo.update = AsyncMock()
 
         channel_repo = MagicMock()
@@ -453,7 +453,7 @@ class TestRecoverVideos:
         mock_video.title = "[Placeholder] Video missing123"
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
 
         service = TakeoutRecoveryService(
             video_repository=video_repo,
@@ -478,7 +478,7 @@ class TestRecoverVideos:
         mock_video.channel_id = None
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
         video_repo.update = AsyncMock()
 
         service = TakeoutRecoveryService(
@@ -690,7 +690,7 @@ class TestCountPlaceholders:
         ]
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[mock_videos, []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[mock_videos, []])
 
         service = TakeoutRecoveryService(
             video_repository=video_repo,
@@ -710,7 +710,7 @@ class TestCountPlaceholders:
         ]
 
         channel_repo = MagicMock()
-        channel_repo.get_multi = AsyncMock(side_effect=[mock_channels, []])
+        channel_repo.get_multi_after = AsyncMock(side_effect=[mock_channels, []])
 
         service = TakeoutRecoveryService(
             video_repository=MagicMock(),
@@ -724,10 +724,10 @@ class TestCountPlaceholders:
     async def test_count_empty_database(self, mock_session: AsyncMock) -> None:
         """Test counting placeholders in empty database."""
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(return_value=[])
+        video_repo.get_multi_after = AsyncMock(return_value=[])
 
         channel_repo = MagicMock()
-        channel_repo.get_multi = AsyncMock(return_value=[])
+        channel_repo.get_multi_after = AsyncMock(return_value=[])
 
         service = TakeoutRecoveryService(
             video_repository=video_repo,
@@ -770,7 +770,7 @@ class TestRecoveryNeverSetsDeletedFlag:
         )  # Video is not deleted initially
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
         video_repo.update = AsyncMock()
 
         channel_repo = MagicMock()
@@ -827,7 +827,7 @@ class TestRecoveryNeverSetsDeletedFlag:
         )  # Previously marked as deleted
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
         video_repo.update = AsyncMock()
 
         channel_repo = MagicMock()
@@ -877,7 +877,7 @@ class TestRecoveryNeverSetsDeletedFlag:
         """Test that new videos created from recovery have availability_status=False."""
         # No videos in database initially
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(return_value=[])
+        video_repo.get_multi_after = AsyncMock(return_value=[])
 
         channel_repo = MagicMock()
         channel_repo.get = AsyncMock(return_value=None)
@@ -929,7 +929,7 @@ class TestRecoveryNeverSetsDeletedFlag:
         mock_video.availability_status = AvailabilityStatus.AVAILABLE
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
         video_repo.update = AsyncMock()
 
         service = TakeoutRecoveryService(
@@ -970,7 +970,7 @@ class TestRecoveryNeverSetsDeletedFlag:
         mock_video.availability_status = AvailabilityStatus.AVAILABLE  # Not deleted
 
         video_repo = MagicMock()
-        video_repo.get_multi = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
         video_repo.update = AsyncMock()
 
         service = TakeoutRecoveryService(

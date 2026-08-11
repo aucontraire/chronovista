@@ -181,16 +181,18 @@ class TakeoutRecoveryService:
         """
         logger.info("Scanning database for recoverable videos...")
 
-        # Get all videos from database
-        # Process in batches to handle large datasets
-        skip = 0
+        # Get all videos from database, walking by key rather than by offset:
+        # OFFSET n discards n rows to reach each window, so a full walk costs
+        # O(rows²). See #202, where the same shape made an entity scan
+        # quadratic in corpus size.
+        after: str | None = None
         videos_checked = 0
         placeholder_count = 0
         null_channel_count = 0
 
         while True:
-            videos = await self.video_repository.get_multi(
-                session, skip=skip, limit=options.batch_size
+            videos = await self.video_repository.get_multi_after(
+                session, after=after, limit=options.batch_size
             )
 
             if not videos:
@@ -293,7 +295,9 @@ class TakeoutRecoveryService:
 
                 result.videos_recovered += 1
 
-            skip += options.batch_size
+            # Advance from the last row actually returned. There is no fixed
+            # stride to add: the cursor is data, not a count.
+            after = videos[-1].video_id
 
             if options.verbose:
                 logger.info(
@@ -449,12 +453,12 @@ class TakeoutRecoveryService:
             Number of placeholder videos
         """
         count = 0
-        skip = 0
+        after: str | None = None
         batch_size = 100
 
         while True:
-            videos = await self.video_repository.get_multi(
-                session, skip=skip, limit=batch_size
+            videos = await self.video_repository.get_multi_after(
+                session, after=after, limit=batch_size
             )
 
             if not videos:
@@ -464,7 +468,7 @@ class TakeoutRecoveryService:
                 if is_placeholder_video_title(video.title):
                     count += 1
 
-            skip += batch_size
+            after = videos[-1].video_id
 
         return count
 
@@ -483,12 +487,12 @@ class TakeoutRecoveryService:
             Number of placeholder channels
         """
         count = 0
-        skip = 0
+        after: str | None = None
         batch_size = 100
 
         while True:
-            channels = await self.channel_repository.get_multi(
-                session, skip=skip, limit=batch_size
+            channels = await self.channel_repository.get_multi_after(
+                session, after=after, limit=batch_size
             )
 
             if not channels:
@@ -498,6 +502,6 @@ class TakeoutRecoveryService:
                 if is_placeholder_channel_name(channel.title):
                     count += 1
 
-            skip += batch_size
+            after = channels[-1].channel_id
 
         return count

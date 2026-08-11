@@ -73,6 +73,10 @@ ALLOWLIST = {
 # identifies a person. Listed separately from ALLOWLIST because the reason is
 # different: these are not this project's subject matter, they are collisions.
 COMMON_WORD_ALIASES = {
+    # An ASR mis-transcription of a surname, and the near-universal name for a
+    # database connection: it fires on every `async with engine.begin() as
+    # conn`, measured at 47 occurrences across 10 files.
+    "Conn",
     "Crystal",
     "Fork",
     # An ASR mis-transcription of a surname, and also an English verb: it fires

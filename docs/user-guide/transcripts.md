@@ -426,10 +426,10 @@ The `chronovista corrections` CLI commands enable bulk correction operations acr
 
 ```bash
 # Find a recurring ASR error and preview what would change
-chronovista corrections find-replace --pattern "Chsky" --replacement "Lovelace" --dry-run
+chronovista corrections find-replace --pattern "Loveless" --replacement "Lovelace" --dry-run
 
 # Apply the correction (with confirmation prompt)
-chronovista corrections find-replace --pattern "Chsky" --replacement "Lovelace"
+chronovista corrections find-replace --pattern "Loveless" --replacement "Lovelace"
 
 # Rebuild full transcript text to reflect corrections
 chronovista corrections rebuild-text
@@ -450,9 +450,9 @@ chronovista corrections rebuild-text
 
 The `find-replace` and `batch-revert` commands support several matching modes:
 
-- **Substring match** (default): `--pattern "Chsky"` matches any segment containing "Chsky"
-- **Case-insensitive**: `--pattern "chsky" --case-insensitive` matches "Chsky", "CHSKY", etc.
-- **Regex**: `--pattern "finkel(state|stein)" --regex` matches Python regular expressions
+- **Substring match** (default): `--pattern "Loveless"` matches any segment containing "Loveless"
+- **Case-insensitive**: `--pattern "loveless" --case-insensitive` matches "Loveless", "LOVELESS", etc.
+- **Regex**: `--pattern "love(less|lace)" --regex` matches Python regular expressions
 
 Pattern matching is performed database-side using SQL operators (`LIKE`, `ILIKE`, `~`, `~*`), so scans are efficient even for large transcript libraries (500,000+ segments).
 

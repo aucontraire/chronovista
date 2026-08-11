@@ -18,12 +18,17 @@ from __future__ import annotations
 
 import itertools
 import shutil
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
+
+from chronovista.repositories.recovery_provenance_repository import (
+    RecoveryProvenanceRepository,
+)
 
 # Mark all tests in this module as async by default
 
@@ -497,3 +502,63 @@ def channel_recovery_result_factory():
     ...     assert result["failure_reason"] is not None
     """
     return make_channel_recovery_result
+
+
+@pytest.fixture(autouse=True)
+def stub_provenance_repository(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[dict[str, list[tuple[str, Any]]]]:
+    """Neutralise the provenance repository's database access in unit tests.
+
+    Every test in this package hands the orchestrator an ``AsyncMock`` session.
+    That mock returns an ``AsyncMock`` from ``execute()``, whose ``scalar_*``
+    children are themselves async — so a real provenance read returns a
+    coroutine where a timestamp is expected, and the orchestrator fails on a
+    comparison that has nothing to do with what the test is checking.
+
+    Stubbing it here keeps these tests about what they were written to test.
+    It deliberately does **not** stand in for the assertion that matters — that
+    a real run leaves a row in ``video_recovery_sources`` — which is an
+    integration test, because a stub that records a call and a database that
+    records a row are indistinguishable from inside a unit test. That
+    indistinguishability is why the write path shipped with no callers.
+
+    Yields the recorded calls so a test may assert on them if it wants to.
+    """
+    calls: dict[str, list[tuple[str, Any]]] = {"video": [], "channel": []}
+    # A test that needs a prior contribution from this source sets
+    # calls["prior_video"] / calls["prior_channel"] to a 14-digit timestamp.
+    # That is the precondition "this source recorded a capture before", which
+    # used to be expressed by putting a packed string on the model.
+    calls["prior_video"] = None  # type: ignore[assignment]
+    calls["prior_channel"] = None  # type: ignore[assignment]
+
+    async def _record_video(
+        _self: Any, _session: Any, video_id: str, record: Any
+    ) -> None:
+        calls["video"].append((video_id, record))
+
+    async def _record_channel(
+        _self: Any, _session: Any, channel_id: str, record: Any
+    ) -> None:
+        calls["channel"].append((channel_id, record))
+
+    async def _get_video_detail(
+        _self: Any, _session: Any, _video_id: str, _source: str
+    ) -> str | None:
+        return calls["prior_video"]  # type: ignore[return-value]
+
+    async def _get_channel_detail(
+        _self: Any, _session: Any, _channel_id: str, _source: str
+    ) -> str | None:
+        return calls["prior_channel"]  # type: ignore[return-value]
+
+    monkeypatch.setattr(RecoveryProvenanceRepository, "record_video", _record_video)
+    monkeypatch.setattr(RecoveryProvenanceRepository, "record_channel", _record_channel)
+    monkeypatch.setattr(
+        RecoveryProvenanceRepository, "get_video_source_detail", _get_video_detail
+    )
+    monkeypatch.setattr(
+        RecoveryProvenanceRepository, "get_channel_source_detail", _get_channel_detail
+    )
+    yield calls

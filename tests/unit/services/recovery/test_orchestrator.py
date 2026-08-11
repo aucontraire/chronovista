@@ -17,6 +17,7 @@ Test Coverage
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -553,8 +554,15 @@ class TestOverwritePolicy:
         assert result.success is True
         assert "upload_date" in result.fields_recovered
 
-    async def test_upload_date_skipped_when_existing_recovery_is_newer(self) -> None:
+    async def test_upload_date_skipped_when_existing_recovery_is_newer(
+        self, stub_provenance_repository: dict[str, Any]
+    ) -> None:
         """upload_date is skipped when existing recovery is from a newer snapshot."""
+        # GIVEN: this source already recorded a NEWER capture for this video.
+        # Declared through the provenance stub, because that is where the prior
+        # timestamp now lives; the packed column is a projection and is no
+        # longer consulted for this decision.
+        stub_provenance_repository["prior_video"] = "20210101000000"
         # GIVEN: A video with existing upload_date from a newer recovery
         video = VideoDB(
             video_id="testVid0008",
@@ -1819,8 +1827,12 @@ class TestIdempotency:
         assert "title" in result2.fields_recovered
         assert "description" in result2.fields_recovered
 
-    async def test_recovering_with_older_snapshot_only_fills_null_fields(self) -> None:
+    async def test_recovering_with_older_snapshot_only_fills_null_fields(
+        self, stub_provenance_repository: dict[str, Any]
+    ) -> None:
         """Recovering with older snapshot only fills NULL fields, doesn't overwrite."""
+        # GIVEN: this source's prior capture is newer than the incoming one.
+        stub_provenance_repository["prior_video"] = "20210101000000"
         # GIVEN: A video recovered from a newer snapshot
         video = VideoDB(
             video_id="testVid0021",
@@ -3233,7 +3245,6 @@ class TestBuildChannelUpdate:
         update_dict, fields_recovered, fields_skipped = _build_channel_update(
             existing_channel, recovered_data
         )
-
         # THEN: NULL fields are filled
         assert "description" in update_dict
         assert update_dict["description"] == "Recovered Description"
@@ -3360,8 +3371,11 @@ class TestBuildChannelUpdate:
         # WHEN: We build the update
         from chronovista.services.recovery.orchestrator import _build_channel_update
 
+        # The prior capture is passed in, not parsed out of the channel row.
         update_dict, fields_recovered, fields_skipped = _build_channel_update(
-            existing_channel, recovered_data
+            existing_channel,
+            recovered_data,
+            prior_snapshot_timestamp="20230615120000",
         )
 
         # THEN: Fields are skipped because incoming is older

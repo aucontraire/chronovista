@@ -44,8 +44,12 @@ from chronovista.models.enrichment_report import (
     EnrichmentSummary,
 )
 from chronovista.models.enums import AvailabilityStatus
+from chronovista.models.recovery_provenance import RecoverySourceRecord
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.playlist_repository import PlaylistRepository
+from chronovista.repositories.recovery_provenance_repository import (
+    RecoveryProvenanceRepository,
+)
 from chronovista.repositories.topic_category_repository import (
     TopicCategoryRepository,
 )
@@ -457,6 +461,10 @@ class ChannelEnrichmentResult(BaseModel):
     skipped_channel_ids: list[str] = Field(
         default_factory=list, description="IDs of channels that were skipped"
     )
+
+
+# Provenance source name for API-driven restoration.
+_SYNC_SOURCE = "sync"
 
 
 class EnrichmentLock:
@@ -908,6 +916,11 @@ class EnrichmentService:
         self.topic_category_repository = topic_category_repository
         self.youtube_service = youtube_service
         self.playlist_repository = playlist_repository
+        # Not injected: the provenance repository is stateless, and making it a
+        # required constructor argument would change every caller for a single
+        # write. It is the only permitted writer of `recovery_source`, so it is
+        # a collaborator this service must have rather than one it may choose.
+        self._provenance_repo = RecoveryProvenanceRepository()
 
         # Lock instance for this service
         self._lock = EnrichmentLock()
@@ -1272,9 +1285,21 @@ class EnrichmentService:
                 if video.availability_status != AvailabilityStatus.AVAILABLE:
                     old_status = video.availability_status
                     video.availability_status = AvailabilityStatus.AVAILABLE
-                    video.recovered_at = datetime.now(UTC)
-                    video.recovery_source = "sync"
                     video.unavailability_first_detected = None
+                    # Provenance goes through the repository, which appends to
+                    # video_recovery_sources and refreshes the denormalised
+                    # columns. This pass does not think of itself as a recovery
+                    # implementation, which is exactly why it has to be routed:
+                    # a bulk pass writing the column directly is what destroyed
+                    # 92 rows' attribution (ADR-011).
+                    await self._provenance_repo.record_video(
+                        session,
+                        video_id,
+                        RecoverySourceRecord(
+                            source=_SYNC_SOURCE,
+                            fields_written=["availability_status"],
+                        ),
+                    )
                     logger.info(
                         f"Restored video {video_id} from '{old_status}' to available "
                         f"(recovery_source=sync)"
@@ -2893,9 +2918,17 @@ class EnrichmentService:
                         if channel.availability_status != AvailabilityStatus.AVAILABLE:
                             old_status = channel.availability_status
                             channel.availability_status = AvailabilityStatus.AVAILABLE
-                            channel.recovered_at = datetime.now(UTC)
-                            channel.recovery_source = "sync"
                             channel.unavailability_first_detected = None
+                            # See the video path above — provenance is appended,
+                            # never assigned.
+                            await self._provenance_repo.record_channel(
+                                session,
+                                channel_id,
+                                RecoverySourceRecord(
+                                    source=_SYNC_SOURCE,
+                                    fields_written=["availability_status"],
+                                ),
+                            )
                             logger.info(
                                 f"Restored channel {channel_id} from '{old_status}' "
                                 f"to available (recovery_source=sync)"

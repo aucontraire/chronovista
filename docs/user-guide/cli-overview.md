@@ -282,10 +282,10 @@ chronovista entities scan --full
 chronovista corrections patterns --min-occurrences 2
 
 # 2. Preview a batch correction
-chronovista corrections find-replace --pattern "Chsky" --replacement "Lovelace" --dry-run
+chronovista corrections find-replace --pattern "Loveless" --replacement "Lovelace" --dry-run
 
 # 3. Apply the correction
-chronovista corrections find-replace --pattern "Chsky" --replacement "Lovelace"
+chronovista corrections find-replace --pattern "Loveless" --replacement "Lovelace"
 
 # 4. Rebuild full transcript text
 chronovista corrections rebuild-text

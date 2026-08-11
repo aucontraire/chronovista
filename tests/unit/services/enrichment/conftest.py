@@ -7,7 +7,9 @@ for mocking YouTube API responses in tests.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 
@@ -18,6 +20,9 @@ from chronovista.models.api_responses import (
     VideoStatisticsResponse,
     VideoStatus,
     YouTubeVideoResponse,
+)
+from chronovista.repositories.recovery_provenance_repository import (
+    RecoveryProvenanceRepository,
 )
 
 
@@ -168,3 +173,37 @@ def video_response_factory():
 def minimal_video_response_factory():
     """Fixture that returns the make_minimal_video_response helper function."""
     return make_minimal_video_response
+
+
+@pytest.fixture(autouse=True)
+def stub_provenance_repository(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[dict[str, list[tuple[str, Any]]]]:
+    """Record provenance writes instead of issuing them.
+
+    These tests hand the service an ``AsyncMock`` session, so the repository's
+    real UPDATE never reaches a database and the denormalised columns it
+    refreshes stay unset on the mock. Asserting on those attributes would be
+    asserting that a projection ran, which under a mocked session it cannot.
+
+    What the caller is actually responsible for is *recording the
+    contribution*, so that is what this makes observable. The assertion that
+    the row lands in ``video_recovery_sources`` belongs to an integration test
+    — a stub that records a call and a database that records a row look the
+    same from here, which is precisely how the write path shipped unused.
+    """
+    calls: dict[str, list[tuple[str, Any]]] = {"video": [], "channel": []}
+
+    async def _record_video(
+        _self: Any, _session: Any, video_id: str, record: Any
+    ) -> None:
+        calls["video"].append((video_id, record))
+
+    async def _record_channel(
+        _self: Any, _session: Any, channel_id: str, record: Any
+    ) -> None:
+        calls["channel"].append((channel_id, record))
+
+    monkeypatch.setattr(RecoveryProvenanceRepository, "record_video", _record_video)
+    monkeypatch.setattr(RecoveryProvenanceRepository, "record_channel", _record_channel)
+    yield calls

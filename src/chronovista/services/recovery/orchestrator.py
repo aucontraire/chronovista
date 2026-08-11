@@ -27,8 +27,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chronovista.exceptions import CDXError
 from chronovista.models.channel import ChannelCreate, ChannelUpdate
 from chronovista.models.enums import AvailabilityStatus
+from chronovista.models.recovery_provenance import RecoverySourceRecord
 from chronovista.models.video import VideoUpdate
 from chronovista.repositories.channel_repository import ChannelRepository
+from chronovista.repositories.recovery_provenance_repository import (
+    RecoveryProvenanceRepository,
+)
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.repositories.video_tag_repository import VideoTagRepository
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
@@ -41,6 +45,12 @@ from chronovista.services.recovery.models import (
 from chronovista.services.recovery.page_parser import PageParser
 
 logger = logging.getLogger(__name__)
+
+# Provenance source name for this module. The packed `wayback:<timestamp>` form
+# that `RecoveredVideoData.recovery_source` still computes is retained only for
+# the denormalised projection's benefit; the source and the timestamp are stored
+# as separate columns, which is the whole point of ADR-011.
+_WAYBACK_SOURCE = "wayback"
 
 # Recovery configuration constants
 _MAX_SNAPSHOTS_TO_TRY = 20
@@ -148,6 +158,7 @@ async def recover_video(
     video_repo = VideoRepository()
     tag_repo = VideoTagRepository()
     channel_repo = ChannelRepository()
+    provenance_repo = RecoveryProvenanceRepository()
 
     try:
         # Fetch video from database
@@ -267,14 +278,22 @@ async def recover_video(
                 duration_seconds=duration,
             )
 
-        # Build update dictionary with overwrite policy
-        update_dict, fields_recovered, fields_skipped = _build_video_update(
-            video, recovered_data
+        # What did *this* source record for this video last time? Read from the
+        # provenance table, not from the denormalised column — see
+        # `_is_incoming_newer`.
+        prior_snapshot = await provenance_repo.get_video_source_detail(
+            session, video_id, _WAYBACK_SOURCE
         )
 
-        # Add recovery metadata (always set on success)
-        update_dict["recovered_at"] = datetime.now(UTC)
-        update_dict["recovery_source"] = recovered_data.recovery_source
+        # Build update dictionary with overwrite policy
+        update_dict, fields_recovered, fields_skipped = _build_video_update(
+            video, recovered_data, prior_snapshot_timestamp=prior_snapshot
+        )
+
+        # `recovered_at` and `recovery_source` are deliberately NOT set here.
+        # They are a projection of the provenance table now, refreshed by
+        # `record_video()` below, and writing them directly is what allowed one
+        # pass to erase another's attribution (ADR-011).
 
         # Skip database write in dry-run mode
         if not dry_run:
@@ -316,6 +335,20 @@ async def recover_video(
             # Update video in database
             video_update = VideoUpdate(**update_dict)
             await video_repo.update(session, db_obj=video, obj_in=video_update)
+
+            # Record what this source contributed. Appends a row keyed on
+            # (video_id, source) and refreshes the denormalised columns; a
+            # second source touching this row later adds to the record rather
+            # than replacing it.
+            await provenance_repo.record_video(
+                session,
+                video_id,
+                RecoverySourceRecord(
+                    source=_WAYBACK_SOURCE,
+                    source_detail=recovered_data.snapshot_timestamp,
+                    fields_written=fields_recovered or None,
+                ),
+            )
 
             # Persist tags if any were recovered
             if recovered_data.tags:
@@ -410,8 +443,45 @@ async def recover_video(
         )
 
 
+def _is_incoming_newer(incoming_snapshot: str, prior_snapshot: str | None) -> bool:
+    """Decide whether an incoming capture may overwrite mutable fields.
+
+    Both arguments are 14-digit Wayback timestamps, which sort lexicographically
+    in chronological order.
+
+    The no-prior-row case is stated here rather than left to fall out of a
+    ``None`` check, because that is exactly how the defect this replaces
+    arose: a parse failure produced ``None``, ``None`` meant "nothing recorded",
+    and "nothing recorded" silently meant "go ahead and overwrite". The rule is
+    deliberate — **the first contribution from a source has nothing to be older
+    than, so it wins** — and it is a rule, not a fallback.
+
+    Equal timestamps also win: re-running the same capture is idempotent, and
+    treating it as a conflict would make a retry behave differently from the
+    original run.
+
+    Parameters
+    ----------
+    incoming_snapshot : str
+        Timestamp of the capture being applied.
+    prior_snapshot : str | None
+        Timestamp this same source recorded previously, or ``None`` if this
+        source has not written to this row before.
+
+    Returns
+    -------
+    bool
+        True when the incoming capture is at least as recent as the prior one.
+    """
+    if prior_snapshot is None:
+        return True
+    return incoming_snapshot >= prior_snapshot
+
+
 def _build_video_update(
-    existing_video: Any, recovered_data: RecoveredVideoData
+    existing_video: Any,
+    recovered_data: RecoveredVideoData,
+    prior_snapshot_timestamp: str | None = None,
 ) -> tuple[dict[str, Any], list[str], list[str]]:
     """
     Build video update dictionary with three-tier overwrite policy.
@@ -445,22 +515,21 @@ def _build_video_update(
     fields_recovered: list[str] = []
     fields_skipped: list[str] = []
 
-    # Extract existing recovery_source timestamp (if any)
-    existing_recovery_timestamp: str | None = None
-    if existing_video.recovery_source:
-        # Format: "wayback:20220106075526"
-        parts = existing_video.recovery_source.split(":")
-        if len(parts) == 2 and parts[0] == "wayback":
-            existing_recovery_timestamp = parts[1]
-
-    # Determine if incoming snapshot is newer than existing recovery
-    incoming_is_newer = False
-    if existing_recovery_timestamp is None:
-        # No existing recovery - incoming is considered "newer"
-        incoming_is_newer = True
-    elif recovered_data.snapshot_timestamp >= existing_recovery_timestamp:
-        # Incoming snapshot has same or later timestamp
-        incoming_is_newer = True
+    # The prior snapshot timestamp comes from this source's own row in
+    # video_recovery_sources, supplied by the caller.
+    #
+    # It used to be parsed out of `videos.recovery_source`. Under ADR-011 that
+    # column is a *most recent contributor* projection, so the parse only
+    # succeeded when this source happened to be the last one to touch the row.
+    # Measured on production afterwards: it succeeded for 2 rows and failed for
+    # 4,130 — and a failed parse fell through to the branch below and answered
+    # "newer", so tier 2 stopped being enforced almost everywhere. For 90 of
+    # those rows the timestamp existed the whole time, one table over.
+    #
+    # A projection is not a record. This reads the record.
+    incoming_is_newer = _is_incoming_newer(
+        recovered_data.snapshot_timestamp, prior_snapshot_timestamp
+    )
 
     # Map RecoveredVideoData fields to Video model fields
     field_mapping = {
@@ -517,7 +586,9 @@ def _build_video_update(
 
 
 def _build_channel_update(
-    existing_channel: Any, recovered_data: RecoveredChannelData
+    existing_channel: Any,
+    recovered_data: RecoveredChannelData,
+    prior_snapshot_timestamp: str | None = None,
 ) -> tuple[dict[str, Any], list[str], list[str]]:
     """
     Build channel update dictionary with two-tier overwrite policy.
@@ -550,22 +621,12 @@ def _build_channel_update(
     fields_recovered: list[str] = []
     fields_skipped: list[str] = []
 
-    # Extract existing recovery_source timestamp (if any)
-    existing_recovery_timestamp: str | None = None
-    if existing_channel.recovery_source:
-        # Format: "wayback:20220106075526"
-        parts = existing_channel.recovery_source.split(":")
-        if len(parts) == 2 and parts[0] == "wayback":
-            existing_recovery_timestamp = parts[1]
-
-    # Determine if incoming snapshot is newer than existing recovery
-    incoming_is_newer = False
-    if existing_recovery_timestamp is None:
-        # No existing recovery - incoming is considered "newer"
-        incoming_is_newer = True
-    elif recovered_data.snapshot_timestamp >= existing_recovery_timestamp:
-        # Incoming snapshot has same or later timestamp
-        incoming_is_newer = True
+    # Same change as the video path: read this source's own prior timestamp
+    # from channel_recovery_sources rather than parsing the denormalised
+    # projection. See `_is_incoming_newer` and `_build_video_update`.
+    incoming_is_newer = _is_incoming_newer(
+        recovered_data.snapshot_timestamp, prior_snapshot_timestamp
+    )
 
     # Map RecoveredChannelData fields to Channel model fields
     field_mapping = {
@@ -678,6 +739,7 @@ async def recover_channel(
 
     # Initialize repository
     channel_repo = ChannelRepository()
+    provenance_repo = RecoveryProvenanceRepository()
 
     try:
         # Fetch channel from database
@@ -802,18 +864,32 @@ async def recover_channel(
                 duration_seconds=duration,
             )
 
-        # Build update dictionary with overwrite policy
-        update_dict, fields_recovered, fields_skipped = _build_channel_update(
-            channel, recovered_data
+        # This source's own prior capture, from the provenance table.
+        prior_snapshot = await provenance_repo.get_channel_source_detail(
+            session, channel_id, _WAYBACK_SOURCE
         )
 
-        # Add recovery metadata (always set on success)
-        update_dict["recovered_at"] = datetime.now(UTC)
-        update_dict["recovery_source"] = recovered_data.recovery_source
+        # Build update dictionary with overwrite policy
+        update_dict, fields_recovered, fields_skipped = _build_channel_update(
+            channel, recovered_data, prior_snapshot_timestamp=prior_snapshot
+        )
+
+        # `recovered_at` / `recovery_source` are a projection now; see the video
+        # path above.
 
         # Update channel in database
         channel_update = ChannelUpdate(**update_dict)
         await channel_repo.update(session, db_obj=channel, obj_in=channel_update)
+
+        await provenance_repo.record_channel(
+            session,
+            channel_id,
+            RecoverySourceRecord(
+                source=_WAYBACK_SOURCE,
+                source_detail=recovered_data.snapshot_timestamp,
+                fields_written=fields_recovered or None,
+            ),
+        )
 
         # Commit changes
         await session.commit()

@@ -28,7 +28,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.main import app
-from chronovista.api.routers.batch_corrections import _PATTERN_TOKENISE_CAP
+from chronovista.api.routers.batch_corrections import (
+    _PATTERN_TOKENISE_CAP,
+    _REMAINING_MATCH_CAP,
+)
 from chronovista.models.batch_correction_models import CorrectionPattern
 
 # CRITICAL: This line ensures async tests work with coverage
@@ -464,3 +467,151 @@ class TestGetDiffAnalysis:
         """limit=501 returns 422."""
         response = await client.get(self.BASE_URL, params={"limit": 501})
         assert response.status_code == 422
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Remaining-match ceiling (#212)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestRemainingMatchCap:
+    """The per-token count stops at a ceiling, and says so.
+
+    A short error token yields few trigrams, so the pg_trgm index returns a
+    large candidate set the recheck mostly discards — measured at 99,210
+    candidates and 27,970 heap blocks fetched to find 3,333 rows. The block
+    reads dominate, so the same query ranged from 0.47s to 3.58s depending on
+    what was cached.
+
+    The ceiling bounds that fetch. Because it changes a reported number, the
+    response says when it was reached rather than presenting the ceiling as an
+    exact count.
+    """
+
+    BASE_URL = "/api/v1/corrections/batch/diff-analysis"
+
+    @patch(
+        "chronovista.api.routers.batch_corrections._find_entity_by_name",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "chronovista.api.routers.batch_corrections._batch_service",
+        new_callable=MagicMock,
+    )
+    async def test_count_below_the_ceiling_is_not_flagged(
+        self,
+        mock_service: MagicMock,
+        mock_find_entity: AsyncMock,
+    ) -> None:
+        mock_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
+        mock_find_entity.return_value = (None, None)
+
+        async for ac in _make_client_with_remaining(_REMAINING_MATCH_CAP - 1):
+            response = await ac.get(self.BASE_URL)
+
+        data = response.json()["data"]
+        assert data[0]["remaining_matches"] == _REMAINING_MATCH_CAP - 1
+        assert data[0]["remaining_matches_capped"] is False
+
+    @patch(
+        "chronovista.api.routers.batch_corrections._find_entity_by_name",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "chronovista.api.routers.batch_corrections._batch_service",
+        new_callable=MagicMock,
+    )
+    async def test_count_at_the_ceiling_is_flagged(
+        self,
+        mock_service: MagicMock,
+        mock_find_entity: AsyncMock,
+    ) -> None:
+        """Reaching the ceiling means "at least this many", not "exactly"."""
+        mock_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
+        mock_find_entity.return_value = (None, None)
+
+        async for ac in _make_client_with_remaining(_REMAINING_MATCH_CAP):
+            response = await ac.get(self.BASE_URL)
+
+        data = response.json()["data"]
+        assert data[0]["remaining_matches"] == _REMAINING_MATCH_CAP
+        assert data[0]["remaining_matches_capped"] is True
+
+    @patch(
+        "chronovista.api.routers.batch_corrections._find_entity_by_name",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "chronovista.api.routers.batch_corrections._batch_service",
+        new_callable=MagicMock,
+    )
+    async def test_zero_remaining_is_not_flagged(
+        self,
+        mock_service: MagicMock,
+        mock_find_entity: AsyncMock,
+    ) -> None:
+        """Guards against a `>=` that treats 0 as having hit the ceiling."""
+        mock_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
+        mock_find_entity.return_value = (None, None)
+
+        async for ac in _make_client_with_remaining(0):
+            response = await ac.get(self.BASE_URL, params={"show_completed": "true"})
+
+        data = response.json()["data"]
+        assert data[0]["remaining_matches"] == 0
+        assert data[0]["remaining_matches_capped"] is False
+
+    @patch(
+        "chronovista.api.routers.batch_corrections._find_entity_by_name",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "chronovista.api.routers.batch_corrections._batch_service",
+        new_callable=MagicMock,
+    )
+    async def test_the_query_carries_a_limit(
+        self,
+        mock_service: MagicMock,
+        mock_find_entity: AsyncMock,
+    ) -> None:
+        """The ceiling must reach the database, not just the response.
+
+        Counting everything and then clamping the number would report the same
+        values while doing all the work the ceiling exists to avoid — and no
+        assertion on the response could tell the difference.
+        """
+        mock_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
+        mock_find_entity.return_value = (None, None)
+
+        captured: list[str] = []
+        mock = AsyncMock(spec=AsyncSession)
+        result = MagicMock()
+        result.scalar_one.return_value = 5
+
+        async def _execute(stmt: object, *a: object, **kw: object) -> object:
+            captured.append(" ".join(str(stmt).split()).lower())
+            return result
+
+        mock.execute = AsyncMock(side_effect=_execute)
+
+        async def _get_db() -> AsyncGenerator[AsyncSession, None]:
+            yield mock
+
+        async def _require_auth() -> None:
+            return None
+
+        app.dependency_overrides[get_db] = _get_db
+        app.dependency_overrides[require_auth] = _require_auth
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as ac:
+                await ac.get(self.BASE_URL)
+        finally:
+            app.dependency_overrides.clear()
+
+        count_sql = [s for s in captured if "count(" in s]
+        assert count_sql, "expected a remaining-match count query"
+        assert any("limit" in s for s in count_sql), (
+            "the count query has no LIMIT — the heap fetch is unbounded again, "
+            f"got: {count_sql[0][:200]}"
+        )

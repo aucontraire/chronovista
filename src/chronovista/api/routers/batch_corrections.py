@@ -10,7 +10,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
@@ -82,6 +82,27 @@ logger = logging.getLogger(__name__)
 # The cap exists so the work stays bounded if the correction corpus grows. It
 # is logged when it bites rather than silently truncating.
 _PATTERN_TOKENISE_CAP = 1000
+
+# Ceiling on the per-token remaining-match count in diff-analysis.
+#
+# A short error token yields few trigrams, so the pg_trgm index returns a large
+# candidate set that the recheck mostly discards. Measured on the live corpus
+# for a 3-character token: 99,210 candidates and 27,970 heap blocks fetched to
+# find 3,333 rows — 96.6% discarded. Because the block reads dominate, the same
+# query ranged from 0.47s to 3.58s depending on what happened to be cached, and
+# it was 30-65% of the whole request.
+#
+# RAISING THIS SILENTLY DISABLES IT. A ceiling only bounds work when it sits
+# BELOW the real match count. #212 originally proposed 5,000, which measured
+# identically to no cap at all — the token matches 3,333, so it never tripped.
+# At 1,000: 7,913 heap blocks instead of 27,970.
+#
+# Chosen over a tighter 500 for headroom. Of the 45 tokens currently produced,
+# exactly one exceeds 1,000 and the next-largest is 286, so one row is affected
+# and the ordering is untouched. Two tokens above the ceiling would tie there,
+# and their relative order would become arbitrary — so it should stay well
+# clear of the bulk of the distribution.
+_REMAINING_MATCH_CAP = 1000
 
 _batch_service = BatchCorrectionService(
     correction_service=_correction_service,
@@ -603,8 +624,8 @@ async def get_diff_analysis(
         if not error_token:
             remaining = 0
         else:
-            remaining_stmt = (
-                select(func.count())
+            matching_rows = (
+                select(literal(1))
                 .select_from(TranscriptSegmentDB)
                 .where(
                     # Index-eligible super-set on the RAW columns so PostgreSQL
@@ -621,9 +642,22 @@ async def get_diff_analysis(
                     # removed the token must not be counted, so this stays.
                     effective_text.contains(error_token),
                 )
+                # The ceiling is what bounds the heap fetch (#212). A short
+                # token yields few trigrams, so the index returns a huge
+                # candidate set that the recheck mostly discards: measured at
+                # 99,210 candidates and 27,970 heap blocks to find 3,333 rows,
+                # 96.6% thrown away. Stopping early caps that work.
+                .limit(_REMAINING_MATCH_CAP)
+                .subquery()
             )
-            remaining_result = await session.execute(remaining_stmt)
+            remaining_result = await session.execute(
+                select(func.count()).select_from(matching_rows)
+            )
             remaining = remaining_result.scalar_one()
+
+        # A count equal to the ceiling means counting stopped, not that exactly
+        # that many remain. Reported rather than silently presented as exact.
+        remaining_capped = remaining >= _REMAINING_MATCH_CAP
 
         # Apply show_completed filter at the token level
         if not show_completed and remaining == 0:
@@ -647,6 +681,7 @@ async def get_diff_analysis(
                 canonical_form=canonical_form,
                 frequency=freq,
                 remaining_matches=remaining,
+                remaining_matches_capped=remaining_capped,
                 entity_id=entity_id,
                 entity_name=matched_entity_name,
             )

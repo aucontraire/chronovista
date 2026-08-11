@@ -421,7 +421,12 @@ class DiffErrorPatternResponse(BaseModel):
     frequency : int
         Number of times this correction has been applied.
     remaining_matches : int
-        Number of un-corrected instances remaining.
+        Number of un-corrected instances remaining. When
+        ``remaining_matches_capped`` is true this is a floor, not a total.
+    remaining_matches_capped : bool
+        True when counting stopped at the ceiling and the real figure is
+        higher. Present because a bare ``1000`` would be indistinguishable
+        from exactly one thousand remaining, and clients render "1000+".
     entity_id : uuid.UUID | None
         Associated named entity UUID, if any.
     entity_name : str | None
@@ -434,6 +439,7 @@ class DiffErrorPatternResponse(BaseModel):
     canonical_form: str
     frequency: int
     remaining_matches: int
+    remaining_matches_capped: bool = False
     entity_id: uuid.UUID | None = None
     entity_name: str | None = None
 

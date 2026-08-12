@@ -21,6 +21,7 @@ expects) and importing it would try to write files.
 from __future__ import annotations
 
 import ast
+import importlib.util
 from pathlib import Path
 
 from chronovista.db.models import Base
@@ -28,6 +29,7 @@ from chronovista.db.models import Base
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATOR = REPO_ROOT / "scripts" / "gen_schema_ref.py"
 DATA_MODEL_DOC = REPO_ROOT / "docs" / "architecture" / "data-model.md"
+SCHEMA_DOC = REPO_ROOT / "docs" / "reference" / "schema.md"
 
 
 def _grouped_tables() -> set[str]:
@@ -59,6 +61,42 @@ def test_groups_reference_only_real_tables() -> None:
         f"GROUPS references tables that do not exist: {phantom}. "
         "This is how the old hand-written docs came to describe a "
         "'user_subscriptions' table that was never created."
+    )
+
+
+def _rendered_schema() -> str:
+    """The page the generator would produce from the current models.
+
+    Imported rather than executed: ``main()`` runs only under ``__main__`` or
+    mkdocs-gen-files' ``<run_path>``, so a plain import writes nothing.
+    """
+    spec = importlib.util.spec_from_file_location("_gen_schema_ref", GENERATOR)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    rendered: str = module.render_schema()
+    return rendered
+
+
+def test_schema_reference_is_not_stale() -> None:
+    """The committed page must match what the generator produces.
+
+    ``docs/reference/schema.md`` is tracked *and* regenerated at build time by
+    mkdocs-gen-files, which writes into the build tree rather than over the
+    source file. The published site is therefore always current while the
+    committed copy — the one people read on GitHub — silently rots.
+
+    It had: two tables short (the ADR-011 provenance pair, undocumented since
+    they shipped), two columns missing, and no index or constraint sections at
+    all, under a header stating "this page cannot drift". The claim was true of
+    the built page and false of the committed one. This test is what makes it
+    true of both.
+    """
+    committed = SCHEMA_DOC.read_text(encoding="utf-8")
+    assert committed == _rendered_schema(), (
+        f"{SCHEMA_DOC.relative_to(REPO_ROOT)} is out of date with the models. "
+        "Regenerate it — the build shadows this file, so a stale copy fails "
+        "silently everywhere except GitHub."
     )
 
 

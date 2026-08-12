@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**25 tables.** For the reasoning behind the design, see
+**27 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -32,6 +32,11 @@ YouTube channel model with subscription tracking.
 | `unavailability_first_detected` | TIMESTAMP WITH TIME ZONE | yes |  |  |
 | `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 | `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Indexes:**
+
+- INDEX `idx_channels_availability_status` on `availability_status`
+- INDEX `idx_channels_needs_enrichment` on `channel_id`
 
 ### `videos`
 
@@ -64,6 +69,13 @@ Enhanced video model with language support and content restrictions.
 | `unavailability_first_detected` | TIMESTAMP WITH TIME ZONE | yes |  |  |
 | `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 | `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Indexes:**
+
+- INDEX `idx_videos_availability_status` on `availability_status`
+- INDEX `idx_videos_category_id` on `category_id`
+- INDEX `idx_videos_channel_hint` on `channel_name_hint`
+- INDEX `idx_videos_null_channel` on `video_id`
 
 ### `video_categories`
 
@@ -122,6 +134,13 @@ Multi-language video transcripts with quality indicators.
 
 **Composite primary key:** `video_id`, `language_code`
 
+**Indexes:**
+
+- INDEX `ix_video_transcripts_has_timestamps_true` on `has_timestamps`
+- INDEX `ix_video_transcripts_segment_count` on `segment_count`
+- INDEX `ix_video_transcripts_source` on `source`
+- INDEX `ix_video_transcripts_total_duration` on `total_duration`
+
 ### `transcript_segments`
 
 Individual timed text segment from a video transcript.
@@ -146,6 +165,14 @@ Individual timed text segment from a video transcript.
 - CHECK `chk_segment_sequence_non_negative`: `sequence_number >= 0`
 - CHECK `chk_segment_start_time_non_negative`: `start_time >= 0`
 
+**Indexes:**
+
+- INDEX `idx_segments_corrected_text_trgm` on `corrected_text`
+- INDEX `idx_segments_text_trgm` on `text`
+- INDEX `idx_transcript_segments_corrected` on `video_id`, `language_code`, `has_correction`
+- INDEX `idx_transcript_segments_lookup` on `video_id`, `language_code`, `start_time`
+- INDEX `idx_transcript_segments_time_range` on `video_id`, `language_code`, `start_time`, `end_time`
+
 ### `transcript_corrections`
 
 Append-only audit record for transcript segment corrections (Feature 033).
@@ -168,6 +195,12 @@ Append-only audit record for transcript segment corrections (Feature 033).
 **Constraints:**
 
 - CHECK `chk_transcript_corrections_version_number_positive`: `version_number >= 1`
+
+**Indexes:**
+
+- INDEX `idx_transcript_corrections_lookup` on `video_id`, `language_code`, `corrected_at`
+- INDEX `idx_transcript_corrections_segment` on `segment_id`, `corrected_at`
+- INDEX `ix_transcript_corrections_batch_id` on `batch_id`
 
 ## User Data
 
@@ -206,6 +239,10 @@ User interaction tracking with videos.
 
 **Composite primary key:** `user_id`, `video_id`
 
+**Indexes:**
+
+- INDEX `ix_user_videos_video_id` on `video_id`
+
 ### `user_language_preferences`
 
 User language preferences for content consumption and learning.
@@ -241,6 +278,7 @@ Enhanced playlists with language support.
 | `video_count` | INTEGER | no | `0` |  |
 | `published_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
 | `deleted_flag` | BOOLEAN | no | `False` |  |
+| `unavailability_first_detected` | TIMESTAMP WITH TIME ZONE | yes |  |  |
 | `playlist_type` | VARCHAR(20) | no | `'regular'` |  |
 | `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 | `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
@@ -273,12 +311,18 @@ YouTube topic classification system with dynamic resolution support.
 | `category_name` | VARCHAR(255) | no |  |  |
 | `parent_topic_id` | VARCHAR(50) | yes |  | FK → `topic_categories.topic_id` |
 | `topic_type` | VARCHAR(20) | no | `'youtube'` |  |
-| `wikipedia_url` | VARCHAR(500) | yes |  | unique |
+| `wikipedia_url` | VARCHAR(500) | yes |  |  |
 | `normalized_name` | VARCHAR(255) | yes |  |  |
 | `source` | VARCHAR(20) | no | `'seeded'` |  |
 | `last_seen_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
 | `occurrence_count` | INTEGER | no | `1` |  |
 | `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Indexes:**
+
+- INDEX `idx_topic_categories_normalized_name` on `normalized_name`
+- INDEX `idx_topic_categories_source` on `source`
+- UNIQUE INDEX `idx_topic_categories_wikipedia_url` on `wikipedia_url`
 
 ### `topic_aliases`
 
@@ -290,6 +334,10 @@ Alias mappings for topic name variations (spelling, redirects, synonyms).
 | `topic_id` | VARCHAR(50) | no |  | FK → `topic_categories.topic_id` |
 | `alias_type` | VARCHAR(20) | no |  |  |
 | `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Indexes:**
+
+- INDEX `idx_topic_aliases_topic_id` on `topic_id`
 
 ### `video_topics`
 
@@ -303,6 +351,10 @@ Video-topic relationships for content classification.
 | `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 
 **Composite primary key:** `video_id`, `topic_id`
+
+**Indexes:**
+
+- INDEX `idx_video_topics_topic_id` on `topic_id`
 
 ### `channel_topics`
 
@@ -332,6 +384,10 @@ Video-level tags for content analysis.
 | `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 
 **Composite primary key:** `video_id`, `tag`
+
+**Indexes:**
+
+- INDEX `idx_video_tags_tag` on `tag`
 
 ### `channel_keywords`
 
@@ -372,6 +428,15 @@ Canonical tag form with normalization and entity linking.
 - CHECK `chk_canonical_tag_status_valid`: `status IN ('active', 'merged', 'deprecated')`
 - CHECK `chk_canonical_tag_video_count_non_negative`: `video_count >= 0`
 
+**Indexes:**
+
+- INDEX `idx_canonical_tags_active_normalized` on `normalized_form`
+- INDEX `idx_canonical_tags_canonical_form_trgm` on `canonical_form`
+- INDEX `idx_canonical_tags_canonical_pattern` on `canonical_form`
+- INDEX `idx_canonical_tags_entity_id` on `entity_id`
+- INDEX `idx_canonical_tags_normalized_form_trgm` on `normalized_form`
+- INDEX `idx_canonical_tags_video_count_desc` on 
+
 ### `tag_aliases`
 
 Raw tag forms mapped to their canonical representation.
@@ -394,6 +459,13 @@ Raw tag forms mapped to their canonical representation.
 - CHECK `chk_tag_alias_creation_method_valid`: `creation_method IN ('auto_normalize', 'manual_merge', 'backfill', 'api_create')`
 - CHECK `chk_tag_alias_occurrence_count_positive`: `occurrence_count >= 1`
 
+**Indexes:**
+
+- INDEX `idx_tag_aliases_canonical_id` on `canonical_tag_id`
+- INDEX `idx_tag_aliases_normalized` on `normalized_form`
+- INDEX `idx_tag_aliases_raw_form_trgm` on `raw_form`
+- INDEX `idx_tag_aliases_raw_pattern` on `raw_form`
+
 ### `tag_operation_logs`
 
 Audit log for tag normalization and management operations.
@@ -415,6 +487,10 @@ Audit log for tag normalization and management operations.
 **Constraints:**
 
 - CHECK `chk_tag_operation_type_valid`: `operation_type IN ('merge', 'split', 'rename', 'delete', 'create', 'repair')`
+
+**Indexes:**
+
+- INDEX `idx_tag_operation_logs_performed_at` on `performed_at`
 
 ## Named Entities
 
@@ -452,6 +528,12 @@ Named entities extracted from video tags (people, places, organizations, etc.).
 - CHECK `chk_entity_status_valid`: `status IN ('active', 'merged', 'deprecated')`
 - CHECK `chk_entity_type_valid`: `entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other')`
 
+**Indexes:**
+
+- INDEX `idx_named_entities_normalized` on `canonical_name_normalized`
+- INDEX `idx_named_entities_status` on `status`
+- INDEX `idx_named_entities_type` on `entity_type`
+
 ### `entity_aliases`
 
 Alternative names and variations for named entities.
@@ -472,6 +554,12 @@ Alternative names and variations for named entities.
 
 - UNIQUE on `alias_name_normalized`, `entity_id` (`uq_entity_alias_name`)
 - CHECK `chk_alias_type_valid`: `alias_type IN ('name_variant', 'abbreviation', 'nickname', 'asr_error', 'translated_name', 'former_name')`
+
+**Indexes:**
+
+- INDEX `idx_entity_aliases_entity_id` on `entity_id`
+- INDEX `idx_entity_aliases_normalized` on `alias_name_normalized`
+- INDEX `idx_entity_aliases_type` on `alias_type`
 
 ### `entity_mentions`
 
@@ -537,3 +625,43 @@ Audit log for named-entity curation edits (name/description) — Feature 057.
 
 - INDEX `idx_entity_operation_logs_entity_id` on `entity_id`
 - INDEX `idx_entity_operation_logs_performed_at` on `performed_at`
+
+## Recovery Provenance
+
+Append-only record of which archive sources contributed metadata to a deleted video or channel, so one recovery pass cannot erase another's attribution.
+
+### `video_recovery_sources`
+
+One recovery source that contributed to a video's metadata — ADR-011.
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `video_id` | VARCHAR(20) | no |  | **PK**, FK → `videos.video_id` |
+| `source` | VARCHAR(50) | no |  | **PK** |
+| `source_detail` | VARCHAR(100) | yes |  |  |
+| `recovered_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `fields_written` | VARCHAR[] | yes |  |  |
+
+**Composite primary key:** `video_id`, `source`
+
+**Indexes:**
+
+- INDEX `idx_video_recovery_sources_source` on `source`
+
+### `channel_recovery_sources`
+
+One recovery source that contributed to a channel's metadata — ADR-011.
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `channel_id` | VARCHAR(24) | no |  | **PK**, FK → `channels.channel_id` |
+| `source` | VARCHAR(50) | no |  | **PK** |
+| `source_detail` | VARCHAR(100) | yes |  |  |
+| `recovered_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `fields_written` | VARCHAR[] | yes |  |  |
+
+**Composite primary key:** `channel_id`, `source`
+
+**Indexes:**
+
+- INDEX `idx_channel_recovery_sources_source` on `source`

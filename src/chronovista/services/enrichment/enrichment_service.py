@@ -91,6 +91,25 @@ EXIT_CODE_LOCK_FAILED = 4
 # Batch size for API calls
 BATCH_SIZE = 50
 
+# Defence-in-depth against a wholesale not-found result (#149).
+#
+# The primary fix lives in YouTubeService: a batch that fails to fetch no longer
+# contributes its IDs to not_found, so an auth or network failure now reports
+# nothing missing rather than everything. This guard covers the residue — an API
+# that answers successfully and returns no items at all, which no amount of
+# exception handling can detect.
+#
+# The ratio is deliberately loose. It is not tuned to catch a realistic
+# deletion rate, because it cannot: the recurrence of this bug on 2026-08-05
+# flagged 4 playlists out of 112, and no threshold distinguishes that from
+# genuine attrition. Wholesale is the only shape this guard is meant to see.
+#
+# The floor exists because the ratio is meaningless on a short run: enriching
+# three playlists of which two are genuinely gone is 67%, and blocking that
+# would make `--limit` unusable.
+MASS_DELETION_GUARD_RATIO = 0.5
+MASS_DELETION_GUARD_MIN_PLAYLISTS = 10
+
 
 # ---------------------------------------------------------------------------
 # Lazy image-cache invalidation helper (Feature 026 / T029)
@@ -2570,7 +2589,12 @@ class EnrichmentService:
         Enrich playlist metadata from YouTube API.
 
         Fetches playlist metadata from YouTube Data API and updates local database.
-        Playlists not found by the API are marked as deleted/private.
+
+        Playlists the API definitively did not return are marked deleted/private.
+        Two things are deliberately not treated as evidence of deletion (#149):
+        a playlist whose batch failed to fetch (excluded upstream by
+        ``fetch_playlists_batched``), and a run in which most of the library
+        comes back missing at once, which is blocked by the mass-deletion guard.
 
         Parameters
         ----------
@@ -2634,6 +2658,26 @@ class EnrichmentService:
             p.id: p for p in api_playlists
         }
 
+        # Batch-wide sanity guard (#149). Genuine deletions arrive a few at a
+        # time; a run in which most of the library is suddenly absent describes
+        # a broken fetch, not a user who deleted everything between syncs.
+        # Reconciliation is skipped entirely rather than partially, because a
+        # result this implausible is not trustworthy for the rows it *did*
+        # return either.
+        mark_deleted = True
+        if (
+            len(playlist_ids) >= MASS_DELETION_GUARD_MIN_PLAYLISTS
+            and len(not_found_ids) > len(playlist_ids) * MASS_DELETION_GUARD_RATIO
+        ):
+            mark_deleted = False
+            logger.warning(
+                f"Refusing to mark playlists deleted: the API did not return "
+                f"{len(not_found_ids)} of {len(playlist_ids)} playlists in this "
+                f"run, which indicates a fetch or authentication failure rather "
+                f"than deletion. Metadata updates continue; no playlist will be "
+                f"hidden. Re-run once the API is reachable."
+            )
+
         playlists_processed = 0
         playlists_updated = 0
         playlists_deleted = 0
@@ -2644,7 +2688,11 @@ class EnrichmentService:
 
             try:
                 if playlist_id in not_found_ids:
-                    # Playlist not found = deleted/private
+                    # The API answered and this playlist was not in the answer:
+                    # deleted or private. IDs from a failed batch never reach
+                    # this set (#149).
+                    if not mark_deleted:
+                        continue
                     playlist.deleted_flag = True
                     playlists_deleted += 1
                     logger.info(f"Marked playlist {playlist_id} as deleted/private")
@@ -2722,6 +2770,17 @@ class EnrichmentService:
             f"Playlist enrichment complete: {playlists_processed} processed, "
             f"{playlists_updated} updated, {playlists_deleted} deleted"
         )
+
+        # Hiding playlists is the one outcome of this run a user would want to
+        # know about, and it was previously reported only as per-row INFO —
+        # which is how 288 disappeared unnoticed for two months (#149).
+        if playlists_deleted:
+            logger.warning(
+                f"{playlists_deleted} playlist(s) were marked deleted and will "
+                f"no longer appear in the UI. If this is unexpected, restore "
+                f"with: UPDATE playlists SET deleted_flag = false "
+                f"WHERE deleted_flag = true;"
+            )
 
         return (playlists_processed, playlists_updated, playlists_deleted)
 

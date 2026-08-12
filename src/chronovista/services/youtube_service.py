@@ -503,8 +503,11 @@ class YouTubeService(YouTubeServiceInterface):
         Returns
         -------
         tuple[list[YouTubeVideoResponse], set[str]]
-            Tuple of (list of video details as typed models, set of video IDs not found)
-            Videos not returned by API are considered deleted/private.
+            Tuple of (list of video details as typed models, set of video IDs the
+            API definitively did not return — deleted or private).
+
+            IDs whose batch failed to fetch appear in neither return value: an
+            incomplete request is not evidence of absence.
 
         Raises
         ------
@@ -521,6 +524,10 @@ class YouTubeService(YouTubeServiceInterface):
         all_videos: list[YouTubeVideoResponse] = []
         requested_ids = set(video_ids)
         found_ids: set[str] = set()
+        # See fetch_playlists_batched: a batch that raised tells us nothing
+        # about its videos, so those IDs must not fall into not_found by
+        # subtraction (#149).
+        unresolved_ids: set[str] = set()
 
         # Reset processed counter for this batch operation
         self._videos_processed = 0
@@ -556,14 +563,24 @@ class YouTubeService(YouTubeServiceInterface):
             except Exception as e:
                 # Log error but continue with remaining batches
                 # This handles cases where individual batches fail but others succeed
+                unresolved_ids.update(batch)
                 logger.warning(f"Error fetching batch {batch_number}: {e}")
 
-        # T094: Not found = requested but not in response (deleted/private)
-        not_found = requested_ids - found_ids
+        # T094: Not found = requested, the API answered, and it was not in the
+        # answer. Videos from a batch that raised are excluded — unknown, not
+        # absent (#149).
+        not_found = requested_ids - found_ids - unresolved_ids
         if not_found:
             logger.info(
                 f"Batch fetch complete: {len(found_ids)} found, "
                 f"{len(not_found)} not found (deleted/private)"
+            )
+
+        if unresolved_ids:
+            logger.warning(
+                f"{len(unresolved_ids)} of {len(requested_ids)} videos could not "
+                f"be fetched (batch errors); they are reported as neither found "
+                f"nor missing. Callers must not treat them as deleted."
             )
 
         return all_videos, not_found
@@ -1190,8 +1207,16 @@ class YouTubeService(YouTubeServiceInterface):
         Returns
         -------
         tuple[list[YouTubePlaylistResponse], set[str]]
-            Tuple of (list of playlist details as typed models, set of playlist IDs not found)
-            Playlists not returned by API are considered deleted/private.
+            Tuple of (list of playlist details as typed models, set of playlist
+            IDs the API definitively did not return).
+
+            ``not_found`` means **the API answered, and this playlist was not in
+            the answer** — deleted, private, or otherwise inaccessible. IDs whose
+            batch failed to fetch are NOT included: a request that never
+            completed says nothing about whether its playlists exist, and a
+            caller cannot recover that distinction once it has been discarded.
+            Those IDs are absent from both return values, so a caller that acts
+            only on what it was told does nothing with them.
 
         Examples
         --------
@@ -1202,6 +1227,11 @@ class YouTubeService(YouTubeServiceInterface):
         all_playlists: list[YouTubePlaylistResponse] = []
         requested_ids = set(playlist_ids)
         found_ids: set[str] = set()
+        # IDs from batches that raised. Kept separate from found_ids because
+        # "we did not learn anything" and "the API said it is gone" are
+        # different facts, and only one of them justifies marking a playlist
+        # deleted (#149).
+        unresolved_ids: set[str] = set()
 
         for i in range(0, len(playlist_ids), batch_size):
             batch = playlist_ids[i : i + batch_size]
@@ -1212,12 +1242,22 @@ class YouTubeService(YouTubeServiceInterface):
                 for playlist in batch_results:
                     found_ids.add(playlist.id)
             except Exception as e:
-                # Log error but continue with remaining batches
+                # Continue with remaining batches, but remember that this
+                # batch's IDs are unknown rather than absent.
+                unresolved_ids.update(batch)
                 logger.warning(
                     f"Error fetching playlist batch {i // batch_size + 1}: {e}"
                 )
 
-        not_found = requested_ids - found_ids
+        not_found = requested_ids - found_ids - unresolved_ids
+
+        if unresolved_ids:
+            logger.warning(
+                f"{len(unresolved_ids)} of {len(requested_ids)} playlists could "
+                f"not be fetched (batch errors); they are reported as neither "
+                f"found nor missing. Callers must not treat them as deleted."
+            )
+
         return all_playlists, not_found
 
     async def get_video_categories(

@@ -44,6 +44,9 @@ class PlaylistBase(BaseModel):
     deleted_flag: bool = Field(
         default=False, description="Whether the playlist is deleted/private"
     )
+    unavailability_first_detected: datetime | None = Field(
+        default=None, description="When unavailability was first detected"
+    )
 
     # Playlist type (for system playlist handling)
     playlist_type: PlaylistType = Field(
@@ -111,6 +114,7 @@ class PlaylistUpdate(BaseModel):
     video_count: int | None = Field(None, ge=0)
     published_at: datetime | None = None
     deleted_flag: bool | None = None
+    unavailability_first_detected: datetime | None = None
 
     # Playlist type (for system playlist handling)
     playlist_type: PlaylistType | None = Field(

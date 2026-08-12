@@ -324,6 +324,74 @@ class PlaylistRepository(
             .values(playlist_type=new_type.value)
         )
 
+    async def get_hidden_playlists(self, session: AsyncSession) -> list[PlaylistDB]:
+        """Return every playlist currently hidden by ``deleted_flag``.
+
+        The counterpart to every other query in this class, which filter hidden
+        playlists *out*. This one exists so a user can see what an enrichment
+        run removed from the UI (#149) — otherwise the only way to find them is
+        to open a psql prompt, which is how the original incident was diagnosed
+        two months after the fact.
+
+        Ordered by ``updated_at`` descending so the most recently hidden appear
+        first, which is nearly always what someone investigating wants.
+
+        Note on ``updated_at``: for a hidden playlist it is effectively the time
+        it was hidden, because nothing writes to a hidden playlist — enrichment
+        selects only live rows and the takeout seeder's update path is a no-op.
+        That is a property of current behaviour rather than a guarantee, which
+        is why it is presented as approximate and never used as a filter.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+
+        Returns
+        -------
+        list[PlaylistDB]
+            Hidden playlists, most recently hidden first.
+        """
+        result = await session.execute(
+            select(PlaylistDB)
+            .where(PlaylistDB.deleted_flag.is_(True))
+            .order_by(PlaylistDB.updated_at.desc())
+        )
+        return list(result.scalars().all())
+
+    async def restore_playlists(
+        self, session: AsyncSession, playlist_ids: list[str]
+    ) -> int:
+        """Clear ``deleted_flag`` on the given playlists, returning the count.
+
+        Restricted to rows that are actually hidden, so the returned count is
+        the number of playlists genuinely restored rather than the number of
+        ids supplied. A caller passing an id that is already visible — or one
+        that does not exist — gets an honest zero for it.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        playlist_ids : list[str]
+            Playlists to restore. An empty list is a no-op.
+
+        Returns
+        -------
+        int
+            Number of rows changed.
+        """
+        if not playlist_ids:
+            return 0
+
+        result = await session.execute(
+            update(PlaylistDB)
+            .where(PlaylistDB.playlist_id.in_(playlist_ids))
+            .where(PlaylistDB.deleted_flag.is_(True))
+            .values(deleted_flag=False)
+        )
+        return int(result.rowcount)
+
     async def get_with_channel(
         self, session: AsyncSession, playlist_id: str
     ) -> PlaylistDB | None:

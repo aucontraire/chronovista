@@ -182,6 +182,97 @@ class PlaylistDetailResponse(BaseModel):
     data: PlaylistDetail
 
 
+class HiddenPlaylistItem(PlaylistListItem):
+    """A playlist hidden from every other view by ``deleted_flag`` (#149).
+
+    Carries ``hidden_at_approx`` rather than a real deletion timestamp: no
+    column records when a playlist was hidden, so this is the row's
+    last-modified time. For a hidden playlist that *is* when it was hidden,
+    because nothing writes to one afterwards — enrichment selects only live
+    rows. The name says "approx" because that is a property of current
+    behaviour, not a guarantee, and a consumer must not treat it as an audit
+    record.
+    """
+
+    model_config = ConfigDict(strict=True, from_attributes=True)
+
+    hidden_at_approx: datetime = Field(
+        ...,
+        description=(
+            "Row last-modified time, which for a hidden playlist approximates "
+            "when it was hidden. Not an audit timestamp."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_is_linked(cls, data: Any) -> Any:
+        """Map an ORM row to this schema's fields.
+
+        Written standalone rather than delegating to the parent's validator:
+        that attribute is a Pydantic descriptor proxy, and calling it through
+        the class is not a supported, type-checkable call even though it
+        happens to resolve at runtime. The parent also drops ``updated_at``
+        when it builds its dict, so there would be nothing left to read the
+        hidden time from afterwards.
+        """
+        if isinstance(data, dict):
+            playlist_id = data.get("playlist_id", "")
+            data["is_linked"] = playlist_id.startswith(("PL", "LL", "WL", "HL"))
+            return data
+        if hasattr(data, "playlist_id"):
+            playlist_id = getattr(data, "playlist_id", "")
+            return {
+                "playlist_id": playlist_id,
+                "title": getattr(data, "title", ""),
+                "description": getattr(data, "description", None),
+                "video_count": getattr(data, "video_count", 0),
+                "privacy_status": getattr(data, "privacy_status", "private"),
+                "is_linked": playlist_id.startswith(("PL", "LL", "WL", "HL")),
+                "playlist_type": getattr(data, "playlist_type", "regular"),
+                "hidden_at_approx": getattr(data, "updated_at", None),
+            }
+        return data
+
+
+class HiddenPlaylistListResponse(BaseModel):
+    """Response wrapper for the hidden-playlist list."""
+
+    model_config = ConfigDict(strict=True)
+
+    data: list[HiddenPlaylistItem]
+    total: int = Field(..., description="Number of hidden playlists")
+
+
+class PlaylistRestoreRequest(BaseModel):
+    """Playlists to un-hide.
+
+    ``playlist_ids`` is required and must be non-empty: there is deliberately
+    no "restore everything" request shape, because an empty body is exactly
+    what an accidental POST sends, and un-hiding the whole library must be an
+    explicit act. A caller wanting all of them lists them from
+    ``GET /playlists/hidden`` first.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    playlist_ids: list[str] = Field(
+        ..., min_length=1, description="Playlist IDs to restore"
+    )
+
+
+class PlaylistRestoreResponse(BaseModel):
+    """Outcome of a restore request."""
+
+    model_config = ConfigDict(strict=True)
+
+    restored: int = Field(..., description="Number of playlists actually un-hidden")
+    skipped: list[str] = Field(
+        default_factory=list,
+        description="Requested IDs that were not hidden (already visible or unknown)",
+    )
+
+
 class PlaylistWatchStats(BaseModel):
     """Watched/unwatched breakdown for one playlist (Feature 061).
 

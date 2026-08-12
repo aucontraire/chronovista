@@ -221,6 +221,8 @@ class TestPlaylistBase:
             # New fields for playlist enrichment
             "published_at": None,
             "deleted_flag": False,
+            # Two-cycle deletion confirmation (#149)
+            "unavailability_first_detected": None,
             # Playlist type for system playlist handling (T077)
             "playlist_type": PlaylistType.REGULAR,
         }

@@ -881,6 +881,15 @@ class Playlist(Base):
     # Status tracking (similar to Video model)
     deleted_flag: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Set when an enrichment run first fails to find this playlist; a second
+    # consecutive miss is what actually sets deleted_flag. Videos have carried
+    # the identically named column since the availability_status migration;
+    # playlists were left without it, which is why one bad run could hide the
+    # whole library (#149).
+    unavailability_first_detected: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
     # Playlist type (for system playlist handling)
     playlist_type: Mapped[str] = mapped_column(
         String(20),

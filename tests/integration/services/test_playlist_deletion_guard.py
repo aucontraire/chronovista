@@ -96,6 +96,25 @@ def _service(fetch_result: Any) -> EnrichmentService:
     )
 
 
+async def service_missing(
+    session: AsyncSession, playlist_id: str
+) -> tuple[int, int, int]:
+    """Run one enrichment cycle in which ``playlist_id`` is not returned."""
+    return await _service(([], {playlist_id})).enrich_playlists(session)
+
+
+async def _pending_count(session: AsyncSession, ids: list[str]) -> int:
+    """How many of ``ids`` carry an unconfirmed not-found detection."""
+    rows = await session.execute(
+        text(
+            "SELECT count(*) FROM playlists WHERE playlist_id = ANY(:ids) "
+            "AND unavailability_first_detected IS NOT NULL"
+        ),
+        {"ids": ids},
+    )
+    return int(rows.scalar_one())
+
+
 async def _hidden_count(session: AsyncSession, ids: list[str]) -> int:
     rows = await session.execute(
         text(
@@ -125,6 +144,10 @@ class TestMassNotFoundIsRefused:
         assert (
             await _hidden_count(db_session, ids) == 0
         ), "an enrichment run that finds nothing must not hide the library"
+        assert await _pending_count(db_session, ids) == 0, (
+            "a rejected run must not bank a detection either, or one bad run "
+            "plus one genuine miss would confirm"
+        )
         assert any(
             "Refusing to mark playlists deleted" in r.message
             for r in caplog.records
@@ -137,12 +160,13 @@ class TestMassNotFoundIsRefused:
         """The guard must not become a blanket refusal.
 
         A handful of genuinely absent playlists among many present ones is the
-        normal case, and it still marks exactly those.
+        normal case, and it still marks exactly those — on the second cycle.
         """
         ids = await _seed_playlists(db_session, 40, "PLincr")
         gone = ids[:3]
         service = _service(([], set(gone)))
 
+        await service.enrich_playlists(db_session)
         _, _, deleted = await service.enrich_playlists(db_session)
 
         assert deleted == 3
@@ -160,6 +184,7 @@ class TestMassNotFoundIsRefused:
         ids = await _seed_playlists(db_session, 4, "PLshort")
         service = _service(([], set(ids)))
 
+        await service.enrich_playlists(db_session, limit=4)
         _, _, deleted = await service.enrich_playlists(db_session, limit=4)
 
         assert deleted == 4
@@ -184,6 +209,68 @@ class TestFetchFailureHidesNothing:
         assert await _hidden_count(db_session, ids) == 0
 
 
+class TestTwoCycleConfirmation:
+    """A single not-found records a detection; it never hides anything (#149).
+
+    Videos have had this since the availability_status migration. Playlists —
+    the coarser object, where one row stands for a whole page of content — had
+    none, so one bad run hid 288 of them.
+    """
+
+    async def test_the_first_miss_hides_nothing(self, db_session: AsyncSession) -> None:
+        ids = await _seed_playlists(db_session, 40, "PLcycle1")
+        service = _service(([], {ids[0]}))
+
+        _, _, deleted = await service.enrich_playlists(db_session)
+
+        assert deleted == 0
+        assert await _hidden_count(db_session, [ids[0]]) == 0
+        assert await _pending_count(db_session, [ids[0]]) == 1
+
+    async def test_the_second_consecutive_miss_confirms(
+        self, db_session: AsyncSession
+    ) -> None:
+        ids = await _seed_playlists(db_session, 40, "PLcycle2")
+        service = _service(([], {ids[0]}))
+
+        await service.enrich_playlists(db_session)
+        _, _, deleted = await service.enrich_playlists(db_session)
+
+        assert deleted == 1
+        assert await _hidden_count(db_session, [ids[0]]) == 1
+        assert (
+            await _pending_count(db_session, [ids[0]]) == 0
+        ), "the pending marker is consumed by confirmation, not left behind"
+
+    async def test_reappearing_clears_the_pending_detection(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Otherwise two unrelated failures months apart would combine.
+
+        Miss, return, miss again: the second miss is a first detection, not a
+        confirmation, so nothing is hidden.
+        """
+        ids = await _seed_playlists(db_session, 40, "PLcycle3")
+        target = ids[0]
+
+        await service_missing(db_session, target)
+        assert await _pending_count(db_session, [target]) == 1
+
+        # The API returns it again.
+        returned = MagicMock()
+        returned.id = target
+        returned.snippet = None
+        returned.status = None
+        returned.content_details = None
+        await _service(([returned], set())).enrich_playlists(db_session)
+        assert await _pending_count(db_session, [target]) == 0
+
+        _, _, deleted = await service_missing(db_session, target)
+
+        assert deleted == 0
+        assert await _hidden_count(db_session, [target]) == 0
+
+
 class TestDeletionIsSurfaced:
     async def test_hiding_playlists_logs_a_warning(
         self, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
@@ -192,6 +279,7 @@ class TestDeletionIsSurfaced:
         ids = await _seed_playlists(db_session, 40, "PLwarn")
         service = _service(([], {ids[0]}))
 
+        await service.enrich_playlists(db_session)
         await service.enrich_playlists(db_session)
 
         warnings = [r.message for r in caplog.records if r.levelname == "WARNING"]

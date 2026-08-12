@@ -1880,6 +1880,47 @@ class EnrichmentService:
             logger.warning(f"Video {video_id} not found for unavailability marking")
             return False
 
+    def _confirm_playlist_deleted(self, playlist: Any) -> bool:
+        """
+        Apply two-cycle unavailability confirmation for a playlist (#149).
+
+        The playlist counterpart of ``_mark_video_deleted``. A first not-found
+        records the detection and hides nothing; a second consecutive one sets
+        ``deleted_flag``, which is what removes the playlist from every list and
+        detail endpoint.
+
+        The asymmetry this closes is worth stating: videos have had two-cycle
+        confirmation since the availability_status migration, and playlists —
+        the coarser, more visible object, where one row stands for a whole
+        page of content — had none. A single failed run hid 288 of them.
+
+        Parameters
+        ----------
+        playlist : Any
+            Playlist ORM object.
+
+        Returns
+        -------
+        bool
+            True if the playlist was confirmed deleted (second cycle),
+            False if this was the first detection (pending confirmation).
+        """
+        if playlist.unavailability_first_detected is not None:
+            playlist.deleted_flag = True
+            playlist.unavailability_first_detected = None
+            logger.info(
+                f"Marked playlist {playlist.playlist_id} as deleted/private "
+                f"(two-cycle confirmation complete)"
+            )
+            return True
+
+        playlist.unavailability_first_detected = datetime.now(UTC)
+        logger.info(
+            f"Playlist {playlist.playlist_id} not found on API — "
+            f"flagged for confirmation on next sync cycle"
+        )
+        return False
+
     def _extract_video_update_from_dict(
         self, api_data: dict[str, Any]
     ) -> dict[str, Any]:
@@ -2590,11 +2631,15 @@ class EnrichmentService:
 
         Fetches playlist metadata from YouTube Data API and updates local database.
 
-        Playlists the API definitively did not return are marked deleted/private.
-        Two things are deliberately not treated as evidence of deletion (#149):
-        a playlist whose batch failed to fetch (excluded upstream by
+        Playlists the API definitively did not return are marked deleted/private
+        on the *second* consecutive miss; the first only records the detection.
+        Two further things are deliberately not treated as evidence of deletion
+        (#149): a playlist whose batch failed to fetch (excluded upstream by
         ``fetch_playlists_batched``), and a run in which most of the library
         comes back missing at once, which is blocked by the mass-deletion guard.
+
+        A playlist that reappears has its pending detection cleared, so two
+        unrelated failures cannot combine into a false confirmation.
 
         Parameters
         ----------
@@ -2681,6 +2726,7 @@ class EnrichmentService:
         playlists_processed = 0
         playlists_updated = 0
         playlists_deleted = 0
+        playlists_pending = 0
 
         for playlist in playlists_to_enrich:
             playlist_id = playlist.playlist_id
@@ -2692,10 +2738,15 @@ class EnrichmentService:
                     # deleted or private. IDs from a failed batch never reach
                     # this set (#149).
                     if not mark_deleted:
+                        # No pending detection either: a run the guard rejected
+                        # is not trustworthy enough to count as one of the two
+                        # cycles, or a single bad run plus one genuine miss
+                        # would confirm.
                         continue
-                    playlist.deleted_flag = True
-                    playlists_deleted += 1
-                    logger.info(f"Marked playlist {playlist_id} as deleted/private")
+                    if self._confirm_playlist_deleted(playlist):
+                        playlists_deleted += 1
+                    else:
+                        playlists_pending += 1
                     continue
 
                 api_data = api_data_map.get(playlist_id)
@@ -2703,6 +2754,16 @@ class EnrichmentService:
                     # Shouldn't happen, but handle gracefully
                     logger.warning(f"No API data for playlist {playlist_id}")
                     continue
+
+                # The API returned it, so any pending miss was transient and
+                # must not carry over — otherwise an unrelated failure months
+                # apart would combine into a false confirmation.
+                if playlist.unavailability_first_detected is not None:
+                    logger.info(
+                        f"Playlist {playlist_id} returned from API after pending "
+                        f"unavailability — clearing transient flag"
+                    )
+                    playlist.unavailability_first_detected = None
 
                 # Extract and update playlist metadata
                 # Update title
@@ -2768,7 +2829,8 @@ class EnrichmentService:
 
         logger.info(
             f"Playlist enrichment complete: {playlists_processed} processed, "
-            f"{playlists_updated} updated, {playlists_deleted} deleted"
+            f"{playlists_updated} updated, {playlists_deleted} deleted, "
+            f"{playlists_pending} pending confirmation"
         )
 
         # Hiding playlists is the one outcome of this run a user would want to

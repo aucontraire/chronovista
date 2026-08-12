@@ -38,6 +38,7 @@ from chronovista.models.api_responses import (
     YouTubePlaylistResponse,
     YouTubeVideoResponse,
 )
+from chronovista.models.app_identity import AppIdentitySource
 from chronovista.models.enrichment_report import (
     EnrichmentDetail,
     EnrichmentReport,
@@ -45,6 +46,7 @@ from chronovista.models.enrichment_report import (
 )
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.recovery_provenance import RecoverySourceRecord
+from chronovista.repositories.app_identity_repository import AppIdentityRepository
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.playlist_repository import PlaylistRepository
 from chronovista.repositories.recovery_provenance_repository import (
@@ -1880,6 +1882,74 @@ class EnrichmentService:
             logger.warning(f"Video {video_id} not found for unavailability marking")
             return False
 
+    async def _owner_verification_failure(self, session: AsyncSession) -> str | None:
+        """Return why we cannot confirm we are the library owner, else ``None``.
+
+        ``playlists.list?id=...`` returns a private playlist **only** to the
+        account that owns it. To anyone else the API answers successfully and
+        simply omits it — indistinguishable, at the response level, from the
+        playlist having been deleted. Marking playlists deleted on the strength
+        of that answer is therefore only sound when the account we are talking
+        to is the account that owns the library (#149).
+
+        The other defences do not cover this. A wrong-account token produces a
+        *successful* fetch, so the failed-batch containment never engages; the
+        omissions are consistent across runs, so two-cycle confirmation
+        confirms them; and the mass-deletion guard only sees it if the library
+        is overwhelmingly private. A library that is, say, 60% public would
+        lose its private playlists quietly.
+
+        Verification looks for a *contradiction*, not a credential audit, and
+        the persisted identity is read first: with no channel-sourced identity
+        on record there is nothing to contradict, so no API call is made. A
+        locally-sourced identity is not a failure either — playlists belong to
+        the Google account, not the channel, so a viewer-only owner with no
+        channel is still the owner, and demanding one would disable deletion
+        detection for a legitimate setup.
+
+        Unusable credentials are only reported once we had a reason to ask.
+        They are already harmless on their own: a fetch that fails contributes
+        nothing to ``not_found`` (#221), so nothing is marked either way.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+
+        Returns
+        -------
+        str | None
+            A human-readable reason to skip deleted-marking, or ``None`` when
+            nothing contradicts ownership.
+        """
+        identity = await AppIdentityRepository().get_identity(session)
+        if identity is None or identity.source != AppIdentitySource.CHANNEL.value:
+            return None
+
+        try:
+            channel = await self.youtube_service.get_my_channel()
+        except Exception as e:
+            return (
+                f"the authenticated account could not be determined ({e}), so "
+                f"this run cannot be attributed to the library owner"
+            )
+
+        if channel is None:
+            return (
+                "the authenticated account has no channel, but this library is "
+                "owned by a channel-sourced identity — private playlists would "
+                "be reported missing simply because they belong to someone else"
+            )
+
+        if channel.id != identity.user_id:
+            return (
+                "the authenticated channel is not the one that owns this "
+                "library; its private playlists are invisible to this account "
+                "and would be reported missing"
+            )
+
+        return None
+
     def _confirm_playlist_deleted(self, playlist: Any) -> bool:
         """
         Apply two-cycle unavailability confirmation for a playlist (#149).
@@ -2633,10 +2703,13 @@ class EnrichmentService:
 
         Playlists the API definitively did not return are marked deleted/private
         on the *second* consecutive miss; the first only records the detection.
-        Two further things are deliberately not treated as evidence of deletion
-        (#149): a playlist whose batch failed to fetch (excluded upstream by
-        ``fetch_playlists_batched``), and a run in which most of the library
-        comes back missing at once, which is blocked by the mass-deletion guard.
+        Three further things are deliberately not treated as evidence of
+        deletion (#149): a playlist whose batch failed to fetch (excluded
+        upstream by ``fetch_playlists_batched``), a run in which most of the
+        library comes back missing at once (the mass-deletion guard), and a run
+        whose account cannot be confirmed as the library's owner — a private
+        playlist is returned only to its owner, so to anyone else it is
+        indistinguishable from deleted.
 
         A playlist that reappears has its pending detection cleared, so two
         unrelated failures cannot combine into a false confirmation.
@@ -2703,15 +2776,28 @@ class EnrichmentService:
             p.id: p for p in api_playlists
         }
 
+        # Ownership check (#149). A private playlist is returned only to the
+        # account that owns it, so "absent from the response" means "deleted"
+        # only if we are that account. Checked before the guard because it is a
+        # statement about the whole run, not about its result.
+        mark_deleted = True
+        owner_failure = await self._owner_verification_failure(session)
+        if owner_failure is not None:
+            mark_deleted = False
+            logger.warning(
+                f"Refusing to mark playlists deleted: {owner_failure}. "
+                f"Metadata updates continue; no playlist will be hidden."
+            )
+
         # Batch-wide sanity guard (#149). Genuine deletions arrive a few at a
         # time; a run in which most of the library is suddenly absent describes
         # a broken fetch, not a user who deleted everything between syncs.
         # Reconciliation is skipped entirely rather than partially, because a
         # result this implausible is not trustworthy for the rows it *did*
         # return either.
-        mark_deleted = True
         if (
-            len(playlist_ids) >= MASS_DELETION_GUARD_MIN_PLAYLISTS
+            mark_deleted
+            and len(playlist_ids) >= MASS_DELETION_GUARD_MIN_PLAYLISTS
             and len(not_found_ids) > len(playlist_ids) * MASS_DELETION_GUARD_RATIO
         ):
             mark_deleted = False

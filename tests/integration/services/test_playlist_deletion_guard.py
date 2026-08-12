@@ -271,6 +271,134 @@ class TestTwoCycleConfirmation:
         assert await _hidden_count(db_session, [target]) == 0
 
 
+class TestOwnerVerification:
+    """Deleting requires being the account that owns the library (#149).
+
+    ``playlists.list?id=...`` returns a private playlist only to its owner. To
+    any other account the API answers successfully and omits it, which at the
+    response level is identical to the playlist having been deleted.
+
+    None of the other defences see this. The fetch succeeds, so failed-batch
+    containment never engages; the omissions repeat, so two-cycle confirmation
+    confirms them; and the mass-deletion guard only notices if the library is
+    overwhelmingly private. A 60%-public library would lose its private
+    playlists quietly.
+    """
+
+    async def _set_identity(self, session: AsyncSession, user_id: str) -> None:
+        await session.execute(text("DELETE FROM app_identities"))
+        await session.execute(
+            text(
+                "INSERT INTO app_identities (id, user_id, source) "
+                "VALUES (1, :uid, 'channel')"
+            ),
+            {"uid": user_id},
+        )
+        await session.flush()
+
+    async def test_a_different_channel_hides_nothing(
+        self, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The case every other guard misses.
+
+        Only 3 of 40 come back missing, so the ratio guard stays silent, and
+        both cycles run — yet nothing may be hidden, because the account is
+        provably not the owner.
+        """
+        ids = await _seed_playlists(db_session, 40, "PLowner1")
+        await self._set_identity(db_session, "UCtheowner00000000001")
+
+        service = _service(([], set(ids[:3])))
+        other = MagicMock()
+        other.id = "UCsomeoneelse00000001"
+        service.youtube_service.get_my_channel = AsyncMock(return_value=other)
+
+        await service.enrich_playlists(db_session)
+        _, _, deleted = await service.enrich_playlists(db_session)
+
+        assert deleted == 0
+        assert await _hidden_count(db_session, ids) == 0
+        assert (
+            await _pending_count(db_session, ids) == 0
+        ), "an unverifiable run must not bank a detection either"
+        assert any(
+            "not the one that owns this library" in r.message
+            for r in caplog.records
+            if r.levelname == "WARNING"
+        )
+
+    async def test_the_owning_channel_still_deletes(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The check must not become a blanket refusal."""
+        ids = await _seed_playlists(db_session, 40, "PLowner2")
+        await self._set_identity(db_session, "UCtheowner00000000002")
+
+        service = _service(([], set(ids[:3])))
+        owner = MagicMock()
+        owner.id = "UCtheowner00000000002"
+        service.youtube_service.get_my_channel = AsyncMock(return_value=owner)
+
+        await service.enrich_playlists(db_session)
+        _, _, deleted = await service.enrich_playlists(db_session)
+
+        assert deleted == 3
+
+    async def test_an_account_with_no_channel_hides_nothing(
+        self, db_session: AsyncSession
+    ) -> None:
+        """A channel-owned library seen through a channel-less account."""
+        ids = await _seed_playlists(db_session, 40, "PLowner3")
+        await self._set_identity(db_session, "UCtheowner00000000003")
+
+        service = _service(([], set(ids[:3])))
+        service.youtube_service.get_my_channel = AsyncMock(return_value=None)
+
+        await service.enrich_playlists(db_session)
+        _, _, deleted = await service.enrich_playlists(db_session)
+
+        assert deleted == 0
+
+    async def test_unusable_credentials_hide_nothing(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Asked only because a channel-sourced identity gave us a reason to."""
+        ids = await _seed_playlists(db_session, 40, "PLowner4")
+        await self._set_identity(db_session, "UCtheowner00000000004")
+
+        service = _service(([], set(ids[:3])))
+        service.youtube_service.get_my_channel = AsyncMock(
+            side_effect=RuntimeError("token expired")
+        )
+
+        await service.enrich_playlists(db_session)
+        _, _, deleted = await service.enrich_playlists(db_session)
+
+        assert deleted == 0
+
+    async def test_no_channel_identity_asks_nothing(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Without a channel-sourced identity there is nothing to contradict.
+
+        Deletion still works, and — the point of the ordering — the API is
+        never called, so this costs nothing on every ordinary run.
+        """
+        ids = await _seed_playlists(db_session, 40, "PLowner5")
+        await db_session.execute(text("DELETE FROM app_identities"))
+        await db_session.flush()
+
+        service = _service(([], set(ids[:3])))
+        asked = AsyncMock()
+        service.youtube_service.get_my_channel = asked
+
+        await service.enrich_playlists(db_session)
+        _, _, deleted = await service.enrich_playlists(db_session)
+
+        assert deleted == 3
+        asked.assert_not_awaited()
+
+
 class TestDeletionIsSurfaced:
     async def test_hiding_playlists_logs_a_warning(
         self, db_session: AsyncSession, caplog: pytest.LogCaptureFixture

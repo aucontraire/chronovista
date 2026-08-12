@@ -26,6 +26,26 @@ class Settings(BaseSettings):
     youtube_client_id: str = Field(default="")
     youtube_client_secret: str = Field(default="")
 
+    # Filmot — a third-party archive that retains metadata for videos YouTube
+    # has removed. Empty by default, and the recovery path degrades gracefully
+    # when unset: no key means the source is simply unavailable, never an error
+    # at import time.
+    #
+    # There is no longer anywhere to obtain a key of your own. The RapidAPI
+    # product every guide points at ("subscribe to Filmot on RapidAPI") returns
+    # NOT_FOUND and does not appear in RapidAPI's search — verified 2026-08-12.
+    # The only working route is filmot.com's own `getvideos` endpoint with the
+    # key published in the filmot-title-restorer userscript, which belongs to
+    # that project's author and was provisioned for a browser extension doing
+    # incidental lookups while someone browses.
+    #
+    # So this stays empty here and is set in `.env` (gitignored) rather than
+    # committed: a public repository should not carry a third party's key, and
+    # a key we do not control could be rotated at any time. Keep request volume
+    # in the spirit it was published for — this client rate-limits to 1 req/s
+    # for that reason, not because Filmot asked.
+    filmot_api_key: str = Field(default="")
+
     # Database
     database_url: str = Field(
         default="postgresql+asyncpg://user:password@localhost:5432/chronovista"

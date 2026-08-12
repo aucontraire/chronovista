@@ -502,6 +502,49 @@ class PageParseError(RecoveryError):
         super().__init__(message, video_id=video_id)
 
 
+class FilmotError(RecoveryError):
+    """
+    Filmot API errors (network, rate limit, parse, missing key).
+
+    Sibling of :class:`CDXError`: Filmot is the second archive this project
+    reads from, and its failure modes are the same shape.
+
+    Attributes
+    ----------
+    message : str
+        Human-readable error message.
+    status_code : int | None
+        HTTP status returned by Filmot (e.g. 429 for rate limit).
+
+    Examples
+    --------
+    >>> try:
+    ...     found, missing = await filmot_client.fetch_videos(video_ids)
+    ... except FilmotError as e:
+    ...     if e.status_code == 429:
+    ...         print("Filmot rate limit exceeded")
+    ...     raise
+    """
+
+    def __init__(
+        self,
+        message: str = "Filmot API error",
+        status_code: int | None = None,
+    ) -> None:
+        """
+        Initialize FilmotError.
+
+        Parameters
+        ----------
+        message : str, optional
+            Human-readable error message (default: "Filmot API error").
+        status_code : int | None, optional
+            HTTP status code returned by Filmot (default: None).
+        """
+        self.status_code = status_code
+        super().__init__(message)
+
+
 class RecoveryDependencyError(RecoveryError):
     """
     Optional dependencies not installed.

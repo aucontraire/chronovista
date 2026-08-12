@@ -522,6 +522,203 @@ async def _reclassify(
 
 
 @playlist_app.command()
+def hidden() -> None:
+    """Show playlists hidden from the UI by ``deleted_flag``.
+
+    Every other view filters these out, so without this command the only way
+    to see them is a psql prompt. That is how an enrichment run once hid 288
+    playlists for two months without anyone being able to name which ones.
+
+    The "Hidden" column is approximate: it is the row's last-modified time,
+    which for a hidden playlist is when it was hidden, because nothing writes
+    to one afterwards.
+
+    Examples:
+        chronovista playlist hidden
+
+    Exit Codes:
+        0: Success
+        2: System error - database failure
+        3: Cancelled - Ctrl+C pressed
+    """
+
+    async def hidden_async() -> None:
+        repository = PlaylistRepository()
+        db_manager = DatabaseManager()
+
+        try:
+            async for session in db_manager.get_session(echo=False):
+                playlists = await repository.get_hidden_playlists(session)
+
+                if not playlists:
+                    console.print("[green]No hidden playlists.[/green]")
+                    sys.exit(EXIT_SUCCESS)
+
+                table = Table(title=f"Hidden playlists ({len(playlists)})")
+                table.add_column("Playlist ID", style="cyan", no_wrap=False)
+                table.add_column("Title", style="white")
+                table.add_column("Videos", justify="right", style="green")
+                table.add_column("Hidden (approx)", style="dim")
+                table.add_column("Privacy", justify="center")
+
+                for playlist in playlists:
+                    table.add_row(
+                        _truncate_id(playlist.playlist_id),
+                        playlist.title,
+                        str(playlist.video_count),
+                        playlist.updated_at.strftime("%Y-%m-%d"),
+                        playlist.privacy_status,
+                    )
+
+                console.print(table)
+                console.print(
+                    "\n[dim]Restore with: chronovista playlist restore --all[/dim]"
+                )
+                sys.exit(EXIT_SUCCESS)
+
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Operation cancelled by user[/yellow]")
+            sys.exit(EXIT_CANCELLED)
+
+        except Exception as e:
+            console.print(
+                Panel(
+                    f"[red]Database error:[/red]\n{str(e)}",
+                    title="Listing Failed",
+                    border_style="red",
+                )
+            )
+            sys.exit(EXIT_SYSTEM_ERROR)
+
+    asyncio.run(hidden_async())
+
+
+@playlist_app.command()
+def restore(
+    playlist_id: builtins.list[str] = typer.Option(
+        [],
+        "--id",
+        help="Restore a specific playlist. Repeatable.",
+    ),
+    all_hidden: bool = typer.Option(
+        False,
+        "--all",
+        help="Restore every hidden playlist.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show what would be restored without writing.",
+    ),
+) -> None:
+    """Un-hide playlists that were marked deleted.
+
+    A playlist hidden by ``deleted_flag`` never comes back on its own:
+    enrichment selects only live rows, so a hidden playlist leaves the
+    population permanently. Until this command the only route back was a
+    hand-written UPDATE (#149).
+
+    Requires either --all or at least one --id, so that a bare `restore`
+    cannot un-hide the entire library by accident.
+
+    Examples:
+        chronovista playlist restore --all
+        chronovista playlist restore --id PLxxxx --id PLyyyy
+        chronovista playlist restore --all --dry-run
+
+    Exit Codes:
+        0: Success
+        1: User error - neither --all nor --id given, or both
+        2: System error - database failure
+        3: Cancelled - Ctrl+C pressed
+    """
+    if all_hidden and playlist_id:
+        console.print(
+            "[red]Use either --all or --id, not both.[/red]\n"
+            "[dim]--all restores everything hidden; --id restores only what "
+            "you name.[/dim]"
+        )
+        raise typer.Exit(EXIT_USER_ERROR)
+
+    if not all_hidden and not playlist_id:
+        console.print(
+            "[red]Nothing to restore.[/red]\n"
+            "[dim]Pass --all to restore every hidden playlist, or --id to "
+            "name specific ones. Run 'chronovista playlist hidden' to see "
+            "what is hidden.[/dim]"
+        )
+        raise typer.Exit(EXIT_USER_ERROR)
+
+    async def restore_async() -> None:
+        repository = PlaylistRepository()
+        db_manager = DatabaseManager()
+
+        try:
+            async for session in db_manager.get_session(echo=False):
+                hidden_playlists = await repository.get_hidden_playlists(session)
+                hidden_ids = {p.playlist_id for p in hidden_playlists}
+
+                if all_hidden:
+                    targets = sorted(hidden_ids)
+                    unknown: builtins.list[str] = []
+                else:
+                    targets = [pid for pid in playlist_id if pid in hidden_ids]
+                    unknown = [pid for pid in playlist_id if pid not in hidden_ids]
+
+                for pid in unknown:
+                    console.print(
+                        f"[yellow]Skipping {pid}: not hidden "
+                        f"(already visible, or no such playlist).[/yellow]"
+                    )
+
+                if not targets:
+                    console.print("[dim]Nothing to restore.[/dim]")
+                    sys.exit(EXIT_SUCCESS)
+
+                if dry_run:
+                    console.print(
+                        Panel(
+                            "[bold]Restore (dry-run)[/bold] — no changes written",
+                            border_style="yellow",
+                        )
+                    )
+                    for pid in targets:
+                        console.print(f"  would restore {pid}")
+                    console.print(
+                        f"\n[bold]Would restore {len(targets)} playlist(s).[/bold]\n"
+                        "[dim]Re-run without --dry-run to apply.[/dim]"
+                    )
+                    sys.exit(EXIT_SUCCESS)
+
+                restored = await repository.restore_playlists(session, targets)
+                await session.commit()
+
+                console.print(
+                    f"[green]Restored {restored} playlist(s).[/green]\n"
+                    "[dim]They will reappear in the UI immediately. If an "
+                    "enrichment run hid them in error, fix the cause before "
+                    "re-running it.[/dim]"
+                )
+                sys.exit(EXIT_SUCCESS)
+
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Operation cancelled by user[/yellow]")
+            sys.exit(EXIT_CANCELLED)
+
+        except Exception as e:
+            console.print(
+                Panel(
+                    f"[red]Database error:[/red]\n{str(e)}",
+                    title="Restore Failed",
+                    border_style="red",
+                )
+            )
+            sys.exit(EXIT_SYSTEM_ERROR)
+
+    asyncio.run(restore_async())
+
+
+@playlist_app.command()
 def reclassify(
     dry_run: bool = typer.Option(
         False,

@@ -17,10 +17,14 @@ from sqlalchemy.orm import selectinload
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.playlists import (
+    HiddenPlaylistItem,
+    HiddenPlaylistListResponse,
     PlaylistDetail,
     PlaylistDetailResponse,
     PlaylistListItem,
     PlaylistListResponse,
+    PlaylistRestoreRequest,
+    PlaylistRestoreResponse,
     PlaylistVideoListItem,
     PlaylistVideoListResponse,
     PlaylistWatchStats,
@@ -38,6 +42,7 @@ from chronovista.db.models import (
 from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import BadRequestError, NotFoundError
 from chronovista.models.enums import AvailabilityStatus, PlaylistType, WatchedStatus
+from chronovista.repositories.playlist_repository import PlaylistRepository
 from chronovista.repositories.user_video_repository import watched_video_ids
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -238,6 +243,81 @@ async def list_playlists(
     )
 
     return PlaylistListResponse(data=items, pagination=pagination)
+
+
+@router.get(
+    "/playlists/hidden",
+    response_model=HiddenPlaylistListResponse,
+    responses=LIST_ERRORS,
+)
+async def list_hidden_playlists(
+    session: AsyncSession = Depends(get_db),
+) -> HiddenPlaylistListResponse:
+    """List playlists hidden from every other view by ``deleted_flag``.
+
+    Declared before ``/playlists/{playlist_id}`` deliberately: FastAPI matches
+    routes in definition order, and "hidden" is a valid playlist-id shape, so
+    the reverse order would send every request here to the detail handler and
+    return a 404.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    HiddenPlaylistListResponse
+        Hidden playlists, most recently hidden first.
+    """
+    playlists = await PlaylistRepository().get_hidden_playlists(session)
+    return HiddenPlaylistListResponse(
+        data=[HiddenPlaylistItem.model_validate(p) for p in playlists],
+        total=len(playlists),
+    )
+
+
+@router.post(
+    "/playlists/restore",
+    response_model=PlaylistRestoreResponse,
+    responses=LIST_ERRORS,
+)
+async def restore_playlists(
+    request: PlaylistRestoreRequest,
+    session: AsyncSession = Depends(get_db),
+) -> PlaylistRestoreResponse:
+    """Un-hide playlists that were marked deleted.
+
+    A hidden playlist never returns on its own — enrichment selects only live
+    rows, so it leaves the population permanently. Until this endpoint the only
+    route back was a hand-written UPDATE (#149).
+
+    IDs that are not currently hidden are reported in ``skipped`` rather than
+    raising: a partial restore is a useful outcome, and failing the whole
+    request because one id was already visible would be worse than saying so.
+
+    Parameters
+    ----------
+    request : PlaylistRestoreRequest
+        Playlist IDs to restore (non-empty).
+    session : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    PlaylistRestoreResponse
+        Count restored, plus any requested IDs that were not hidden.
+    """
+    repository = PlaylistRepository()
+    hidden_ids = {p.playlist_id for p in await repository.get_hidden_playlists(session)}
+
+    targets = [pid for pid in request.playlist_ids if pid in hidden_ids]
+    skipped = [pid for pid in request.playlist_ids if pid not in hidden_ids]
+
+    restored = await repository.restore_playlists(session, targets)
+    await session.commit()
+
+    return PlaylistRestoreResponse(restored=restored, skipped=skipped)
 
 
 @router.get(

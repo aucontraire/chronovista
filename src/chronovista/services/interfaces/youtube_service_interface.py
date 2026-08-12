@@ -163,8 +163,12 @@ class YouTubeServiceInterface(ABC):
         Returns
         -------
         tuple[list[YouTubeVideoResponse], set[str]]
-            Tuple of (list of video details, set of video IDs not found).
-            Videos not returned by API are considered deleted/private.
+            Tuple of (list of video details, set of video IDs the API
+            definitively did not return — deleted or private).
+
+            Implementations MUST NOT report an ID as not-found because its batch
+            failed to fetch. An incomplete request is not evidence of absence,
+            and callers act on this set by marking content deleted (#149).
 
         Raises
         ------
@@ -345,7 +349,12 @@ class YouTubeServiceInterface(ABC):
         Returns
         -------
         tuple[list[YouTubePlaylistResponse], set[str]]
-            Tuple of (list of playlist details, set of playlist IDs not found).
+            Tuple of (list of playlist details, set of playlist IDs the API
+            definitively did not return).
+
+            Implementations MUST NOT report an ID as not-found because its batch
+            failed to fetch. An incomplete request is not evidence of absence,
+            and callers act on this set by marking playlists deleted (#149).
         """
         pass
 

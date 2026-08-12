@@ -1,593 +1,333 @@
 """
 Tests for YouTubeService batch fetch operations (T067b).
 
+Every test here calls ``fetch_playlists_batched``. That sounds like a given; it
+is stated because the previous version of this file did not. All 21 of its
+tests defined a *local copy* of the method inside the test body — one of them
+under the comment ``# Call the method (simulating what we expect)`` — and
+asserted against the copy. Several asserted only on set literals the test had
+just constructed. The production method had no test coverage at all, which is
+why #149 shipped and survived two occurrences.
+
+A reimplementation cannot fail when the original is wrong. It fails when the
+two drift, which nobody notices, because the copy is the thing being asserted.
+
 Covers:
-- fetch_playlists_batched() returns playlists and not_found set
-- Batch size limits (max 50)
-- Handling of API errors
+- fetch_playlists_batched() returns playlists and a not_found set
+- Batch size limits (max 50) and splitting across batches
+- #149: a batch that fails to fetch does not contribute to not_found,
+  in both the playlist and the video path
 - Partial results (some found, some not)
-- Empty playlist list input
+- Empty input
 """
 
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from chronovista.services.youtube_service import YouTubeService
 
-
-class TestFetchPlaylistsBatched:
-    """Tests for fetch_playlists_batched method."""
-
-    @pytest.fixture
-    def youtube_service(self) -> YouTubeService:
-        """Create YouTube service instance."""
-        return YouTubeService()
-
-    @pytest.fixture
-    def mock_service_client(self) -> MagicMock:
-        """Create mock YouTube API service client."""
-        return MagicMock()
-
-    async def test_fetch_playlists_batched_returns_tuple(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test that fetch_playlists_batched returns playlists and not_found set."""
-        youtube_service._service = mock_service_client  # type: ignore[assignment]
-
-        # Mock successful API response
-        mock_response: dict[str, Any] = {
-            "items": [
-                {
-                    "id": "PLtest123",
-                    "snippet": {
-                        "title": "My Playlist",
-                        "description": "A test playlist",
-                        "channelId": "UCtest123",
-                    },
-                    "contentDetails": {"itemCount": 10},
-                    "status": {"privacyStatus": "public"},
-                },
-            ]
-        }
-
-        mock_request = MagicMock()
-        mock_request.execute.return_value = mock_response
-        mock_service_client.playlists.return_value.list.return_value = mock_request
-
-        # Call the method (simulating what we expect)
-        async def fetch_playlists_batched(
-            playlist_ids: list[str], batch_size: int = 50
-        ) -> tuple[list[dict[str, Any]], set[str]]:
-            """Fetch playlist details in batches."""
-            batch_size = min(batch_size, 50)
-            all_playlists: list[dict[str, Any]] = []
-            requested_ids = set(playlist_ids)
-            found_ids: set[str] = set()
-
-            for i in range(0, len(playlist_ids), batch_size):
-                batch = playlist_ids[i : i + batch_size]
-                request = mock_service_client.playlists().list(
-                    part="snippet,contentDetails,status",
-                    id=",".join(batch),
-                )
-                response = request.execute()
-                items = response.get("items", [])
-                all_playlists.extend(items)
-                for item in items:
-                    found_ids.add(item.get("id", ""))
-
-            not_found = requested_ids - found_ids
-            return all_playlists, not_found
-
-        playlists, not_found = await fetch_playlists_batched(["PLtest123"])
-
-        assert isinstance(playlists, list)
-        assert isinstance(not_found, set)
-        assert len(playlists) == 1
-        assert playlists[0]["id"] == "PLtest123"
-        assert len(not_found) == 0
-
-    async def test_fetch_playlists_batched_with_not_found(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test that not_found set contains IDs not returned by API."""
-        youtube_service._service = mock_service_client  # type: ignore[assignment]
-
-        # Mock response with only some playlists found
-        mock_response: dict[str, Any] = {
-            "items": [
-                {
-                    "id": "PLexists",
-                    "snippet": {"title": "Existing Playlist"},
-                    "contentDetails": {"itemCount": 5},
-                },
-            ]
-        }
-
-        mock_request = MagicMock()
-        mock_request.execute.return_value = mock_response
-        mock_service_client.playlists.return_value.list.return_value = mock_request
-
-        # Simulate batch fetch
-        requested_ids = ["PLexists", "PLdeleted1", "PLdeleted2"]
-        found_ids = {"PLexists"}
-        not_found = set(requested_ids) - found_ids
-
-        assert "PLdeleted1" in not_found
-        assert "PLdeleted2" in not_found
-        assert "PLexists" not in not_found
-
-
-class TestBatchSizeLimits:
-    """Tests for batch size limits (max 50)."""
-
-    @pytest.fixture
-    def youtube_service(self) -> YouTubeService:
-        """Create YouTube service instance."""
-        return YouTubeService()
-
-    @pytest.fixture
-    def mock_service_client(self) -> MagicMock:
-        """Create mock YouTube API service client."""
-        return MagicMock()
-
-    async def test_batch_size_capped_at_50(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test that batch size is capped at 50 (YouTube API limit)."""
-        # YouTube API allows max 50 playlist IDs per request
-        max_batch_size = 50
-
-        requested_batch_size = 100
-        actual_batch_size = min(requested_batch_size, max_batch_size)
-
-        assert actual_batch_size == 50
-
-    async def test_batching_with_100_playlists(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test that 100 playlists are split into 2 batches."""
-        playlist_ids = [f"PL{i:04d}" for i in range(100)]
-        batch_size = 50
-
-        batches = []
-        for i in range(0, len(playlist_ids), batch_size):
-            batch = playlist_ids[i : i + batch_size]
-            batches.append(batch)
-
-        assert len(batches) == 2
-        assert len(batches[0]) == 50
-        assert len(batches[1]) == 50
-
-    async def test_batching_with_partial_last_batch(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test batching with partial last batch (75 playlists = 2 batches)."""
-        playlist_ids = [f"PL{i:04d}" for i in range(75)]
-        batch_size = 50
-
-        batches = []
-        for i in range(0, len(playlist_ids), batch_size):
-            batch = playlist_ids[i : i + batch_size]
-            batches.append(batch)
-
-        assert len(batches) == 2
-        assert len(batches[0]) == 50
-        assert len(batches[1]) == 25
-
-    async def test_single_batch_under_limit(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test that playlists under 50 use single batch."""
-        playlist_ids = [f"PL{i:04d}" for i in range(30)]
-        batch_size = 50
-
-        batches = []
-        for i in range(0, len(playlist_ids), batch_size):
-            batch = playlist_ids[i : i + batch_size]
-            batches.append(batch)
-
-        assert len(batches) == 1
-        assert len(batches[0]) == 30
-
-
-class TestAPIErrorHandling:
-    """Tests for handling API errors during batch fetch."""
-
-    @pytest.fixture
-    def youtube_service(self) -> YouTubeService:
-        """Create YouTube service instance."""
-        return YouTubeService()
-
-    @pytest.fixture
-    def mock_service_client(self) -> MagicMock:
-        """Create mock YouTube API service client."""
-        return MagicMock()
-
-    async def test_api_error_continues_with_remaining_batches(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test that API error in one batch doesn't stop remaining batches."""
-        youtube_service._service = mock_service_client  # type: ignore[assignment]
-
-        # Simulate fetch with error handling
-        playlist_ids = [f"PL{i:04d}" for i in range(100)]
-        batch_size = 50
-        all_playlists: list[dict[str, Any]] = []
-        errors: list[str] = []
-
-        # Mock first batch fails, second succeeds
-        batch_results: list[dict[str, Any]] = [
-            {"error": "API quota exceeded"},
-            {"items": [{"id": "PL0050", "snippet": {"title": "Playlist 50"}}]},
-        ]
-
-        for i, _batch_idx in enumerate(range(0, len(playlist_ids), batch_size)):
-            try:
-                result = batch_results[i]
-                if "error" in result:
-                    error_msg = result["error"]
-                    if isinstance(error_msg, str):
-                        raise Exception(error_msg)
-                items = result.get("items", [])
-                if isinstance(items, list):
-                    all_playlists.extend(items)
-            except Exception as e:
-                errors.append(str(e))
-                # Continue with remaining batches
-
-        assert len(errors) == 1
-        assert "API quota exceeded" in errors[0]
-        assert len(all_playlists) == 1  # Second batch succeeded
-
-    async def test_api_error_returns_partial_results(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test that partial results are returned when some batches fail."""
-        youtube_service._service = mock_service_client  # type: ignore[assignment]
-
-        # Successfully fetched before error
-        successful_items = [
-            {"id": "PL0001", "snippet": {"title": "Playlist 1"}},
-            {"id": "PL0002", "snippet": {"title": "Playlist 2"}},
-        ]
-
-        # Result after partial failure
-        all_playlists = successful_items
-        not_found: set[str] = {"PL0003", "PL0004", "PL0005"}
-
-        assert len(all_playlists) == 2
-        assert len(not_found) == 3
-
-    async def test_handle_rate_limit_error(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test handling of rate limit (quota exceeded) errors."""
-        youtube_service._service = mock_service_client  # type: ignore[assignment]
-
-        rate_limit_error = Exception(
-            "quotaExceeded: The request cannot be completed because you have exceeded your quota."
-        )
-
-        # The service should catch this and log appropriately
-        with pytest.raises(Exception) as exc_info:
-            raise rate_limit_error
-
-        assert "quotaExceeded" in str(exc_info.value)
-
-    async def test_handle_network_error(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test handling of network errors."""
-        youtube_service._service = mock_service_client  # type: ignore[assignment]
-
-        network_error = Exception("Network connection failed")
-
-        # The service should handle network errors gracefully
-        caught_error = None
-        try:
-            raise network_error
-        except Exception as e:
-            caught_error = e
-
-        assert caught_error is not None
-        assert "Network connection failed" in str(caught_error)
-
-
-class TestPartialResults:
-    """Tests for partial results (some found, some not)."""
-
-    @pytest.fixture
-    def youtube_service(self) -> YouTubeService:
-        """Create YouTube service instance."""
-        return YouTubeService()
-
-    @pytest.fixture
-    def mock_service_client(self) -> MagicMock:
-        """Create mock YouTube API service client."""
-        return MagicMock()
-
-    async def test_partial_results_some_found_some_not(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test fetching where some playlists exist and some don't."""
-        youtube_service._service = mock_service_client  # type: ignore[assignment]
-
-        requested_ids = ["PLexists1", "PLexists2", "PLdeleted1", "PLprivate1"]
-
-        # API only returns existing public playlists
-        mock_response: dict[str, Any] = {
-            "items": [
-                {"id": "PLexists1", "snippet": {"title": "Playlist 1"}},
-                {"id": "PLexists2", "snippet": {"title": "Playlist 2"}},
-            ]
-        }
-
-        found_ids = {item["id"] for item in mock_response["items"]}
-        not_found = set(requested_ids) - found_ids
-
-        assert "PLexists1" in found_ids
-        assert "PLexists2" in found_ids
-        assert "PLdeleted1" in not_found
-        assert "PLprivate1" in not_found
-        assert len(found_ids) == 2
-        assert len(not_found) == 2
-
-    async def test_all_playlists_found(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test when all requested playlists are found."""
-        requested_ids = ["PL001", "PL002", "PL003"]
-
-        mock_response: dict[str, Any] = {
-            "items": [
-                {"id": "PL001", "snippet": {"title": "Playlist 1"}},
-                {"id": "PL002", "snippet": {"title": "Playlist 2"}},
-                {"id": "PL003", "snippet": {"title": "Playlist 3"}},
-            ]
-        }
-
-        found_ids = {item["id"] for item in mock_response["items"]}
-        not_found = set(requested_ids) - found_ids
-
-        assert len(found_ids) == 3
-        assert len(not_found) == 0
-
-    async def test_no_playlists_found(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test when no requested playlists are found (all deleted/private)."""
-        requested_ids = ["PLdeleted1", "PLdeleted2", "PLdeleted3"]
-
-        found_ids: set[str] = set()
-        not_found = set(requested_ids) - found_ids
-
-        assert len(found_ids) == 0
-        assert len(not_found) == 3
-        assert not_found == {"PLdeleted1", "PLdeleted2", "PLdeleted3"}
-
-    async def test_partial_results_with_privacy_status(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test that privacy status is included in returned playlist data."""
-        mock_response: dict[str, Any] = {
-            "items": [
-                {
-                    "id": "PLpublic",
-                    "snippet": {"title": "Public Playlist"},
-                    "status": {"privacyStatus": "public"},
-                },
-                {
-                    "id": "PLunlisted",
-                    "snippet": {"title": "Unlisted Playlist"},
-                    "status": {"privacyStatus": "unlisted"},
-                },
-            ]
-        }
-
-        playlists = mock_response["items"]
-
-        public_playlist = next(p for p in playlists if p["id"] == "PLpublic")
-        unlisted_playlist = next(p for p in playlists if p["id"] == "PLunlisted")
-
-        assert public_playlist["status"]["privacyStatus"] == "public"
-        assert unlisted_playlist["status"]["privacyStatus"] == "unlisted"
-
-
-class TestEmptyPlaylistInput:
-    """Tests for empty playlist list input."""
-
-    @pytest.fixture
-    def youtube_service(self) -> YouTubeService:
-        """Create YouTube service instance."""
-        return YouTubeService()
-
-    @pytest.fixture
-    def mock_service_client(self) -> MagicMock:
-        """Create mock YouTube API service client."""
-        return MagicMock()
-
-    async def test_empty_playlist_list_returns_empty_results(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test that empty input returns empty results."""
-        playlist_ids: list[str] = []
-
-        # Simulate the expected behavior
-        if not playlist_ids:
-            playlists: list[dict[str, Any]] = []
-            not_found: set[str] = set()
-        else:
-            # Would normally call API
-            playlists = []
-            not_found = set()
-
-        assert len(playlists) == 0
-        assert len(not_found) == 0
-
-    async def test_empty_playlist_list_no_api_calls(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
-    ) -> None:
-        """Test that no API calls are made for empty input."""
-        youtube_service._service = mock_service_client  # type: ignore[assignment]
-
-        playlist_ids: list[str] = []
-        api_call_count = 0
-
-        # Simulate fetch logic
-        if playlist_ids:
-            # Would make API call
-            api_call_count += 1
-
-        assert api_call_count == 0
-
-    async def test_none_playlist_ids_handled(
+pytestmark = pytest.mark.asyncio
+
+
+def _playlist_item(playlist_id: str) -> dict[str, Any]:
+    """A minimal API item that YouTubePlaylistResponse will validate."""
+    return {
+        "id": playlist_id,
+        "snippet": {
+            "title": f"Playlist {playlist_id}",
+            "description": "",
+            "channelId": "UCtest123",
+            "publishedAt": "2024-01-01T00:00:00Z",
+        },
+        "contentDetails": {"itemCount": 10},
+        "status": {"privacyStatus": "private"},
+    }
+
+
+@pytest.fixture
+def youtube_service() -> YouTubeService:
+    """Service with a mocked API client, so no credentials are needed."""
+    service = YouTubeService()
+    service._service = MagicMock()  # type: ignore[assignment]
+    return service
+
+
+def _respond_with(service: YouTubeService, responses: list[Any]) -> MagicMock:
+    """Drive the real fetch path, one entry in ``responses`` per batch.
+
+    Each entry is either a dict (returned as the API response) or an exception
+    instance (raised in its place). This patches ``_execute_with_retry`` rather
+    than ``get_playlist_details``: the batching loop, the response parsing and
+    the not-found arithmetic all run for real, and only the network call is
+    replaced.
+    """
+    calls = AsyncMock()
+
+    def _next(_request: Any) -> Any:
+        entry = responses[_next.index]  # type: ignore[attr-defined]
+        _next.index += 1  # type: ignore[attr-defined]
+        if isinstance(entry, Exception):
+            raise entry
+        return entry
+
+    _next.index = 0  # type: ignore[attr-defined]
+    calls.side_effect = _next
+    service._execute_with_retry = calls  # type: ignore[method-assign]
+    return calls
+
+
+class TestNotFoundSemantics:
+    """What ``not_found`` is allowed to mean.
+
+    Callers act on this set by hiding playlists from the user, so a member of
+    it is an assertion that the API answered and the playlist was not in the
+    answer.
+    """
+
+    async def test_absent_ids_are_reported_not_found(
         self, youtube_service: YouTubeService
     ) -> None:
-        """Test handling of None playlist IDs input."""
-        # If None is passed, it should be handled gracefully
-        playlist_ids: list[str] | None = None
+        _respond_with(youtube_service, [{"items": [_playlist_item("PLfound")]}])
 
-        if playlist_ids is None:
-            playlist_ids = []
+        playlists, not_found = await youtube_service.fetch_playlists_batched(
+            ["PLfound", "PLgone1", "PLgone2"]
+        )
 
-        assert playlist_ids == []
+        assert [p.id for p in playlists] == ["PLfound"]
+        assert not_found == {"PLgone1", "PLgone2"}
 
-
-class TestPlaylistBatchFetchIntegration:
-    """Integration tests for playlist batch fetching."""
-
-    @pytest.fixture
-    def youtube_service(self) -> YouTubeService:
-        """Create YouTube service instance."""
-        return YouTubeService()
-
-    @pytest.fixture
-    def mock_service_client(self) -> MagicMock:
-        """Create mock YouTube API service client."""
-        return MagicMock()
-
-    async def test_fetch_playlists_batched_full_workflow(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    async def test_a_failed_batch_reports_nothing_as_not_found(
+        self, youtube_service: YouTubeService
     ) -> None:
-        """Test complete batch fetch workflow with realistic data."""
-        youtube_service._service = mock_service_client  # type: ignore[assignment]
+        """#149, the whole bug in one assertion.
 
-        # Simulate 75 playlist IDs
-        playlist_ids = [f"PLtest{i:04d}" for i in range(75)]
+        The single batch raises, so nothing is known about any of these three
+        playlists. Previously they were derived as not-found by subtraction —
+        requested minus found — and the caller hid all three.
+        """
+        _respond_with(youtube_service, [RuntimeError("token expired")])
 
-        # Mock responses for each batch
-        batch1_items = [
-            {
-                "id": f"PLtest{i:04d}",
-                "snippet": {
-                    "title": f"Playlist {i}",
-                    "description": f"Description for playlist {i}",
-                    "channelId": "UCowner123",
-                },
-                "contentDetails": {"itemCount": 10 + i},
-                "status": {"privacyStatus": "public"},
-            }
-            for i in range(50)
-        ]
+        playlists, not_found = await youtube_service.fetch_playlists_batched(
+            ["PLone", "PLtwo", "PLthree"]
+        )
 
-        batch2_items = [
-            {
-                "id": f"PLtest{i:04d}",
-                "snippet": {
-                    "title": f"Playlist {i}",
-                    "description": f"Description for playlist {i}",
-                    "channelId": "UCowner123",
-                },
-                "contentDetails": {"itemCount": 10 + i},
-                "status": {"privacyStatus": "public"},
-            }
-            for i in range(50, 70)  # Some not found (70-74)
-        ]
+        assert playlists == []
+        assert not_found == set(), (
+            "a request that never completed is not evidence that these "
+            "playlists were deleted"
+        )
 
-        # Simulate batch processing
-        all_playlists = batch1_items + batch2_items
-        found_ids = {str(p["id"]) for p in all_playlists}
-        not_found = set(playlist_ids) - found_ids
-
-        assert len(all_playlists) == 70
-        assert len(not_found) == 5
-        assert "PLtest0074" in not_found
-        assert "PLtest0000" in found_ids
-
-    async def test_batch_fetch_with_mixed_privacy(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    async def test_a_failed_batch_does_not_taint_a_successful_one(
+        self, youtube_service: YouTubeService
     ) -> None:
-        """Test batch fetch with playlists of different privacy statuses."""
-        youtube_service._service = mock_service_client  # type: ignore[assignment]
+        """The genuinely-absent ID in the *successful* batch is still reported.
 
-        mock_playlists: list[dict[str, Any]] = [
-            {
-                "id": "PLpublic1",
-                "snippet": {"title": "Public Playlist 1"},
-                "status": {"privacyStatus": "public"},
-            },
-            {
-                "id": "PLunlisted1",
-                "snippet": {"title": "Unlisted Playlist 1"},
-                "status": {"privacyStatus": "unlisted"},
-            },
-            # Private playlists typically not returned by API unless owned
-        ]
+        Containment must not become suppression: excluding unresolved IDs is
+        only correct if real deletions in other batches still surface.
+        """
+        ids = [f"PL{i:04d}" for i in range(50)] + ["PLalive", "PLdeleted"]
+        _respond_with(
+            youtube_service,
+            [
+                RuntimeError("transient failure"),
+                {"items": [_playlist_item("PLalive")]},
+            ],
+        )
 
-        privacy_distribution: dict[str, int] = {}
-        for playlist in mock_playlists:
-            status_obj = playlist["status"]
-            if isinstance(status_obj, dict):
-                status = status_obj["privacyStatus"]
-                if isinstance(status, str):
-                    privacy_distribution[status] = (
-                        privacy_distribution.get(status, 0) + 1
-                    )
+        playlists, not_found = await youtube_service.fetch_playlists_batched(ids)
 
-        assert privacy_distribution["public"] == 1
-        assert privacy_distribution["unlisted"] == 1
+        assert [p.id for p in playlists] == ["PLalive"]
+        assert not_found == {"PLdeleted"}
 
-    async def test_batch_fetch_extracts_item_count(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+    async def test_an_id_found_in_a_later_batch_is_not_reported_missing(
+        self, youtube_service: YouTubeService
     ) -> None:
-        """Test that item count is extracted from contentDetails."""
-        mock_playlist: dict[str, Any] = {
-            "id": "PLtest123",
-            "snippet": {"title": "Test Playlist"},
-            "contentDetails": {"itemCount": 42},
-            "status": {"privacyStatus": "public"},
-        }
+        """A duplicate ID spanning a failed and a successful batch counts found."""
+        ids = ["PLdup"] + [f"PL{i:04d}" for i in range(49)] + ["PLdup"]
+        _respond_with(
+            youtube_service,
+            [RuntimeError("boom"), {"items": [_playlist_item("PLdup")]}],
+        )
 
-        content_details = mock_playlist.get("contentDetails", {})
-        item_count = 0
-        if isinstance(content_details, dict):
-            item_count_value = content_details.get("itemCount", 0)
-            if isinstance(item_count_value, int):
-                item_count = item_count_value
+        _, not_found = await youtube_service.fetch_playlists_batched(ids)
 
-        assert item_count == 42
+        assert "PLdup" not in not_found
 
-    async def test_batch_fetch_handles_missing_content_details(
-        self, youtube_service: YouTubeService, mock_service_client: MagicMock
+
+class TestVideoNotFoundSemantics:
+    """The same defect lived in the video path (#149).
+
+    Videos are partly shielded downstream by two-cycle confirmation
+    (``_mark_video_deleted``), so a single bad run does not flip them — but a
+    persistent auth failure across two runs would, and the confirmation logic
+    is not a licence for this method to invent absences.
+
+    These patch ``get_video_details`` rather than the transport, because the
+    subject here is the batching loop's arithmetic, not video response parsing.
+    """
+
+    async def test_a_failed_batch_reports_nothing_as_not_found(
+        self, youtube_service: YouTubeService
     ) -> None:
-        """Test handling of playlists without contentDetails."""
-        mock_playlist: dict[str, Any] = {
-            "id": "PLtest123",
-            "snippet": {"title": "Test Playlist"},
-            # Missing contentDetails
-            "status": {"privacyStatus": "public"},
-        }
+        youtube_service.get_video_details = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("token expired")
+        )
 
-        content_details = mock_playlist.get("contentDetails", {})
-        item_count = 0
-        if isinstance(content_details, dict):
-            item_count_value = content_details.get("itemCount", 0)
-            if isinstance(item_count_value, int):
-                item_count = item_count_value
+        videos, not_found = await youtube_service.fetch_videos_batched(
+            ["vid1", "vid2", "vid3"]
+        )
 
-        assert item_count == 0  # Default when missing
+        assert videos == []
+        assert not_found == set()
+
+    async def test_absent_ids_are_still_reported(
+        self, youtube_service: YouTubeService
+    ) -> None:
+        """Containment must not suppress genuine absences."""
+        found = MagicMock()
+        found.id = "vid1"
+        youtube_service.get_video_details = AsyncMock(  # type: ignore[method-assign]
+            return_value=[found]
+        )
+
+        videos, not_found = await youtube_service.fetch_videos_batched(["vid1", "vid2"])
+
+        assert len(videos) == 1
+        assert not_found == {"vid2"}
+
+
+class TestBatching:
+    """Splitting, capping, and that every batch is actually issued."""
+
+    async def test_ids_are_split_into_batches_of_fifty(
+        self, youtube_service: YouTubeService
+    ) -> None:
+        ids = [f"PL{i:04d}" for i in range(120)]
+        calls = _respond_with(
+            youtube_service, [{"items": []}, {"items": []}, {"items": []}]
+        )
+
+        await youtube_service.fetch_playlists_batched(ids)
+
+        assert calls.await_count == 3, "120 ids at 50 per batch is three requests"
+
+    async def test_batch_size_is_capped_at_the_api_limit(
+        self, youtube_service: YouTubeService
+    ) -> None:
+        """A caller asking for 100 per batch must not produce a 100-id request.
+
+        ``get_playlist_details`` raises ValidationError above 50, which the
+        batching loop would swallow as a failed batch — so an uncapped size
+        would silently return nothing rather than erroring.
+        """
+        ids = [f"PL{i:04d}" for i in range(100)]
+        calls = _respond_with(youtube_service, [{"items": []}, {"items": []}])
+
+        playlists, not_found = await youtube_service.fetch_playlists_batched(
+            ids, batch_size=100
+        )
+
+        assert calls.await_count == 2
+        assert playlists == []
+        assert not_found == set(ids), "a capped batch still answers about its ids"
+
+    async def test_a_partial_final_batch_is_issued(
+        self, youtube_service: YouTubeService
+    ) -> None:
+        ids = [f"PL{i:04d}" for i in range(60)]
+        calls = _respond_with(youtube_service, [{"items": []}, {"items": []}])
+
+        await youtube_service.fetch_playlists_batched(ids)
+
+        assert calls.await_count == 2
+
+    async def test_empty_input_issues_no_request(
+        self, youtube_service: YouTubeService
+    ) -> None:
+        calls = _respond_with(youtube_service, [])
+
+        playlists, not_found = await youtube_service.fetch_playlists_batched([])
+
+        assert playlists == []
+        assert not_found == set()
+        assert calls.await_count == 0
+
+
+class TestResponseHandling:
+    """Aggregation across batches and tolerance of imperfect items."""
+
+    async def test_results_from_every_batch_are_aggregated(
+        self, youtube_service: YouTubeService
+    ) -> None:
+        ids = [f"PL{i:04d}" for i in range(50)] + ["PLlast"]
+        _respond_with(
+            youtube_service,
+            [
+                {"items": [_playlist_item(f"PL{i:04d}") for i in range(50)]},
+                {"items": [_playlist_item("PLlast")]},
+            ],
+        )
+
+        playlists, not_found = await youtube_service.fetch_playlists_batched(ids)
+
+        assert len(playlists) == 51
+        assert not_found == set()
+
+    async def test_all_found_yields_an_empty_not_found_set(
+        self, youtube_service: YouTubeService
+    ) -> None:
+        _respond_with(
+            youtube_service,
+            [{"items": [_playlist_item("PLa"), _playlist_item("PLb")]}],
+        )
+
+        playlists, not_found = await youtube_service.fetch_playlists_batched(
+            ["PLa", "PLb"]
+        )
+
+        assert len(playlists) == 2
+        assert not_found == set()
+
+    async def test_an_unparseable_item_does_not_lose_the_rest_of_the_batch(
+        self, youtube_service: YouTubeService
+    ) -> None:
+        """A malformed item is skipped and reported missing, not fatal."""
+        _respond_with(
+            youtube_service,
+            [{"items": [_playlist_item("PLgood"), {"id": None, "snippet": None}]}],
+        )
+
+        playlists, not_found = await youtube_service.fetch_playlists_batched(
+            ["PLgood", "PLbad"]
+        )
+
+        assert [p.id for p in playlists] == ["PLgood"]
+        assert "PLbad" in not_found
+
+    async def test_privacy_status_is_preserved(
+        self, youtube_service: YouTubeService
+    ) -> None:
+        """Private playlists are ordinary results, not a missing-data signal."""
+        _respond_with(youtube_service, [{"items": [_playlist_item("PLprivate")]}])
+
+        playlists, not_found = await youtube_service.fetch_playlists_batched(
+            ["PLprivate"]
+        )
+
+        assert playlists[0].status is not None
+        assert playlists[0].status.privacy_status == "private"
+        assert not_found == set()
+
+    async def test_item_count_is_preserved(
+        self, youtube_service: YouTubeService
+    ) -> None:
+        _respond_with(youtube_service, [{"items": [_playlist_item("PLcount")]}])
+
+        playlists, _ = await youtube_service.fetch_playlists_batched(["PLcount"])
+
+        assert playlists[0].content_details is not None
+        assert playlists[0].content_details.item_count == 10

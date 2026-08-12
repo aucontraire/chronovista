@@ -135,6 +135,42 @@ class RecoveryProvenanceRepository:
         )
         return list(result.scalars().all())
 
+    # ── prior-contribution lookups ───────────────────────────────────────────
+    #
+    # A recovery pass deciding whether its capture supersedes what is already
+    # stored must compare against *its own* previous contribution, not against
+    # whichever source wrote most recently. Reading that from the denormalised
+    # column answers the wrong question — and answers it silently, because a
+    # failed parse is indistinguishable from no prior contribution.
+
+    async def get_video_source_detail(
+        self, session: AsyncSession, video_id: str, source: str
+    ) -> str | None:
+        """This source's own ``source_detail`` for *video_id*, if it has one.
+
+        Returns ``None`` when the source has never written to this row, which
+        callers must treat as "no prior contribution" rather than as an error.
+        """
+        result = await session.execute(
+            select(VideoRecoverySourceDB.source_detail).where(
+                VideoRecoverySourceDB.video_id == video_id,
+                VideoRecoverySourceDB.source == source,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_channel_source_detail(
+        self, session: AsyncSession, channel_id: str, source: str
+    ) -> str | None:
+        """This source's own ``source_detail`` for *channel_id*, if it has one."""
+        result = await session.execute(
+            select(ChannelRecoverySourceDB.source_detail).where(
+                ChannelRecoverySourceDB.channel_id == channel_id,
+                ChannelRecoverySourceDB.source == source,
+            )
+        )
+        return result.scalar_one_or_none()
+
     # ── denormalised projection ──────────────────────────────────────────────
     #
     # ADR-011 keeps `videos.recovery_source` / `recovered_at` as a cheap "most

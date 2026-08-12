@@ -153,7 +153,7 @@ def classify_correction(original: str, corrected: str) -> str:
          (ASR split a name, e.g. "Johnsen Bomb" → "Johnson")
        - Otherwise → word_boundary
     2. Same token count — if ANY changed token in corrected text is title-cased
-       → proper_noun  (catches "Chsky" → "Lovelace", "Galain" → "Ghislaine",
+       → proper_noun  (catches "Loveless" → "Lovelace", "Babbige" → "Babbage",
        "norm" → "Ada", etc.)
     3. Identical ignoring case (no other signal) → formatting
     4. Fallback → other

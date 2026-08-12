@@ -18,6 +18,7 @@ consecutive empty response confirms by setting availability_status=UNAVAILABLE.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -524,7 +525,10 @@ class TestRestorationBehavior:
         )
 
     async def test_video_restoration_sets_recovered_metadata(
-        self, service: EnrichmentService, mock_session: AsyncMock
+        self,
+        service: EnrichmentService,
+        mock_session: AsyncMock,
+        stub_provenance_repository: dict[str, Any],
     ) -> None:
         """
         Test video restoration sets recovery metadata.
@@ -601,12 +605,16 @@ class TestRestorationBehavior:
             assert (
                 mock_video.availability_status == AvailabilityStatus.AVAILABLE
             ), "Restored video should have availability_status=AVAILABLE"
+            # Provenance is recorded, not assigned. `recovered_at` and
+            # `recovery_source` are refreshed by the repository's projection,
+            # which a mocked session never executes — so the observable
+            # obligation here is that the contribution was recorded at all.
             assert (
-                mock_video.recovered_at is not None
-            ), "Restored video should have recovered_at timestamp set"
-            assert (
-                mock_video.recovery_source == "sync"
-            ), "Restored video should have recovery_source='sync'"
+                len(stub_provenance_repository["video"]) == 1
+            ), "restoration must record a provenance row"
+            recorded_id, record = stub_provenance_repository["video"][0]
+            assert recorded_id == mock_video.video_id
+            assert record.source == "sync"
             assert (
                 mock_video.unavailability_first_detected is None
             ), "Restored video should have unavailability_first_detected cleared"
@@ -617,7 +625,10 @@ class TestRestorationBehavior:
             assert report.summary.videos_deleted == 0, "Video should NOT be deleted"
 
     async def test_channel_restoration_sets_recovered_metadata(
-        self, service: EnrichmentService, mock_session: AsyncMock
+        self,
+        service: EnrichmentService,
+        mock_session: AsyncMock,
+        stub_provenance_repository: dict[str, Any],
     ) -> None:
         """
         Test channel restoration sets recovery metadata.
@@ -689,11 +700,10 @@ class TestRestorationBehavior:
                 mock_channel.availability_status == AvailabilityStatus.AVAILABLE
             ), "Restored channel should have availability_status=AVAILABLE"
             assert (
-                mock_channel.recovered_at is not None
-            ), "Restored channel should have recovered_at timestamp set"
-            assert (
-                mock_channel.recovery_source == "sync"
-            ), "Restored channel should have recovery_source='sync'"
+                len(stub_provenance_repository["channel"]) == 1
+            ), "restoration must record a provenance row"
+            _recorded_id, record = stub_provenance_repository["channel"][0]
+            assert record.source == "sync"
             assert (
                 mock_channel.unavailability_first_detected is None
             ), "Restored channel should have unavailability_first_detected cleared"
@@ -703,7 +713,10 @@ class TestRestorationBehavior:
             assert result.channels_enriched == 1, "Channel should be enriched"
 
     async def test_restoration_clears_unavailability_first_detected(
-        self, service: EnrichmentService, mock_session: AsyncMock
+        self,
+        service: EnrichmentService,
+        mock_session: AsyncMock,
+        stub_provenance_repository: dict[str, Any],
     ) -> None:
         """
         Test restoration clears unavailability_first_detected if it was set.
@@ -785,12 +798,10 @@ class TestRestorationBehavior:
             assert (
                 mock_video.unavailability_first_detected is None
             ), "Restoration should clear unavailability_first_detected flag"
-            assert (
-                mock_video.recovered_at is not None
-            ), "Restoration should set recovered_at"
-            assert (
-                mock_video.recovery_source == "sync"
-            ), "Restoration should set recovery_source='sync'"
+            # See the note above: provenance is recorded, and the columns are
+            # a projection a mocked session never refreshes.
+            assert len(stub_provenance_repository["video"]) == 1
+            assert stub_provenance_repository["video"][0][1].source == "sync"
 
 
 class TestDryRunBehavior:

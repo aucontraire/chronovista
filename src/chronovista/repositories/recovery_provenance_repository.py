@@ -38,6 +38,45 @@ from chronovista.db.models import VideoRecoverySource as VideoRecoverySourceDB
 from chronovista.models.recovery_provenance import RecoverySourceRecord
 
 
+def _cumulative_fields(table_name: str) -> TextClause:
+    """The stored and incoming field lists unioned, de-duplicated and sorted.
+
+    ``fields_written`` names everything a source has contributed to a row, so a
+    later pass that fills a *different* field must add to the list rather than
+    replace it.
+
+    Replacing it was the behaviour until #228, and the path to losing data was
+    ordinary rather than rare: a run fills a video's title while its owning
+    channel is not yet in the library, the channel is synced later, and a second
+    run fills ``channel_id``. The row then recorded only ``{channel_id}`` — the
+    same shape of loss ADR-011 exists to prevent, one column further in. It
+    reached 23 rows in the production library before it was noticed.
+
+    Sorted so the column is order-independent: the value now depends on the set
+    of fields a source has written, never on the order of the runs that wrote
+    them.
+
+    Parameters
+    ----------
+    table_name : str
+        The provenance table being upserted into. Supplied from the mapped
+        model's ``__tablename__``, never from user input.
+
+    Returns
+    -------
+    TextClause
+        A scalar subquery for the ``DO UPDATE`` SET clause.
+    """
+    empty = "ARRAY[]::varchar[]"
+    return text(
+        f"(SELECT coalesce(array_agg(DISTINCT f ORDER BY f), {empty}) "
+        f"FROM unnest("
+        f"coalesce({table_name}.fields_written, {empty}) || "
+        f"coalesce(excluded.fields_written, {empty})"
+        f") AS f)"
+    )
+
+
 class RecoveryProvenanceRepository:
     """Append provenance, and keep the denormalised columns in step."""
 
@@ -52,8 +91,12 @@ class RecoveryProvenanceRepository:
         """Record that *record.source* contributed to *video_id*.
 
         Idempotent per (video_id, source). A repeat pass by the same source
-        refreshes its own row's timestamp and fields, and leaves every other
-        source's row untouched — which is the whole point.
+        refreshes its own row's timestamp and *adds to* its field list, and
+        leaves every other source's row untouched — which is the whole point.
+
+        The field list accumulates rather than being replaced (#228): a source
+        that fills a title on one run and a channel on the next has written
+        both, and the row must say so.
         """
         values: dict[str, object] = {
             "video_id": video_id,
@@ -70,7 +113,7 @@ class RecoveryProvenanceRepository:
         # DO NOTHING would silently keep a stale timestamp.
         update_cols: dict[str, object] = {
             "source_detail": stmt.excluded.source_detail,
-            "fields_written": stmt.excluded.fields_written,
+            "fields_written": _cumulative_fields(VideoRecoverySourceDB.__tablename__),
         }
         if record.recovered_at is not None:
             update_cols["recovered_at"] = stmt.excluded.recovered_at
@@ -87,7 +130,11 @@ class RecoveryProvenanceRepository:
         channel_id: str,
         record: RecoverySourceRecord,
     ) -> None:
-        """Record that *record.source* contributed to *channel_id*."""
+        """Record that *record.source* contributed to *channel_id*.
+
+        Same accumulation rule as ``record_video`` (#228) — the two paths must
+        not disagree about what ``fields_written`` means.
+        """
         values: dict[str, object] = {
             "channel_id": channel_id,
             "source": record.source,
@@ -100,7 +147,7 @@ class RecoveryProvenanceRepository:
         stmt = insert(ChannelRecoverySourceDB).values(values)
         update_cols: dict[str, object] = {
             "source_detail": stmt.excluded.source_detail,
-            "fields_written": stmt.excluded.fields_written,
+            "fields_written": _cumulative_fields(ChannelRecoverySourceDB.__tablename__),
         }
         if record.recovered_at is not None:
             update_cols["recovered_at"] = stmt.excluded.recovered_at

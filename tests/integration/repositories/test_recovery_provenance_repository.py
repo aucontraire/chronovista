@@ -117,7 +117,129 @@ class TestAppendNeverOverwrite:
 
         rows = await repo.get_video_sources(db_session, vid)
         assert len(rows) == 1
-        assert rows[0].fields_written == ["title", "duration"]
+        # Sorted, not insertion-ordered: the column is a set of fields this
+        # source has written, so it must not depend on run order (#228).
+        assert sorted(rows[0].fields_written) == ["duration", "title"]
+
+
+class TestFieldListAccumulates:
+    """#228. A repeat contribution adds to the record, it does not replace it.
+
+    The path is ordinary rather than rare, which is why it reached production:
+    a run fills a title while the owning channel is still unknown, the channel
+    is synced later, and a second run fills the channel. Replacing the list
+    meant the row then claimed the source had written only the channel.
+
+    The pre-existing idempotency test could not catch this — it covers the
+    *fully filled* row, where the second pass writes nothing at all.
+    """
+
+    async def test_a_later_pass_filling_a_different_field_keeps_the_earlier_one(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo = RecoveryProvenanceRepository()
+        vid, cid = "prov_accum1", "UCprovaccum00000000001"
+        await _seed_video(db_session, vid, cid)
+
+        await repo.record_video(
+            db_session,
+            vid,
+            RecoverySourceRecord(source="filmot", fields_written=["title"]),
+        )
+        await repo.record_video(
+            db_session,
+            vid,
+            RecoverySourceRecord(source="filmot", fields_written=["channel_id"]),
+        )
+
+        rows = await repo.get_video_sources(db_session, vid)
+        assert len(rows) == 1, "still one row per (video, source)"
+        assert sorted(rows[0].fields_written) == ["channel_id", "title"], (
+            "the earlier contribution was discarded — the row now understates "
+            "what this source wrote"
+        )
+
+    async def test_repeating_the_same_field_does_not_duplicate_it(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Accumulating must not mean growing without bound."""
+        repo = RecoveryProvenanceRepository()
+        vid, cid = "prov_accum2", "UCprovaccum00000000002"
+        await _seed_video(db_session, vid, cid)
+
+        for _ in range(3):
+            await repo.record_video(
+                db_session,
+                vid,
+                RecoverySourceRecord(source="filmot", fields_written=["title"]),
+            )
+
+        rows = await repo.get_video_sources(db_session, vid)
+        assert rows[0].fields_written == ["title"]
+
+    async def test_one_source_accumulating_does_not_touch_another(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The union is per (row, source), never across sources."""
+        repo = RecoveryProvenanceRepository()
+        vid, cid = "prov_accum3", "UCprovaccum00000000003"
+        await _seed_video(db_session, vid, cid)
+
+        await repo.record_video(
+            db_session,
+            vid,
+            RecoverySourceRecord(source="wayback", fields_written=["description"]),
+        )
+        await repo.record_video(
+            db_session,
+            vid,
+            RecoverySourceRecord(source="filmot", fields_written=["title"]),
+        )
+        await repo.record_video(
+            db_session,
+            vid,
+            RecoverySourceRecord(source="filmot", fields_written=["duration"]),
+        )
+
+        by_source = {r.source: r for r in await repo.get_video_sources(db_session, vid)}
+        assert sorted(by_source["filmot"].fields_written) == ["duration", "title"]
+        assert by_source["wayback"].fields_written == [
+            "description"
+        ], "another source's field list was absorbed into the union"
+
+    async def test_channel_provenance_accumulates_the_same_way(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Both paths, or the column means two different things."""
+        repo = RecoveryProvenanceRepository()
+        cid = "UCprovaccum00000000004"
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO channels (channel_id, title, is_subscribed,
+                                      availability_status)
+                VALUES (:cid, 'Provenance Channel', false, 'unavailable')
+                ON CONFLICT (channel_id) DO NOTHING
+                """
+            ),
+            {"cid": cid},
+        )
+        await db_session.flush()
+
+        await repo.record_channel(
+            db_session,
+            cid,
+            RecoverySourceRecord(source="wayback", fields_written=["title"]),
+        )
+        await repo.record_channel(
+            db_session,
+            cid,
+            RecoverySourceRecord(source="wayback", fields_written=["description"]),
+        )
+
+        rows = await repo.get_channel_sources(db_session, cid)
+        assert len(rows) == 1
+        assert sorted(rows[0].fields_written) == ["description", "title"]
 
 
 class TestDenormalisedProjection:

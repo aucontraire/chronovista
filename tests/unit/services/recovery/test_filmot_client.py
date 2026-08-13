@@ -95,9 +95,17 @@ class TestFoundAndUnresolved:
         ), "an id the API answered about and did not have is not unresolved"
 
     async def test_a_failed_batch_reports_its_ids_unresolved(self) -> None:
-        """#149's lesson, applied before the bug can happen here."""
+        """#149's lesson, applied before the bug can happen here.
+
+        Uses 404 rather than 403. Both raise without retrying, so 403 read as a
+        convenient stand-in for "this batch failed" — but 403 means the archive
+        rejected the credential, which is a condition of the *run*: it will
+        recur on every remaining batch, and containing it made a dead key
+        indistinguishable from a timeout. See
+        `TestARejectedCredentialIsNotContained`.
+        """
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as get:
-            get.return_value = httpx.Response(403)
+            get.return_value = httpx.Response(404)
             found, unresolved = await _client().fetch_videos(["vid1", "vid2"])
 
         assert found == []
@@ -108,11 +116,45 @@ class TestFoundAndUnresolved:
         ids = [f"v{i:03d}" for i in range(50)] + ["late1"]
 
         with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as get:
-            get.side_effect = [httpx.Response(403), _ok([_record("late1")])]
+            get.side_effect = [httpx.Response(404), _ok([_record("late1")])]
             found, unresolved = await _client().fetch_videos(ids)
 
         assert [v.video_id for v in found] == ["late1"]
         assert unresolved == set(ids[:50])
+
+
+class TestARejectedCredentialIsNotContained:
+    """The one failure that is about the run rather than about a batch.
+
+    Every other failure is contained and reported per-id, which is right: a
+    timeout says nothing about the videos it failed to ask about. A rejected
+    credential says nothing about them either — but it also guarantees the next
+    batch will fail, so containing it meant the run issued every remaining
+    request at one per second and then reported `rate_limited`. An operator was
+    told to wait out a limit that did not exist instead of rotating a dead key.
+    """
+
+    @pytest.mark.parametrize("status", [401, 403])
+    async def test_it_escapes_the_client(self, status: int) -> None:
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as get:
+            get.return_value = httpx.Response(status)
+
+            with pytest.raises(FilmotError) as caught:
+                await _client().fetch_videos(["vid1", "vid2"])
+
+        assert caught.value.status_code == status
+
+    async def test_it_stops_the_run_rather_than_trying_later_batches(self) -> None:
+        """The cost of containing it: 1 request/second, all of them doomed."""
+        ids = [f"v{i:03d}" for i in range(50)] + ["late1"]
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as get:
+            get.side_effect = [httpx.Response(403), _ok([_record("late1")])]
+
+            with pytest.raises(FilmotError):
+                await _client().fetch_videos(ids)
+
+        assert get.await_count == 1, "a second batch was attempted after a dead key"
 
 
 class TestBatching:

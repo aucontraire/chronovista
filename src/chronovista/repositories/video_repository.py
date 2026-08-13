@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import ColumnElement, and_, asc, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -35,6 +35,78 @@ class VideoRepository(
     ]
 ):
     """Repository for YouTube video management with multi-language support."""
+
+    async def get_filmot_candidates(
+        self,
+        session: AsyncSession,
+        placeholder_title: ColumnElement[bool],
+        limit: int | None = None,
+    ) -> list[VideoDB]:
+        """
+        Unavailable videos with a metadata gap a third-party archive could fill.
+
+        Selection is by **remaining gap**, never by prior-recovery status
+        (FR-003): a video is a candidate when its title is still a placeholder,
+        its channel is unrecorded, or its duration is zero or absent. A video
+        an earlier run filled completely is therefore not selected — because
+        there is nothing left to ask about it, not because it was excluded.
+        Prior recovery stops being a concept selection needs, and cannot be
+        mistaken for evidence of completeness (FR-003a).
+
+        The placeholder-title predicate is **supplied by the caller** rather
+        than imported, and that is deliberate twice over. It satisfies FR-004c:
+        the merge policy owns the one definition and hands down the finished
+        expression, so this query cannot drift from the matcher, nor from the
+        write gate that re-asserts it. Passing the whole condition rather than
+        a list of patterns is what closes that gap — the NULL and
+        whitespace-only cases used to be reassembled here, and reassembly is
+        where the two halves disagreed.
+
+        And it keeps the dependency pointing the right way: a repository
+        importing a service is backwards, and here it was also a genuine import
+        cycle (``video_repository`` -> ``services.recovery`` -> ``orchestrator``
+        -> ``video_repository``), which is how the design error announced
+        itself.
+
+        Ordered like the sibling recovery command so operators see consistent
+        ordering across both.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        placeholder_title : ColumnElement[bool]
+            Predicate identifying placeholder titles, built by the merge
+            policy's ``placeholder_title_condition`` over ``Video.title``.
+        limit : int | None, optional
+            Maximum candidates to return.
+
+        Returns
+        -------
+        list[VideoDB]
+            Candidate videos, oldest unavailability first.
+        """
+        stmt = (
+            select(VideoDB)
+            .where(VideoDB.availability_status != AvailabilityStatus.AVAILABLE.value)
+            .where(
+                or_(
+                    placeholder_title,
+                    VideoDB.channel_id.is_(None),
+                    or_(VideoDB.duration.is_(None), VideoDB.duration == 0),
+                )
+            )
+            .order_by(
+                asc(VideoDB.unavailability_first_detected.is_(None)),
+                asc(VideoDB.unavailability_first_detected),
+                asc(VideoDB.created_at),
+            )
+        )
+        if limit:
+            stmt = stmt.limit(limit)
+
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
 
     def __init__(self) -> None:
         """Initialize repository with Video model."""

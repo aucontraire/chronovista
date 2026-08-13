@@ -753,3 +753,83 @@ class CdxCacheEntry(BaseModel):
         now = _dt.datetime.now(_dt.UTC)
         age = now - self.fetched_at
         return age < _dt.timedelta(hours=ttl_hours)
+
+
+class FilmotRecoveryResult(BaseModel):
+    """
+    Outcome of one Filmot recovery run.
+
+    Every count exists because collapsing it would hide something an operator
+    would act on differently. Three separations are load-bearing:
+
+    - ``not_held`` versus ``unresolved`` — "the archive answered and had
+      nothing" versus "we never got an answer". Only the first justifies
+      giving up on a video, and conflating them is the defect this feature
+      descends from.
+    - ``returned`` versus ``updated``, with ``held_no_write`` between them.
+      Without the middle count the gap between records received and videos
+      changed is unexplained, and a working run is indistinguishable from a
+      broken policy.
+    - ``malformed_records`` — a parse failure is a signal about the *source's
+      behaviour changing*, not about any video.
+
+    Attributes
+    ----------
+    submitted : int
+        Videos included in a request that was actually issued.
+    returned : int
+        Records the archive held.
+    updated : int
+        Videos actually changed.
+    held_no_write : int
+        Archive held a record, but the fill-only policy permitted no write.
+    field_counts : dict[str, int]
+        Writes per column.
+    not_held : int
+        Archive answered and had no record. Terminal for this source.
+    unresolved : int
+        Request did not complete. Never counted as ``not_held``.
+    not_attempted : int
+        Selected but never requested, because the run ended early.
+    unknown_channels : list[str]
+        Channels the archive named that the library does not know.
+    malformed_records : int
+        Records skipped as unparseable.
+    refused_values : dict[str, int]
+        Values the policy declined, keyed by ``"field:reason"``.
+    ended_early : str | None
+        Why the run stopped short, if it did.
+    dry_run : bool
+        Whether anything was written.
+    duration_seconds : float
+        Wall-clock time for the run.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    submitted: int = 0
+    returned: int = 0
+    updated: int = 0
+    held_no_write: int = 0
+    field_counts: dict[str, int] = Field(default_factory=dict)
+    not_held: int = 0
+    unresolved: int = 0
+    not_attempted: int = 0
+    unknown_channels: list[str] = Field(default_factory=list)
+    malformed_records: int = 0
+    refused_values: dict[str, int] = Field(default_factory=dict)
+    ended_early: str | None = None
+    dry_run: bool = False
+    duration_seconds: float = 0.0
+
+    @property
+    def reconciles(self) -> bool:
+        """Whether ``updated + held_no_write == returned``.
+
+        Required to hold when no request failed (FR-022b). It is exposed as a
+        property rather than asserted internally so a run can *report* a
+        discrepancy instead of crashing on one — a mismatch means something was
+        dropped silently, which is worth surfacing rather than hiding behind an
+        exception.
+        """
+        return self.updated + self.held_no_write == self.returned

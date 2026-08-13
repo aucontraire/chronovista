@@ -192,7 +192,9 @@ class FilmotClient:
         Raises
         ------
         FilmotError
-            If no API key is configured.
+            If no API key is configured, or if the archive rejects the
+            credential (401/403). Both are conditions of the run rather than of
+            any batch, so they are raised rather than reported per-id.
         """
         if not self.is_configured:
             raise FilmotError(
@@ -212,6 +214,15 @@ class FilmotClient:
             try:
                 found.extend(await self._fetch_batch(batch))
             except FilmotError as exc:
+                if getattr(exc, "status_code", None) in (401, 403):
+                    # A credential the archive rejects is not a fact about this
+                    # batch, and the next batch will fare no better. Folding it
+                    # into `unresolved` made it indistinguishable from a
+                    # timeout: the caller then saw three fully-unresolved
+                    # batches and told the operator "rate_limited", so a dead
+                    # key read as a limit to wait out rather than a key to
+                    # rotate. Callers classify this; it must reach them.
+                    raise
                 unresolved.update(batch)
                 logger.warning(
                     "Filmot batch %d failed (%s); its %d ids are unresolved, "

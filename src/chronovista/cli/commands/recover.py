@@ -18,6 +18,9 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from chronovista.cli.constants import (
+    EXIT_SYSTEM_ERROR,
+)
 from chronovista.config.database import db_manager
 from chronovista.config.settings import settings
 from chronovista.exceptions import (
@@ -29,7 +32,9 @@ from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.recovery import SELENIUM_AVAILABLE
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
-from chronovista.services.recovery.models import RecoveryResult
+from chronovista.services.recovery.filmot_client import FilmotClient
+from chronovista.services.recovery.filmot_recovery import run_filmot_recovery
+from chronovista.services.recovery.models import FilmotRecoveryResult, RecoveryResult
 from chronovista.services.recovery.orchestrator import recover_video
 from chronovista.services.recovery.page_parser import PageParser
 
@@ -580,3 +585,160 @@ def _display_batch_summary(results: list[RecoveryResult], dry_run: bool) -> None
         )
 
     console.print(table)
+
+
+@recover_app.command(name="filmot")
+def recover_filmot_command(
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        "-n",
+        min=1,
+        help=(
+            "Maximum videos to consider, taken from the head of the same "
+            "ordering every run — for sampling, not for paging. Selection is "
+            "by remaining gap, so videos the archive does not hold stay at the "
+            "head and a repeated --limit run re-reads them. The whole backlog "
+            "is ~30 requests, so there is little reason to page."
+        ),
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Report intended writes without making them.",
+    ),
+) -> None:
+    """Fill metadata gaps on unavailable videos from the Filmot archive.
+
+    Recovers title, owning channel and duration for videos YouTube no longer
+    serves, from a third-party index that retains records for removed videos.
+
+    Fill-only: a real title, a recorded channel and a positive duration are
+    never overwritten, because a third-party archive is weaker evidence than
+    what YouTube or your own export said. Publication dates are never written,
+    and no channel records are created.
+
+    Requests are limited to one per second. The archive publishes no rate
+    limits and returns no rate-limit headers, so restraint is ours to keep.
+
+    A sibling of `recover video`, not an option on it: the two sources answer
+    different questions and fail differently. Running both from one invocation
+    waits for a shared abstraction that does not exist yet.
+
+    Examples:
+        chronovista recover filmot --dry-run --limit 20
+        chronovista recover filmot --limit 100
+        chronovista recover filmot
+
+    Exit Codes:
+        0: Completed — including a run that changed nothing, one skipped for
+           want of a credential, and one ended early by the archive refusing us
+        2: Invalid usage (a bad option value), or a system/database failure.
+           Click owns 2 for usage errors and the project's EXIT_SYSTEM_ERROR is
+           also 2, so the two are not distinguishable by code alone
+        130: Cancelled - Ctrl+C pressed
+    """
+
+    async def _run() -> None:
+        client = FilmotClient()
+        # No `raise typer.Exit` inside this loop: exiting an `async for` early
+        # throws GeneratorExit at the suspended yield, so the session context
+        # manager's commit never runs. `database.py` documents the hazard by
+        # name. Falling off the end of the loop leaves the generator to close
+        # itself, and success is the absence of an exception.
+        async for session in db_manager.get_session(echo=False):
+            result = await run_filmot_recovery(
+                session, client, limit=limit, dry_run=dry_run
+            )
+            _display_filmot_summary(result)
+
+    try:
+        asyncio.run(_run())
+    except KeyboardInterrupt:
+        # Caught out here, not inside the coroutine. Python's asyncio.Runner
+        # turns Ctrl+C into task cancellation — the coroutine sees
+        # CancelledError, a BaseException that `except Exception` also misses —
+        # and re-raises KeyboardInterrupt outside `asyncio.run`. An inner
+        # handler never ran, so this message never printed and the exit code
+        # was the interpreter's 130 rather than anything this command chose.
+        # The sibling command above already gets this right.
+        console.print("\n[yellow]Operation cancelled by user[/yellow]")
+        raise typer.Exit(code=130) from None
+    except Exception as exc:  # noqa: BLE001 - surfaced to the operator
+        console.print(
+            Panel(
+                f"[red]Filmot recovery failed:[/red]\n{exc}",
+                title="Filmot Recovery Failed",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(EXIT_SYSTEM_ERROR) from None
+
+
+def _display_filmot_summary(result: FilmotRecoveryResult) -> None:
+    """Render one run's outcome.
+
+    Two lines are never summed: "archive had no record" is terminal for a
+    video, while "not looked up" means nothing was learned about it. Treating
+    the second as the first is the defect this feature descends from, and the
+    table exists to keep them apart on screen as well as in the data.
+    """
+    if result.ended_early == "not_configured":
+        console.print(
+            Panel(
+                "[yellow]Filmot is not configured.[/yellow]\n\n"
+                "Set [bold]FILMOT_API_KEY[/bold] in your .env to enable this "
+                "recovery source. This is not an error — the source is simply "
+                "unavailable, and the rest of your recovery workflow is "
+                "unaffected.",
+                title="Skipped",
+                border_style="yellow",
+            )
+        )
+        return
+
+    title = "Filmot recovery (dry run)" if result.dry_run else "Filmot recovery"
+    table = Table(title=title, show_header=False)
+    table.add_column("outcome")
+    table.add_column("count", justify="right")
+
+    table.add_row("videos submitted", str(result.submitted))
+    table.add_row("records returned", str(result.returned))
+    table.add_row(
+        "videos updated" if not result.dry_run else "videos that would be updated",
+        str(result.updated),
+    )
+    for field, count in sorted(result.field_counts.items()):
+        table.add_row(f"  {field}", str(count))
+    table.add_row("held, nothing to write", str(result.held_no_write))
+    table.add_row("archive had no record", str(result.not_held))
+    table.add_row("not looked up (failures)", str(result.unresolved))
+    if result.not_attempted:
+        table.add_row("not attempted (ended early)", str(result.not_attempted))
+    if result.unknown_channels:
+        table.add_row("unknown channels", str(len(result.unknown_channels)))
+    if result.malformed_records:
+        table.add_row("malformed records skipped", str(result.malformed_records))
+    for reason, count in sorted(result.refused_values.items()):
+        table.add_row(f"refused: {reason}", str(count))
+
+    console.print(table)
+
+    if result.ended_early and result.ended_early != "not_configured":
+        console.print(
+            f"[yellow]Run ended early: {result.ended_early}. "
+            f"{result.not_attempted} video(s) were not attempted and remain "
+            f"candidates.[/yellow]"
+        )
+
+    if not result.reconciles and not result.unresolved:
+        console.print(
+            "[red]Warning: updated + held does not equal records returned. "
+            "Something was dropped silently.[/red]"
+        )
+
+    if result.field_counts.get("title") and not result.dry_run:
+        console.print(
+            f"\n[dim]{result.field_counts['title']} title(s) changed — search "
+            f"indexes and entity mentions derived from them are now stale.[/dim]"
+        )

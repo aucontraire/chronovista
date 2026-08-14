@@ -1212,8 +1212,17 @@ class TakeoutService(TakeoutServiceInterface):
         base_path : Path
             Base directory containing takeout subdirectories
         sort_oldest_first : bool
-            If True, sort with oldest first (allows newer to overwrite).
-            If False, sort with newest first.
+            If True, sort oldest first. If False (the usual choice), newest
+            first.
+
+            This previously read "allows newer to overwrite", which describes an
+            overwriting writer. Both consumers are **fill-only**: they write
+            only where the stored value is missing or a placeholder, and never
+            contest a real value. Under those semantics the *first* export to
+            supply a value wins and every later one is a no-op, so oldest-first
+            means the **oldest** value wins permanently — the opposite of what
+            that sentence led a caller to expect, and how the CLI came to
+            disagree with the onboarding pipeline (#231).
 
         Returns
         -------

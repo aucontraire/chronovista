@@ -114,6 +114,53 @@ class TestDiscoverHistoricalTakeouts:
         assert takeouts[0].export_date > takeouts[1].export_date
         assert takeouts[1].export_date > takeouts[2].export_date
 
+    def test_undated_export_orders_by_date_not_name(
+        self, temp_takeout_base: Path
+    ) -> None:
+        """#230. A freshly downloaded export sorts last by name, first by date.
+
+        Google names a new export "YouTube and YouTube Music" with no date. That
+        string sorts *after* every dated sibling, because "YouTube and YouTube
+        Music 2024-01-01" is longer and compares greater at the space. Ordering
+        on names therefore puts the newest export at the back, which — under
+        fill-only seeding, where the first export to supply a value wins —
+        hands the outcome to the oldest archive on disk.
+
+        Discovery resolves an mtime for undated exports, so it must place this
+        one first when asked for newest-first, regardless of how it sorts
+        alphabetically.
+        """
+        self._create_takeout_dir(
+            temp_takeout_base, "YouTube and YouTube Music 2024-01-01"
+        )
+        self._create_takeout_dir(
+            temp_takeout_base, "YouTube and YouTube Music 2025-01-01"
+        )
+        undated = temp_takeout_base / "YouTube and YouTube Music"
+        youtube_dir = undated / "YouTube and YouTube Music"
+        youtube_dir.mkdir(parents=True)
+        history = youtube_dir / "history"
+        history.mkdir()
+        (history / "watch-history.json").write_text("[]")
+
+        names = sorted(d.name for d in temp_takeout_base.iterdir() if d.is_dir())
+        assert names[-1] != "YouTube and YouTube Music", (
+            "precondition: the undated export must NOT sort first by name, "
+            "or this test proves nothing"
+        )
+
+        result = TakeoutService.discover_historical_takeouts(
+            temp_takeout_base, sort_oldest_first=False
+        )
+
+        assert len(result) == 3
+        assert (
+            result[0].export_date > result[1].export_date
+        ), "the newest export is not first"
+        # mtime is 'now', so the undated export is the newest of the three.
+        assert "2024" not in result[0].path.parent.name
+        assert "2025" not in result[0].path.parent.name
+
     def test_discover_takeout_with_all_features(self, temp_takeout_base: Path) -> None:
         """Test discovering a takeout with all data types."""
         self._create_takeout_dir(

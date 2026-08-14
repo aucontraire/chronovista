@@ -57,6 +57,32 @@ class TestTakeoutRecoverCommand:
     @patch(
         "chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts"
     )
+    def test_archives_are_requested_newest_first(
+        self, mock_discover: MagicMock
+    ) -> None:
+        """#231. The CLI and the onboarding pipeline must agree on order.
+
+        This passed ``sort_oldest_first=True`` while onboarding used the
+        opposite default, so the same exports on the same disk produced
+        different metadata depending on which entry point ran.
+
+        Recovery is gap-fill — it writes only where the stored value is a
+        placeholder — so the first export to supply a real value wins and later
+        ones are no-ops. Oldest-first let the oldest export win permanently.
+        """
+        mock_discover.return_value = []
+
+        runner.invoke(app, ["takeout", "recover", "--dry-run", "--takeout-dir", "."])
+
+        assert mock_discover.called, "discovery was never invoked"
+        assert mock_discover.call_args.kwargs.get("sort_oldest_first") is False, (
+            "the CLI requested oldest-first, so the oldest export wins and "
+            "disagrees with the onboarding pipeline"
+        )
+
+    @patch(
+        "chronovista.services.takeout_service.TakeoutService.discover_historical_takeouts"
+    )
     def test_recover_dry_run(
         self,
         mock_discover: MagicMock,

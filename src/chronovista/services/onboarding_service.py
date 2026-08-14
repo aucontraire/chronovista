@@ -893,27 +893,60 @@ class OnboardingService:
 
                 takeout_path = OnboardingService._get_data_export_path()
 
-                # Discover all takeout directories (dated + undated)
-                # and seed from each to capture the full watch history.
-                takeout_dirs: list[Path] = []
-                for entry in sorted(takeout_path.iterdir()):
-                    if entry.is_dir() and entry.name.startswith(
-                        "YouTube and YouTube Music"
-                    ):
-                        # TakeoutService expects the *parent* of
-                        # "YouTube and YouTube Music", so if the entry
-                        # IS that folder, its parent is the takeout_path.
-                        # But dated dirs are siblings — each is a
-                        # "YouTube and YouTube Music YYYY-MM-DD" folder
-                        # containing the same structure as the undated one.
-                        takeout_dirs.append(entry)
+                # Discover all takeout directories (dated + undated) and seed
+                # from each to capture the full watch history: YouTube truncates
+                # it, so an older export holds events the newest one no longer
+                # contains.
+                #
+                # Ordered NEWEST FIRST, by resolved export date (#230). Seeding
+                # is fill-only — a title is written only over a placeholder, a
+                # channel only over NULL — so the *first* export to supply a
+                # value wins and every later one is a no-op for that field.
+                # Newest-first therefore means the most recent export wins,
+                # which is what we want for a field that still exists.
+                #
+                # This used to sort directory names alphabetically. That worked
+                # only by accident: a freshly downloaded export arrives named
+                # "YouTube and YouTube Music" with no date, which is a prefix of
+                # every dated sibling and so sorted first. Renaming it to
+                # "YouTube and YouTube Music 2026-08-13" — the obvious thing to
+                # do when filing it — moved it last and handed the decision to
+                # the oldest archive on disk.
+                #
+                # `discover_historical_takeouts` resolves a date for every
+                # export, falling back to filesystem mtime for undated ones, and
+                # is the same discovery the CLI uses (#231).
+                discovered = TakeoutService.discover_historical_takeouts(
+                    takeout_path, sort_oldest_first=False
+                )
+                takeout_dirs: list[Path] = [t.path for t in discovered]
+
+                # Name anything that looks like an export but was not
+                # discovered, rather than processing a shorter list silently.
+                if takeout_path.is_dir():
+                    discovered_paths = {t.path for t in discovered}
+                    skipped = sorted(
+                        entry.name
+                        for entry in takeout_path.iterdir()
+                        if entry.is_dir()
+                        and entry.name.startswith("YouTube and YouTube Music")
+                        and entry not in discovered_paths
+                    )
+                    if skipped:
+                        logger.warning(
+                            "Takeout load: %d director(ies) look like exports but "
+                            "hold no watch history, playlists or subscriptions and "
+                            "were skipped: %s",
+                            len(skipped),
+                            ", ".join(skipped),
+                        )
 
                 if not takeout_dirs:
                     # Fallback: single undated directory
                     takeout_dirs = [takeout_path / "YouTube and YouTube Music"]
 
                 logger.info(
-                    "Found %d takeout directories to process",
+                    "Found %d takeout directories to process (newest first)",
                     len(takeout_dirs),
                 )
 

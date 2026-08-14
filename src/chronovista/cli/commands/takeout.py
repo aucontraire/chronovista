@@ -2646,9 +2646,20 @@ def recover_metadata(
                     "Discovering historical takeouts...", total=None
                 )
 
-                # Discover historical takeouts
+                # Discover historical takeouts, NEWEST FIRST (#231).
+                #
+                # This passed sort_oldest_first=True, the opposite of what the
+                # onboarding pipeline uses, so the same exports on the same disk
+                # produced different metadata depending on which entry point ran.
+                #
+                # Recovery is gap-fill: it writes only where the stored value is
+                # a placeholder, so the FIRST export to supply a real value wins
+                # and later ones are no-ops. Oldest-first therefore let the
+                # oldest export win permanently. For a channel that has been
+                # renamed or a video whose title changed, the most recent export
+                # is the better evidence.
                 historical_takeouts = TakeoutService.discover_historical_takeouts(
-                    takeout_dir, sort_oldest_first=True
+                    takeout_dir, sort_oldest_first=False
                 )
 
                 if not historical_takeouts:

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1826,10 +1827,23 @@ class TestFactoryLoadData:
         # module is sufficient.
         _parse_all_mock = mock_svc.parse_all
 
+        # The factory discovers exports through
+        # ``TakeoutService.discover_historical_takeouts`` so that ordering is by
+        # resolved export date rather than by folder name (#230). The stub
+        # records the sort direction it was asked for, because "newest first" is
+        # the property under test, not an implementation detail.
+        self._discovery_sort_calls: list[bool] = []
+        recorded = self._discovery_sort_calls
+
+        def _discover(base_path: Any, sort_oldest_first: bool = True) -> list[Any]:
+            recorded.append(sort_oldest_first)
+            return [SimpleNamespace(path=entry) for entry in dir_entries]
+
         class _StubTakeoutService:
             takeout_path: Any = None
             youtube_path: Any = None
             parse_all = _parse_all_mock  # shared across all instances
+            discover_historical_takeouts = staticmethod(_discover)
 
         with (
             patch(
@@ -1937,6 +1951,12 @@ class TestFactoryLoadData:
             youtube_path: Any = None
             parse_all = _parse_all_mock
 
+            @staticmethod
+            def discover_historical_takeouts(
+                base_path: Any, sort_oldest_first: bool = True
+            ) -> list[Any]:
+                return [SimpleNamespace(path=e) for e in entries]
+
         service = _build_factory_service()
         factory = service._factory_load_data()
         _, cb = _capture_progress()
@@ -1996,6 +2016,12 @@ class TestFactoryLoadData:
             youtube_path: Any = None
             parse_all = _parse_all_mock
 
+            @staticmethod
+            def discover_historical_takeouts(
+                base_path: Any, sort_oldest_first: bool = True
+            ) -> list[Any]:
+                return [SimpleNamespace(path=e) for e in entries]
+
         service = _build_factory_service()
         factory = service._factory_load_data()
         _, cb = _capture_progress()
@@ -2023,6 +2049,51 @@ class TestFactoryLoadData:
         # Second positional arg is takeout_path
         assert call_args[0][1] == fake_path
 
+    async def test_exports_are_discovered_newest_first(self) -> None:
+        """#230. Ordering decides which export's metadata survives.
+
+        Seeding is fill-only: a title is written only over a placeholder and a
+        channel only over NULL, so the *first* export to supply a value wins and
+        every later one is a no-op for that field. Newest-first therefore means
+        the most recent export wins.
+
+        The factory used to sort folder *names*, which produced the right answer
+        only by accident — a fresh export arrives undated, and that name is a
+        prefix of every dated sibling, so it sorted first. Renaming it to
+        include its date moved it last and handed the decision to the oldest
+        archive on disk.
+        """
+        _, calls = await self._run(
+            dir_entries=[
+                self._make_mock_dir_entry("YouTube and YouTube Music 2024-01-01"),
+                self._make_mock_dir_entry("YouTube and YouTube Music"),
+            ]
+        )
+
+        assert self._discovery_sort_calls, "discovery was never called"
+        assert self._discovery_sort_calls[0] is False, (
+            "exports were requested oldest-first, so the oldest archive fills "
+            "every gap and the newest export becomes a no-op"
+        )
+
+    async def test_discovery_is_not_by_folder_name(self) -> None:
+        """The factory must not re-derive an order from `iterdir()`.
+
+        Sorting names is what coupled the outcome to how the folders happen to
+        be labelled. Ordering belongs to the discovery helper, which resolves a
+        real export date for every directory including undated ones.
+        """
+        import inspect
+
+        from chronovista.services.onboarding_service import OnboardingService
+
+        source = inspect.getsource(OnboardingService._factory_load_data)
+
+        assert "discover_historical_takeouts" in source
+        assert (
+            "sorted(takeout_path.iterdir())" not in source
+        ), "load ordering is back to folder names"
+
     async def test_parse_all_called_for_each_directory(self) -> None:
         """parse_all is called once for each discovered takeout directory."""
         entries = [
@@ -2040,6 +2111,12 @@ class TestFactoryLoadData:
             takeout_path: Any = None
             youtube_path: Any = None
             parse_all = _parse_all_mock
+
+            @staticmethod
+            def discover_historical_takeouts(
+                base_path: Any, sort_oldest_first: bool = True
+            ) -> list[Any]:
+                return [SimpleNamespace(path=e) for e in entries]
 
         service = _build_factory_service()
         factory = service._factory_load_data()

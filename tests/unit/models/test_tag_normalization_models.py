@@ -430,7 +430,6 @@ class TestNamedEntityModels:
                 merged_into_id=entity_id,  # Same as id - should fail
                 mention_count=0,
                 video_count=0,
-                channel_count=0,
                 confidence=1.0,
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
@@ -689,7 +688,6 @@ class TestUUIDv7Generation:
             status="active",
             mention_count=0,
             video_count=0,
-            channel_count=0,
             confidence=1.0,
         )
 

@@ -43,7 +43,6 @@ class NamedEntityDBFactory(factory.Factory[NamedEntityDB]):
     status: Any = LazyFunction(lambda: "active")
     mention_count: Any = LazyFunction(lambda: 0)
     video_count: Any = LazyFunction(lambda: 0)
-    channel_count: Any = LazyFunction(lambda: 0)
     confidence: Any = LazyFunction(lambda: 1.0)
     discovery_method: Any = LazyFunction(lambda: "user_created")
 

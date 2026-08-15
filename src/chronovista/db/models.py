@@ -975,7 +975,6 @@ class NamedEntity(Base):
     # Statistics
     mention_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     video_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    channel_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Discovery and quality
     discovery_method: Mapped[str] = mapped_column(

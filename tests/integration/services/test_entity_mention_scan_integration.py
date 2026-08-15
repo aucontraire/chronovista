@@ -169,7 +169,6 @@ async def _seed_entity(
         confidence=1.0,
         mention_count=0,
         video_count=0,
-        channel_count=0,
     )
     session.add(entity)
     await session.flush()

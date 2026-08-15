@@ -512,7 +512,6 @@ Named entities extracted from video tags (people, places, organizations, etc.).
 | `exclusion_patterns` | JSONB | no | `'[]'::jsonb` |  |
 | `mention_count` | INTEGER | no | `0` |  |
 | `video_count` | INTEGER | no | `0` |  |
-| `channel_count` | INTEGER | no | `0` |  |
 | `discovery_method` | VARCHAR(30) | no | `'manual'` |  |
 | `confidence` | FLOAT | no | `1.0` |  |
 | `status` | VARCHAR(20) | no | `'active'` |  |

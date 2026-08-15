@@ -92,7 +92,6 @@ class NamedEntityFactory(factory.Factory[NamedEntity]):
     external_ids: Any = LazyFunction(dict)
     mention_count: Any = LazyFunction(lambda: 0)
     video_count: Any = LazyFunction(lambda: 0)
-    channel_count: Any = LazyFunction(lambda: 0)
     confidence: Any = LazyFunction(lambda: 1.0)
     merged_into_id: Any = LazyFunction(lambda: None)
     created_at: Any = LazyFunction(lambda: datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC))

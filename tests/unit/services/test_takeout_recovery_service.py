@@ -271,6 +271,102 @@ class TestRecoverVideos:
         assert result.video_actions[0].new_title == "Never Gonna Give You Up"
         video_repo.update.assert_called_once()
 
+    async def test_recovers_a_video_whose_title_is_the_watch_url(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """#207: the URL form is a placeholder too, and it is the common one.
+
+        The predicate this service used matched `"[Placeholder] Video "` alone,
+        so a stored title that is a raw watch URL read as a REAL title and was
+        never eligible for recovery. `needs_title_update` could not become true
+        for it, whatever the archives held.
+
+        This is not a rare shape. Among unavailable videos in the production
+        library, 1,187 carry the URL form against 3 carrying the bracket form,
+        all from a single bulk import that stored the URL verbatim.
+        """
+        mock_video = MagicMock()
+        mock_video.video_id = "dQw4w9WgXcQ"
+        mock_video.title = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        mock_video.channel_id = "UCplaceholder"
+
+        video_repo = MagicMock()
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.update = AsyncMock()
+
+        channel_repo = MagicMock()
+        channel_repo.get = AsyncMock(return_value=None)
+
+        service = TakeoutRecoveryService(
+            video_repository=video_repo,
+            channel_repository=channel_repo,
+        )
+
+        video_metadata = {
+            "dQw4w9WgXcQ": RecoveredVideoMetadata(
+                video_id="dQw4w9WgXcQ",
+                title="Never Gonna Give You Up",
+                channel_name="RickAstleyVEVO",
+                channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
+                source_takeout=Path("/takeouts/2024-01-15"),
+                source_date=datetime(2024, 1, 15, tzinfo=UTC),
+            )
+        }
+
+        result = RecoveryResult()
+        await service._recover_videos(
+            mock_session, video_metadata, result, RecoveryOptions()
+        )
+
+        assert result.videos_recovered == 1, (
+            "a watch-URL title was treated as a real title, so the archive's "
+            "title was discarded"
+        )
+        assert result.video_actions[0].new_title == "Never Gonna Give You Up"
+        video_repo.update.assert_called_once()
+
+    async def test_a_real_title_is_still_not_recovered(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """The paired negative: widening the predicate must not widen it too far.
+
+        A title that merely *mentions* a watch URL mid-string, or is an ordinary
+        sentence, is a real value and must stay untouched. Without this, the test
+        above would pass under a predicate that returned True for everything.
+        """
+        mock_video = MagicMock()
+        mock_video.video_id = "dQw4w9WgXcQ"
+        mock_video.title = "Talk about https://www.youtube.com/watch in the middle"
+        mock_video.channel_id = "UCuAXFkgsw1L7xaCfnd5JJOw"
+
+        video_repo = MagicMock()
+        video_repo.get_multi_after = AsyncMock(side_effect=[[mock_video], []])
+        video_repo.update = AsyncMock()
+
+        service = TakeoutRecoveryService(
+            video_repository=video_repo,
+            channel_repository=MagicMock(get=AsyncMock(return_value=None)),
+        )
+
+        video_metadata = {
+            "dQw4w9WgXcQ": RecoveredVideoMetadata(
+                video_id="dQw4w9WgXcQ",
+                title="Something Else Entirely",
+                channel_name="RickAstleyVEVO",
+                channel_id="UCuAXFkgsw1L7xaCfnd5JJOw",
+                source_takeout=Path("/takeouts/2024-01-15"),
+                source_date=datetime(2024, 1, 15, tzinfo=UTC),
+            )
+        }
+
+        result = RecoveryResult()
+        await service._recover_videos(
+            mock_session, video_metadata, result, RecoveryOptions()
+        )
+
+        assert result.videos_recovered == 0
+        video_repo.update.assert_not_called()
+
     async def test_no_recovery_for_non_placeholder_with_channel(
         self, mock_session: AsyncMock
     ) -> None:

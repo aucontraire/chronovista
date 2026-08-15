@@ -21,11 +21,11 @@ from ..models.takeout import (
     RecoveryResult,
     VideoRecoveryAction,
     is_placeholder_channel_name,
-    is_placeholder_video_title,
 )
 from ..models.video import VideoUpdate
 from ..repositories.channel_repository import ChannelRepository
 from ..repositories.video_repository import VideoRepository
+from .recovery.merge_policy import is_placeholder_title
 from .takeout_service import TakeoutService
 
 logger = logging.getLogger(__name__)
@@ -200,10 +200,10 @@ class TakeoutRecoveryService:
 
             for video in videos:
                 videos_checked += 1
-                is_placeholder_title = is_placeholder_video_title(video.title)
+                is_placeholder = is_placeholder_title(video.title)
                 has_null_channel = video.channel_id is None
 
-                if is_placeholder_title:
+                if is_placeholder:
                     placeholder_count += 1
 
                 if has_null_channel:
@@ -212,7 +212,7 @@ class TakeoutRecoveryService:
                 # Check if we have recovery metadata for this video
                 if video.video_id not in video_metadata:
                     # No recovery data available
-                    if is_placeholder_title:
+                    if is_placeholder:
                         result.videos_not_recovered.append(video.video_id)
                         result.videos_still_missing += 1
                     continue
@@ -220,7 +220,7 @@ class TakeoutRecoveryService:
                 recovered = video_metadata[video.video_id]
 
                 # Determine what needs to be updated
-                needs_title_update = is_placeholder_title and recovered.title
+                needs_title_update = is_placeholder and recovered.title
                 needs_channel_update = has_null_channel and recovered.channel_id
 
                 if not needs_title_update and not needs_channel_update:
@@ -465,7 +465,7 @@ class TakeoutRecoveryService:
                 break
 
             for video in videos:
-                if is_placeholder_video_title(video.title):
+                if is_placeholder_title(video.title):
                     count += 1
 
             after = videos[-1].video_id

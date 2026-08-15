@@ -104,7 +104,6 @@ class NamedEntityUpdate(BaseModel):
     merged_into_id: uuid.UUID | None = None
     mention_count: int | None = Field(default=None, ge=0)
     video_count: int | None = Field(default=None, ge=0)
-    channel_count: int | None = Field(default=None, ge=0)
 
     model_config = ConfigDict(
         validate_assignment=True,
@@ -130,9 +129,6 @@ class NamedEntity(NamedEntityBase):
     )
     video_count: int = Field(
         ..., ge=0, description="Number of videos referencing this entity"
-    )
-    channel_count: int = Field(
-        ..., ge=0, description="Number of channels referencing this entity"
     )
     confidence: float = Field(
         ...,

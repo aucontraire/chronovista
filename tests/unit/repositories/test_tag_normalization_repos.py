@@ -266,7 +266,6 @@ class TestNamedEntityRepository:
             status="active",
             mention_count=50,
             video_count=10,
-            channel_count=3,
             confidence=0.95,
         )
 

@@ -224,7 +224,11 @@ class TestVideoSeederSeeding:
         mock_video = Mock()
         mock_video.channel_id = None  # NULL - needs update
         mock_video.channel_name_hint = None
-        mock_video.title = "[Placeholder] Video"  # Placeholder title
+        # The form the seeders actually write: prefix, space, video id. The
+        # fixture previously used a bare "[Placeholder] Video" with no id, which
+        # the old `startswith("[Placeholder]")` check happened to match but
+        # which nothing in the system produces and no row in the library holds.
+        mock_video.title = f"[Placeholder] Video {TestIds.TEST_VIDEO_1}"
 
         with (
             patch.object(

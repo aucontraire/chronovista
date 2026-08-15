@@ -265,7 +265,21 @@ def parse_iso8601_duration(duration_str: str) -> int:
 
 
 def is_placeholder_video_title(title: str) -> bool:
-    """Check if a video title is a placeholder."""
+    """Check if a video title is a placeholder.
+
+    .. deprecated::
+        Unused by this module and narrower than it looks: it matches the
+        bracket form only, so it cannot see a title that is a raw watch URL.
+        Priority selection does not go through here — it builds SQL directly
+        from ``VIDEO_PLACEHOLDER_PREFIX`` (see ``_build_high_priority_filter``).
+
+        New code should use
+        ``services.recovery.merge_policy.is_placeholder_title``, which
+        recognises the URL form, the bracket form and blank/whitespace. The
+        equivalent helper in ``models.takeout.recovery`` was removed in #207
+        for exactly this reason; this copy survives only because tests import
+        it, and should go the same way.
+    """
     return title.startswith(VIDEO_PLACEHOLDER_PREFIX)
 
 

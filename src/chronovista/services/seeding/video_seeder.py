@@ -20,6 +20,7 @@ from ...models.takeout.takeout_data import TakeoutData, TakeoutWatchEntry
 from ...models.video import VideoCreate, VideoUpdate
 from ...repositories.channel_repository import ChannelRepository
 from ...repositories.video_repository import VideoRepository
+from ..recovery.merge_policy import is_placeholder_title
 from .base_seeder import BaseSeeder, ProgressCallback, SeedResult
 
 logger = logging.getLogger(__name__)
@@ -110,11 +111,19 @@ class VideoSeeder(BaseSeeder):
                         update_data["channel_name_hint"] = entry.channel_name
                         needs_update = True
 
-                    # Update placeholder title if we now have real title
+                    # Fill a placeholder title once a real one arrives (#207).
+                    #
+                    # Uses the canonical matcher rather than a local
+                    # `startswith("[Placeholder]")`. The create path below
+                    # normalises a URL-as-title into the bracket form, so this
+                    # branch mostly sees bracket titles — but rows written by
+                    # anything other than this seeder can carry the raw watch
+                    # URL, and a bracket-only check leaves those unfillable
+                    # forever while reporting nothing.
                     if (
-                        existing_video.title.startswith("[Placeholder]")
+                        is_placeholder_title(existing_video.title)
                         and entry.title
-                        and not entry.title.startswith("http")
+                        and not is_placeholder_title(entry.title)
                     ):
                         update_data["title"] = entry.title
                         needs_update = True

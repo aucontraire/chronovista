@@ -24,7 +24,6 @@ from chronovista.models.takeout.recovery import (
     VideoRecoveryAction,
     extract_video_id_from_placeholder,
     is_placeholder_channel_name,
-    is_placeholder_video_title,
 )
 
 
@@ -305,26 +304,18 @@ class TestRecoveryOptions:
 class TestPlaceholderDetection:
     """Tests for placeholder detection helper functions."""
 
-    def test_is_placeholder_video_title_true(self) -> None:
-        """Test detecting placeholder video titles."""
-        assert is_placeholder_video_title("[Placeholder] Video dQw4w9WgXcQ") is True
-        assert is_placeholder_video_title("[Placeholder] Video abc123XYZ_-") is True
-
-    def test_is_placeholder_video_title_false(self) -> None:
-        """Test detecting non-placeholder video titles."""
-        assert is_placeholder_video_title("Never Gonna Give You Up") is False
-        assert is_placeholder_video_title("Some Random Video Title") is False
-        assert is_placeholder_video_title("[Other] Video Title") is False
-
-    def test_is_placeholder_video_title_edge_cases(self) -> None:
-        """Test edge cases for video placeholder detection."""
-        assert is_placeholder_video_title("") is False
-        assert (
-            is_placeholder_video_title("[Placeholder]") is False
-        )  # No " Video " prefix
-        assert (
-            is_placeholder_video_title("Placeholder Video abc") is False
-        )  # Missing brackets
+    # The video-title predicate that lived here was removed in #207. It matched
+    # the bracket form alone, so it could not see a stored title that is a raw
+    # watch URL — which is what ~1,187 rows in the library actually carry, from
+    # a single bulk import. Its replacement,
+    # `services.recovery.merge_policy.is_placeholder_title`, recognises the URL
+    # form, the bracket form and blank/whitespace, and is covered by
+    # tests/unit/services/recovery/test_merge_policy.py.
+    #
+    # `VIDEO_PLACEHOLDER_PREFIX` survives in the model module because the
+    # takeout seeder still *writes* that exact form when normalising a
+    # URL-as-title on create. Writing one shape and testing for many is the
+    # asymmetry the fix rests on.
 
     def test_is_placeholder_channel_name_true(self) -> None:
         """Test detecting placeholder channel names."""

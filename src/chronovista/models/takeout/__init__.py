@@ -19,7 +19,6 @@ from .recovery import (
     VideoRecoveryAction,
     extract_video_id_from_placeholder,
     is_placeholder_channel_name,
-    is_placeholder_video_title,
 )
 from .takeout_analysis import (
     ChannelSummary,
@@ -66,7 +65,6 @@ __all__ = [
     "VIDEO_PLACEHOLDER_PREFIX",
     "CHANNEL_PLACEHOLDER_PREFIX",
     "UNKNOWN_CHANNEL_PREFIX",
-    "is_placeholder_video_title",
     "is_placeholder_channel_name",
     "extract_video_id_from_placeholder",
 ]

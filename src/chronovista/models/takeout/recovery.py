@@ -231,27 +231,18 @@ class RecoveryOptions(BaseModel):
     )
 
 
-# Constants for placeholder detection
+# Constants for placeholder detection.
+#
+# `VIDEO_PLACEHOLDER_PREFIX` is the form this project *writes*: the takeout
+# seeder normalises a URL-as-title into it on create. It is not the only form a
+# stored title can take, which is why the predicate that used to live here was
+# removed in #207 — it matched this prefix alone and so could not see the ~1,187
+# rows carrying a raw watch URL from an earlier bulk import. Services test
+# titles with `services.recovery.merge_policy.is_placeholder_title`, which
+# recognises the URL form, the bracket form and blank/whitespace.
 VIDEO_PLACEHOLDER_PREFIX = "[Placeholder] Video "
 CHANNEL_PLACEHOLDER_PREFIX = "[Placeholder]"
 UNKNOWN_CHANNEL_PREFIX = "[Unknown"
-
-
-def is_placeholder_video_title(title: str) -> bool:
-    """
-    Check if a video title is a placeholder.
-
-    Parameters
-    ----------
-    title : str
-        The video title to check
-
-    Returns
-    -------
-    bool
-        True if the title is a placeholder pattern
-    """
-    return title.startswith(VIDEO_PLACEHOLDER_PREFIX)
 
 
 def is_placeholder_channel_name(name: str) -> bool:

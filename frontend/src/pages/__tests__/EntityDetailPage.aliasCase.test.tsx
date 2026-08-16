@@ -107,6 +107,7 @@ function mockEntity(caseSensitive = false) {
     status: "active",
     mention_count: 50,
     video_count: 12,
+    by_source: { manual: 0, transcript: 12, title: 0, description: 0, tag: 0 },
     aliases: [
       {
         id: ALIAS_ID,

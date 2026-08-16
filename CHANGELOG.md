@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-08-15
+
+### Added
+- **One definition of "which videos is this entity associated with", shared by every view.** An entity is linked to a video through several sources — spoken mention, title, description, YouTube tag, or a hand-made assertion — and each panel used to compute that set with its own query, so the numbers disagreed across views. A single resolver now derives the association set once, and the entity list, the entity detail, the video's entities panel, and the provenance filter all consume it. The vocabulary follows: the linked set is an entity's **associations** (the umbrella over mentions, tags, and manual links); a **mention** is the narrower text-anchored kind. The headline shows the count broken down inline by all five sources.
+- **A provenance value for hand-made associations.** A manually asserted link — an entity whose name is in no transcript, title, description, or tag, but who is the subject of the video — is now stored with an honest `manual` provenance instead of being mislabelled a transcript mention.
+
+### Changed
+- **The entity list's video count now means the same thing as the detail page's.** The list read a denormalised, mention-only column while the detail computed the combined total, so a freshly promoted tag read as 0 in the list and full on the detail — as if the promotion had failed. Both now report the same combined association count. (Consumers see the same field name with corrected semantics; the value is generally higher than before.)
+- **The video's entities panel shows the full association set.** It was mentions-only, so an entity linked to a video purely through a tag or a manual assertion was visible on the entity side and invisible on the video side. Both sides now agree by construction. Membership is the strict association set, so a stray non-visible-name mention that the entity detail already excluded no longer appears here either.
+- **The source filter is a multi-select over provenance, not a single dropdown mixing axes.** It offers `{manual, transcript, title, description, tag}`; selecting several unions them, selecting one isolates it (so "tag only" and "manual only" audit views are possible), selecting none shows all. Detection method is no longer conflated into it — that is a separate axis and not a user-facing filter.
+- **A name repeated in a video's description counts once.** On a single video's per-source breakdown, description occurrences flatten to presence while transcript occurrences still reflect true frequency, so metadata boilerplate no longer reads as strong signal. The distinct-video count is unaffected.
+
+### Fixed
+- **Provenance is derived from where the mention was found, never from how it was detected.** The video-list source labelling mapped every rule-matched mention to `transcript`, so a title- or description-only association was reported as a transcript one and leaked into a `source=transcript` filter (measured on one entity: 483 videos returned where 23 were transcript-sourced). The filter now agrees with the per-source breakdown for every source.
+- **Manual evidence is retained under the transcript scope of entity intersection.** Reclassifying manual mentions to `manual` would have dropped them from the intersection's `min_evidence=transcript` view, which deliberately keeps the highest-trust evidence; that scope now matches `transcript` and `manual` both.
+
+### Performance
+- **The entity-list count is computed in the database, not by materialising rows in Python.** The resolver aggregates distinct-video counts with `COUNT(DISTINCT ... ) GROUP BY` over a union of the association paths, so a heavy entity's thousands of association rows stay in PostgreSQL instead of crossing into Python. The Python-normalised tag-alias path is injected as two array binds via `unnest` (one bind per array) rather than a row-per-pair `VALUES` list, which for a heavy page would exceed the driver's 32,767 bind-parameter ceiling. Measured on production: default entity page 467ms → 71ms, mentions-sorted first page 1,098ms → 517ms.
+
+### Migration
+- **One additive change with a data step, reversible.** `entity_mentions.mention_source` gains `manual` as a permitted value, and the existing hand-made rows (`detection_method = 'manual'` with no transcript anchor) are reclassified from the false `transcript` label to `manual`. The constraint is widened before the values are written and narrowed after they are reverted, so the up and down migrations are each valid at every step. The reclassification changes only the label: association counts and video-panel membership are identical before and after.
+
 ## [0.67.0] - 2026-08-13
 
 ### Added
@@ -40,13 +62,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Recovery provenance is now recorded additively.** When a video or channel is deleted, its metadata can still be reconstructed from archives — but more than one source contributes, and no single one is sufficient: a description comes only from the web archive, a duration only from the third-party index, and a title from any of them. Provenance was a single column that each pass overwrote, so whichever ran last claimed the whole row. Two new append-only tables, `video_recovery_sources` and `channel_recovery_sources`, hold one row per (target, source), so a later pass adds to the record instead of replacing it.
 - **`source` and `source_detail` are separate columns.** The previous convention packed both into one string (`source:snapshot_timestamp`), which is why overwriting the source destroyed the archive capture timestamps along with the attribution. The model refuses a `source` containing `:` outright rather than storing a value that would look fine and be unqueryable.
 - **`fields_written`** records which columns a pass actually wrote. Best-effort and explicitly a hint: a pass that does not populate it still records that it touched the row, which is more than the previous model could express.
-- **[Where recovered metadata came from](docs/architecture/recovery-provenance.md)** — why this is stored additively, what the denormalised column is for, and the three questions this deliberately does not answer.
+- **[Where recovered metadata came from](https://github.com/aucontraire/chronovista/blob/master/docs/architecture/recovery-provenance.md)** — why this is stored additively, what the denormalised column is for, and the three questions this deliberately does not answer.
 
 ### Changed
 - **`videos.recovery_source` and `recovered_at` are now derived.** They are retained, and the API exposes them unchanged, so the video detail endpoint still needs no join per row. They now hold a projection of the join table — the most recent contributor — recomputed from it rather than from whatever the caller passed. This is deliberately a second copy of a fact, which is the pattern that caused the original problem; the mitigation is that exactly one code path writes them. That projection still rebuilds the packed `source:detail` form for existing readers, and the column can be dropped once none depend on it.
 
 ### Fixed
 - **Restored the attribution of 92 rows** that a bulk import had relabelled. No video data had been lost — the titles and descriptions written by the earlier pass were intact — but the record of where they came from, including the archive capture timestamps, was gone. The repair adds the original source *alongside* the importer's rather than replacing it, so both facts are true; under the previous single-column model that restore was not possible to do correctly, since writing the old value back would have erased the fact that the importer also contributed.
+
+## [0.65.1] - 2026-08-07
+
+### Fixed
+- **`entities scan --new-entities-only` now scopes every source, not just transcripts.** Two defects compounded. (1) `scan_metadata()` took no `new_entities_only` parameter and passed a hardcoded `False` to `_load_entity_patterns`, while `scan()` honoured it — so `--sources transcript,title,description` scoped the transcript half to zero-mention entities and silently ran the metadata half across every active entity. Measured: a dry run reported **139,845 mentions across 369 entities** where 27 were expected, and 277s instead of 31s. (2) With that fixed, the zero-mention set was still re-evaluated *per phase*: the transcript scan runs first and writes, so by the time the metadata scan loaded its patterns those entities no longer had zero mentions and were filtered out — **23 of 32 newly created entities ended up with transcript mentions only**, missing titles and descriptions entirely, which is the surface with 100% coverage rather than 2.4% and the one ASR does not mangle. The CLI now resolves the set once, before any phase runs, and passes it to both calls as explicit `entity_ids`. Backend-only; no schema change, no migration.
+- The two scan entry points maintain parallel filter parameters by hand and had drifted by exactly this one. A signature test now pins them together so the next drift fails in CI rather than in production.
 
 ## [0.65.0] - 2026-08-07
 
@@ -73,8 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A cancelled query no longer leaves its session unusable.** `asyncio.wait_for` cancels mid-flight, leaving the transaction failed, so the next statement raised `PendingRollbackError` instead of the timeout the caller expected.
 
 ### Documentation
-- **[Make an entity count the videos its tags are on](docs/user-guide/entity-tags.md)** — the tag workflow end to end, including how to undo each step.
-- **[Tags and aliases are not the same thing](docs/architecture/tags-and-aliases.md)** — why these are two relationships rather than one, and what follows from that. This distinction is the root of every defect listed above.
+- **[Make an entity count the videos its tags are on](https://github.com/aucontraire/chronovista/blob/master/docs/user-guide/entity-tags.md)** — the tag workflow end to end, including how to undo each step.
+- **[Tags and aliases are not the same thing](https://github.com/aucontraire/chronovista/blob/master/docs/architecture/tags-and-aliases.md)** — why these are two relationships rather than one, and what follows from that. This distinction is the root of every defect listed above.
 
 ## [0.64.0] - 2026-08-06
 
@@ -85,6 +113,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The uniqueness pre-check now evaluates the pair it actually constrains.** `uq_named_entity_canonical` is on `(canonical_name_normalized, entity_type)`, but the check ran against the entity's *existing* type. For a retype that always passed — the entity is excluded from its own query — and the duplicate then failed at flush time as an `IntegrityError` (HTTP 500) instead of a clean 409. Both values are now resolved before one check. The undo path carried the same latent defect, restoring a name while checking it against the current type, and is fixed the same way.
 - **The edit request accepts a JSON string for `entity_type`.** The request model is strict, and Pydantic strict mode will not coerce `"place"` into the enum — it requires an enum instance, which no HTTP client can send. Every retype returned 422, surfaced in the UI as a generic "Failed to save changes." Service-level tests passed throughout because they call the service directly with a plain string and never exercise the schema; endpoint tests that PATCH real JSON now cover the gap.
 - The 409 message no longer blames the name alone: a collision can now originate from a type change.
+
+## [0.63.0] - 2026-08-05
+
+Entity curation. Everything here serves one workflow: seeing why a mention matched, deciding it was wrong, and rebuilding without it.
+
+### Added
+- **Per-alias case-sensitive matching (#177).** An alias that is also an ordinary English word matches every occurrence of that word, and exclusion patterns cannot close the set — the word appears in arbitrary constructions. A **Match case** switch on each alias row restricts that one alias to its exact capitalisation.
+  - **Per-alias, and deliberately not a rule.** Measured on real data, one entity's lowercase occurrences were almost entirely the common noun, while another's were mostly the person — automatic transcription had simply failed to capitalise a proper noun. The two want *opposite* settings and nothing in the schema predicts which, so a heuristic like "case-sensitive when the alias is a dictionary word" would get the second one backwards. Only a human reading the mention contexts can decide, which is why #176 is a prerequisite rather than a convenience.
+  - **Defaults to off**, exactly how every alias has always matched. No backfill, and no existing alias changes meaning on upgrade.
+  - **Toggling rebuilds mentions**, because matching rules are applied when a scan runs. Without that the switch would appear to do nothing.
+  - New `PATCH /api/v1/entities/{entity_id}/aliases/{alias_id}`. Alias responses gain `id` and `case_sensitive`.
+
+### Fixed
+- **Transcript and title mentions had no stored context (#176).** `mention_context` was populated for description mentions only — **114,397 mentions on a real corpus, 67% of all rule-matched mentions**, with no record of why they matched. Judging one meant re-fetching the segment or video and re-slicing by offset, which blocked curation generally and blocked it hardest where it was needed most. The snippet comes from the *corrected* transcript where a correction exists, and preserves accents: it reads as written, so `"Perú"` is never quoted back as `"Peru"`. Existing rows stay `NULL` until an `entities scan --full` backfills them.
+- **The entity scan button added mentions instead of rebuilding them (#179).** An incremental scan only ever adds, so removing an alias or adding an exclusion pattern left the matches it should have retracted in place — and the scan then reported success while the wrong mentions survived. It now always rebuilds, which is also free: transcript segments are not indexed by entity, so an incremental scan walks all of them anyway. Renamed **Rescan Mentions**, with a line stating that hand-curated mentions are kept — true, since the delete is scoped to machine-detected matches.
+- **The browser drew a second dropdown over every combobox (#175).** Four components declared the ARIA combobox pattern without `autoComplete="off"`, so the browser's form-history dropdown stacked on top of the component's own suggestion list — two competing lists over one input, with the native one replaying previously typed values on a surface the app cannot style or clear.
+
+## [0.62.0] - 2026-08-04
+
+### Added
+- **Entity intersection — find the videos where several entities all appear (Feature 062).** Entity filtering was single-entity only, so the library could tell you everything mentioning one person but not what two people had in **common** — the entry point to most relationship-oriented questions it can answer.
+  - **Set filter on the videos list.** "Mentions all of" accepts several entities and returns only the videos where every one of them has a qualifying mention. An AND across entities, so adding one always narrows. Sets of three and four are ordinary rather than exceptional: 7,062 videos in a real library carry three or more distinct entities. Each result row shows, per entity, its mention count and the timestamp of its **first** mention — and shows nothing rather than a misleading `0:00` when an entity appears only in a title or description and therefore has no position in time.
+  - **Exclusion.** An OR across excluded entities, in deliberate contrast to the required set's AND: a video mentioning any of them is removed regardless of how many required entities it matches. Works with an empty required set, which answers a different question — "everything that isn't about this". An entity present in both sets is rejected with an explanation rather than silently returning nothing.
+  - **Evidence scope (`min_evidence`).** A "transcript only" toggle requiring the entity was actually *said*, not merely listed in metadata. Expressed over mention **source** only, never detection method: the two are orthogonal, and every manually added or user-corrected mention is transcript-sourced, so restricting to transcript retains all of them rather than discarding the highest-trust evidence in the system. The scope applies symmetrically to exclusion — measured against production, excluding the most-mentioned entity removes 8,496 videos under the default scope and 870 under transcript-only, so applying it to one side and not the other would mean a single request in which the same video both does and does not mention an entity.
+  - **"Appears with" panel.** On each entity's detail page, the entities sharing the most videos with it. Activating one opens that exact pairing on the videos list. **The count shown equals the total landed on** — both derive from the same qualification rule *and* the same video population, which is what makes the promise hold. Loads independently of the page, since it is the slowest query in the feature and computing it synchronously would penalise precisely the well-connected entities people open most.
+  - **Relevance ordering.** Ranks by combined mention volume, tiebroken by video id so pagination cannot duplicate or drop a row. Auto-selected only when an entity filter is active *and* no sort was chosen; an explicit choice always wins.
+  - **Shareable addresses.** Required entities, exclusions and the evidence scope all live in the URL, so a filtered view survives refresh, back-navigation and copy-paste. Entity names are re-fetched from the ids on load, so a bookmarked link shows names rather than UUIDs.
+
+### Changed
+- **Entity type colours are now uniform across every surface.** One pill shape with two contents: the Entities page and entity detail header put the *type* in it (the legend that teaches the convention), and every other surface puts the entity's *name* in the same colour. The video-page mention chips previously rendered **every** entity in indigo regardless of type, directly contradicting the convention the Entities page teaches — a place, an organization and a person looked identical. The palette now has one definition point, consumed by four call sites; two components and one page previously carried private copies, one of which was missing two types and mis-cased a third.
+- `sort_by` on `GET /api/v1/videos` now carries a distinct unset state so "caller sent nothing" is distinguishable from "caller explicitly chose upload_date". Behaviour for existing callers is unchanged; the OpenAPI default moves from `"upload_date"` to a nullable schema.
+- `ApiError` now carries the server's RFC 7807 `detail`, so a rejected filter can name the value it rejected instead of showing a generic message.
+
+### Fixed
+- Entity filter changes did not refresh the videos list — the request URL was correct but the TanStack Query key omitted the entity parameters, so a cached unfiltered result was served until a hard reload. The filter-panel count had the same shape of bug from a separate call that omitted several filters entirely.
+- The "appears with" panel linked to `/?entity_id=…`, and the root is an index route whose redirect carries no query string, so every parameter was dropped on landing.
+
+## [0.61.0] - 2026-08-03
+
+### Added
+- **Watched vs. saved, in-context and in aggregate (Feature 061).** "Watched" and "saved in a playlist" are independent facts, and the UI could not tell them apart. Watched-status derives **solely** from `user_videos.watched_at` and is never inferred from playlist membership — YouTube does not remove watched videos from Watch Later, so a playlist legitimately holds a mix.
+  - **Per-playlist stats and filtering.** Each playlist detail page gains a `total / watched / unwatched` header and an All / Watched / Unwatched filter. The header describes the whole playlist and deliberately does **not** move with the filter, while the result count does — two quantities that are asserted separately, because conflating them is the easy bug. The filter lives in the address as `?watched_status=`, so a filtered view is shareable and the dashboard can deep-link into it. Each row carries its own watched state, batch-loaded per page.
+  - **New Overview Dashboard** at `/overview`, headlined by **Saved & Forgotten** — videos saved to a curated playlist and never watched (609 on the author's library) — plus Watch Later depth, a playlist inventory by type, and library-wide rollups. One request serves every figure, so the numbers cannot disagree with each other.
+  - **New `GET /api/v1/overview`**; `GET /api/v1/playlists/{id}/videos` gains `watched_status` and a `stats` object with `watched: bool` per item; `GET /api/v1/videos` gains `saved_unwatched`.
+  - Read-only throughout: no migration, no schema change, no write path, no CLI change.
+
+### Fixed
+- **The History playlist is not "trivially all-watched".** It holds 2,997 videos of which 116 have no watch record — the Takeout playlist export and the watch-history import are separate sources and need not agree. A non-empty Unwatched view for History is correct output, not a bug to be "fixed" by inferring watched-status from membership.
+
+### Performance
+- **Query shape, not indexes, is what matters here** — a third instance of the same lesson in this repo. Measured against production (89,465 memberships, 51,271 watch rows), each pair returning *identical numbers*, so value-only tests cannot tell them apart:
+  - playlist header: correlated `EXISTS` **25,676 ms** → non-correlated `IN` **69 ms**
+  - dashboard: `LEFT JOIN LATERAL` per membership row **50,893 ms** → CTE form **131 ms**
+- Under a watched filter the per-page watched lookup is skipped entirely: the page's rows already satisfy the `WHERE` clause, so re-querying would ask the database to rediscover what it just proved.
+- The dashboard CTEs are deliberately **not** `MATERIALIZED`. Each is referenced once, so PostgreSQL inlines and plans across the boundary; forcing materialisation measured *slower* (~134 ms vs ~85 ms). The win over the LATERAL form came from removing the per-row correlation, not from an optimisation fence.
+- Measured: `/overview` **98 ms** (budget 2 s); playlist page **50–99 ms** across all three filter values (budget 1 s).
+
+### Accessibility
+- The filter is a keyboard-operable tablist with arrow/Home/End and an exposed selected value; result-count changes are announced through a live region; watched state is carried by **text**, never colour alone; every dashboard figure is bound to its label via `dl`/`dt`/`dd`; system lists are marked with the words "System list" rather than styling.
+
+### Internal
+- Saved & Forgotten has exactly **one** derivation, consumed by both the dashboard and the videos-list filter, so the two cannot drift — an equality test guards it as a backstop rather than doing the job of the mechanism. "Curated" is tested **positively** as `playlist_type = 'regular'`, so `liked` and `favorites` — types the upstream enum defines but this feature never names — are excluded automatically; `is_system` is likewise derived as "not regular" rather than from a hardcoded pair. The playlist inventory is produced by `GROUP BY` over whatever exists, which makes a newly-introduced playlist type visible instead of silently absent.
+- `StatGrid` extracted from Settings' database-statistics grid on its third call site.
+- Filed during this work: **#160** (`make quality` cannot pass and diverges from CI), **#161** (`user_videos` lacks an index on `video_id`).
 
 ## [0.60.0] - 2026-08-02
 
@@ -1197,7 +1289,7 @@ CLI commands for manual curation of the canonical tag system. Enables merging sp
 - Type-specific undo handlers: `_undo_merge()`, `_undo_split()`, `_undo_rename()`, `_undo_classify()`, `_undo_deprecate()`
 - Lazy count recalculation via `SELECT COUNT` with JOIN after every mutation
 - Multi-source merge: `tags merge peruu peruvia --into peru` in a single atomic operation with one log entry
-- Entity classification with upsert semantics (FR-019): handles multiple tag aliases normalizing to the same form (e.g., "Renee Dubois" and "Renée Dubois" → "aaron mate") by accumulating `occurrence_count` instead of failing on unique constraint
+- Entity classification with upsert semantics (FR-019): handles multiple tag aliases normalizing to the same form (e.g., an accented name and its unaccented spelling collapsing to one canonical) by accumulating `occurrence_count` instead of failing on unique constraint
 - Entity-producing types (person, organization, place, event, work, technical_term) create `named_entities` + `entity_aliases` records; tag-only types (topic, descriptor) set `entity_type` only
 - Collision detection compares casefolded forms within canonical tag groups to find false diacritic merges
 - All commands support `--reason "text"` flag stored in `tag_operation_logs.reason`
@@ -2176,7 +2268,7 @@ make dev              # Starts both servers
 open http://localhost:8766
 ```
 
-See [`frontend/README.md`](frontend/README.md) for detailed documentation.
+See [`frontend/README.md`](https://github.com/aucontraire/chronovista/blob/master/frontend/README.md) for detailed documentation.
 
 ## [0.16.0] - 2026-02-05
 
@@ -2233,12 +2325,12 @@ This feature standardizes error responses across all API endpoints, providing a 
 
 **Migration Required:**
 
-Clients must update error parsing logic. See [Migration Guide](docs/api/rfc7807-migration.md) for before/after examples and client integration snippets.
+Clients must update error parsing logic. See [Migration Guide](https://github.com/aucontraire/chronovista/blob/master/docs/api/rfc7807-migration.md) for before/after examples and client integration snippets.
 
 **Documentation:**
 
-- [API Error Responses](docs/api/error-responses.md) - Complete RFC 7807 reference
-- [Migration Guide](docs/api/rfc7807-migration.md) - Client migration guide
+- [API Error Responses](https://github.com/aucontraire/chronovista/blob/master/docs/api/error-responses.md) - Complete RFC 7807 reference
+- [Migration Guide](https://github.com/aucontraire/chronovista/blob/master/docs/api/rfc7807-migration.md) - Client migration guide
 
 ## [0.15.0] - 2026-02-05
 
@@ -2528,3 +2620,88 @@ Consolidated playlist identification into a single `playlist_id` field that serv
 
 - Removed unused imports in CLI commands (ChannelEnrichmentError, ErrorCategory, display_error_panel, etc.)
 - Fixed import sorting with isort
+
+## [0.10.0] - 2026-01-27
+
+### Added
+- **Feature 007: Transcript Timestamp Preservation**
+  - 5 new columns on `video_transcripts` table:
+    - `raw_transcript_data` (JSONB): Complete API response with timestamps
+    - `has_timestamps` (BOOLEAN): Quick filter for timestamp availability
+    - `segment_count` (INTEGER): Number of transcript segments
+    - `total_duration` (FLOAT): Total transcript duration in seconds
+    - `source` (VARCHAR): Transcript source identifier
+  - 4 performance indexes for metadata queries
+- **New CLI Command: `sync transcripts`**
+  - Download transcripts for videos in your database
+  - Options: `--video-id`, `--language`, `--limit`, `--force`, `--dry-run`
+  - Automatic language fallback when preferred language unavailable
+  - Full timestamp data preserved in JSONB format
+
+### Technical
+- Repository `create_or_update` method for idempotent transcript storage
+- Performance-tested for 10,000+ transcripts (<2.5s query response)
+
+## [0.8.0] - 2026-01-21
+
+### Added
+- Playlist ID Consolidation: `playlist_id` is now the single source of truth
+  - YouTube IDs (PL prefix, 30-50 chars)
+  - Internal IDs (int_ prefix, 36 chars)
+  - System playlists (LL, WL, HL)
+- Enhanced Takeout parsing extracts additional metadata from playlists.csv
+- ID-based playlist import (no title-based deduplication)
+- ABC interfaces for service layer
+- Sync command framework with SyncResult and transformers
+
+### Changed
+- Refactored CLI commands to use sync command framework
+- Link status now derived from `playlist_id` prefix
+
+### Removed
+- `youtube_id` column (consolidated into `playlist_id`)
+- `link_status` column (now derived from prefix)
+- `unresolvable_reason` column (feature removed)
+- `PlaylistLinkStatus` enum
+
+## [0.7.0] - 2026-01-16
+
+### Added
+- Channel data integrity improvements
+- Type-safe repository operations
+- Comprehensive channel enrichment
+
+## [0.6.0] - 2026-01-07
+
+### Added
+- Google Takeout database seeding
+- Playlist membership seeding with position tracking
+- Video recovery from historical takeouts
+
+## [0.5.0] - 2025-12-15
+
+### Added
+- Topic analytics with 17 specialized commands
+- Graph visualization export (DOT/JSON)
+- Interactive CLI components
+
+## [0.1.0] - 2025-10-01
+
+### Added
+- Initial release
+- CLI interface with Typer
+- YouTube Data API integration
+- Google Takeout import and processing
+- Multi-language transcript support
+- PostgreSQL database with async SQLAlchemy
+- Comprehensive test suite (90%+ coverage)
+- Pydantic V2 models with strict validation
+- Rate-limited API client with retry logic
+
+### Technical
+- Layered architecture (CLI, Service, Repository, Database)
+- Async-first design
+- mypy strict mode compliance
+- Factory-based test data generation
+- Docker-based development database
+

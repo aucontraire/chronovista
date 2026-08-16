@@ -283,3 +283,45 @@ class EntityMentionTestData:
             }
         )
         return data
+
+
+def make_entity_video_list_row(
+    *,
+    video_id: str = "vid001",
+    video_title: str = "Test Video",
+    channel_name: str = "Test Channel",
+    mention_count: int = 1,
+    detection_methods: list[str] | None = None,
+    mention_sources: list[str | None] | None = None,
+    has_manual: bool = False,
+    first_mention_time: float | None = 10.0,
+    upload_date: Any = None,
+) -> Any:
+    """Mock row matching the main grouped SELECT in ``get_entity_video_list``.
+
+    The single source of truth for that query's column shape, so tests do not
+    drift. Three hand-rolled copies of this row previously diverged, and the one
+    that omitted ``mention_source`` let the #172 source-conflation sit
+    unchallenged in the fixtures.
+
+    ``sources`` is derived from ``mention_source`` (honest provenance, #172), so
+    ``mention_sources`` models where the entity actually appears; it defaults to
+    a transcript mention to match the default transcript ``detection_methods``.
+    Callers keep their own value defaults and pass them through — only the
+    *column set* lives here, so adding a column to the query touches one place.
+    """
+    from unittest.mock import MagicMock
+
+    row = MagicMock()
+    row.video_id = video_id
+    row.video_title = video_title
+    row.channel_name = channel_name
+    row.mention_count = mention_count
+    row.detection_methods = (
+        ["rule_match"] if detection_methods is None else detection_methods
+    )
+    row.mention_sources = ["transcript"] if mention_sources is None else mention_sources
+    row.has_manual = has_manual
+    row.first_mention_time = first_mention_time
+    row.upload_date = upload_date
+    return row

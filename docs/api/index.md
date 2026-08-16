@@ -39,7 +39,7 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/videos/{id}/transcript/segments/{seg_id}/corrections` | GET, POST | Segment correction history / submit correction |
 | `/videos/{id}/transcript/segments/{seg_id}/corrections/revert` | POST | Revert latest segment correction |
 | `/videos/{id}/playlists` | GET | Playlists containing video |
-| `/videos/{id}/entities` | GET | Entity mentions in video |
+| `/videos/{id}/entities` | GET | Entities associated with video, through any source (mentions, tag, manual) |
 | `/videos?entity_id=` | GET | Videos mentioning **all** listed entities (repeat the key; add `exclude_entity_id` and `min_evidence`) |
 | `/videos/{id}/alternative-url` | PATCH | Set alternative URL for unavailable video |
 | `/channels` | GET | List channels |
@@ -63,7 +63,7 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/canonical-tags/resolve` | GET | Resolve raw tag form to canonical tag |
 | `/entities` | GET | List named entities |
 | `/entities/{id}` | GET | Get entity details |
-| `/entities/{id}/videos` | GET | Videos mentioning entity |
+| `/entities/{id}/videos` | GET | Videos associated with entity (filter by `source`, multi-select over `manual`/`transcript`/`title`/`description`/`tag`) |
 | `/entities/{id}/aliases` | POST | Add alias to entity |
 | `/entities/{id}/co-occurring` | GET | Entities sharing videos with this entity |
 | `/corrections/batch/preview` | POST | Preview batch find-replace matches |

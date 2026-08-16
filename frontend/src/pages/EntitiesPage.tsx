@@ -21,6 +21,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { SkipLink } from "../components/SkipLink";
 import { CreateEntityModal } from "../components/entity/CreateEntityModal";
+import { AssociationBreakdown } from "../components/AssociationBreakdown";
 import { useEntities } from "../hooks/useEntityMentions";
 import type { EntityListItem } from "../api/entityMentions";
 import { EntityTypeBadge } from "../components/EntityTypeBadge";
@@ -97,7 +98,7 @@ function EntityCard({ entity }: { entity: EntityListItem }) {
     <Link
       to={`/entities/${entity.entity_id}`}
       className="block bg-white rounded-xl shadow-md border border-gray-100 p-5 hover:shadow-lg hover:border-gray-200 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-      aria-label={`${entity.canonical_name} — ${entity.mention_count} mention${entity.mention_count === 1 ? "" : "s"} in ${entity.video_count} video${entity.video_count === 1 ? "" : "s"}`}
+      aria-label={`${entity.canonical_name} — ${entity.mention_count} mention${entity.mention_count === 1 ? "" : "s"} in ${entity.video_count} association${entity.video_count === 1 ? "" : "s"}`}
     >
       {/* Type badge */}
       <EntityTypeBadge entityType={entity.entity_type} className="mb-3" />
@@ -130,9 +131,12 @@ function EntityCard({ entity }: { entity: EntityListItem }) {
           <strong className="font-semibold text-gray-700">
             {entity.video_count.toLocaleString()}
           </strong>{" "}
-          video{entity.video_count === 1 ? "" : "s"}
+          association{entity.video_count === 1 ? "" : "s"}
         </span>
       </div>
+
+      {/* Per-source association breakdown (FR-004) */}
+      <AssociationBreakdown bySource={entity.by_source} className="mt-2" />
     </Link>
   );
 }

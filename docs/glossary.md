@@ -116,6 +116,15 @@ Project-specific terminology used throughout chronovista documentation and code.
 
 ## Entity Curation Concepts
 
+**Association**
+:   An entity's link to a video, through any of five **provenance sources**: `manual`, `transcript`, `title`, `description`, or `tag`. This is the umbrella term. An entity's association `video_count` is the number of *distinct* videos linked through any source, and the entity list, the entity detail, and a video's entity panel all report that same number — one shared resolver computes it, and the headline breaks it down per source. See **Mention** for the narrower, text-anchored kind.
+
+**Mention**
+:   The text-anchored kind of association: a place where the entity's name (or an alias) actually appears in a video's `transcript`, `title`, or `description`. Every mention is an association, but the reverse is not true — a **tag** association (from a YouTube tag) and a **manual** association (hand-asserted, e.g. the subject is shown in the thumbnail but named nowhere) are associations that are *not* mentions.
+
+**Provenance source**
+:   Where an association came from, recorded per row. The five values are `manual`, `transcript`, `title`, `description`, and `tag`. The three text-anchored values are mentions; `tag` and `manual` are not. Distinct from **detection method** (`rule_match`, `spacy_ner`, …), which describes *how* a text mention was found and is never itself a source to filter on.
+
 **Alias**
 :   An alternative surface form for an entity — nickname, abbreviation, translation, former name. Matched alongside the canonical name when scanning. Aliases are what make detection work and also what makes it over-match.
 
@@ -143,7 +152,7 @@ Project-specific terminology used throughout chronovista documentation and code.
 :   An entity whose presence disqualifies a video, regardless of the required set. An OR across the excluded set, in deliberate contrast to the AND of the required one. Works with an empty required set, which answers "everything that isn't about this".
 
 **Evidence scope**
-:   The constraint on which mentions count toward an intersection. Expressed over mention **source** only — transcript, title, description — never detection method. The two are orthogonal: every manually added and user-corrected mention is transcript-sourced, so restricting to transcript retains all of them rather than discarding the highest-trust evidence in the system. Exposed as `min_evidence`, named for the graded confidence threshold it may later become.
+:   The constraint on which associations count toward an intersection. Expressed over provenance **source**, never detection method — the two are orthogonal. The `transcript` scope is *spoken-or-vouched*: it counts transcript mentions **and** manual associations (which are stored with their own `manual` source, not a false `transcript` one), together with any mention derived from a user's transcript correction. Restricting to transcript therefore retains the highest-trust evidence rather than discarding it. Exposed as `min_evidence`, named for the graded confidence threshold it may later become.
 
 **Qualifying mention**
 :   A mention satisfying the active evidence scope. One definition applied to both sides of a filter: under a restricted scope, a video whose only mention of an excluded entity falls outside that scope is not disqualified.

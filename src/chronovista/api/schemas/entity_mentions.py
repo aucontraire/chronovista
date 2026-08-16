@@ -38,8 +38,10 @@ class VideoEntitySummary(BaseModel):
         the entity has no transcript mention — a title-only entity has a
         mention but no timestamp.
     sources : list[str]
-        Where the mentions were found (transcript, title, description), plus
-        "manual" if a hand-made association exists.
+        Provenance of the association: where mentions were found (transcript,
+        title, description), plus "manual" if a hand-made association exists and
+        "tag" if the entity is linked through a YouTube tag. A tag-only or
+        manual-only entity has mention_count 0 but is still listed (US2).
     """
 
     model_config = ConfigDict(strict=True)
@@ -64,8 +66,9 @@ class VideoEntitySummary(BaseModel):
     sources: list[str] = Field(
         ...,
         description=(
-            "Where mentions were found (transcript, title, description), plus "
-            "'manual' when a hand-made association exists"
+            "Association provenance: where mentions were found (transcript, "
+            "title, description), plus 'manual' for a hand-made association and "
+            "'tag' when linked through a YouTube tag"
         ),
     )
     has_manual: bool = Field(

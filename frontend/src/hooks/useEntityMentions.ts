@@ -162,7 +162,13 @@ export function useEntityVideos(
     isFetchingNextPage,
     fetchNextPage,
   } = useInfiniteQuery({
-    queryKey: ["entity-videos", entityId, params.language_code ?? null, params.source ?? null, limit],
+    queryKey: [
+      "entity-videos",
+      entityId,
+      params.language_code ?? null,
+      [...(params.source ?? [])].sort().join(","),
+      limit,
+    ],
     // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
     queryFn: ({ pageParam, signal }) =>
       fetchEntityVideos(entityId, {
@@ -432,9 +438,11 @@ export interface DeleteManualAssociationVariables {
  * `video-entities` cache so the EntityMentionsPanel updates without waiting
  * for a network refetch.  All queries whose key starts with
  * `["video-entities", videoId]` are updated in-place:
- * - Manual-only entity (mention_count === 0): removed from the list.
- * - Multi-source entity (mention_count > 0): `has_manual` set to false and
- *   "manual" removed from `sources`.
+ * - Manual-only entity (`sources` is exactly `["manual"]`): removed from the
+ *   list.
+ * - Multi-source entity (has other sources besides "manual", e.g. "tag" or
+ *   "transcript"): `has_manual` set to false and "manual" removed from
+ *   `sources`, but the chip stays since another association still exists.
  *
  * On success, also invalidates caches for:
  * - `entity-videos` (entity detail page refreshes)
@@ -481,11 +489,13 @@ export function useDeleteManualAssociation() {
         if (!previousData) continue;
 
         const updatedEntities = previousData.data
-          // Remove manual-only entities from the list.
-          .filter(
-            (entity) =>
-              !(entity.entity_id === variables.entityId && entity.mention_count === 0)
-          )
+          // Remove the entity only if "manual" was its sole association
+          // source — a tag/transcript/etc. association means the entity
+          // stays after the manual link is removed.
+          .filter((entity) => {
+            if (entity.entity_id !== variables.entityId) return true;
+            return entity.sources.filter((s) => s !== "manual").length > 0;
+          })
           // For multi-source entities: clear has_manual and remove "manual" from sources.
           .map((entity) => {
             if (entity.entity_id !== variables.entityId) return entity;

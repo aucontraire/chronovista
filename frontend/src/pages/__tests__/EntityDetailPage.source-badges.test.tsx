@@ -11,12 +11,15 @@
  * - T049: Description context snippet is italic, truncated to 150 chars with ellipsis,
  *         entity text highlighted with <mark> per FR-034
  *
- * US5 — Source Filter Dropdown (T057-T061):
- * - T057: Source filter dropdown renders with all options
- * - T058: Selecting "Title" filter shows only title-sourced videos
+ * US5 — Source Filter Checkboxes (T057-T061, updated for Feature 066 T019
+ * multi-select union):
+ * - T057: Source filter checkboxes render with all five sources
+ * - T058: Checking "Title" filters to source=title; checking a second source
+ *         produces two repeated ?source= params (union)
  * - T059: Source filter composes with language filter in URL
- * - T060: Source filter persists in URL ?source=title
- * - T061: Empty state shows "No videos found for this source type." per FR-032
+ * - T060: Source filter persists in URL as repeated ?source= params
+ * - T061: Empty state shows "No videos found for the selected source(s)."
+ *         per FR-014, unchecking all restores the unfiltered empty state
  *
  * Mock strategy follows the existing EntityDetailPage.tag-videos.test.tsx pattern:
  * - `useEntityVideos` (hooks/useEntityMentions) — mocked to control video list
@@ -109,6 +112,7 @@ const mockEntity = {
   status: "active",
   mention_count: 5,
   video_count: 3,
+  by_source: { manual: 1, transcript: 1, title: 1, description: 0, tag: 0 },
   aliases: [] as { alias_name: string; alias_type: string; occurrence_count: number }[],
   exclusion_patterns: [] as string[],
 };
@@ -595,143 +599,184 @@ describe("EntityDetailPage — source badges (Feature 054, US4)", () => {
 // US5 Tests — Source Filter Dropdown (T057-T061)
 // ---------------------------------------------------------------------------
 
-describe("EntityDetailPage — source filter dropdown (Feature 054, US5)", () => {
+describe("EntityDetailPage — source filter checkboxes (Feature 066, T019)", () => {
   /**
-   * T057: Source filter dropdown renders with all expected options.
+   * T057: Source filter renders a checkbox per source, all five present.
    */
-  describe("T057 — source filter dropdown renders with all options", () => {
-    it("renders a source filter dropdown", () => {
+  describe("T057 — source filter checkboxes render with all sources", () => {
+    it("renders a checkbox for each of the five sources", () => {
       renderPage();
 
-      const dropdown = screen.getByRole("combobox", {
-        name: /filter videos by source/i,
-      });
-      expect(dropdown).toBeInTheDocument();
+      expect(
+        screen.getByRole("checkbox", { name: "Tag" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("checkbox", { name: "Transcript" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("checkbox", { name: "Title" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("checkbox", { name: "Description" })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("checkbox", { name: "Manual" })
+      ).toBeInTheDocument();
     });
 
-    it("dropdown has All sources, Title, Transcript, Tag, Description, Manual options", () => {
+    it("renders the filter as an accessible fieldset/legend group", () => {
       renderPage();
 
-      const dropdown = screen.getByRole("combobox", {
-        name: /filter videos by source/i,
-      });
-
-      const options = Array.from(
-        (dropdown as HTMLSelectElement).options
-      ).map((o) => o.text);
-
-      expect(options).toContain("All sources");
-      expect(options).toContain("Title");
-      expect(options).toContain("Transcript");
-      expect(options).toContain("Tag");
-      expect(options).toContain("Description");
-      expect(options).toContain("Manual");
+      expect(
+        screen.getByText(/filter videos by source/i)
+      ).toBeInTheDocument();
     });
 
-    it("dropdown defaults to 'All sources' when no source param in URL", () => {
+    it("all checkboxes are unchecked when no source param in URL", () => {
       renderPage();
 
-      const dropdown = screen.getByRole("combobox", {
-        name: /filter videos by source/i,
-      }) as HTMLSelectElement;
+      for (const label of ["Tag", "Transcript", "Title", "Description", "Manual"]) {
+        expect(
+          (screen.getByRole("checkbox", { name: label }) as HTMLInputElement)
+            .checked
+        ).toBe(false);
+      }
+    });
 
-      expect(dropdown.value).toBe("");
+    it("checkboxes are keyboard-toggleable (native input, not disabled)", () => {
+      renderPage();
+
+      const checkbox = screen.getByRole("checkbox", {
+        name: "Title",
+      }) as HTMLInputElement;
+
+      expect(checkbox.tagName.toLowerCase()).toBe("input");
+      expect(checkbox.type).toBe("checkbox");
+      expect(checkbox).not.toBeDisabled();
     });
   });
 
   /**
-   * T058: Selecting "Title" filter shows only title-sourced videos.
-   * (We verify the hook is called with the correct param.)
+   * T058: Checking a source updates the hook params; checking a second
+   * source unions with the first (repeated source params).
    */
-  describe("T058 — selecting a source filter updates the hook params", () => {
-    it("passes source='title' to useEntityVideos when Title option selected", () => {
+  describe("T058 — checking sources updates the hook params (union)", () => {
+    it("passes source: ['title'] to useEntityVideos when Title is checked", () => {
       renderPage();
 
-      const dropdown = screen.getByRole("combobox", {
-        name: /filter videos by source/i,
-      });
+      const checkbox = screen.getByRole("checkbox", { name: "Title" });
+      fireEvent.click(checkbox);
 
-      fireEvent.change(dropdown, { target: { value: "title" } });
-
-      // Verify the hook was called with source param
       const calls = vi.mocked(useEntityVideos).mock.calls;
       const lastCall = calls[calls.length - 1];
-      expect(lastCall?.[1]).toEqual({ source: "title" });
+      expect(lastCall?.[1]).toEqual({ source: ["title"] });
     });
 
-    it("passes no source param to useEntityVideos when All sources selected", () => {
-      // Start with a source filter set
+    it("checking a second source unions both into the source array", () => {
       renderPage("entity-uuid-001", "?source=title");
 
-      const dropdown = screen.getByRole("combobox", {
-        name: /filter videos by source/i,
-      });
-
-      fireEvent.change(dropdown, { target: { value: "" } });
+      const checkbox = screen.getByRole("checkbox", { name: "Tag" });
+      fireEvent.click(checkbox);
 
       const calls = vi.mocked(useEntityVideos).mock.calls;
       const lastCall = calls[calls.length - 1];
-      // When cleared, params should be empty object (no source key)
+      const lastParams = lastCall?.[1] as { source?: string[] };
+      expect(lastParams.source).toHaveLength(2);
+      expect(lastParams.source).toEqual(expect.arrayContaining(["title", "tag"]));
+    });
+
+    it("unchecking the only checked source passes source: undefined (all sources)", () => {
+      renderPage("entity-uuid-001", "?source=title");
+
+      const checkbox = screen.getByRole("checkbox", { name: "Title" });
+      fireEvent.click(checkbox);
+
+      const calls = vi.mocked(useEntityVideos).mock.calls;
+      const lastCall = calls[calls.length - 1];
       expect(lastCall?.[1]).toEqual({});
     });
   });
 
   /**
-   * T059: Source filter composes with language filter (both live in URL params).
+   * T059: Source filter composes with other URL state (read independently
+   * of language filter — both live in the same URLSearchParams).
    */
-  describe("T059 — source filter composes with language filter in URL", () => {
+  describe("T059 — source filter composes with URL state", () => {
     it("pre-existing source param is read from URL on mount", () => {
-      // Render with ?source=description in the URL
       renderPage("entity-uuid-001", "?source=description");
 
-      const dropdown = screen.getByRole("combobox", {
-        name: /filter videos by source/i,
-      }) as HTMLSelectElement;
-
-      expect(dropdown.value).toBe("description");
+      expect(
+        (screen.getByRole("checkbox", { name: "Description" }) as HTMLInputElement)
+          .checked
+      ).toBe(true);
     });
 
-    it("useEntityVideos receives the source from URL on initial render", () => {
+    it("useEntityVideos receives the source array from URL on initial render", () => {
       renderPage("entity-uuid-001", "?source=transcript");
 
-      // The first call to useEntityVideos should include source: "transcript"
       const firstCall = vi.mocked(useEntityVideos).mock.calls[0];
-      expect(firstCall?.[1]).toEqual({ source: "transcript" });
+      expect(firstCall?.[1]).toEqual({ source: ["transcript"] });
+    });
+
+    it("multiple repeated source params on mount check multiple boxes and union in params", () => {
+      renderPage("entity-uuid-001", "?source=title&source=tag");
+
+      expect(
+        (screen.getByRole("checkbox", { name: "Title" }) as HTMLInputElement)
+          .checked
+      ).toBe(true);
+      expect(
+        (screen.getByRole("checkbox", { name: "Tag" }) as HTMLInputElement)
+          .checked
+      ).toBe(true);
+
+      const firstCall = vi.mocked(useEntityVideos).mock.calls[0];
+      const params = firstCall?.[1] as { source?: string[] };
+      expect(params.source).toEqual(expect.arrayContaining(["title", "tag"]));
+      expect(params.source).toHaveLength(2);
     });
   });
 
   /**
-   * T060: Source filter persists in URL query parameter ?source=title.
-   * (Verified by checking dropdown value reflects URL state.)
+   * T060: Source filter persists in the URL as repeated ?source= params.
    */
-  describe("T060 — source filter persists in URL", () => {
-    it("source=title URL param sets dropdown to Title", () => {
+  describe("T060 — source filter persists in URL as repeated params", () => {
+    it("source=title URL param checks the Title checkbox", () => {
       renderPage("entity-uuid-001", "?source=title");
 
-      const dropdown = screen.getByRole("combobox", {
-        name: /filter videos by source/i,
-      }) as HTMLSelectElement;
-
-      expect(dropdown.value).toBe("title");
+      expect(
+        (screen.getByRole("checkbox", { name: "Title" }) as HTMLInputElement)
+          .checked
+      ).toBe(true);
     });
 
-    it("source=manual URL param sets dropdown to Manual", () => {
+    it("source=manual URL param checks the Manual checkbox", () => {
       renderPage("entity-uuid-001", "?source=manual");
 
-      const dropdown = screen.getByRole("combobox", {
-        name: /filter videos by source/i,
-      }) as HTMLSelectElement;
+      expect(
+        (screen.getByRole("checkbox", { name: "Manual" }) as HTMLInputElement)
+          .checked
+      ).toBe(true);
+    });
 
-      expect(dropdown.value).toBe("manual");
+    it("ignores an invalid source value from the URL", () => {
+      renderPage("entity-uuid-001", "?source=rule_match");
+
+      for (const label of ["Tag", "Transcript", "Title", "Description", "Manual"]) {
+        expect(
+          (screen.getByRole("checkbox", { name: label }) as HTMLInputElement)
+            .checked
+        ).toBe(false);
+      }
     });
   });
 
   /**
-   * T061: Empty state shows "No videos found for this source type."
-   * when source filter yields zero results, with "Try All sources" link.
+   * T061: Empty state shows "No videos found for the selected source(s)."
+   * when a source filter yields zero results, with a clear-filter action.
    */
   describe("T061 — empty state for source-filtered zero results", () => {
-    it("shows source-specific empty message when source filter active and no videos", () => {
+    it("shows source-specific empty message when a source filter is active and no videos", () => {
       vi.mocked(useEntityVideos).mockReturnValue({
         ...defaultUseEntityVideos,
         videos: [],
@@ -741,11 +786,11 @@ describe("EntityDetailPage — source filter dropdown (Feature 054, US5)", () =>
       renderPage("entity-uuid-001", "?source=title");
 
       expect(
-        screen.getByText("No videos found for this source type.")
+        screen.getByText("No videos found for the selected source(s).")
       ).toBeInTheDocument();
     });
 
-    it("shows 'Try All sources' button in source-filtered empty state", () => {
+    it("shows 'Try all sources' button in source-filtered empty state", () => {
       vi.mocked(useEntityVideos).mockReturnValue({
         ...defaultUseEntityVideos,
         videos: [],
@@ -754,7 +799,7 @@ describe("EntityDetailPage — source filter dropdown (Feature 054, US5)", () =>
 
       renderPage("entity-uuid-001", "?source=title");
 
-      expect(screen.getByText("Try All sources")).toBeInTheDocument();
+      expect(screen.getByText("Try all sources")).toBeInTheDocument();
     });
 
     it("shows generic empty message when no source filter is active", () => {
@@ -769,10 +814,10 @@ describe("EntityDetailPage — source filter dropdown (Feature 054, US5)", () =>
       expect(
         screen.getByText("No videos found for this entity.")
       ).toBeInTheDocument();
-      expect(screen.queryByText("Try All sources")).not.toBeInTheDocument();
+      expect(screen.queryByText("Try all sources")).not.toBeInTheDocument();
     });
 
-    it("clicking 'Try All sources' clears the source filter", () => {
+    it("clicking 'Try all sources' unchecks all checkboxes", () => {
       vi.mocked(useEntityVideos).mockReturnValue({
         ...defaultUseEntityVideos,
         videos: [],
@@ -781,15 +826,13 @@ describe("EntityDetailPage — source filter dropdown (Feature 054, US5)", () =>
 
       renderPage("entity-uuid-001", "?source=manual");
 
-      const clearButton = screen.getByText("Try All sources");
+      const clearButton = screen.getByText("Try all sources");
       fireEvent.click(clearButton);
 
-      // After clicking, dropdown should be back to "All sources"
-      const dropdown = screen.getByRole("combobox", {
-        name: /filter videos by source/i,
-      }) as HTMLSelectElement;
-
-      expect(dropdown.value).toBe("");
+      expect(
+        (screen.getByRole("checkbox", { name: "Manual" }) as HTMLInputElement)
+          .checked
+      ).toBe(false);
     });
   });
 });

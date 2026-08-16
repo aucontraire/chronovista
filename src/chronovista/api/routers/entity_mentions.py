@@ -307,6 +307,16 @@ async def list_entities(
     result = await session.execute(base)
     entities = list(result.scalars().all())
 
+    # video_count is the combined association count (mentions ∪ tag ∪ manual),
+    # computed once for the whole page by the shared resolver so the list and the
+    # detail endpoint can never report different numbers for the same entity
+    # (Feature 066, FR-001/FR-002). Previously this read the denormalised
+    # mention-only column, which showed 0 for a tag-only entity that the detail
+    # reported in full. Batched — one set of queries for the page, not per row.
+    counts = await _mention_repo.get_association_counts(
+        session, [e.id for e in entities]
+    )
+
     data = [
         {
             "entity_id": str(e.id),
@@ -315,7 +325,8 @@ async def list_entities(
             "description": e.description,
             "status": e.status,
             "mention_count": e.mention_count or 0,
-            "video_count": e.video_count or 0,
+            "video_count": counts[e.id].total,
+            "by_source": counts[e.id].by_source.model_dump(),
         }
         for e in entities
     ]
@@ -417,8 +428,10 @@ async def get_video_entities(
     if not video_result.scalar_one_or_none():
         raise NotFoundError(resource_type="Video", identifier=video_id)
 
-    # Fetch entity summaries from repository
-    summaries = await _mention_repo.get_video_entity_summary(
+    # Fetch entity associations from the shared resolver — entities linked
+    # through ANY source (tag-only and manual included), matching the entity
+    # detail's membership by construction (US2 / FR-005 / FR-006).
+    summaries = await _mention_repo.get_video_entity_associations(
         session, video_id=video_id, language_code=language_code
     )
 
@@ -571,14 +584,13 @@ async def get_entity_detail(
     # Sort by occurrence count descending, then alphabetically for stability
     genuine_aliases.sort(key=lambda a: (-a.occurrence_count, a.alias_name))
 
-    # T030 / FR-007: Compute combined video count from all sources
-    # (transcript mentions + canonical tag + alias-matched tags) instead
-    # of using the stored named_entities.video_count which only reflects
-    # transcript-mention counts.
-    combined_video_count = await _mention_repo.get_combined_video_count(
-        session,
-        entity_id=parsed_entity_id,
-    )
+    # Combined association count + per-source breakdown from the shared resolver,
+    # the same call the list endpoint makes, so the two agree by construction
+    # (Feature 066, FR-001/FR-002/FR-004). Supersedes the single-purpose
+    # get_combined_video_count.
+    association = (
+        await _mention_repo.get_association_counts(session, [parsed_entity_id])
+    )[parsed_entity_id]
 
     return {
         "data": {
@@ -588,7 +600,8 @@ async def get_entity_detail(
             "description": entity.description,
             "status": entity.status,
             "mention_count": entity.mention_count or 0,
-            "video_count": combined_video_count,
+            "video_count": association.total,
+            "by_source": association.by_source.model_dump(),
             "aliases": [a.model_dump() for a in genuine_aliases],
             "exclusion_patterns": list(entity.exclusion_patterns or []),
         }
@@ -683,6 +696,61 @@ async def get_cooccurring_entities(
     )
 
 
+# Provenance values the association filter accepts (FR-007) — the
+# where-an-association-came-from axis. Detection method (rule_match, spacy_ner,
+# ...) is deliberately NOT here: provenance and detection method are separate
+# axes and detection method is not a user-facing filter dimension (FR-009).
+_PROVENANCE_FILTER_VALUES = frozenset(
+    {"manual", "transcript", "title", "description", "tag"}
+)
+
+
+def parse_provenance_filter(raw: list[str] | None) -> list[str] | None:
+    """Normalise the multi-select provenance query param (Feature 066 US3).
+
+    Accepts both the repeated (``?source=tag&source=title``) and the
+    comma-separated (``?source=tag,title``) forms, so a single legacy
+    ``?source=tag`` keeps working as "tag only" — the change is arity, not a
+    break. Returns the deduplicated, sorted list of requested sources, or
+    ``None`` when nothing is selected, which downstream reads as "all sources"
+    (clarify A4).
+
+    Parameters
+    ----------
+    raw : list[str] | None
+        The raw ``source`` query values as parsed by FastAPI.
+
+    Returns
+    -------
+    list[str] | None
+        Sorted, deduplicated provenance values, or ``None`` for "all".
+
+    Raises
+    ------
+    APIValidationError
+        If any value is not a provenance source. Detection-method values are
+        rejected here — provenance and detection method are separate axes
+        (FR-009).
+    """
+    if not raw:
+        return None
+    values: list[str] = [
+        token for item in raw for piece in item.split(",") if (token := piece.strip())
+    ]
+    if not values:
+        return None
+    invalid = sorted({v for v in values if v not in _PROVENANCE_FILTER_VALUES})
+    if invalid:
+        raise APIValidationError(
+            message=(
+                f"Invalid source value(s): {', '.join(invalid)}. "
+                f"Must be one of: {', '.join(sorted(_PROVENANCE_FILTER_VALUES))}"
+            ),
+            details={"field": "source", "invalid_values": invalid},
+        )
+    return sorted(set(values))
+
+
 @router.get(
     "/entities/{entity_id}/videos",
     response_model=EntityVideoResponse,
@@ -694,11 +762,15 @@ async def get_entity_videos(
     language_code: str | None = Query(
         default=None, description="BCP-47 language code filter"
     ),
-    source: str | None = Query(
+    source: list[str] | None = Query(
         default=None,
         description=(
-            "Filter videos by mention source: transcript, title, description, "
-            "tag, or manual. When omitted, all sources are returned."
+            "Filter videos by association provenance. Multi-select over "
+            "{manual, transcript, title, description, tag}; repeatable "
+            "(?source=tag&source=title) or comma-separated (?source=tag,title). "
+            "Multiple values are unioned; a single value shows that source "
+            "only; omitted returns all sources. Provenance only — not detection "
+            "method."
         ),
     ),
     limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
@@ -716,9 +788,10 @@ async def get_entity_videos(
         Named entity UUID (string representation).
     language_code : str | None
         Optional BCP-47 language code to filter mentions by language.
-    source : str | None
-        Optional source filter: transcript, title, description, tag, or manual.
-        When omitted all sources are returned.
+    source : list[str] | None
+        Optional multi-select provenance filter over {manual, transcript,
+        title, description, tag}; repeatable or comma-separated. Values are
+        unioned; omitted returns all sources. Provenance, not detection method.
     limit : int
         Maximum number of results per page (1--100, default 20).
     offset : int
@@ -748,14 +821,9 @@ async def get_entity_videos(
     if not entity_result.scalar_one_or_none():
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
-    # Validate source filter value when provided
-    valid_filter_sources = {"transcript", "title", "description", "tag", "manual"}
-    if source is not None and source not in valid_filter_sources:
-        raise APIValidationError(
-            message=f"Invalid source value '{source}'. "
-            f"Must be one of: {', '.join(sorted(valid_filter_sources))}",
-            details={"field": "source", "invalid_value": source},
-        )
+    # Normalise the multi-select provenance filter (raises on invalid values,
+    # including detection-method values, which are a separate axis — FR-009).
+    source_filter = parse_provenance_filter(source)
 
     # Fetch paginated video list from repository
     # Merges mention-derived and tag-derived video sets, then filters by source
@@ -766,7 +834,7 @@ async def get_entity_videos(
             session,
             entity_id=parsed_entity_id,
             language_code=language_code,
-            source_filter=source,
+            source_filter=source_filter,
             limit=limit,
             offset=offset,
         ),

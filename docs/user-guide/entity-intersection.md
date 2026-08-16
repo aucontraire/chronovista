@@ -48,12 +48,12 @@ An entity cannot be both required and excluded. The request is rejected with an 
 
 ## Restrict to transcript mentions
 
-Mentions come from three places: the **transcript**, the video **title**, and the **description**. By default all three count.
+Mentions come from three places: the **transcript**, the video **title**, and the **description**. By default all three count, as do associations you asserted by hand.
 
 Tick **Transcript only** to require that the entity was actually *said*, not merely listed in metadata. This is the difference between a video that discusses someone and a video that tagged them.
 
-!!! note "Manual corrections always survive this filter"
-    Every mention you added or corrected by hand is transcript-sourced, so restricting to transcript keeps all of them. It never discards your own work — that would invert the point of the setting.
+!!! note "Your own work always survives this filter"
+    The transcript scope is *spoken-or-vouched*: it counts transcript mentions — including the ones derived from your own corrections — together with any association you asserted by hand (stored with a `manual` source of its own). Restricting to transcript keeps all of them and drops only title- and description-only matches, so it never discards your own work.
 
 ## Follow the "appears with" panel
 

@@ -20,6 +20,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { CooccurringPanel } from "../components/entity/CooccurringPanel";
 import { EntityTagSection } from "../components/entity/EntityTagSection";
 import { EntityTypeBadge } from "../components/EntityTypeBadge";
+import { AssociationBreakdown } from "../components/AssociationBreakdown";
 import { ENTITY_TYPE_LABELS } from "../constants/entityTypes";
 import {
   useEntityVideos,
@@ -1121,15 +1122,29 @@ function EntityNameEditor({
  *
  * Route: /entities/:entityId
  */
-/** Valid values for the source filter dropdown. */
-const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "All sources" },
-  { value: "title", label: "Title" },
-  { value: "transcript", label: "Transcript" },
-  { value: "tag", label: "Tag" },
-  { value: "description", label: "Description" },
-  { value: "manual", label: "Manual" },
-];
+/** Association source values for the multi-select filter, in display order. */
+const SOURCE_FILTER_VALUES = [
+  "tag",
+  "transcript",
+  "title",
+  "description",
+  "manual",
+] as const;
+
+type SourceFilterValue = (typeof SOURCE_FILTER_VALUES)[number];
+
+/** Human-readable labels for each association source. */
+const SOURCE_FILTER_LABELS: Record<SourceFilterValue, string> = {
+  tag: "Tag",
+  transcript: "Transcript",
+  title: "Title",
+  description: "Description",
+  manual: "Manual",
+};
+
+function isSourceFilterValue(value: string): value is SourceFilterValue {
+  return (SOURCE_FILTER_VALUES as readonly string[]).includes(value);
+}
 
 export function EntityDetailPage() {
   const { entityId } = useParams<{ entityId: string }>();
@@ -1254,26 +1269,37 @@ export function EntityDetailPage() {
     },
   });
 
-  // T065: Source filter — read from URL query parameter ?source=
-  const sourceFilter = searchParams.get("source") ?? "";
+  // T065/T019: Source filter — read the selected set from repeated ?source=
+  // URL query params, ignoring any values outside the known five sources.
+  const selectedSources = searchParams
+    .getAll("source")
+    .filter(isSourceFilterValue);
 
-  function handleSourceFilterChange(value: string) {
+  function handleSourceToggle(value: SourceFilterValue, checked: boolean) {
+    const nextSelected = checked
+      ? [...selectedSources, value]
+      : selectedSources.filter((s) => s !== value);
+
     const next = new URLSearchParams(searchParams);
-    if (value) {
-      next.set("source", value);
-    } else {
-      next.delete("source");
+    next.delete("source");
+    for (const s of nextSelected) {
+      next.append("source", s);
     }
     setSearchParams(next, { replace: true });
   }
 
-  // Infinite-scroll video list (with optional source filter)
-  const entityVideoParams = sourceFilter
-    ? { source: sourceFilter }
+  function handleClearSourceFilter() {
+    const next = new URLSearchParams(searchParams);
+    next.delete("source");
+    setSearchParams(next, { replace: true });
+  }
+
+  // Infinite-scroll video list (union across selected sources; empty = all)
+  const entityVideoParams = selectedSources.length
+    ? { source: selectedSources }
     : {};
   const {
     videos,
-    total,
     isLoading: videosLoading,
     hasNextPage,
     isFetchingNextPage,
@@ -1365,14 +1391,13 @@ export function EntityDetailPage() {
             </strong>{" "}
             mention{entity.mention_count === 1 ? "" : "s"}
           </span>
-          {total !== null && (
-            <span>
-              <strong className="text-gray-900 font-semibold">
-                {total.toLocaleString()}
-              </strong>{" "}
-              video{total === 1 ? "" : "s"}
-            </span>
-          )}
+          <span>
+            <strong className="text-gray-900 font-semibold">
+              {entity.video_count.toLocaleString()}
+            </strong>{" "}
+            association{entity.video_count === 1 ? "" : "s"}
+          </span>
+          <AssociationBreakdown bySource={entity.by_source} />
         </div>
 
         {/* T008: Scan for mentions button + inline feedback */}
@@ -1521,28 +1546,32 @@ export function EntityDetailPage() {
             Videos
           </h2>
 
-          {/* T065: Source filter dropdown */}
-          <div className="flex items-center gap-2">
-            <label
-              htmlFor="source-filter"
-              className="text-sm text-gray-600 whitespace-nowrap"
-            >
-              Filter by source:
-            </label>
-            <select
-              id="source-filter"
-              value={sourceFilter}
-              onChange={(e) => handleSourceFilterChange(e.target.value)}
-              className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              aria-label="Filter videos by source"
-            >
-              {SOURCE_FILTER_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* T065/T019: Source filter — multi-select checkboxes (union) */}
+          <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <legend className="text-sm text-gray-600 whitespace-nowrap mb-1 sm:mb-0">
+              Filter videos by source:
+            </legend>
+            {SOURCE_FILTER_VALUES.map((value) => {
+              const inputId = `source-filter-${value}`;
+              return (
+                <span key={value} className="flex items-center gap-1.5">
+                  <input
+                    id={inputId}
+                    type="checkbox"
+                    checked={selectedSources.includes(value)}
+                    onChange={(e) => handleSourceToggle(value, e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  />
+                  <label
+                    htmlFor={inputId}
+                    className="text-sm text-gray-700 whitespace-nowrap"
+                  >
+                    {SOURCE_FILTER_LABELS[value]}
+                  </label>
+                </span>
+              );
+            })}
+          </fieldset>
         </div>
 
         {/* Appears-with panel (Feature 062, US3).
@@ -1613,20 +1642,20 @@ export function EntityDetailPage() {
           </div>
         )}
 
-        {/* Empty state — T066: source-filtered empty state */}
+        {/* Empty state — T066/T019: source-filtered empty state */}
         {!videosLoading && videos.length === 0 && (
           <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-            {sourceFilter ? (
+            {selectedSources.length > 0 ? (
               <>
                 <p className="text-gray-500 mb-2">
-                  No videos found for this source type.
+                  No videos found for the selected source(s).
                 </p>
                 <button
                   type="button"
-                  onClick={() => handleSourceFilterChange("")}
+                  onClick={handleClearSourceFilter}
                   className="text-sm text-indigo-600 hover:text-indigo-800 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
-                  Try All sources
+                  Try all sources
                 </button>
               </>
             ) : (

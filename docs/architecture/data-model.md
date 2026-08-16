@@ -60,7 +60,7 @@ erDiagram
 | **Playlists** | `playlists`, `playlist_memberships` | Playlists, including Takeout-imported system playlists |
 | **Topics** | `topic_categories`, `topic_aliases`, `video_topics`, `channel_topics` | YouTube's topic taxonomy and its associations |
 | **Tags and Normalization** | `video_tags`, `channel_keywords`, `canonical_tags`, `tag_aliases`, `tag_operation_logs` | Raw tags plus the canonical layer that collapses spelling variants |
-| **Named Entities** | `named_entities`, `entity_aliases`, `entity_mentions`, `entity_operation_logs` | Curated entities, their aliases, and every mention found |
+| **Named Entities** | `named_entities`, `entity_aliases`, `entity_mentions`, `entity_operation_logs` | Curated entities, their aliases, and their video associations — text mentions plus hand-asserted manual links |
 | **Recovery Provenance** | `video_recovery_sources`, `channel_recovery_sources` | Which archive sources contributed metadata to a deleted video or channel — append-only, so one pass cannot erase another's attribution ([why](recovery-provenance.md)) |
 
 ## Design Decisions
@@ -84,6 +84,23 @@ which a destructive rewrite would erase.
 segment, its previous value, the new value, and who made the change, so any
 correction can be reverted and a segment's full history reconstructed.
 Re-downloading a transcript therefore cannot silently discard manual work.
+
+### One definition of an entity's videos
+
+An entity is linked to a video through five **provenance sources**: `manual`,
+`transcript`, `title`, `description`, and `tag`. Four of them — the three
+text-anchored *mentions* plus `manual` — live in `entity_mentions`, distinguished
+by `mention_source`, which permits `manual` for a link the user asserts by hand
+when the transcript never states it (rather than mislabelling it as a spoken
+mention). The `tag` source comes through the `canonical_tags → named_entities`
+link instead of `entity_mentions`.
+
+Because the sources span two tables, a single shared resolver computes the
+combined *distinct-video* count over all of them. The entity list, the entity
+detail, and a video's entity panel all read that one resolver, so they report the
+same `video_count` (with a per-source breakdown) rather than each counting a
+different subset — which is what previously let the list show a mention-only
+number while the detail showed the combined one.
 
 ### One canonical user identity
 

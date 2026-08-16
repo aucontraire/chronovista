@@ -34,21 +34,39 @@ import re
 import subprocess
 import sys
 import time
+import unicodedata
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 TERMS_FILE = ROOT / ".private-terms"
 
 
+def fold(text: str) -> str:
+    """Strip diacritics so accent variants match a single term.
+
+    The match is already case-insensitive, but it was accent-sensitive: a term
+    stored with a diacritic (``café``) did not catch the same name written
+    without it (``cafe``), and that exact gap once let a real name reach the
+    public docs and CLI help. Folding both the term list and the scanned text
+    through NFKD and dropping combining marks closes it. Folding only ever
+    *adds* matches (the accented form still folds to the same key), so it cannot
+    cause a miss the old behaviour would have caught.
+    """
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)
+    )
+
+
 def build_pattern(terms: list[str]) -> re.Pattern[str]:
-    """One case-insensitive, word-bounded alternation over every term.
+    """One case-insensitive, accent-folded, word-bounded alternation over terms.
 
     Word boundaries are what make short terms usable. Matched as a substring, a
     three-letter agency acronym occurs inside "especially" and "association" —
     measured at 1,010 hits across this repository, against 0 when matched as a
     word. Longest-first ordering reports the most specific term when one name
-    contains another.
+    contains another. Terms are folded (see :func:`fold`) so the pattern matches
+    accent variants; the scanned text must be folded the same way before use.
     """
-    ordered = sorted(terms, key=len, reverse=True)
+    ordered = sorted((fold(t) for t in terms), key=len, reverse=True)
     return re.compile(
         r"\b(" + "|".join(re.escape(t) for t in ordered) + r")\b",
         re.IGNORECASE,
@@ -161,7 +179,9 @@ def main(argv: list[str]) -> int:
 
     if len(argv) >= 2 and argv[0] == "--msg":
         message = pathlib.Path(argv[1]).read_text(encoding="utf-8")
-        findings.extend(("commit message", m) for m in set(pattern.findall(message)))
+        findings.extend(
+            ("commit message", m) for m in set(pattern.findall(fold(message)))
+        )
     elif argv and argv[0] == "--text":
         # Arbitrary text that never passes through git: issue bodies, pull
         # request descriptions, release notes, a forum post. Nothing can hook
@@ -173,12 +193,12 @@ def main(argv: list[str]) -> int:
             if len(argv) < 2 or argv[1] == "-"
             else pathlib.Path(argv[1]).read_text(encoding="utf-8")
         )
-        findings.extend(("text", m) for m in set(pattern.findall(raw)))
+        findings.extend(("text", m) for m in set(pattern.findall(fold(raw))))
         if not findings:
             print("Clean — no library content found.")
     else:
         for path, line in added_lines():
-            findings.extend((path, m) for m in set(pattern.findall(line)))
+            findings.extend((path, m) for m in set(pattern.findall(fold(line))))
         warn_about_staged_images()
 
     return report(findings)

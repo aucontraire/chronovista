@@ -16,7 +16,9 @@ from sqlalchemy import (
     Select,
     String,
     Subquery,
+    Uuid,
     and_,
+    bindparam,
     case,
     cast,
     delete,
@@ -26,11 +28,13 @@ from sqlalchemy import (
     null,
     or_,
     select,
+    text,
     type_coerce,
     union,
+    union_all,
     update,
 )
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import ARRAY, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
@@ -62,6 +66,10 @@ from chronovista.db.models import (
     VideoTag as VideoTagDB,
 )
 from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
+from chronovista.models.entity_association import (
+    AssociationCount,
+    AssociationSourceBreakdown,
+)
 from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.enums import (
     AvailabilityStatus,
@@ -71,6 +79,17 @@ from chronovista.models.enums import (
 )
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 from chronovista.services.tag_normalization import TagNormalizationService
+
+# The mention sources that count as "spoken/vouched" evidence under
+# EvidenceScope.TRANSCRIPT (Feature 062 entity intersection). Manual assertions
+# are the highest-trust evidence and are deliberately retained here — before
+# Feature 066 US4 they carried a false ``transcript`` source and so were
+# included by value; after the reclassification they carry ``manual`` and must
+# be included explicitly, or the intersection would silently shed them.
+_TRANSCRIPT_SCOPE_SOURCES = (
+    MentionSource.TRANSCRIPT.value,
+    MentionSource.MANUAL.value,
+)
 
 
 class EntityMentionRepository(
@@ -480,14 +499,6 @@ class EntityMentionRepository(
     # Feature 054's ``mention_source`` column and hardcodes the assumption that
     # a rule-matched mention came from a transcript, which stopped being true
     # the moment title and description scanning shipped (GitHub #172).
-    _SOURCE_CATEGORY_MAP: dict[str, str] = {
-        "rule_match": "transcript",
-        "spacy_ner": "transcript",
-        "llm_extraction": "transcript",
-        "manual": "manual",
-        "user_correction": "transcript",
-    }
-
     async def get_video_entity_summary(
         self,
         session: AsyncSession,
@@ -517,27 +528,35 @@ class EntityMentionRepository(
             List of dicts matching VideoEntitySummary schema including
             sources, has_manual, and nullable first_mention_time.
         """
-        # What counts as one mention.
+        # What counts as one mention (Feature 066 FR-012).
         #
-        # Transcript mentions are counted per distinct segment, so an entity
-        # said three times in one segment counts once — the long-standing
-        # behaviour, preserved. Title and description mentions have no segment
-        # (``segment_id`` is NULL), so counting distinct segments scored them
-        # zero: an entity present only in a video's title reported "0 mentions"
-        # while its row sat in the table. That was 58,169 video/entity pairs
-        # across 303 of 315 entities.
+        # Transcript = frequency: counted per distinct segment, so an entity
+        # said three times in one segment counts once but across three segments
+        # counts three — the long-standing behaviour, preserved.
         #
-        # Falling back to the mention's own id gives each non-segment mention
-        # its own identity, so it counts exactly once.
+        # Description = presence, title = presence: these collapse to one per
+        # entity per video, so metadata boilerplate does not read as strong
+        # signal. A name repeated in the description (5,610 (entity, video)
+        # pairs carry more than one description row, up to five) contributes
+        # exactly one; without this it inflated the count by its text-variant
+        # count. Title already had at most one row (a partial unique index),
+        # so collapsing it is a no-op that states the rule rather than relying
+        # on the constraint. Both are keyed on ``mention_source`` (a constant
+        # per branch) so every such row folds to a single token; the else
+        # branch's tokens are segment/uuid strings and never collide with the
+        # literal source names.
         #
         # Manual associations stay excluded, which is deliberate rather than
         # incidental: ``has_manual`` reports them, and the web client treats
         # ``mention_count == 0`` as "linked by hand, never actually detected"
         # when it optimistically removes an association. Counting them here
-        # would silently break that removal. All 397 manual mentions carry a
-        # NULL segment, so they would otherwise have been swept in by the fix.
+        # would silently break that removal.
         countable_mention = case(
             (EntityMentionDB.detection_method == "manual", null()),
+            (
+                EntityMentionDB.mention_source.in_(("description", "title")),
+                EntityMentionDB.mention_source,
+            ),
             else_=func.coalesce(
                 cast(EntityMentionDB.segment_id, String),
                 cast(EntityMentionDB.id, String),
@@ -650,7 +669,7 @@ class EntityMentionRepository(
         session: AsyncSession,
         entity_id: uuid.UUID,
         language_code: str | None = None,
-        source_filter: str | None = None,
+        source_filter: Sequence[str] | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -684,11 +703,13 @@ class EntityMentionRepository(
         language_code : str | None
             Optional language filter. Manual mentions (language_code=NULL) are
             always included regardless of this filter.
-        source_filter : str | None
-            Optional source filter: ``"transcript"``, ``"title"``,
-            ``"description"``, ``"tag"``, or ``"manual"``.  When provided,
-            only videos whose ``sources`` list contains the given value are
-            returned. Affects both the result set and the total count.
+        source_filter : Sequence[str] | None
+            Optional provenance filter over ``{"transcript", "title",
+            "description", "tag", "manual"}``. A video is kept when its
+            ``sources`` list intersects the requested set (union / OR — a
+            single value gives "that source only"). ``None`` or empty means all
+            sources. Affects both the result set and the total count. This is
+            provenance, not detection method (FR-007/FR-009).
         limit : int
             Maximum results per page.
         offset : int
@@ -845,15 +866,21 @@ class EntityMentionRepository(
             video_rows = main_result.all()
 
             for row in video_rows:
-                # Map detection methods to source categories
+                # Provenance comes from mention_source, not detection_method
+                # (#172 / Feature 066): a rule_match mention found in a title or
+                # description is a title/description association, not a
+                # transcript one. Deriving 'transcript' from detection_method
+                # mislabelled every title/description video as transcript. Manual
+                # is reported by has_manual; tag is appended below. This mirrors
+                # the shared resolver's source labelling, so this filter and the
+                # entity's per-source breakdown agree (FR-016).
                 sources_set: set[str] = {
-                    self._SOURCE_CATEGORY_MAP.get(dm, dm)
-                    for dm in (row.detection_methods or [])
+                    ms
+                    for ms in (row.mention_sources or [])
+                    if ms in ("transcript", "title", "description")
                 }
-                # Add mention_source values directly (title, description)
-                for ms in row.mention_sources or []:
-                    if ms in ("title", "description"):
-                        sources_set.add(ms)
+                if row.has_manual:
+                    sources_set.add("manual")
                 sources = sorted(sources_set)
 
                 # T013: If this video is also in tag results, append "tag"
@@ -1002,11 +1029,13 @@ class EntityMentionRepository(
         sorted_results = sorted(results_dict.values(), key=_sort_key, reverse=True)
 
         # ------------------------------------------------------------------
-        # Step 5b: Apply source_filter if provided (T064, FR-031)
+        # Step 5b: Apply the provenance filter if provided (T064, FR-031;
+        # multi-select union, Feature 066 US3). Empty means all sources.
         # ------------------------------------------------------------------
-        if source_filter is not None:
+        wanted = set(source_filter) if source_filter else None
+        if wanted is not None:
             sorted_results = [
-                item for item in sorted_results if source_filter in item["sources"]
+                item for item in sorted_results if wanted & set(item["sources"])
             ]
 
         # ------------------------------------------------------------------
@@ -1015,7 +1044,7 @@ class EntityMentionRepository(
         filtered_total = len(sorted_results)
         paginated = sorted_results[offset : offset + limit]
 
-        return paginated, filtered_total if source_filter is not None else total_count
+        return paginated, filtered_total if wanted is not None else total_count
 
     def build_entity_qualification_subquery(
         self,
@@ -1068,7 +1097,7 @@ class EntityMentionRepository(
 
         if evidence_scope is EvidenceScope.TRANSCRIPT:
             stmt = stmt.where(
-                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value
+                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
             )
 
         return (
@@ -1117,7 +1146,7 @@ class EntityMentionRepository(
         )
         if evidence_scope is EvidenceScope.TRANSCRIPT:
             stmt = stmt.where(
-                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value
+                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
             )
         return stmt.distinct().scalar_subquery()
 
@@ -1168,7 +1197,7 @@ class EntityMentionRepository(
         )
         if evidence_scope is EvidenceScope.TRANSCRIPT:
             subject_videos = subject_videos.where(
-                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value
+                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
             )
 
         partner = select(
@@ -1180,7 +1209,7 @@ class EntityMentionRepository(
         )
         if evidence_scope is EvidenceScope.TRANSCRIPT:
             partner = partner.where(
-                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value
+                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
             )
 
         # Restrict to the same video population the videos list uses, so the
@@ -1323,7 +1352,7 @@ class EntityMentionRepository(
 
         if evidence_scope is EvidenceScope.TRANSCRIPT:
             stmt = stmt.where(
-                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value
+                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
             )
 
         result = await session.execute(stmt)
@@ -1343,6 +1372,491 @@ class EntityMentionRepository(
                 }
             )
         return matches
+
+    # ── Canonical association resolver (Feature 066) ──────────────────────────
+    #
+    # One engine behind every association surface — entity list/detail counts,
+    # the video panel, and the provenance filter — so the views cannot disagree.
+    # `tag` is a derived label, never a stored mention_source (data-model I4).
+    _PROVENANCE_SOURCES = ("manual", "transcript", "title", "description", "tag")
+
+    def _mention_assoc_stmt(self, ids: list[uuid.UUID]) -> Select[Any]:
+        """``(entity_id, video_id, source)`` for the mention associations.
+
+        A non-manual mention counts only where its text matches one of the
+        entity's visible names (canonical + non-ASR aliases, #89); a manual
+        mention always counts and is labelled ``manual`` regardless of its
+        stored source. One non-correlated relation, no per-row work.
+
+        Shared by ``association_triples`` (which materialises rows) and
+        ``get_association_counts`` (which aggregates in SQL), so the mention
+        rule has a single definition rather than drifting copies.
+        """
+        visible_names = union(
+            select(
+                NamedEntityDB.id.label("entity_id"),
+                func.lower(NamedEntityDB.canonical_name).label("name_lower"),
+            ).where(NamedEntityDB.id.in_(ids)),
+            select(
+                EntityAliasDB.entity_id.label("entity_id"),
+                func.lower(EntityAliasDB.alias_name).label("name_lower"),
+            ).where(
+                EntityAliasDB.entity_id.in_(ids),
+                EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
+            ),
+        ).subquery()
+
+        source_label = case(
+            (EntityMentionDB.detection_method == "manual", literal("manual")),
+            else_=EntityMentionDB.mention_source,
+        )
+        return (
+            select(
+                EntityMentionDB.entity_id.label("entity_id"),
+                EntityMentionDB.video_id.label("video_id"),
+                source_label.label("source"),
+            )
+            .outerjoin(
+                visible_names,
+                and_(
+                    visible_names.c.entity_id == EntityMentionDB.entity_id,
+                    func.lower(EntityMentionDB.mention_text)
+                    == visible_names.c.name_lower,
+                ),
+            )
+            .where(
+                EntityMentionDB.entity_id.in_(ids),
+                or_(
+                    visible_names.c.name_lower.is_not(None),
+                    EntityMentionDB.detection_method == "manual",
+                ),
+            )
+        )
+
+    def _canonical_tag_assoc_stmt(self, ids: list[uuid.UUID]) -> Select[Any]:
+        """``(entity_id, video_id, 'tag')`` for canonical-tag associations.
+
+        entity → canonical_tag → tag_alias.raw_form → video_tags, all
+        non-correlated joins. Shared with the count aggregator (single
+        definition of the canonical-tag rule).
+        """
+        return (
+            select(
+                CanonicalTagDB.entity_id.label("entity_id"),
+                VideoTagDB.video_id.label("video_id"),
+                literal("tag").label("source"),
+            )
+            .join(TagAliasDB, TagAliasDB.canonical_tag_id == CanonicalTagDB.id)
+            .join(VideoTagDB, VideoTagDB.tag == TagAliasDB.raw_form)
+            .where(CanonicalTagDB.entity_id.in_(ids))
+        )
+
+    async def _alias_tag_pairs(
+        self, session: AsyncSession, ids: list[uuid.UUID]
+    ) -> list[tuple[uuid.UUID, str]]:
+        """``(entity_id, video_id)`` for alias-matched-tag associations.
+
+        Normalisation runs in Python (``TagNormalizationService``) — it cannot
+        move into SQL without reimplementing the normalizer, the #207
+        duplicate-definition trap. Non-correlated: one alias fetch, one tag
+        lookup, mapped back in Python. A normalised form may belong to more
+        than one entity. Shared by the triple builder and the count aggregator.
+        """
+        alias_rows = (
+            await session.execute(
+                select(EntityAliasDB.entity_id, EntityAliasDB.alias_name).where(
+                    EntityAliasDB.entity_id.in_(ids),
+                    EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
+                )
+            )
+        ).all()
+        normalizer = TagNormalizationService()
+        form_to_entities: dict[str, set[uuid.UUID]] = {}
+        for entity_id, alias_name in alias_rows:
+            normalized = normalizer.normalize(alias_name)
+            if normalized is not None:
+                form_to_entities.setdefault(normalized, set()).add(entity_id)
+        if not form_to_entities:
+            return []
+        pairs: list[tuple[uuid.UUID, str]] = []
+        alias_tag_stmt = (
+            select(TagAliasDB.normalized_form, VideoTagDB.video_id)
+            .join(VideoTagDB, VideoTagDB.tag == TagAliasDB.raw_form)
+            .where(TagAliasDB.normalized_form.in_(list(form_to_entities)))
+            .distinct()
+        )
+        for norm, video_id in (await session.execute(alias_tag_stmt)).all():
+            for entity_id in form_to_entities.get(norm, set()):
+                pairs.append((entity_id, video_id))
+        return pairs
+
+    async def association_triples(
+        self,
+        session: AsyncSession,
+        entity_ids: Sequence[uuid.UUID],
+    ) -> list[tuple[uuid.UUID, str, str]]:
+        """`(entity_id, video_id, source)` for every association of these entities.
+
+        Batched over a page of entities: a fixed number of queries, never
+        per-row, and free of correlated subqueries (research.md query-shape
+        hazards — correlated EXISTS and join-before-paginate have both regressed
+        this repo). ``source`` is one of ``_PROVENANCE_SOURCES``.
+
+        Keyed on ``video_id``, from which per-channel provenance is derivable, so
+        a future false-positive-remediation feature can consume these triples and
+        join channels without re-plumbing (FR-013). This is the shared hook point
+        for the count aggregator, the video panel, and the provenance filter.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        entity_ids : Sequence[uuid.UUID]
+            The page of entities to resolve. Empty input returns ``[]``.
+
+        Returns
+        -------
+        list[tuple[uuid.UUID, str, str]]
+            ``(entity_id, video_id, source)`` triples, deduplicated per query but
+            possibly repeating a (entity, video) across sources — that is the
+            point, since a video may be reached through more than one source.
+        """
+        if not entity_ids:
+            return []
+        ids = list(entity_ids)
+        triples: list[tuple[uuid.UUID, str, str]] = []
+
+        # Mention triples (visible-name / manual rule) and canonical-tag triples
+        # come from the shared path builders; `.distinct()` collapses the join
+        # fan-out on the projected tuple, not on a pre-aggregated count.
+        for row in (
+            await session.execute(self._mention_assoc_stmt(ids).distinct())
+        ).all():
+            triples.append((row.entity_id, row.video_id, row.source))
+
+        for row in (
+            await session.execute(self._canonical_tag_assoc_stmt(ids).distinct())
+        ).all():
+            triples.append((row.entity_id, row.video_id, "tag"))
+
+        # Alias-matched-tag triples: normalisation is Python-side (#207 trap),
+        # so this path yields (entity_id, video_id) pairs rather than a SELECT.
+        for entity_id, video_id in await self._alias_tag_pairs(session, ids):
+            triples.append((entity_id, video_id, "tag"))
+
+        return triples
+
+    async def get_association_counts(
+        self,
+        session: AsyncSession,
+        entity_ids: Sequence[uuid.UUID],
+    ) -> dict[uuid.UUID, AssociationCount]:
+        """Distinct-video association count + per-source breakdown, per entity.
+
+        The single definition the entity list and detail both consume, so they
+        cannot disagree (FR-001/FR-002). ``total`` is distinct videos across all
+        sources — repetition of a name within one field never inflates it
+        (FR-003) — and the per-source parts need not sum to ``total`` because a
+        video reached through two sources counts once in ``total`` and in each
+        contributing source.
+
+        Every requested entity is present in the result, all-zero when it has no
+        associations, so a caller iterating a page never hits a missing key.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        entity_ids : Sequence[uuid.UUID]
+            The page of entities to count.
+
+        Returns
+        -------
+        dict[uuid.UUID, AssociationCount]
+            One entry per requested entity.
+        """
+        ids = list(entity_ids)
+
+        def _zero() -> AssociationCount:
+            return AssociationCount(
+                total=0,
+                by_source=AssociationSourceBreakdown(
+                    manual=0, transcript=0, title=0, description=0, tag=0
+                ),
+            )
+
+        counts: dict[uuid.UUID, AssociationCount] = {eid: _zero() for eid in ids}
+        if not ids:
+            return counts
+
+        # The distinct-video counting happens in Postgres, not Python: the two
+        # SQL paths and the Python-derived alias pairs are UNION ALLed and the
+        # totals computed with COUNT(DISTINCT video_id) — so a heavy entity's
+        # thousands of association rows never cross into Python (only the one
+        # aggregated row per entity does). `total` is the union across all
+        # sources; each `by_source` part is that source's distinct videos, so
+        # the parts need not sum to `total` (a video reached two ways counts
+        # once in each and once in the total).
+        arms: list[Any] = [
+            self._mention_assoc_stmt(ids),
+            self._canonical_tag_assoc_stmt(ids),
+        ]
+        alias_pairs = await self._alias_tag_pairs(session, ids)
+        if alias_pairs:
+            # Inject the Python-derived alias pairs via two array binds and
+            # ``unnest``, NOT a row-per-pair VALUES literal: a heavy page yields
+            # tens of thousands of pairs, and three binds each would blow past
+            # asyncpg's 32,767 bind-parameter ceiling. Two arrays is two binds
+            # regardless of pair count. Expressed as text() because SQLAlchemy's
+            # table_valued() does not render the column-alias list for a
+            # multi-argument unnest (unnest(a, b) AS t(col1, col2)).
+            alias_arm = (
+                text(
+                    "SELECT e AS entity_id, v AS video_id, 'tag' AS source "
+                    "FROM unnest(:alias_entity_ids, :alias_video_ids) AS t(e, v)"
+                )
+                .bindparams(
+                    bindparam(
+                        "alias_entity_ids",
+                        value=[eid for eid, _ in alias_pairs],
+                        type_=ARRAY(Uuid),
+                    ),
+                    bindparam(
+                        "alias_video_ids",
+                        value=[vid for _, vid in alias_pairs],
+                        type_=ARRAY(String),
+                    ),
+                )
+                .columns(entity_id=Uuid, video_id=String, source=String)
+            )
+            arms.append(alias_arm)
+
+        assoc = union_all(*arms).subquery("assoc")
+        count_stmt = select(
+            assoc.c.entity_id,
+            func.count(distinct(assoc.c.video_id)).label("total"),
+            *[
+                func.count(distinct(assoc.c.video_id))
+                .filter(assoc.c.source == src)
+                .label(src)
+                for src in self._PROVENANCE_SOURCES
+            ],
+        ).group_by(assoc.c.entity_id)
+
+        for row in (await session.execute(count_stmt)).all():
+            counts[row.entity_id] = AssociationCount(
+                total=row.total,
+                by_source=AssociationSourceBreakdown(
+                    manual=row.manual,
+                    transcript=row.transcript,
+                    title=row.title,
+                    description=row.description,
+                    tag=row.tag,
+                ),
+            )
+        return counts
+
+    async def _visible_name_mention_entity_ids(
+        self,
+        session: AsyncSession,
+        video_id: str,
+        language_code: str | None = None,
+    ) -> set[uuid.UUID]:
+        """Entities with a *visible-name* (or manual) mention on this video.
+
+        Mirrors the entity-detail membership rule (``get_entity_video_list``): a
+        non-manual mention counts only where its text matches one of the entity's
+        visible names — canonical name or non-ASR alias, the #89 rule — while a
+        manual mention always counts. Applying the identical rule here is what
+        makes the video panel and the entity detail agree on membership by
+        construction (FR-006 / data-model I2). The language filter narrows
+        transcript-derived mentions; manual mentions (``language_code`` NULL)
+        always pass, exactly as on the entity side.
+        """
+        visible_names = union(
+            select(
+                NamedEntityDB.id.label("entity_id"),
+                func.lower(NamedEntityDB.canonical_name).label("name_lower"),
+            ),
+            select(
+                EntityAliasDB.entity_id.label("entity_id"),
+                func.lower(EntityAliasDB.alias_name).label("name_lower"),
+            ).where(EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR),
+        ).subquery()
+
+        stmt = (
+            select(distinct(EntityMentionDB.entity_id))
+            .outerjoin(
+                visible_names,
+                and_(
+                    visible_names.c.entity_id == EntityMentionDB.entity_id,
+                    func.lower(EntityMentionDB.mention_text)
+                    == visible_names.c.name_lower,
+                ),
+            )
+            .where(
+                EntityMentionDB.video_id == video_id,
+                or_(
+                    visible_names.c.name_lower.is_not(None),
+                    EntityMentionDB.detection_method == "manual",
+                ),
+            )
+        )
+        if language_code is not None:
+            stmt = stmt.where(
+                or_(
+                    EntityMentionDB.language_code == language_code,
+                    EntityMentionDB.detection_method == "manual",
+                )
+            )
+        return set((await session.execute(stmt)).scalars().all())
+
+    async def _video_tag_entity_ids(
+        self, session: AsyncSession, video_id: str
+    ) -> set[uuid.UUID]:
+        """Entity IDs tag-associated with a video (canonical + alias-matched paths).
+
+        The video-keyed inverse of ``_get_tag_associated_video_ids`` and
+        ``_get_alias_matched_tag_video_ids``, using the identical joins and the
+        identical Python normalisation, so the video panel and the entity detail
+        agree on tag membership by construction (FR-006 / I2). Normalisation runs
+        in Python because expressing ``TagNormalizationService`` in SQL is the
+        duplicate-definition trap of #207. Tags carry no language.
+        """
+        # Canonical path: video_tags.tag -> tag_aliases.raw_form ->
+        # canonical_tags.entity_id.
+        canonical_stmt = (
+            select(CanonicalTagDB.entity_id)
+            .select_from(VideoTagDB)
+            .join(TagAliasDB, TagAliasDB.raw_form == VideoTagDB.tag)
+            .join(CanonicalTagDB, CanonicalTagDB.id == TagAliasDB.canonical_tag_id)
+            .where(
+                VideoTagDB.video_id == video_id,
+                CanonicalTagDB.entity_id.is_not(None),
+            )
+            .distinct()
+        )
+        entity_ids: set[uuid.UUID] = {
+            row[0]
+            for row in (await session.execute(canonical_stmt)).all()
+            if row[0] is not None
+        }
+
+        # Alias-matched path: the normalised forms of this video's tags, matched
+        # against each entity alias normalised by the SAME service.
+        video_forms_stmt = (
+            select(TagAliasDB.normalized_form)
+            .select_from(VideoTagDB)
+            .join(TagAliasDB, TagAliasDB.raw_form == VideoTagDB.tag)
+            .where(VideoTagDB.video_id == video_id)
+            .distinct()
+        )
+        video_forms = {
+            f
+            for f in (await session.execute(video_forms_stmt)).scalars().all()
+            if f is not None
+        }
+        if video_forms:
+            alias_rows = (
+                await session.execute(
+                    select(EntityAliasDB.entity_id, EntityAliasDB.alias_name).where(
+                        EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR
+                    )
+                )
+            ).all()
+            normalizer = TagNormalizationService()
+            for entity_id, alias_name in alias_rows:
+                normalized = normalizer.normalize(alias_name)
+                if normalized is not None and normalized in video_forms:
+                    entity_ids.add(entity_id)
+        return entity_ids
+
+    async def get_video_entity_associations(
+        self,
+        session: AsyncSession,
+        video_id: str,
+        language_code: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Entities associated with a video through **any** source (US2).
+
+        The video panel's read model: the mention-only ``get_video_entity_summary``
+        made tag-only and manual-only associations invisible on the video side
+        while the entity side listed them (#240). This composes the shared
+        membership rules so the two views cannot disagree (FR-005/FR-006 / I2):
+
+        - **Membership** is the strict association set — visible-name/manual
+          mentions (``_visible_name_mention_entity_ids``) unioned with tag
+          associations (``_video_tag_entity_ids``) — the same rules the entity
+          detail applies. A pair supported only by a non-visible-name mention is
+          excluded here just as it is there.
+        - **Count fields** (``mention_count``, ``first_mention_time``,
+          ``has_manual``) come unchanged from ``get_video_entity_summary``; its
+          ``mention_count`` still excludes manual, so a manual-only entity reads
+          0 — the live optimistic-removal contract the web client relies on.
+        - **``sources``** adds ``tag`` to the mention-derived set where the entity
+          is tag-associated; tag-only entities report ``["tag"]``.
+
+        Returns dicts matching ``VideoEntitySummary``, sorted by ``mention_count``
+        descending then name.
+        """
+        summary = await self.get_video_entity_summary(session, video_id, language_code)
+        summary_by_id = {uuid.UUID(row["entity_id"]): row for row in summary}
+
+        strict_mention_ids = await self._visible_name_mention_entity_ids(
+            session, video_id, language_code
+        )
+        tag_ids = await self._video_tag_entity_ids(session, video_id)
+
+        members = strict_mention_ids | tag_ids
+        if not members:
+            return []
+
+        # Names for tag-only members — they have no mention row to borrow from.
+        missing = [eid for eid in members if eid not in summary_by_id]
+        names: dict[uuid.UUID, tuple[str, str, str | None]] = {}
+        if missing:
+            name_rows = (
+                await session.execute(
+                    select(
+                        NamedEntityDB.id,
+                        NamedEntityDB.canonical_name,
+                        NamedEntityDB.entity_type,
+                        NamedEntityDB.description,
+                    ).where(NamedEntityDB.id.in_(missing))
+                )
+            ).all()
+            names = {
+                r.id: (r.canonical_name, r.entity_type, r.description)
+                for r in name_rows
+            }
+
+        out: list[dict[str, Any]] = []
+        for eid in members:
+            base = summary_by_id.get(eid)
+            if base is not None:
+                sources = set(base["sources"])
+                if eid in tag_ids:
+                    sources.add("tag")
+                out.append({**base, "sources": sorted(sources)})
+            else:
+                canonical_name, entity_type, description = names.get(
+                    eid, ("", "", None)
+                )
+                out.append(
+                    {
+                        "entity_id": str(eid),
+                        "canonical_name": canonical_name,
+                        "entity_type": entity_type,
+                        "description": description,
+                        "mention_count": 0,
+                        "first_mention_time": None,
+                        "sources": ["tag"],
+                        "has_manual": False,
+                    }
+                )
+
+        out.sort(key=lambda r: (-r["mention_count"], r["canonical_name"].lower()))
+        return out
 
     async def get_combined_video_count(
         self,
@@ -1827,7 +2341,8 @@ class EntityMentionRepository(
                 },
             )
 
-        # 5. Create the mention
+        # 5. Create the mention. A manual assertion has no text anchor, so its
+        # provenance is honestly 'manual' — not 'transcript' (Feature 066 US4).
         mention = EntityMentionDB(
             id=uuid.UUID(bytes=uuid7().bytes),
             entity_id=entity_id,
@@ -1835,6 +2350,7 @@ class EntityMentionRepository(
             video_id=video_id,
             language_code=None,
             mention_text=entity.canonical_name,
+            mention_source=MentionSource.MANUAL.value,
             detection_method="manual",
             confidence=None,
             match_start=None,

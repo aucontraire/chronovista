@@ -129,6 +129,7 @@ function createEntity(overrides: Partial<EntityListItem> = {}): EntityListItem {
     status: "active",
     mention_count: 42,
     video_count: 8,
+    by_source: { manual: 0, transcript: 8, title: 0, description: 0, tag: 0 },
     ...overrides,
   };
 }
@@ -411,7 +412,7 @@ describe("EntitiesPage", () => {
       expect(link).toBeInTheDocument();
     });
 
-    it("uses singular 'video' copy when video_count is 1", () => {
+    it("uses singular 'association' copy when video_count is 1", () => {
       vi.mocked(useEntities).mockReturnValue(
         makeHookReturn({
           entities: [createEntity({ mention_count: 3, video_count: 1 })],
@@ -421,7 +422,7 @@ describe("EntitiesPage", () => {
       );
       renderPage();
       const link = screen.getByRole("link", {
-        name: /in 1 video$/i,
+        name: /in 1 association$/i,
       });
       expect(link).toBeInTheDocument();
     });
@@ -499,7 +500,7 @@ describe("EntitiesPage", () => {
       );
       renderPage();
       const link = screen.getByRole("link", {
-        name: /MIT — 10 mentions in 4 videos/i,
+        name: /MIT — 10 mentions in 4 associations/i,
       });
       expect(link).toBeInTheDocument();
     });

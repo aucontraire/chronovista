@@ -439,8 +439,9 @@ class TestGetEntityVideosSourceFilter:
         """T062: GET /entities/{id}/videos?source=title returns title-only results.
 
         When ``source=title`` is supplied, the endpoint must pass
-        ``source_filter="title"`` to the repository and only return videos
-        whose ``sources`` list contains ``"title"``.
+        ``source_filter=["title"]`` to the repository (Feature 066 US3 made the
+        filter multi-select; a single legacy value normalises to a one-element
+        list) and only return videos whose ``sources`` list contains ``"title"``.
         """
         entity_id = _uuid()
         mock_session = AsyncMock(spec=AsyncSession)
@@ -488,10 +489,11 @@ class TestGetEntityVideosSourceFilter:
         assert len(body["data"]) == 1
         assert body["data"][0]["sources"] == ["title"]
 
-        # Verify the repository was called with source_filter="title"
+        # Verify the repository was called with source_filter=["title"]
+        # (single legacy value → one-element list; backward compatible).
         mock_repo.assert_called_once()
         call_kwargs = mock_repo.call_args.kwargs
-        assert call_kwargs.get("source_filter") == "title"
+        assert call_kwargs.get("source_filter") == ["title"]
 
     async def test_no_source_returns_all_videos(self) -> None:
         """GET /entities/{id}/videos without source returns all videos.

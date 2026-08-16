@@ -50,6 +50,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+from tests.factories.entity_mention_factory import make_entity_video_list_row
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -857,6 +858,7 @@ def _make_video_row(
     channel_name: str = "Test Channel",
     mention_count: int = 1,
     detection_methods: list[str] | None = None,
+    mention_sources: list[str | None] | None = None,
     has_manual: bool = False,
     first_mention_time: float | None = 10.0,
     upload_date: Any = None,
@@ -887,18 +889,19 @@ def _make_video_row(
     MagicMock
         Mock row object with attribute access for each column.
     """
-    if detection_methods is None:
-        detection_methods = ["rule_match"]
-    row = MagicMock()
-    row.video_id = video_id
-    row.video_title = video_title
-    row.channel_name = channel_name
-    row.mention_count = mention_count
-    row.detection_methods = detection_methods
-    row.has_manual = has_manual
-    row.first_mention_time = first_mention_time
-    row.upload_date = upload_date
-    return row
+    # Column shape lives in the shared factory; this wrapper only carries this
+    # module's value defaults. sources derive from mention_source (#172).
+    return make_entity_video_list_row(
+        video_id=video_id,
+        video_title=video_title,
+        channel_name=channel_name,
+        mention_count=mention_count,
+        detection_methods=detection_methods,
+        mention_sources=mention_sources,
+        has_manual=has_manual,
+        first_mention_time=first_mention_time,
+        upload_date=upload_date,
+    )
 
 
 def _make_tag_meta_row(

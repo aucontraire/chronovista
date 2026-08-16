@@ -111,6 +111,15 @@ export interface EntityAliasSummary {
   case_sensitive: boolean;
 }
 
+/** Per-source breakdown of an entity's distinct-video association count. */
+export interface AssociationSourceBreakdown {
+  manual: number;
+  transcript: number;
+  title: number;
+  description: number;
+  tag: number;
+}
+
 /** A single item in the entity list response. */
 export interface EntityListItem {
   entity_id: string;
@@ -119,7 +128,9 @@ export interface EntityListItem {
   description: string | null;
   status: string;
   mention_count: number;
+  /** Combined distinct-video association total across all five sources. */
   video_count: number;
+  by_source: AssociationSourceBreakdown;
 }
 
 /** Full detail response for GET /api/v1/entities/{entity_id} */
@@ -130,7 +141,9 @@ export interface EntityDetail {
   description: string | null;
   status: string;
   mention_count: number;
+  /** Combined distinct-video association total across all five sources. */
   video_count: number;
+  by_source: AssociationSourceBreakdown;
   aliases: EntityAliasSummary[];
   /** Text phrases that should NOT trigger mention detection for this entity. */
   exclusion_patterns: string[];
@@ -182,11 +195,12 @@ export interface FetchEntityVideosParams {
   /** Optional BCP-47 language code to filter mentions by language */
   language_code?: string;
   /**
-   * Optional source filter. When provided, only videos whose sources list
-   * includes this value are returned. Valid values: transcript, title,
-   * description, tag, manual.
+   * Optional source filter. When one or more values are provided, only
+   * videos whose sources list includes at least one of them are returned
+   * (union). Omitted or empty returns all sources. Valid values: transcript,
+   * title, description, tag, manual.
    */
-  source?: string;
+  source?: string[];
   /** Max results per page (1-100, default 20) */
   limit?: number;
   /** Offset for pagination (>=0) */
@@ -415,8 +429,8 @@ export async function fetchEntityVideos(
   if (params.language_code) {
     qs.set("language_code", params.language_code);
   }
-  if (params.source) {
-    qs.set("source", params.source);
+  for (const s of params.source ?? []) {
+    qs.append("source", s);
   }
   if (params.limit !== undefined) {
     qs.set("limit", String(params.limit));

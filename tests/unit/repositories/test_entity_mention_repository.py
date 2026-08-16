@@ -43,6 +43,7 @@ from tests.factories.entity_mention_factory import (
     EntityMentionCreateFactory,
     create_entity_mention,
     create_entity_mention_create,
+    make_entity_video_list_row,
 )
 
 # ---------------------------------------------------------------------------
@@ -1628,19 +1629,21 @@ class TestGetEntityVideoList:
 
         Includes detection_methods, has_manual, first_mention_time, and
         upload_date so the new multi-source sort logic does not raise TypeError.
+        Delegates the column shape to the shared factory (tests in this class do
+        not assert on ``sources``).
         """
         from datetime import datetime as dt
 
-        row = MagicMock()
-        row.video_id = video_id
-        row.video_title = video_title
-        row.channel_name = channel_name
-        row.mention_count = mention_count
-        row.detection_methods = ["rule_match"]
-        row.has_manual = False
-        row.first_mention_time = None
-        row.upload_date = dt(2024, 1, 1, tzinfo=UTC)
-        return row
+        return make_entity_video_list_row(
+            video_id=video_id,
+            video_title=video_title,
+            channel_name=channel_name,
+            mention_count=mention_count,
+            detection_methods=["rule_match"],
+            has_manual=False,
+            first_mention_time=None,
+            upload_date=dt(2024, 1, 1, tzinfo=UTC),
+        )
 
     def _make_preview_row(
         self,
@@ -3496,23 +3499,31 @@ class TestGetEntityVideoListMultiSource:
         channel_name: str = "Test Channel",
         mention_count: int = 3,
         detection_methods: list[str] | None = None,
+        mention_sources: list[str | None] | None = None,
         has_manual: bool = False,
         first_mention_time: float | None = 10.5,
         upload_date: Any = None,
     ) -> MagicMock:
-        """Build a mock row matching the main query's column shape."""
+        """Build a mock row matching the main query's column shape.
+
+        Delegates the column shape to the shared factory
+        (``make_entity_video_list_row``); this wrapper only carries this class's
+        value defaults. ``sources`` derives from ``mention_source`` (#172), so
+        ``mention_sources`` models where the entity actually appears.
+        """
         from datetime import datetime as dt
 
-        row = MagicMock()
-        row.video_id = video_id
-        row.video_title = video_title
-        row.channel_name = channel_name
-        row.mention_count = mention_count
-        row.detection_methods = detection_methods or ["rule_match"]
-        row.has_manual = has_manual
-        row.first_mention_time = first_mention_time
-        row.upload_date = upload_date or dt(2024, 6, 15, tzinfo=UTC)
-        return row
+        return make_entity_video_list_row(
+            video_id=video_id,
+            video_title=video_title,
+            channel_name=channel_name,
+            mention_count=mention_count,
+            detection_methods=detection_methods,
+            mention_sources=mention_sources,
+            has_manual=has_manual,
+            first_mention_time=first_mention_time,
+            upload_date=upload_date or dt(2024, 6, 15, tzinfo=UTC),
+        )
 
     @staticmethod
     def _make_main_result(rows: list[MagicMock]) -> MagicMock:
@@ -3589,6 +3600,7 @@ class TestGetEntityVideoListMultiSource:
 
         row = self._make_video_row(
             detection_methods=["manual"],
+            mention_sources=["manual"],  # honest provenance (Feature 066 US4)
             has_manual=True,
             mention_count=0,
             first_mention_time=None,

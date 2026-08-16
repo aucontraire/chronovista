@@ -59,6 +59,7 @@ const VIDEO_ID = "test-video-001";
 const ENTITY_ID_MANUAL_ONLY = "ent-manual-only";
 const ENTITY_ID_MULTI_SOURCE = "ent-multi-source";
 const ENTITY_ID_TRANSCRIPT_ONLY = "ent-transcript-only";
+const ENTITY_ID_MANUAL_PLUS_TAG = "ent-manual-plus-tag";
 
 function makeManualOnlyEntity(overrides: Partial<VideoEntitySummary> = {}): VideoEntitySummary {
   return {
@@ -69,6 +70,27 @@ function makeManualOnlyEntity(overrides: Partial<VideoEntitySummary> = {}): Vide
     mention_count: 0,
     first_mention_time: null,
     sources: ["manual"],
+    has_manual: true,
+    ...overrides,
+  };
+}
+
+/**
+ * Entity linked both manually and via a tag association. Like the
+ * manual-only fixture, mention_count is 0 (no transcript mentions), but the
+ * "tag" source means the chip must survive removal of the manual link — this
+ * is the regression case for the sources-based (not mention_count-based)
+ * removal predicate.
+ */
+function makeManualPlusTagEntity(overrides: Partial<VideoEntitySummary> = {}): VideoEntitySummary {
+  return {
+    entity_id: ENTITY_ID_MANUAL_PLUS_TAG,
+    canonical_name: "Grace Hopper",
+    entity_type: "person",
+    description: null,
+    mention_count: 0,
+    first_mention_time: null,
+    sources: ["manual", "tag"],
     has_manual: true,
     ...overrides,
   };
@@ -203,6 +225,49 @@ describe("useDeleteManualAssociation — onMutate optimistic updates", () => {
     expect(updatedEntity?.sources).toContain("transcript");
     // mention_count is unchanged (transcript hits are unaffected)
     expect(updatedEntity?.mention_count).toBe(4);
+  });
+
+  // -------------------------------------------------------------------------
+  // Manual+tag entity (mention_count === 0, but tag-associated): kept, not
+  // removed. Regression test for the sources-based removal predicate — the
+  // old mention_count === 0 proxy would have wrongly dropped this chip.
+  // -------------------------------------------------------------------------
+
+  it("keeps a manual+tag entity (mention_count === 0) in the cache, clearing has_manual and leaving 'tag' in sources", async () => {
+    const initialEntities = [makeManualPlusTagEntity()];
+    queryClient.setQueryData(
+      videoEntitiesKey(VIDEO_ID),
+      makeVideoEntitiesResponse(initialEntities)
+    );
+
+    mockedApiFetch.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(undefined), 100))
+    );
+
+    const { result } = renderHook(() => useDeleteManualAssociation(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    act(() => {
+      result.current.mutate({ videoId: VIDEO_ID, entityId: ENTITY_ID_MANUAL_PLUS_TAG });
+    });
+
+    await waitFor(() => result.current.isPending);
+
+    const cached = queryClient.getQueryData<VideoEntitiesResponse>(
+      videoEntitiesKey(VIDEO_ID)
+    );
+
+    const updatedEntity = cached?.data.find(
+      (e) => e.entity_id === ENTITY_ID_MANUAL_PLUS_TAG
+    );
+
+    // Entity must remain — the tag association still exists.
+    expect(updatedEntity).toBeDefined();
+    // has_manual is cleared
+    expect(updatedEntity?.has_manual).toBe(false);
+    // "manual" is removed from sources, "tag" remains
+    expect(updatedEntity?.sources).toEqual(["tag"]);
   });
 
   it("does NOT remove or alter a transcript-only entity when deleting a different entity's manual link", async () => {

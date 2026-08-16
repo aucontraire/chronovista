@@ -1593,7 +1593,7 @@ class EntityMention(Base):
             name="chk_entity_mention_confidence_range",
         ),
         CheckConstraint(
-            "mention_source IN ('transcript', 'title', 'description')",
+            "mention_source IN ('transcript', 'title', 'description', 'manual')",
             name="chk_entity_mention_source_valid",
         ),
         Index("ix_entity_mentions_entity_id", "entity_id"),

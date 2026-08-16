@@ -29,6 +29,10 @@ from uuid_utils import uuid7
 
 from chronovista.api.deps import get_db, require_auth
 from chronovista.api.main import app
+from chronovista.models.entity_association import (
+    AssociationCount,
+    AssociationSourceBreakdown,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -335,8 +339,17 @@ class TestEntityDetailCombinedVideoCount:
         with patch(
             "chronovista.api.routers.entity_mentions._mention_repo"
         ) as mock_repo:
-            # The combined video count returns 6 (from all sources)
-            mock_repo.get_combined_video_count = AsyncMock(return_value=6)
+            # The resolver returns a combined total of 6 (across all sources)
+            mock_repo.get_association_counts = AsyncMock(
+                return_value={
+                    entity_id: AssociationCount(
+                        total=6,
+                        by_source=AssociationSourceBreakdown(
+                            manual=0, transcript=2, title=0, description=0, tag=4
+                        ),
+                    )
+                }
+            )
 
             async for client in _build_client(mock_session):
                 # Fetch entity detail
@@ -345,8 +358,9 @@ class TestEntityDetailCombinedVideoCount:
 
         assert detail_response.status_code == 200
         detail_body = detail_response.json()
-        # video_count should reflect combined total (6), not stored DB value (2)
+        # video_count reflects the combined total (6), not the stored DB value (2)
         assert detail_body["data"]["video_count"] == 6
+        assert detail_body["data"]["by_source"]["tag"] == 4
 
     async def test_entity_detail_video_count_zero_when_no_videos(
         self,
@@ -378,7 +392,16 @@ class TestEntityDetailCombinedVideoCount:
         with patch(
             "chronovista.api.routers.entity_mentions._mention_repo"
         ) as mock_repo:
-            mock_repo.get_combined_video_count = AsyncMock(return_value=0)
+            mock_repo.get_association_counts = AsyncMock(
+                return_value={
+                    entity_id: AssociationCount(
+                        total=0,
+                        by_source=AssociationSourceBreakdown(
+                            manual=0, transcript=0, title=0, description=0, tag=0
+                        ),
+                    )
+                }
+            )
 
             async for client in _build_client(mock_session):
                 detail_url = f"/api/v1/entities/{entity_id}"
@@ -387,6 +410,7 @@ class TestEntityDetailCombinedVideoCount:
         assert detail_response.status_code == 200
         detail_body = detail_response.json()
         assert detail_body["data"]["video_count"] == 0
+        assert detail_body["data"]["by_source"]["tag"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -397,39 +421,38 @@ class TestEntityDetailCombinedVideoCount:
 class TestEntityListCombinedVideoCount:
     """Tests for entity list endpoint combined video count (T032, T033).
 
-    For MVP, the entity list endpoint continues to use the stored
-    ``named_entities.video_count`` value.  Computing combined counts for
-    every entity in a paginated list is deferred to a future iteration
-    due to performance concerns (correlated subquery across 3 tag tables
-    per entity row).
+    Feature 066 (US1, FR-002): the entity list endpoint now derives
+    ``video_count`` from the shared association resolver
+    (``get_association_counts``) — the distinct count of videos associated
+    through ANY source — instead of the denormalized, mention-only
+    ``named_entities.video_count`` column. This is what makes the list and
+    detail pages agree by construction (#169): a freshly promoted tag no
+    longer reads as 0 in the list while the detail shows the real number.
 
-    These tests document the current behaviour and serve as a baseline
-    for future combined-count implementation.
+    The resolver batches a fixed number of queries per page (never per-row),
+    so this does not reintroduce the N+1 / correlated-subquery shape the
+    older stored-count workaround was avoiding.
 
-    Decision rationale: The entity detail page already shows the correct
-    combined count via the videos endpoint pagination total.  The list
-    page stored count is acceptable for MVP because:
-    1. Most entities are created via classify (which sets video_count from
-       transcript scans), so the stored count is approximately correct.
-    2. The sort order for ``sort=mentions`` uses mention_count (not
-       video_count), so tag-only videos don't affect sort order.
-    3. Computing combined counts per entity requires N+1 queries or a
-       complex lateral join that risks degrading list endpoint performance.
+    The ``sort=mentions`` order is unchanged — it still sorts by
+    ``mention_count`` at the SQL layer; the association count only changes
+    the displayed ``video_count`` / ``by_source`` breakdown.
     """
 
-    async def test_entity_list_returns_stored_video_count(
+    async def test_entity_list_returns_combined_count_not_stored(
         self,
     ) -> None:
-        """Entity list returns stored video_count per entity (MVP baseline).
+        """Entity list returns the combined association count, not the stored column.
 
-        The stored video_count reflects transcript-only counts.  This test
-        documents the current behaviour as a baseline for future enhancement.
+        Feature 066 (FR-002): the list uses the shared resolver, so it agrees
+        with the detail. Here the stored ``video_count`` is 5 (transcript-only)
+        but the resolver reports 8 across all sources — the list must show 8, and
+        include the per-source breakdown. This is the case that read 5 (or 0)
+        before #169 was fixed.
         """
         entity_id = _uuid()
 
         mock_session = AsyncMock(spec=AsyncSession)
 
-        # Mock entity row from the list query
         mock_entity = MagicMock()
         mock_entity.id = entity_id
         mock_entity.canonical_name = "Test Entity"
@@ -437,13 +460,11 @@ class TestEntityListCombinedVideoCount:
         mock_entity.description = "Description"
         mock_entity.status = "active"
         mock_entity.mention_count = 10
-        mock_entity.video_count = 5  # Stored DB value
+        mock_entity.video_count = 5  # stored (transcript-only) — must NOT be used
 
-        # Count query returns 1
         count_result = MagicMock()
         count_result.scalar.return_value = 1
 
-        # Entity list query
         list_result = MagicMock()
         list_scalars = MagicMock()
         list_scalars.all.return_value = [mock_entity]
@@ -452,14 +473,29 @@ class TestEntityListCombinedVideoCount:
         mock_session.execute = AsyncMock(side_effect=[count_result, list_result])
         mock_session.commit = AsyncMock()
 
-        async for client in _build_client(mock_session):
-            response = await client.get("/api/v1/entities")
+        with patch(
+            "chronovista.api.routers.entity_mentions._mention_repo"
+        ) as mock_repo:
+            mock_repo.get_association_counts = AsyncMock(
+                return_value={
+                    entity_id: AssociationCount(
+                        total=8,
+                        by_source=AssociationSourceBreakdown(
+                            manual=0, transcript=5, title=1, description=0, tag=2
+                        ),
+                    )
+                }
+            )
+            async for client in _build_client(mock_session):
+                response = await client.get("/api/v1/entities")
 
         assert response.status_code == 200
         body = response.json()
         assert len(body["data"]) == 1
-        # For MVP, video_count reflects stored DB value
-        assert body["data"][0]["video_count"] == 5
+        # Combined resolver total (8), not the stored column (5).
+        assert body["data"][0]["video_count"] == 8
+        assert body["data"][0]["by_source"]["transcript"] == 5
+        assert body["data"][0]["by_source"]["tag"] == 2
 
     async def test_entity_list_sort_by_mentions_uses_mention_count(
         self,
@@ -509,12 +545,28 @@ class TestEntityListCombinedVideoCount:
         mock_session.execute = AsyncMock(side_effect=[count_result, list_result])
         mock_session.commit = AsyncMock()
 
-        async for client in _build_client(mock_session):
-            response = await client.get("/api/v1/entities?sort=mentions")
+        def _zero(total: int) -> AssociationCount:
+            return AssociationCount(
+                total=total,
+                by_source=AssociationSourceBreakdown(
+                    manual=0, transcript=0, title=0, description=0, tag=total
+                ),
+            )
+
+        with patch(
+            "chronovista.api.routers.entity_mentions._mention_repo"
+        ) as mock_repo:
+            mock_repo.get_association_counts = AsyncMock(
+                return_value={entity_id_1: _zero(3), entity_id_2: _zero(10)}
+            )
+            async for client in _build_client(mock_session):
+                response = await client.get("/api/v1/entities?sort=mentions")
 
         assert response.status_code == 200
         body = response.json()
         assert len(body["data"]) == 2
-        # Entity with higher mention_count appears first
+        # Sort is by mention_count (unchanged), independent of the association
+        # count: Alpha (20 mentions) precedes Beta (5) even though Beta has more
+        # associated videos.
         assert body["data"][0]["mention_count"] == 20
         assert body["data"][1]["mention_count"] == 5

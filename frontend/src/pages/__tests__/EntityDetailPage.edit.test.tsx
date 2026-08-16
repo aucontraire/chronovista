@@ -102,6 +102,7 @@ const mockEntity = {
   status: "active",
   mention_count: 12,
   video_count: 4,
+  by_source: { manual: 0, transcript: 4, title: 0, description: 0, tag: 0 },
   aliases: [] as { alias_name: string; alias_type: string; occurrence_count: number }[],
   exclusion_patterns: [] as string[],
 };

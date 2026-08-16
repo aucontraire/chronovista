@@ -104,9 +104,9 @@ def peek_data(
 
     Examples:
         chronovista takeout peek playlists
-        chronovista takeout peek playlists "Aaron Mate" --limit=50
+        chronovista takeout peek playlists "Watch Later" --limit=50
         chronovista takeout peek history --recent --limit=10 --topic=25
-        chronovista takeout peek channels "Corey Schafer"
+        chronovista takeout peek channels "Example Channel"
         chronovista takeout peek comments --recent --limit=15
     """
     import asyncio

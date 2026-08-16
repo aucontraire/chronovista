@@ -107,6 +107,7 @@ const mockEntity = {
   status: "active",
   mention_count: 42,
   video_count: 3,
+  by_source: { manual: 0, transcript: 3, title: 0, description: 0, tag: 0 },
   aliases: [] as { alias_name: string; alias_type: string; occurrence_count: number }[],
   exclusion_patterns: [] as string[],
 };
@@ -329,13 +330,17 @@ describe("EntityDetailPage", () => {
       expect(screen.getByText("42")).toBeInTheDocument();
     });
 
-    it("renders total video count when available", () => {
+    it("renders the association count from entity.video_count, not the paginated total", () => {
+      // FR-002: the headline association count must use entity.video_count
+      // from the detail response, not the paginated video-list total.
       vi.mocked(useEntityVideos).mockReturnValue({
         ...defaultUseEntityVideos,
         total: 10,
       });
       renderPage();
-      expect(screen.getByText("10")).toBeInTheDocument();
+      expect(screen.getByText("3")).toBeInTheDocument();
+      expect(screen.getByText(/associations?/i)).toBeInTheDocument();
+      expect(screen.queryByText("10")).not.toBeInTheDocument();
     });
   });
 

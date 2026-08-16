@@ -287,6 +287,72 @@ describe("EntityMentionsPanel", () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // Tag association badge (T015, Feature 066)
+  // ---------------------------------------------------------------------------
+
+  describe("Tag association badge (T015)", () => {
+    it("renders a TAG badge and no mention tally or unlink button for a tag-only entity", () => {
+      const entities = [
+        createEntity({
+          entity_id: "e1",
+          canonical_name: "Tag Only Entity",
+          sources: ["tag"],
+          mention_count: 0,
+          has_manual: false,
+          first_mention_time: null,
+        }),
+      ];
+      renderPanel({ entities });
+
+      expect(screen.getByText("TAG")).toBeInTheDocument();
+      expect(screen.queryByText(/^\(\d+\)$/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("unlink-button-e1")
+      ).not.toBeInTheDocument();
+    });
+
+    it("renders both the mention tally and the TAG badge for a transcript+tag entity", () => {
+      const entities = [
+        createEntity({
+          entity_id: "e2",
+          canonical_name: "Transcript And Tag Entity",
+          sources: ["transcript", "tag"],
+          mention_count: 5,
+          has_manual: false,
+        }),
+      ];
+      renderPanel({ entities });
+
+      expect(screen.getByText("(5)")).toBeInTheDocument();
+      expect(screen.getByText("TAG")).toBeInTheDocument();
+    });
+
+    it("does not render a TAG badge when the entity has no tag source", () => {
+      const entities = [
+        createEntity({ entity_id: "e3", canonical_name: "Transcript Only", sources: ["transcript"] }),
+      ];
+      renderPanel({ entities });
+
+      expect(screen.queryByText("TAG")).not.toBeInTheDocument();
+    });
+
+    it("includes 'tagged' in the accessible label when the entity has a tag source", () => {
+      const entities = [
+        createEntity({
+          entity_id: "e4",
+          canonical_name: "Jane Doe",
+          sources: ["tag"],
+          mention_count: 0,
+        }),
+      ];
+      renderPanel({ entities });
+
+      const chip = screen.getByRole("link", { name: /Jane Doe.*tagged/i });
+      expect(chip).toBeInTheDocument();
+    });
+  });
+
   describe("Search UI (T025)", () => {
     it("renders a search input within the panel", () => {
       renderPanel({ entities: [] });

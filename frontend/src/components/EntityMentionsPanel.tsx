@@ -808,6 +808,9 @@ function buildAriaLabel(entity: VideoEntitySummary): string {
   if (entity.has_manual) {
     parts.push("manually linked");
   }
+  if (entity.sources.includes("tag")) {
+    parts.push("tagged");
+  }
   parts.push("View entity details.");
   return parts.join(", ");
 }
@@ -819,6 +822,7 @@ function buildAriaLabel(entity: VideoEntitySummary): string {
  *    (skipped when first_mention_time is null — manual-only association)
  * 3. Shows a [MANUAL] badge (emerald) when has_manual is true (T009)
  * 4. Shows an X unlink button when has_manual is true (T044)
+ * 5. Shows a [TAG] badge (teal) when the entity has a tag association (T015)
  */
 function EntityChip({
   entity,
@@ -874,6 +878,21 @@ function EntityChip({
           {/* Screen-reader-only text for the manual badge */}
           {entity.has_manual && (
             <span className="sr-only">, manually linked</span>
+          )}
+
+          {/* T015: [TAG] badge — shown when a tag association exists */}
+          {entity.sources.includes("tag") && (
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded"
+              aria-hidden="true"
+            >
+              TAG
+            </span>
+          )}
+
+          {/* Screen-reader-only text for the tag badge */}
+          {entity.sources.includes("tag") && (
+            <span className="sr-only">, tagged</span>
           )}
         </Link>
 

@@ -401,20 +401,32 @@ class DetectionMethod(str, Enum):
 
 
 class MentionSource(str, Enum):
-    """Source location where an entity mention was found."""
+    """Provenance of an entity association.
+
+    ``TRANSCRIPT``/``TITLE``/``DESCRIPTION`` are the text-anchored mention
+    locations. ``MANUAL`` is a hand-asserted association with no text anchor
+    (e.g. a face in the thumbnail); it is stored honestly as ``manual`` rather
+    than masquerading as a ``transcript`` mention (Feature 066 US4). ``tag``
+    associations are labelled at read time by the resolver and never stored
+    here.
+    """
 
     TRANSCRIPT = "transcript"
     TITLE = "title"
     DESCRIPTION = "description"
+    MANUAL = "manual"
 
 
 class EvidenceScope(str, Enum):
     """Which mentions qualify toward an entity intersection.
 
     Expressed over mention **source** only, never detection method (FR-020d).
-    The two are orthogonal: every manually added and user-corrected mention is
-    transcript-sourced, so restricting to ``TRANSCRIPT`` retains all of them
-    rather than excluding the highest-trust evidence in the system.
+    ``TRANSCRIPT`` scope means spoken-or-vouched evidence: it retains both
+    ``transcript`` mentions and ``manual`` assertions (the highest-trust
+    evidence), excluding only title/description bloat. Manual assertions carried
+    a false ``transcript`` source until Feature 066 US4 gave them an honest
+    ``manual`` one; the intersection query includes both values explicitly (see
+    ``_TRANSCRIPT_SCOPE_SOURCES``) so the reclassification does not shed them.
 
     Named for what it will become, but a graded confidence model MUST arrive as
     a separate parameter rather than as new members here. A confidence

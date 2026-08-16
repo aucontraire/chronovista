@@ -189,7 +189,7 @@ chronovista entities backfill-descriptions --dry-run
 chronovista entities backfill-descriptions
 
 # Classify a tag as an entity (creates entity + aliases from tag)
-chronovista tags classify "aaron mate" --type person --description "Journalist, The Grayzone" --reason "The Grayzone reporter"
+chronovista tags classify "jane rivera" --type person --description "Journalist, Example Wire" --reason "Example Wire correspondent"
 ```
 
 ### Entity Mention Scanning (v0.41.0+)

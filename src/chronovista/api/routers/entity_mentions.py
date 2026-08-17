@@ -109,6 +109,10 @@ from chronovista.services.entity_curation_service import (
     OperationAlreadyUndoneError,
     OperationNotFoundError,
 )
+from chronovista.services.entity_enrichment_service import (
+    EntityEnrichmentService,
+    get_enrichment_service,
+)
 from chronovista.services.entity_mention_scan_service import (
     EntityMentionScanService,
     ScanResult,
@@ -119,6 +123,27 @@ from chronovista.services.tag_normalization import TagNormalizationService
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
 
 router = APIRouter(dependencies=[Depends(require_auth)])
+
+# Retained handles for detached on-approval enrichment tasks (Feature 068, research D1). A bare
+# ``asyncio.create_task`` handle can be garbage-collected mid-flight, silently dropping the
+# enrichment; the set + done-callback keep it alive until completion (mirrors ``_scan_tasks``).
+_enrichment_tasks: set[asyncio.Task[None]] = set()
+
+
+def _schedule_enrichment(
+    service: EntityEnrichmentService, entity_id: uuid.UUID, qid: str
+) -> None:
+    """Schedule the on-approval property fetch as a detached, GC-safe background task.
+
+    ``entity_id`` is normalized to a stdlib ``uuid.UUID`` so both call sites (create reads a
+    refreshed id; classify reads a pending object's ``uuid_utils.UUID`` default) feed the repository
+    WHERE an identical type — avoiding a latent zero-row silent no-op.
+    """
+    normalized_id = uuid.UUID(str(entity_id))
+    task = asyncio.create_task(service.enrich_on_approval(normalized_id, qid))
+    _enrichment_tasks.add(task)
+    task.add_done_callback(_enrichment_tasks.discard)
+
 
 # Module-level repository / service instantiation (singleton pattern)
 _mention_repo = EntityMentionRepository()
@@ -1522,6 +1547,7 @@ async def delete_manual_association(
 async def classify_tag(
     body: ClassifyTagRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    enrichment_service: EntityEnrichmentService = Depends(get_enrichment_service),
 ) -> dict[str, Any]:
     """Classify an existing canonical tag to create or link a named entity.
 
@@ -1698,14 +1724,29 @@ async def classify_tag(
     canonical_name = result.canonical_form
     description: str | None = body.description
 
+    # The entity the tag now resolves to — the newly created one OR a linked existing one.
+    resolved_entity_id: uuid.UUID | None = None
     if tag is not None and tag.entity_id is not None:
         entity = await session.get(NamedEntityDB, tag.entity_id)
         if entity is not None:
             entity_id_str = str(entity.id)
             canonical_name = entity.canonical_name
             description = entity.description
+            resolved_entity_id = entity.id
 
     await session.commit()
+
+    # Fetch curated properties in the background ONLY when classify CREATED a new grounded entity
+    # (FR-005). Linking/matching an existing entity never triggers a fetch (FR-009) — enforced by the
+    # ``result.entity_created`` guard, so a linked (not created) entity never fires.
+    if (
+        body.approved_identifier is not None
+        and result.entity_created
+        and resolved_entity_id is not None
+    ):
+        _schedule_enrichment(
+            enrichment_service, resolved_entity_id, body.approved_identifier.id
+        )
 
     return {
         "entity_id": entity_id_str,
@@ -1732,6 +1773,7 @@ async def classify_tag(
 async def create_entity(
     body: CreateEntityRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    enrichment_service: EntityEnrichmentService = Depends(get_enrichment_service),
 ) -> dict[str, Any]:
     """Create a standalone named entity with optional aliases.
 
@@ -1860,6 +1902,14 @@ async def create_entity(
     # 8. Commit and return 201
     await session.commit()
     await session.refresh(db_entity)
+
+    # 9. If grounded, fetch the entity's curated Wikidata properties in the background so a fresh
+    # grounded entity is enriched moments later (Feature 068, FR-005). Detached — the create action
+    # returns immediately (SC-003); a failed fetch leaves the entity grounded (FR-006).
+    if body.approved_identifier is not None:
+        _schedule_enrichment(
+            enrichment_service, db_entity.id, body.approved_identifier.id
+        )
 
     return {
         "entity_id": str(db_entity.id),

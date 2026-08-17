@@ -77,6 +77,11 @@ from chronovista.exceptions import (
 )
 from chronovista.models.correction_actors import ACTOR_USER_LOCAL
 from chronovista.models.entity_alias import EntityAliasCreate
+from chronovista.models.entity_enrichment import (
+    EntityEnrichment,
+    EntityIdentifierView,
+    ExternalIdentifier,
+)
 from chronovista.models.enums import (
     DiscoveryMethod,
     EntityAliasType,
@@ -111,6 +116,7 @@ from chronovista.services.entity_mention_scan_service import (
 from chronovista.services.phonetic_matcher import PhoneticMatcher
 from chronovista.services.tag_management import TagManagementService
 from chronovista.services.tag_normalization import TagNormalizationService
+from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -525,6 +531,105 @@ async def check_duplicate_entity(
 
 
 @router.get(
+    "/entities/wikidata-candidates",
+    status_code=200,
+    summary="Search Wikidata for entity-creation grounding candidates",
+)
+async def wikidata_candidates(
+    name: str = Query(..., min_length=1, description="Name to search Wikidata for"),
+    entity_type: str = Query(
+        ..., description="Entity type being assigned (for the cross-check)"
+    ),
+    limit: int = Query(5, ge=1, le=10, description="Max candidates (default 5)"),
+) -> dict[str, Any]:
+    """Return a ranked Wikidata shortlist for the create-time approval modal (US3).
+
+    Registered BEFORE ``/entities/{entity_id}`` so the static path is not captured as an id.
+
+    Degrades gracefully (Constitution VIII, FR-012/015): a reachable knowledge base with no
+    match returns ``candidates: []`` with ``unavailable: false`` (a benign "no match"); a
+    timeout / transport failure returns ``candidates: []`` with ``unavailable: true`` (a soft
+    failure) — never a 5xx that would block the modal. The two states are distinct so the
+    frontend can message them differently.
+    """
+    client = WikidataClient()
+    try:
+        candidates = await client.search_candidates(name, entity_type, limit=limit)
+        unavailable = False
+    except WikidataUnavailable:
+        candidates = []
+        unavailable = True
+
+    return {
+        "data": {
+            "candidates": [c.model_dump() for c in candidates],
+            "unavailable": unavailable,
+        }
+    }
+
+
+def _identifier_url(source: str, identifier: str) -> str:
+    """Build a public knowledge-base link for an identifier (Feature 067, FR-010)."""
+    if source == "wikidata":
+        return f"https://www.wikidata.org/wiki/{identifier}"
+    if source == "dbpedia":
+        return (
+            identifier
+            if identifier.startswith("http")
+            else f"http://dbpedia.org/resource/{identifier}"
+        )
+    return identifier
+
+
+def _build_enrichment(
+    external_ids: dict[str, Any] | None, properties: dict[str, Any] | None
+) -> EntityEnrichment:
+    """Assemble the viewer-facing enrichment block from the stored columns (US2).
+
+    Tolerates BOTH shapes of ``external_ids`` — the legacy bare string (e.g.
+    ``{"wikidata": "Q42"}``) and the Feature-067 structured object (``{"wikidata":
+    {"id": "Q42", "verified": true, "status": "confirmed"}}``) — so the coordinated shape
+    change does not break the detail page during the transition (ST-003). A recorded negative
+    (``id`` is null / ``status`` absent) yields no viewer-facing link, and the backend-only
+    ``status`` / ``link_provenance`` are never surfaced (FR-010, US2 clarification).
+
+    Non-dict inputs (e.g. a missing column or a test double) coerce to empty rather than
+    crashing the endpoint — the block simply renders "not grounded".
+    """
+    if not isinstance(external_ids, dict):
+        external_ids = {}
+    if not isinstance(properties, dict):
+        properties = {}
+    identifiers: list[EntityIdentifierView] = []
+    for source, value in external_ids.items():
+        if isinstance(value, str):
+            ident_id: str | None = value
+            verified = False
+        elif isinstance(value, dict):
+            raw_id = value.get("id")
+            ident_id = raw_id if isinstance(raw_id, str) else None
+            verified = bool(value.get("verified", False))
+        else:
+            continue
+        if not ident_id:
+            continue  # absent/negative — not a link
+        identifiers.append(
+            EntityIdentifierView(
+                source=source,
+                id=ident_id,
+                url=_identifier_url(source, ident_id),
+                verified=verified,
+            )
+        )
+
+    props = properties or {}
+    grounded = bool(props) or bool(identifiers)
+    return EntityEnrichment(
+        grounded=grounded, properties=props, identifiers=identifiers
+    )
+
+
+@router.get(
     "/entities/{entity_id}",
     status_code=200,
     summary="Get entity detail",
@@ -604,6 +709,9 @@ async def get_entity_detail(
             "by_source": association.by_source.model_dump(),
             "aliases": [a.model_dump() for a in genuine_aliases],
             "exclusion_patterns": list(entity.exclusion_patterns or []),
+            "enrichment": _build_enrichment(
+                entity.external_ids, entity.properties
+            ).model_dump(),
         }
     }
 
@@ -1497,6 +1605,17 @@ async def classify_tag(
             details={"entity_type": effective_entity_type},
         ) from exc
 
+    # Grounding (US3): a user-approved identifier is applied only when classify creates a NEW
+    # entity from the tag (not when it links/matches an existing one). Same structured shape as
+    # the standalone create path.
+    grounding_external_ids: dict[str, Any] = {}
+    if body.approved_identifier is not None:
+        grounding_external_ids[body.approved_identifier.source] = ExternalIdentifier(
+            id=body.approved_identifier.id,
+            verified=True,
+            status="verified",
+        ).model_dump()
+
     try:
         result = await _tag_mgmt_service.classify(
             session,
@@ -1506,6 +1625,7 @@ async def classify_tag(
             auto_case=True,
             display_name=body.display_name,
             link_entity_id=body.link_entity_id,
+            external_ids=grounding_external_ids,
             actor=ACTOR_USER_LOCAL,
         )
     except ValueError as exc:
@@ -1594,6 +1714,7 @@ async def classify_tag(
         "description": description,
         "alias_count": result.entity_alias_count,
         "entity_created": result.entity_created,
+        "grounded": bool(grounding_external_ids) and result.entity_created,
         "operation_id": str(result.operation_id),
     }
 
@@ -1686,7 +1807,18 @@ async def create_entity(
             },
         )
 
-    # 5. Create entity via repository
+    # 5. Create entity via repository. If the user approved a knowledge-base match, ground the
+    # entity with a human-verified identifier (US3, FR-014); otherwise it is created ungrounded
+    # (grounding never blocks creation — FR-012). No DBpedia call here; that IRI is filled by
+    # the back-fill (spec Non-Goals).
+    external_ids: dict[str, Any] = {}
+    if body.approved_identifier is not None:
+        external_ids[body.approved_identifier.source] = ExternalIdentifier(
+            id=body.approved_identifier.id,
+            verified=True,
+            status="verified",
+        ).model_dump()
+
     entity_create = NamedEntityCreate(
         canonical_name=canonical_name,
         canonical_name_normalized=normalized_name,
@@ -1695,6 +1827,7 @@ async def create_entity(
         status=TagStatus.ACTIVE,
         discovery_method=DiscoveryMethod.USER_CREATED,
         confidence=1.0,
+        external_ids=external_ids,
     )
     db_entity = await _entity_repo.create(session, obj_in=entity_create)
 
@@ -1734,6 +1867,7 @@ async def create_entity(
         "entity_type": db_entity.entity_type,
         "description": db_entity.description,
         "alias_count": len(seen_normalized),
+        "grounded": bool(external_ids),
     }
 
 

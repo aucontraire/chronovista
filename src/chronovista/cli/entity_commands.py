@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from pathlib import Path
 from typing import Annotated, Any
 
 import typer
@@ -43,6 +44,10 @@ from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
+from chronovista.services.entity_enrichment_loader import (
+    load_enrichment,
+    parse_ledger,
+)
 from chronovista.services.entity_mention_scan_service import (
     EntityMentionScanService,
     ScanResult,
@@ -1428,5 +1433,82 @@ def entity_stats(
                         border_style="yellow",
                     )
                 )
+
+    asyncio.run(_run())
+
+
+@entity_app.command("load-enrichment")
+def load_enrichment_command(
+    ledger: Annotated[
+        Path,
+        typer.Option(
+            "--ledger",
+            help="Path to the entity-resolution ledger export (JSON).",
+        ),
+    ] = Path("data/entity-resolution/entities.json"),
+    apply: Annotated[
+        bool,
+        typer.Option(
+            "--apply",
+            help="Write changes. Without this flag the command is a dry run.",
+        ),
+    ] = False,
+) -> None:
+    """Load knowledge-base enrichment from the ledger into the database (Feature 067).
+
+    Dry run by default; pass ``--apply`` to write. Reports how many entities were written,
+    which records were skipped because the entity is absent (FR-005b), and whether the export
+    covers every active entity (FR-007/ST-006 — a stale partial snapshot fails coverage even
+    when every write succeeds).
+
+    Operational (S7): verify the effective database target before ``--apply`` — a
+    development-mode flag can silently redirect writes to the dev database.
+    """
+
+    async def _run() -> None:
+        if not ledger.exists():
+            console.print(
+                Panel(
+                    f"[red]Ledger export not found:[/red] {ledger}",
+                    title="Not Found",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
+
+        records = parse_ledger(ledger)
+
+        async for session in db_manager.get_session(echo=False):
+            report = await load_enrichment(session, records, apply=apply)
+            if apply:
+                await session.commit()
+
+        table = Table(title="Enrichment Load" + ("" if apply else " (dry run)"))
+        table.add_column("Metric")
+        table.add_column("Value", justify="right")
+        table.add_row("Records parsed", str(report.total_records))
+        table.add_row("Written" if apply else "Would write", str(report.written))
+        table.add_row("Skipped (entity absent)", str(len(report.skipped_absent)))
+        table.add_row("Active entities in DB", str(report.active_entity_count))
+        table.add_row("Active entities covered", str(report.active_covered))
+        table.add_row(
+            "Active entities MISSING from export", str(len(report.missing_active))
+        )
+        console.print(table)
+
+        if report.coverage_complete:
+            console.print(
+                "[green]Coverage complete: the export covers every active entity.[/green]"
+            )
+        else:
+            console.print(
+                Panel(
+                    f"[yellow]Coverage INCOMPLETE:[/yellow] {len(report.missing_active)} active "
+                    "entities are not in the export. This looks like a stale partial snapshot — "
+                    "re-export the ledger before trusting this load (ST-006).",
+                    title="Coverage Gap",
+                    border_style="yellow",
+                )
+            )
 
     asyncio.run(_run())

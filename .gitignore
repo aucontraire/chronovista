@@ -310,3 +310,9 @@ frontend/build/
 # library by scripts/utilities/gen_private_terms.py. This file IS the sensitive
 # data — it must never be committed.
 .private-terms
+
+# Entity-resolution pipeline (untracked working scripts). These read/write the
+# local library and carry real entity names in comments/examples/output — exactly
+# the library content that must not enter this public repo (CLAUDE.md, Constitution
+# VI). Kept out of version control so a `git add -A` cannot sweep them in.
+scripts/entity_resolution/

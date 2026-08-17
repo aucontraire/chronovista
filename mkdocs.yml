@@ -145,6 +145,7 @@ nav:
       - Find entity intersections: user-guide/entity-intersection.md
       - Fix an over-matching entity: user-guide/entity-curation.md
       - Attach tags to an entity: user-guide/entity-tags.md
+      - Ground entities in a knowledge base: user-guide/entity-enrichment.md
       - CLI workflows: user-guide/cli-overview.md
       - Run the REST API: user-guide/rest-api.md
       - Deploy with Docker: guides/migrating-to-docker.md

@@ -40,7 +40,14 @@ import { useState, useEffect, useRef, useCallback, useId } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useCanonicalTags } from "../../hooks/useCanonicalTags";
-import { useClassifyTag, useCheckDuplicate, useCreateEntity } from "../../hooks/useEntityMentions";
+import { useDebounce } from "../../hooks/useDebounce";
+import {
+  useClassifyTag,
+  useCheckDuplicate,
+  useCreateEntity,
+  useWikidataCandidates,
+} from "../../hooks/useEntityMentions";
+import type { WikidataCandidate } from "../../api/entityMentions";
 import {
   ENTITY_PRODUCING_TYPES,
   ENTITY_TYPE_LABELS,
@@ -158,6 +165,18 @@ export default function CreateEntityModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Feature 067 (US3): a Wikidata match the user has explicitly approved to
+  // ground the new standalone entity, plus whether they've deliberately
+  // opted out of grounding. Grounding never blocks creation either way.
+  const [approvedCandidate, setApprovedCandidate] =
+    useState<WikidataCandidate | null>(null);
+  const [groundingSkipped, setGroundingSkipped] = useState(false);
+  // Feature 067 (US3, "Option C"): true once the user has edited the
+  // Description field themselves. Approving a candidate only ever prefills
+  // an empty, untouched Description — this flag is what stops a later
+  // re-approval from clobbering (or re-populating) what the user typed.
+  const [descriptionTouched, setDescriptionTouched] = useState(false);
+
   // ---------------------------------------------------------------------------
   // Mutation
   // ---------------------------------------------------------------------------
@@ -170,6 +189,30 @@ export default function CreateEntityModal({
   // ---------------------------------------------------------------------------
 
   const duplicateCheck = useCheckDuplicate(name, entityType);
+
+  // ---------------------------------------------------------------------------
+  // Wikidata grounding lookup (Feature 067, US3) — auto-searches once a name
+  // and type are present, in EITHER creation mode. Grounding is a property of
+  // the name+type being classified, not of whether a tag happens to already
+  // exist for it (that's just the content creator's tagging behavior).
+  // ---------------------------------------------------------------------------
+
+  // The name actually being classified: in "creating from tag" mode that's
+  // the (editable) display name, falling back to the tag's own canonical
+  // form until the user types one; in standalone mode it's the name field.
+  const groundingName =
+    selectedTag !== null
+      ? displayName.trim() || selectedTag.canonical_form
+      : name.trim();
+  // Debounced so typing doesn't spam the lookup on every keystroke.
+  const debouncedGroundingName = useDebounce(groundingName, 450);
+  const wikidata = useWikidataCandidates(debouncedGroundingName, entityType);
+  // True while a debounced search is pending — lets the UI show a "searching"
+  // state immediately instead of a blank gap before the debounce settles.
+  const isGroundingNameSettling =
+    groundingName !== "" &&
+    entityType !== "" &&
+    debouncedGroundingName !== groundingName;
 
   // ---------------------------------------------------------------------------
   // Tag autocomplete state
@@ -185,6 +228,8 @@ export default function CreateEntityModal({
 
   // Stable IDs for ARIA relationships
   const listboxId = useId();
+  // Radio group `name` for Wikidata candidate selection (Feature 067, US3).
+  const wikidataGroupName = useId();
 
   // ---------------------------------------------------------------------------
   // Tag search via useCanonicalTags (300 ms debounce built into hook)
@@ -250,6 +295,15 @@ export default function CreateEntityModal({
     setError(null);
     setShowDropdown(false);
     setHighlightedIndex(-1);
+    setApprovedCandidate(null);
+    setGroundingSkipped(false);
+    setDescriptionTouched(false);
+    wikidata.reset();
+    // Intentionally omits `wikidata` (a new object every render) so this
+    // callback's identity stays stable — matching every other setter above,
+    // which are themselves stable. Including it would re-trigger the
+    // isOpen-close effect below on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -270,6 +324,39 @@ export default function CreateEntityModal({
     // so we don't create a loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name, entityType, description]);
+
+  // ---------------------------------------------------------------------------
+  // Discard a stale Wikidata grounding search when the effective name or type
+  // changes (Feature 067, US3) — a candidate approved for one name/type must
+  // not silently carry over to a different one.
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    setApprovedCandidate(null);
+    setGroundingSkipped(false);
+    wikidata.reset();
+    // Intentionally depends on groundingName/entityType only, not on
+    // `wikidata` (a new object every render) or the grounding state itself,
+    // to avoid a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groundingName, entityType]);
+
+  // ---------------------------------------------------------------------------
+  // Auto-search Wikidata once the debounced name/type are both present
+  // (Feature 067, US3) — replaces the old manual "Search Wikidata" trigger so
+  // grounding is discoverable without the user having to find a button. Never
+  // blocks or delays the Create button; a slow/failed lookup just shows its
+  // own state below.
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (debouncedGroundingName !== "" && entityType !== "") {
+      wikidata.search();
+    }
+    // Intentionally depends on the debounced name/entityType only, not on
+    // `wikidata` (a new object every render), to avoid a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedGroundingName, entityType]);
 
   // ---------------------------------------------------------------------------
   // Auto-focus name field on open
@@ -960,6 +1047,252 @@ export default function CreateEntityModal({
             </div>
           )}
 
+          {/* ---------------------------------------------------------------- */}
+          {/* Wikidata grounding (Feature 067, US3) — shown in BOTH standalone */}
+          {/* and "creating from tag" modes; grounding a tag being promoted is */}
+          {/* just as valid as grounding a standalone entity. Auto-searches    */}
+          {/* once name+type are present. Always optional: every path here     */}
+          {/* leaves the primary submit button enabled, so a slow/unavailable/ */}
+          {/* empty lookup never blocks creation.                              */}
+          {/* ---------------------------------------------------------------- */}
+          {groundingName !== "" && entityType !== "" && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-sm font-medium text-gray-700">
+                  Ground in Wikidata{" "}
+                  <span className="text-xs font-normal text-gray-400">
+                    — optional
+                  </span>
+                </span>
+                {wikidata.hasSearched && (
+                  <button
+                    type="button"
+                    onClick={() => wikidata.search()}
+                    disabled={isSubmitting || wikidata.isFetching}
+                    className="
+                      text-xs text-indigo-600 hover:text-indigo-700
+                      font-medium
+                      disabled:opacity-50 disabled:cursor-not-allowed
+                      focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 rounded
+                    "
+                  >
+                    Search again
+                  </button>
+                )}
+              </div>
+
+              {!groundingSkipped && (
+                <div className="space-y-2">
+                  {(isGroundingNameSettling ||
+                    (wikidata.hasSearched && wikidata.isLoading)) && (
+                    <p
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-center gap-2 text-xs text-gray-500"
+                    >
+                      <span
+                        className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"
+                        aria-hidden="true"
+                      />
+                      Searching Wikidata…
+                    </p>
+                  )}
+
+                  {!isGroundingNameSettling &&
+                    wikidata.hasSearched &&
+                    !wikidata.isLoading &&
+                    wikidata.unavailable && (
+                    <p
+                      role="status"
+                      aria-live="polite"
+                      className="px-3 py-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md"
+                    >
+                      Couldn&rsquo;t reach Wikidata. You can still create this
+                      entity without grounding.
+                    </p>
+                  )}
+
+                  {!isGroundingNameSettling &&
+                    wikidata.hasSearched &&
+                    !wikidata.isLoading &&
+                    !wikidata.unavailable &&
+                    wikidata.candidates.length === 0 && (
+                      <p
+                        role="status"
+                        aria-live="polite"
+                        className="px-3 py-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-md"
+                      >
+                        No matching entries found on Wikidata. You can still
+                        create this entity without grounding.
+                      </p>
+                    )}
+
+                  {!isGroundingNameSettling &&
+                    !wikidata.isLoading &&
+                    wikidata.candidates.length > 0 && (
+                    <fieldset>
+                      <legend className="sr-only">
+                        Select a Wikidata match to ground this entity
+                        (optional)
+                      </legend>
+                      <div
+                        role="radiogroup"
+                        aria-label="Wikidata candidates"
+                        className="space-y-2"
+                      >
+                        {wikidata.candidates.map((candidate) => {
+                          const isSelected =
+                            approvedCandidate?.qid === candidate.qid;
+                          return (
+                            <label
+                              key={candidate.qid}
+                              className={`
+                                flex items-start gap-3
+                                px-3 py-2.5
+                                border rounded-lg cursor-pointer
+                                ${
+                                  isSelected
+                                    ? "border-indigo-400 bg-indigo-50"
+                                    : "border-gray-200 hover:bg-gray-50"
+                                }
+                              `}
+                            >
+                              <input
+                                type="radio"
+                                name={wikidataGroupName}
+                                value={candidate.qid}
+                                checked={isSelected}
+                                onChange={() => {
+                                  setApprovedCandidate(candidate);
+                                  // Feature 067 (US3, "Option C"): only ever
+                                  // prefill an empty, untouched Description —
+                                  // never overwrite what the user typed.
+                                  if (!descriptionTouched && description.trim() === "") {
+                                    setDescription(candidate.description ?? "");
+                                  }
+                                }}
+                                disabled={isSubmitting}
+                                className="mt-1"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-semibold text-gray-900">
+                                    {candidate.label}
+                                  </span>
+                                  <span className="text-xs text-gray-400">
+                                    {candidate.qid}
+                                  </span>
+                                  {candidate.type_matches ? (
+                                    <span className="text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+                                      Type match
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs font-medium text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">
+                                      Type may differ
+                                    </span>
+                                  )}
+                                </div>
+                                {candidate.description !== null && (
+                                  <p className="mt-0.5 text-xs text-gray-500">
+                                    {candidate.description}
+                                  </p>
+                                )}
+                                <p className="mt-1 text-xs text-gray-400">
+                                  {candidate.statement_count} statements ·{" "}
+                                  {candidate.sitelink_count} sitelinks
+                                </p>
+                                {candidate.is_stub && (
+                                  <p
+                                    role="note"
+                                    className="inline-block mt-1 px-2 py-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md"
+                                  >
+                                    Stub — limited Wikidata data available
+                                  </p>
+                                )}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  )}
+
+                  {approvedCandidate !== null ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500">
+                        Grounded to
+                      </span>
+                      <span
+                        className="
+                          inline-flex items-center gap-1.5
+                          px-2.5 py-0.5
+                          text-xs font-medium
+                          bg-indigo-50 text-indigo-700 border border-indigo-200
+                          rounded-full
+                        "
+                      >
+                        {approvedCandidate.label} ({approvedCandidate.qid})
+                        <button
+                          type="button"
+                          onClick={() => setApprovedCandidate(null)}
+                          disabled={isSubmitting}
+                          aria-label={`Remove grounding to ${approvedCandidate.label}`}
+                          className="
+                            inline-flex items-center justify-center
+                            w-3.5 h-3.5 -mr-0.5
+                            rounded-full
+                            text-indigo-400 hover:text-indigo-700 hover:bg-indigo-100
+                            focus:outline-none focus-visible:ring-1 focus-visible:ring-indigo-500
+                            disabled:opacity-50 disabled:cursor-not-allowed
+                          "
+                        >
+                          <svg
+                            className="w-2.5 h-2.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            aria-hidden="true"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2.5}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                        </button>
+                      </span>
+                    </div>
+                  ) : (
+                    !isGroundingNameSettling &&
+                    wikidata.hasSearched &&
+                    !wikidata.isLoading && (
+                      <button
+                        type="button"
+                        onClick={() => setGroundingSkipped(true)}
+                        disabled={isSubmitting}
+                        className="
+                          text-xs text-gray-500 hover:text-gray-700
+                          font-medium
+                          disabled:opacity-50 disabled:cursor-not-allowed
+                          focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 rounded
+                        "
+                      >
+                        Create without grounding
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
+
+              {groundingSkipped && (
+                <p className="text-xs text-gray-400">
+                  Creating without Wikidata grounding.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* ---- Description field (optional) ---- */}
           <div>
             <label
@@ -974,7 +1307,10 @@ export default function CreateEntityModal({
             <textarea
               id="create-entity-description"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescription(e.target.value);
+                setDescriptionTouched(true);
+              }}
               disabled={isSubmitting}
               placeholder="Short description of this entity…"
               rows={3}
@@ -1136,6 +1472,16 @@ export default function CreateEntityModal({
                     ...(trimmedAliases.length > 0
                       ? { aliases: trimmedAliases }
                       : {}),
+                    // Feature 067 (US3): only present when the user explicitly
+                    // approved a Wikidata match — never sent otherwise.
+                    ...(approvedCandidate !== null
+                      ? {
+                          approvedIdentifier: {
+                            source: "wikidata",
+                            id: approvedCandidate.qid,
+                          },
+                        }
+                      : {}),
                   },
                   {
                     onSuccess: () => {
@@ -1166,6 +1512,17 @@ export default function CreateEntityModal({
                   // FR-009: sent verbatim, no re-casing.
                   ...(trimmedDisplayName
                     ? { display_name: trimmedDisplayName }
+                    : {}),
+                  // Feature 067 (US3): only present when the user explicitly
+                  // approved a Wikidata match — never sent otherwise. Applied
+                  // by the backend only when this call creates a new entity.
+                  ...(approvedCandidate !== null
+                    ? {
+                        approvedIdentifier: {
+                          source: "wikidata",
+                          id: approvedCandidate.qid,
+                        },
+                      }
                     : {}),
                 },
                 {

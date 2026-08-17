@@ -967,6 +967,14 @@ class NamedEntity(Base):
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
 
+    # Knowledge-base enrichment property bag (Feature 067). Keyed by property name; each
+    # value is an open, heterogeneous dict from the entity-resolution pipeline (commonly
+    # values / qids / literals / source, accumulated across pipeline versions). Stored and
+    # mirrored verbatim — see models.entity_enrichment for why no rigid sub-schema is imposed.
+    properties: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+
     # Exclusion patterns for entity mention detection
     exclusion_patterns: Mapped[list[Any]] = mapped_column(
         JSONB, server_default=text("'[]'::jsonb"), nullable=False

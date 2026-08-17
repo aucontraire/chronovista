@@ -467,6 +467,23 @@ class DuplicateCheckResponse(BaseModel):
     )
 
 
+class ApprovedIdentifier(BaseModel):
+    """A knowledge-base identifier the user explicitly approved at creation (Feature 067, US3).
+
+    Present ONLY after the user approves a candidate in the shortlist; its presence is what
+    grounds the new entity with a human-verified identifier (FR-012/FR-014).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    source: Literal["wikidata"] = Field(
+        description="Knowledge base of the approved identifier"
+    )
+    id: str = Field(
+        ..., min_length=1, description="The approved identifier value (QID)"
+    )
+
+
 class CreateEntityRequest(BaseModel):
     """Request body for standalone entity creation.
 
@@ -480,6 +497,9 @@ class CreateEntityRequest(BaseModel):
         Optional entity description (max 5000 chars).
     aliases : list[str]
         Optional list of alias strings (max 20).
+    approved_identifier : ApprovedIdentifier | None
+        Optional grounding approved by the user; when present the entity is created with a
+        human-verified identifier (US3). Omitted → the entity is created ungrounded.
     """
 
     model_config = ConfigDict(strict=True)
@@ -497,6 +517,10 @@ class CreateEntityRequest(BaseModel):
         default_factory=list,
         max_length=20,
         description="Optional alias strings",
+    )
+    approved_identifier: ApprovedIdentifier | None = Field(
+        default=None,
+        description="User-approved knowledge-base grounding (US3); omitted → ungrounded",
     )
 
     @field_validator("entity_type")
@@ -571,6 +595,14 @@ class ClassifyTagRequest(BaseModel):
         # EntityType fields use.
         strict=False,
         description="Link to this existing entity instead of creating one",
+    )
+    approved_identifier: ApprovedIdentifier | None = Field(
+        default=None,
+        description=(
+            "User-approved knowledge-base grounding (Feature 067, US3). Applied only when a "
+            "NEW entity is created from the tag; ignored when linking/matching an existing "
+            "entity. Omitted → ungrounded."
+        ),
     )
 
     @field_validator("entity_type")

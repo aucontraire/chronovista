@@ -95,6 +95,17 @@ vi.mock("../../hooks/useEntityMentions", () => ({
     isLoading: false,
     isError: false,
   })),
+  useWikidataCandidates: vi.fn(() => ({
+    candidates: [],
+    unavailable: false,
+    hasSearched: false,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+    search: vi.fn(),
+    reset: vi.fn(),
+  })),
   useScanEntity: vi.fn(() => ({
     mutate: vi.fn(),
     isPending: false,

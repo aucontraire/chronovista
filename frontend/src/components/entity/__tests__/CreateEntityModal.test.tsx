@@ -42,6 +42,13 @@ vi.mock("../../../hooks/useCanonicalTags", () => ({
   useCanonicalTags: vi.fn(),
 }));
 
+// Pass-through: keeps the Feature 067 grounding auto-search effect
+// synchronous with `fireEvent`, avoiding a race against the real debounce
+// timer in tests unrelated to grounding.
+vi.mock("../../../hooks/useDebounce", () => ({
+  useDebounce: (value: unknown) => value,
+}));
+
 vi.mock("../../../hooks/useEntityMentions", () => ({
   useClassifyTag: vi.fn(),
   useVideoEntities: vi.fn(),
@@ -51,6 +58,7 @@ vi.mock("../../../hooks/useEntityMentions", () => ({
   useDeleteManualAssociation: vi.fn(),
   useCheckDuplicate: vi.fn(),
   useCreateEntity: vi.fn(),
+  useWikidataCandidates: vi.fn(),
   useScanEntity: vi.fn(() => ({
     mutate: vi.fn(),
     isPending: false,
@@ -76,7 +84,12 @@ vi.mock("../../../hooks/useEntityMentions", () => ({
 import CreateEntityModal from "../CreateEntityModal";
 import type { CreateEntityModalProps } from "../CreateEntityModal";
 import { useCanonicalTags } from "../../../hooks/useCanonicalTags";
-import { useClassifyTag, useCheckDuplicate, useCreateEntity } from "../../../hooks/useEntityMentions";
+import {
+  useClassifyTag,
+  useCheckDuplicate,
+  useCreateEntity,
+  useWikidataCandidates,
+} from "../../../hooks/useEntityMentions";
 import type { Mock } from "vitest";
 import { ENTITY_PRODUCING_TYPES, ENTITY_TYPE_TOOLTIPS } from "../../../constants/entityTypes";
 
@@ -166,6 +179,19 @@ function setupDefaultMocks() {
     data: { is_duplicate: false, existing_entity: null },
     isLoading: false,
     isError: false,
+  });
+
+  // Default: grounding never searched — keeps all pre-existing tests green.
+  (useWikidataCandidates as Mock).mockReturnValue({
+    candidates: [],
+    unavailable: false,
+    hasSearched: false,
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    error: null,
+    search: vi.fn(),
+    reset: vi.fn(),
   });
 }
 

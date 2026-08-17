@@ -1055,6 +1055,9 @@ export interface ScanEntityVariables {
  * On success, invalidates caches for:
  * - `entity-detail` (so the entity header reflects updated mention counts)
  * - `entity-videos` (so the entity-to-videos list refreshes)
+ * - `video-entities` family (an entity scan can create/remove associations
+ *   for any video, so every mounted EntityMentionsPanel must refresh)
+ * - `entities` / `entitySearch` (aggregate mention counts shown elsewhere)
  *
  * A 409 launch error ("scan already in progress") and a failed job both
  * surface via `onError` — inspect `error.status` (409 for "already running")
@@ -1083,6 +1086,9 @@ export function useScanEntity(): UseScanFlowResult<ScanEntityVariables> {
     (targetId: string) => [
       ["entity-detail", targetId],
       ["entity-videos", targetId],
+      ["video-entities"],
+      ["entities"],
+      ["entitySearch"],
     ],
     []
   );
@@ -1107,8 +1113,11 @@ export interface ScanVideoEntitiesVariables {
  * completion.
  *
  * See `useScanEntity` for the shared launch→poll behaviour. On success,
- * invalidates the cache for:
+ * invalidates caches for:
  * - `video-entities` (so the EntityMentionsPanel refreshes with new detections)
+ * - `entity-videos` / `entity-detail` families (a video scan can create/remove
+ *   associations for any entity, so every mounted entity view must refresh)
+ * - `entities` / `entitySearch` (aggregate mention counts shown elsewhere)
  *
  * @returns `{ mutate({ videoId, options? }, { onSuccess, onError }), isPending, data, error, ... }`
  *
@@ -1125,7 +1134,13 @@ export function useScanVideoEntities(): UseScanFlowResult<ScanVideoEntitiesVaria
     []
   );
   const getInvalidationKeys = useCallback(
-    (targetId: string) => [["video-entities", targetId]],
+    (targetId: string) => [
+      ["video-entities", targetId],
+      ["entity-videos"],
+      ["entity-detail"],
+      ["entities"],
+      ["entitySearch"],
+    ],
     []
   );
   return useScanJobFlow(launch, getInvalidationKeys);

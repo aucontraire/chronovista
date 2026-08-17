@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.70.1] - 2026-08-17
+
 ### Fixed
 - **Scan results now appear without a manual refresh.** When an entity-mention scan finishes, it now refreshes *both* sides of any association it changed — the video's entities panel and the affected entities' video lists — instead of only the side the scan was launched from. Newly detected associations were always correct in the database; they just stayed stale in the UI until a page reload, depending on which view you were on. (Frontend 0.35.1.)
 

@@ -39,6 +39,16 @@ import { ExclusionPatternsSection } from "../components/corrections/ExclusionPat
 /** Default page title to restore on unmount */
 const DEFAULT_PAGE_TITLE = "Chronovista";
 
+/**
+ * FR-005a: while a just-grounded entity's background-fetched Wikidata
+ * properties are still populating, the detail query refetches a few times
+ * over a short window so they appear without a manual reload. Bounded by
+ * attempt count (via `query.state.dataUpdateCount`) so it can never poll
+ * indefinitely — mirrors the scan-job polling pattern in useEntityMentions.ts.
+ */
+const ENRICH_POLL_MAX_ATTEMPTS = 5;
+const ENRICH_POLL_INTERVAL_MS = 1500;
+
 // ---------------------------------------------------------------------------
 // Entity detail type (fetched from the named-entities endpoint)
 // ---------------------------------------------------------------------------
@@ -1267,6 +1277,17 @@ export function EntityDetailPage() {
       const status = (err as { status?: number } | null)?.status;
       if (status === 404) return false;
       return failureCount < 3;
+    },
+    // FR-005a: bounded auto-refetch — poll only while grounded and properties
+    // are still empty, and only for a capped number of attempts. Stops the
+    // moment properties are present, the entity isn't grounded, or the cap
+    // is reached; never polls indefinitely.
+    refetchInterval: (query) => {
+      const enrichment = query.state.data?.enrichment;
+      if (!enrichment?.grounded) return false;
+      if (Object.keys(enrichment.properties).length > 0) return false;
+      if (query.state.dataUpdateCount >= ENRICH_POLL_MAX_ATTEMPTS) return false;
+      return ENRICH_POLL_INTERVAL_MS;
     },
   });
 

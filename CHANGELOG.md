@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-08-17
+
+### Added
+- **A newly grounded entity is enriched immediately.** When you ground an entity against a public knowledge base as you create it — standalone or by promoting a tag — its property set (occupation, country, dates, and so on) is now fetched in the background and appears on the entity detail page moments later, without a reload. Previously a freshly grounded entity showed only its identifier and an empty properties panel until the next batch resolution run; it now looks as complete as a pipeline-imported one. Creation itself is never delayed by the fetch, and if the knowledge base is unreachable the entity simply stays grounded with its identifier (no error surfaced) while the batch pipeline fills the properties on its next run.
+
+### Technical
+- **The on-approval fetch writes the same shape the batch load produces.** The curated field mapping and value-label resolution were ported into tracked application code (they previously lived only in an uncommitted resolution script that is absent from a fresh install), so the on-approval write and a later batch load agree by construction — a load neither conflicts with nor reshapes the app-written properties. The fetch runs off the request path as a background task and writes only the property bag, never the verified identifier or the human-edited display fields. It applies at create time only; refreshing already-existing entities remains the batch pipeline's job.
+
 ## [0.69.0] - 2026-08-16
 
 ### Added

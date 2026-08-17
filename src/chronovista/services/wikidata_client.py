@@ -15,11 +15,13 @@ which is distinct from an empty shortlist meaning "no match".
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
 from chronovista.models.wikidata_candidate import WikidataCandidate
+from chronovista.services import wikidata_properties as wp
 
 API = "https://www.wikidata.org/w/api.php"
 USER_AGENT = "chronovista/1.0 (local personal library tooling)"
@@ -150,6 +152,64 @@ class WikidataClient:
                 )
             )
         return candidates
+
+    async def fetch_properties(self, qid: str) -> dict[str, Any]:
+        """Fetch the curated property fields for one grounded entity (Feature 068).
+
+        Two batched ``wbgetentities`` rounds — ``props=claims`` to extract the curated
+        ``WANTED`` / ``WANTED_LITERAL`` fields, then ``props=labels`` to resolve the item-reference
+        value-QIDs to readable labels — assembled into the persisted verbatim shape
+        ``{field: {"values", "qids", "source", "set_at"}}`` (spec FR-002). An unresolved value-QID is
+        kept as its QID (FR-007). Returns ``{}`` if the item asserts none of the wanted properties.
+
+        Parameters
+        ----------
+        qid : str
+            The Wikidata QID of the just-grounded entity.
+
+        Returns
+        -------
+        dict[str, Any]
+            The property bag in the same shape the batch load persists.
+
+        Raises
+        ------
+        WikidataUnavailable
+            On transport error or rate-limit exhaustion — the caller degrades to "grounded, no
+            properties; the next batch run fills them" (FR-006).
+        """
+        http = self._http or self._new_client()
+        owns = self._http is None
+        try:
+            claims_data = await self._get(
+                http, action="wbgetentities", ids=qid, props="claims"
+            )
+            entity = (claims_data.get("entities") or {}).get(qid) or {}
+            extracted = wp.extract_claims(entity.get("claims") or {})
+            if not extracted:
+                return {}
+
+            labels: dict[str, str] = {}
+            pending = wp.value_qids(extracted)
+            for i in range(0, len(pending), 50):
+                chunk = pending[i : i + 50]
+                label_data = await self._get(
+                    http,
+                    action="wbgetentities",
+                    ids="|".join(chunk),
+                    props="labels",
+                    languages=wp.LABEL_LANGS,
+                )
+                for vqid, ent in (label_data.get("entities") or {}).items():
+                    text = wp.pick_label(ent.get("labels") or {})
+                    if text:
+                        labels[vqid] = text
+        finally:
+            if owns:
+                await http.aclose()
+
+        set_at = datetime.now(UTC).isoformat()
+        return wp.assemble_properties(extracted, labels, set_at)
 
     @staticmethod
     def _resolve_label(hit: dict[str, Any], labels: dict[str, Any]) -> str:

@@ -77,10 +77,16 @@ rather than reported as a silent success.
 
 ## What is filled now, and what is filled later
 
-Grounding an entity in the app stores the **identifier** immediately, but not the property
-set. The properties are produced by the batch resolution pipeline and landed by
-`load-enrichment`. So a freshly grounded entity shows its verified identifier right away and
-its properties after the next pipeline run — it does not fill in on its own in the background.
+Grounding an entity in the app stores the **identifier** immediately, and its **properties**
+(occupation, country, dates, and so on) are then fetched **in the background** — they appear on the
+entity's detail page moments later, without you reloading. The create action itself never waits on
+this fetch, so grounding stays instant.
+
+If that background fetch cannot reach the knowledge base, the entity simply stays grounded with its
+identifier and no properties (no error is shown); the batch resolution pipeline fills them on its
+next run. The batch pipeline (landed by `load-enrichment`) also remains the source of record for
+**existing** entities — the on-approval fetch only runs at create time, for the entity being
+grounded.
 
 For how the enrichment is stored, see
 [Data model](../architecture/data-model.md).

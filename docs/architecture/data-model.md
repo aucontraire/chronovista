@@ -113,8 +113,11 @@ because the fact set is open and varies by entity type. Neither column is indexe
 yet: a facet is promoted to an index only when a surface actually filters on it.
 
 The database is authoritative once the enrichment is loaded; the pipeline's export file is
-historical. Grounding an entity in the app writes only its identifier — the fact bag is filled
-by the batch pipeline, not on creation.
+historical. Grounding an entity in the app writes its identifier immediately and then fetches the
+fact bag in the background — in the same verbatim shape the batch load produces, so a later load
+neither conflicts with nor reshapes it. That on-approval fetch runs at create time only and writes
+only the property bag (never the identifier or display fields); refreshing already-existing entities
+remains the batch pipeline's job.
 
 ### One canonical user identity
 

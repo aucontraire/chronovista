@@ -85,3 +85,48 @@ class NamedEntityRepository(
         )
         result = await session.execute(stmt)
         return result.rowcount
+
+    async def replace_properties(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+        *,
+        properties: dict[str, Any],
+    ) -> int:
+        """Properties-only write of knowledge-base enrichment for one entity (Feature 068).
+
+        Sets only ``properties`` (plus the automatic ``updated_at`` bump from the column's
+        ``onupdate``). The SET clause never contains ``external_ids`` (so the verified grounding
+        identifier set at create survives — the anti-clobber guard, research D4) nor the
+        human-authored display fields (``canonical_name``, ``canonical_name_normalized``,
+        ``description``). It is deliberately narrower than ``replace_enrichment``, which sets both
+        ``properties`` and ``external_ids``. UPDATE-only: 0 rows means the entity is absent.
+
+        **Full-replace, not a merge.** This overwrites the whole ``properties`` bag. It is intended
+        for the create-time on-approval path only, where the entity's bag is empty (``create_entity``
+        / ``classify`` do not set ``properties``), so a fresh grounded entity's fetched bag is exactly
+        what a later batch load would write (FR-002). Do NOT use it to refresh an entity that may hold
+        hand-set or description-parsed fields — the pipeline's rank-aware merge owns that (FR-011; the
+        Feature 069 follow-up), and a full-replace here would silently wipe those fields.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        entity_id : uuid.UUID
+            Target entity's primary key.
+        properties : dict[str, Any]
+            The property bag, mirrored verbatim into ``named_entities.properties``.
+
+        Returns
+        -------
+        int
+            Number of rows updated: 1 if the entity existed, 0 if it was absent.
+        """
+        stmt = (
+            update(NamedEntityDB)
+            .where(NamedEntityDB.id == entity_id)
+            .values(properties=properties)
+        )
+        result = await session.execute(stmt)
+        return result.rowcount

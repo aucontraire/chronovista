@@ -16,11 +16,14 @@
  * - useScanEntity: 409 on launch (already in progress) — onError fires
  *   immediately with status 409, no polling occurs
  * - useScanEntity: polls getScanJob every 2s while running, stops once terminal
- * - useScanEntity: invalidates ["entity-detail", entityId] and
- *   ["entity-videos", entityId] only on success, never on failure
+ * - useScanEntity: invalidates ["entity-detail", entityId], ["entity-videos",
+ *   entityId], and the ["video-entities"]/["entities"]/["entitySearch"]
+ *   families on success, never on failure
  * - useScanVideoEntities: launches via scanVideoEntities() with correct videoId/options
  * - useScanVideoEntities: launch→poll→succeeded / failed / 409 (mirrors useScanEntity)
- * - useScanVideoEntities: invalidates only ["video-entities", videoId] on success
+ * - useScanVideoEntities: invalidates ["video-entities", videoId] and the
+ *   ["entity-videos"]/["entity-detail"]/["entities"]/["entitySearch"]
+ *   families on success
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -400,7 +403,7 @@ describe("useScanEntity — cache invalidation", () => {
     vi.clearAllMocks();
   });
 
-  it("invalidates ['entity-detail', entityId] and ['entity-videos', entityId] once the job succeeds", async () => {
+  it("invalidates ['entity-detail', entityId], ['entity-videos', entityId], and the video-entities/entities/entitySearch families once the job succeeds", async () => {
     mockedScanEntity.mockResolvedValueOnce(makeJob());
     mockedGetScanJob.mockResolvedValueOnce(makeSucceededJob());
 
@@ -421,6 +424,9 @@ describe("useScanEntity — cache invalidation", () => {
     );
     expect(invalidatedKeys).toContainEqual(["entity-detail", ENTITY_ID]);
     expect(invalidatedKeys).toContainEqual(["entity-videos", ENTITY_ID]);
+    expect(invalidatedKeys).toContainEqual(["video-entities"]);
+    expect(invalidatedKeys).toContainEqual(["entities"]);
+    expect(invalidatedKeys).toContainEqual(["entitySearch"]);
   });
 
   it("does NOT invalidate any caches when the job fails", async () => {
@@ -597,7 +603,7 @@ describe("useScanVideoEntities — cache invalidation", () => {
     vi.clearAllMocks();
   });
 
-  it("invalidates only ['video-entities', videoId] on success", async () => {
+  it("invalidates ['video-entities', videoId] and the entity-videos/entity-detail/entities/entitySearch families on success", async () => {
     mockedScanVideoEntities.mockResolvedValueOnce(
       makeJob({ kind: "video", target_id: VIDEO_ID })
     );
@@ -621,8 +627,10 @@ describe("useScanVideoEntities — cache invalidation", () => {
       (call) => (call[0] as { queryKey: unknown[] }).queryKey
     );
     expect(invalidatedKeys).toContainEqual(["video-entities", VIDEO_ID]);
-    expect(invalidatedKeys).not.toContainEqual(["entity-detail", VIDEO_ID]);
-    expect(invalidatedKeys).not.toContainEqual(["entity-videos", VIDEO_ID]);
+    expect(invalidatedKeys).toContainEqual(["entity-videos"]);
+    expect(invalidatedKeys).toContainEqual(["entity-detail"]);
+    expect(invalidatedKeys).toContainEqual(["entities"]);
+    expect(invalidatedKeys).toContainEqual(["entitySearch"]);
   });
 
   it("does NOT invalidate any caches when the job fails", async () => {

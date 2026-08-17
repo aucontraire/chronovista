@@ -93,6 +93,7 @@ function makeClassifyTagResponse(
     alias_count: 1,
     entity_created: true,
     operation_id: "op-uuid-001",
+    grounded: false,
     ...overrides,
   };
 }
@@ -106,6 +107,7 @@ function makeCreateEntityResponse(
     entity_type: "person",
     description: "Nobel Prize-winning physicist",
     alias_count: 0,
+    grounded: false,
     ...overrides,
   };
 }
@@ -155,6 +157,29 @@ describe("useClassifyTag — mutation execution", () => {
       entity_type: "organization",
       description: "JavaScript UI library",
     });
+  });
+
+  it("threads approvedIdentifier through to classifyTag as a second argument when provided (Feature 067, US3)", async () => {
+    mockedClassifyTag.mockResolvedValueOnce(makeClassifyTagResponse({ grounded: true }));
+
+    const { result } = renderHook(() => useClassifyTag(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      result.current.mutate({
+        normalized_form: "React",
+        entity_type: "organization",
+        approvedIdentifier: { source: "wikidata", id: "Q19842523" },
+      });
+    });
+
+    await waitFor(() => result.current.isSuccess);
+
+    expect(mockedClassifyTag).toHaveBeenCalledWith(
+      { normalized_form: "React", entity_type: "organization" },
+      { source: "wikidata", id: "Q19842523" }
+    );
   });
 
   it("transitions to isSuccess and returns the API response data on success", async () => {

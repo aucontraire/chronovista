@@ -124,6 +124,10 @@ class NamedEntity(NamedEntityBase):
         default_factory=dict,
         description="External identifiers (Wikidata QID, MusicBrainz, etc.)",
     )
+    properties: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Knowledge-base enrichment property bag, mirrored verbatim (Feature 067)",
+    )
     mention_count: int = Field(
         ..., ge=0, description="Total mentions across all sources"
     )

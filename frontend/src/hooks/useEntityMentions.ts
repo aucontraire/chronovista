@@ -22,6 +22,7 @@ import {
   scanEntity,
   scanVideoEntities,
   getScanJob,
+  fetchWikidataCandidates,
 } from "../api/entityMentions";
 import type {
   VideoEntitySummary,
@@ -41,6 +42,8 @@ import type {
   ScanRequest,
   ScanResultResponse,
   ScanJob,
+  ApprovedIdentifier,
+  WikidataCandidatesData,
 } from "../api/entityMentions";
 import type { ApiError } from "../types/video";
 
@@ -567,6 +570,13 @@ export interface ClassifyTagVariables {
    * (Feature 057, FR-008/FR-009/FR-010).
    */
   display_name?: string;
+  /**
+   * A user-approved Wikidata match to ground the entity to (Feature 067,
+   * US3). Kept camelCase at the hook boundary, translated to the snake_case
+   * `approved_identifier` request field by `classifyTag`. Applied by the
+   * backend only when this call creates a new entity — never auto-applied.
+   */
+  approvedIdentifier?: ApprovedIdentifier;
 }
 
 /**
@@ -592,7 +602,13 @@ export function useClassifyTag() {
   const queryClient = useQueryClient();
 
   return useMutation<ClassifyTagResponse, ApiError, ClassifyTagVariables>({
-    mutationFn: (variables: ClassifyTagVariables) => classifyTag(variables),
+    // Only pass a second argument when grounding was actually approved —
+    // calling classifyTag(data, undefined) vs classifyTag(data) is
+    // observably different to callers that assert on argument count.
+    mutationFn: ({ approvedIdentifier, ...data }) =>
+      approvedIdentifier !== undefined
+        ? classifyTag(data, approvedIdentifier)
+        : classifyTag(data),
 
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["entities"] });
@@ -607,6 +623,20 @@ export function useClassifyTag() {
 // ---------------------------------------------------------------------------
 
 /**
+ * Variables for the standalone entity creation mutation.
+ *
+ * `approvedIdentifier` is separate from the wire-format `CreateEntityRequest`
+ * because it represents a distinct user decision (Feature 067, US3
+ * grounding) rather than a core entity field — kept camelCase at the hook
+ * boundary, translated to the snake_case `approved_identifier` request field
+ * by `createEntity`.
+ */
+export type CreateEntityVariables = CreateEntityRequest & {
+  /** A user-approved Wikidata match to ground the entity to. Never auto-applied. */
+  approvedIdentifier?: ApprovedIdentifier;
+};
+
+/**
  * Mutation hook for creating a standalone named entity.
  *
  * On success, invalidates caches for:
@@ -619,19 +649,31 @@ export function useClassifyTag() {
  * Error handling is left to the caller — use `mutation.isError` and
  * `mutation.error` to display inline error messages.
  *
- * @returns UseMutationResult with `mutate(data: CreateEntityRequest)`
+ * @returns UseMutationResult with `mutate(data: CreateEntityVariables)`
  *
  * @example
  * ```tsx
  * const mutation = useCreateEntity();
  * mutation.mutate({ name: "Marie Curie", entity_type: "person" });
+ * // Grounded:
+ * mutation.mutate({
+ *   name: "Marie Curie",
+ *   entity_type: "person",
+ *   approvedIdentifier: { source: "wikidata", id: "Q7186" },
+ * });
  * ```
  */
 export function useCreateEntity() {
   const queryClient = useQueryClient();
 
-  return useMutation<CreateEntityResponse, ApiError, CreateEntityRequest>({
-    mutationFn: (data) => createEntity(data),
+  return useMutation<CreateEntityResponse, ApiError, CreateEntityVariables>({
+    // Only pass a second argument when grounding was actually approved —
+    // calling createEntity(data, undefined) vs createEntity(data) is
+    // observably different to callers that assert on argument count.
+    mutationFn: ({ approvedIdentifier, ...data }) =>
+      approvedIdentifier !== undefined
+        ? createEntity(data, approvedIdentifier)
+        : createEntity(data),
 
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["entities"] });
@@ -729,6 +771,101 @@ export function useCheckDuplicate(name: string, entityType: string) {
     staleTime: 30 * 1000, // 30 seconds
     gcTime: 60 * 1000,
   });
+}
+
+// ---------------------------------------------------------------------------
+// useWikidataCandidates
+// ---------------------------------------------------------------------------
+
+/** Return shape of `useWikidataCandidates`. */
+export interface UseWikidataCandidatesResult {
+  /** Ranked shortlist from the most recent search; empty before a search runs. */
+  candidates: WikidataCandidatesData["candidates"];
+  /** True when the lookup itself failed/timed out (soft failure) — distinct from "no match". */
+  unavailable: boolean;
+  /** True once `search()` has been called at least once for the current name/entityType. */
+  hasSearched: boolean;
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  error: ApiError | null;
+  /** Runs the lookup for the `name`/`entityType` passed to the hook at call time. */
+  search: () => void;
+  /** Clears the last search, returning the hook to its pre-search state. */
+  reset: () => void;
+}
+
+/**
+ * Lazily fetches ranked Wikidata candidates for a proposed entity name/type
+ * (Feature 067, US3). The query never fires on its own — the caller must
+ * invoke `search()` (e.g. from a "Search Wikidata" button), so typing in the
+ * name field does not spam the lookup on every keystroke.
+ *
+ * `search()` snapshots the `name`/`entityType` values current at call time;
+ * changing them afterward does not refetch until `search()` is called again.
+ *
+ * @param name - Proposed canonical name to search for
+ * @param entityType - Entity type (e.g. "person", "organization", "place")
+ * @param limit - Max candidates to return (default 5)
+ * @returns Candidates, the `unavailable` soft-failure flag, and the trigger/reset functions
+ *
+ * @example
+ * ```tsx
+ * const wikidata = useWikidataCandidates(name, entityType);
+ * <button onClick={wikidata.search}>Search Wikidata</button>
+ * {wikidata.hasSearched && wikidata.unavailable && <p>Couldn't reach Wikidata.</p>}
+ * ```
+ */
+export function useWikidataCandidates(
+  name: string,
+  entityType: string,
+  limit = 5
+): UseWikidataCandidatesResult {
+  const [searchParams, setSearchParams] = useState<{
+    name: string;
+    entityType: string;
+  } | null>(null);
+
+  const queryResult = useQuery<WikidataCandidatesData, ApiError>({
+    queryKey: [
+      "wikidata-candidates",
+      searchParams?.name ?? null,
+      searchParams?.entityType ?? null,
+      limit,
+    ],
+    // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+    queryFn: ({ signal }) =>
+      fetchWikidataCandidates(
+        searchParams!.name,
+        searchParams!.entityType,
+        limit,
+        signal
+      ),
+    enabled: searchParams !== null,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    retry: false,
+  });
+
+  const search = useCallback(() => {
+    setSearchParams({ name, entityType });
+  }, [name, entityType]);
+
+  const reset = useCallback(() => {
+    setSearchParams(null);
+  }, []);
+
+  return {
+    candidates: queryResult.data?.candidates ?? [],
+    unavailable: queryResult.data?.unavailable ?? false,
+    hasSearched: searchParams !== null,
+    isLoading: queryResult.isLoading,
+    isFetching: queryResult.isFetching,
+    isError: queryResult.isError,
+    error: (queryResult.error as ApiError | null) ?? null,
+    search,
+    reset,
+  };
 }
 
 // ---------------------------------------------------------------------------

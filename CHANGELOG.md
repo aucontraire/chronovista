@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-08-16
+
+### Added
+- **An entity's knowledge-base grounding now lives in the database and is visible in the app.** The resolution process links entities to public knowledge bases (Wikidata, DBpedia) and captures a rich property set, but that enrichment previously lived only in an uncommitted working file — invisible in the product, absent from a fresh install. It is now landed into the database as the authoritative store and surfaced in an **Enrichment** section on the entity detail page: the grounded properties (occupation, country, and so on) with their provenance, and the external identifiers as links, with a **verified** indicator on any identifier a human confirmed. An ungrounded entity reads cleanly as "not grounded" rather than as an error or an empty block.
+- **Ground an entity against Wikidata when you create it.** Creating an entity — whether standalone or by promoting a tag — searches Wikidata as you fill in the name and type, and offers a ranked shortlist for you to approve. Each candidate shows the signals needed to reject a look-alike: description, a type-match check, statement and reference-page counts, and a stub warning for machine-generated items. Approving one grounds the new entity with a verified identifier; grounding is always optional and never blocks creation, and approving a candidate offers to prefill an empty description from the match. Grounding depends only on the name and type, not on whether a tag happens to exist.
+- **A load command for the captured enrichment.** `chronovista entities load-enrichment` mirrors the resolution export into the database — idempotent, refresh-safe (a value removed upstream does not survive), and write-scoped so it never touches human-authored display fields. It reports whether the export covers every active entity, so a stale partial snapshot is flagged rather than reported as a silent success.
+
+### Migration
+- **One additive column, reversible.** `named_entities` gains a `properties` JSONB column (default empty) for the enrichment bag; existing rows need no backfill and the load populates it afterward. The sibling identifier field widens from a bare string to a structured object (identifier plus verified/negative-result/link provenance) in place — no schema migration, a coordinated change applied by the same load.
+
+### Technical
+- **In-app grounding is identifier-only.** Creating and grounding an entity stores its verified identifier; the full property set is populated by the batch resolution pipeline, not fetched on creation.
+
 ## [0.68.0] - 2026-08-15
 
 ### Added

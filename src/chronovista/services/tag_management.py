@@ -1131,6 +1131,7 @@ class TagManagementService:
         auto_case: bool = True,
         link_entity_id: uuid.UUID | None = None,
         display_name: str | None = None,
+        external_ids: dict[str, Any] | None = None,
         actor: str = "cli",
     ) -> ClassifyResult:
         """
@@ -1297,7 +1298,9 @@ class TagManagementService:
                     tag.entity_id = existing_entity.id
                     linked_existing_entity_id = existing_entity.id
                 else:
-                    # Create new NamedEntity
+                    # Create new NamedEntity. Grounding (Feature 067, US3) applies only
+                    # here — when a *new* entity is created from the tag; linking to or
+                    # matching an existing entity leaves that entity's own identifiers alone.
                     entity_description = description or reason
                     entity_create = NamedEntityCreate(
                         canonical_name=entity_display_name,
@@ -1306,6 +1309,7 @@ class TagManagementService:
                         description=entity_description,
                         discovery_method=DiscoveryMethod.USER_CREATED,
                         confidence=1.0,
+                        external_ids=external_ids or {},
                     )
                     new_entity = await self._named_entity_repo.create(
                         session, obj_in=entity_create

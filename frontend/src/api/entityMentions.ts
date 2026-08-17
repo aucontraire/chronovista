@@ -133,6 +133,36 @@ export interface EntityListItem {
   by_source: AssociationSourceBreakdown;
 }
 
+/**
+ * A single property's value bag within entity enrichment data.
+ *
+ * Heterogeneous by design — the only guaranteed key is `values`. Other keys
+ * (e.g. `qids`, `source`, `literals`) may or may not be present depending on
+ * the property, so callers must treat everything beyond `values` as unknown.
+ */
+export interface EntityPropertyValue {
+  values?: string[];
+  [k: string]: unknown;
+}
+
+/** A single external identifier link for an enriched entity. */
+export interface EntityIdentifier {
+  source: string;
+  id: string;
+  url: string;
+  verified: boolean;
+}
+
+/**
+ * External knowledge-base enrichment data for a named entity (Feature 067,
+ * US2). Absent (`undefined`) on payloads from before this field existed.
+ */
+export interface EntityEnrichment {
+  grounded: boolean;
+  properties: Record<string, EntityPropertyValue>;
+  identifiers: EntityIdentifier[];
+}
+
 /** Full detail response for GET /api/v1/entities/{entity_id} */
 export interface EntityDetail {
   entity_id: string;
@@ -147,6 +177,12 @@ export interface EntityDetail {
   aliases: EntityAliasSummary[];
   /** Text phrases that should NOT trigger mention detection for this entity. */
   exclusion_patterns: string[];
+  /**
+   * External knowledge-base enrichment (Feature 067, US2). Optional for
+   * backward compatibility with pre-Feature-067 API responses — treat a
+   * missing value the same as `grounded: false`.
+   */
+  enrichment?: EntityEnrichment;
 }
 
 /** Paginated response envelope for GET /api/v1/entities */
@@ -692,6 +728,13 @@ export interface ClassifyTagResponse {
   alias_count: number;
   entity_created: boolean;
   operation_id: string;
+  /**
+   * Whether the resulting entity carries an approved external identifier
+   * (Feature 067, US3). Only meaningful when `entity_created` is true — an
+   * `approved_identifier` sent alongside a link to an existing entity is not
+   * applied.
+   */
+  grounded: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -774,27 +817,48 @@ export async function addEntityTag(
  *   value's casing (FR-011). Create only.
  * @param data.link_entity_id - Attach the tag to this existing entity instead
  *   of creating one (issue #183).
- * @returns ClassifyTagResponse with entity_id and operation metadata
+ * @param approvedIdentifier - A Wikidata match the user has explicitly
+ *   approved to ground the entity (Feature 067, US3). Applied by the backend
+ *   only when this call creates a new entity — a no-op when linking to one
+ *   that already exists. Omit for an ungrounded entity; grounding is always
+ *   optional and never blocks classification.
+ * @returns ClassifyTagResponse with entity_id, operation metadata, and `grounded`
  * @throws ApiError with status 409 if the tag is already classified, if
  *   `entity_type` disagrees with the link target, or if the target is inactive
  * @throws ApiError with status 404 if `link_entity_id` names no entity
  */
-export async function classifyTag(data: {
-  normalized_form: string;
-  entity_type?: string;
-  description?: string;
-  display_name?: string;
-  link_entity_id?: string;
-}): Promise<ClassifyTagResponse> {
+export async function classifyTag(
+  data: {
+    normalized_form: string;
+    entity_type?: string;
+    description?: string;
+    display_name?: string;
+    link_entity_id?: string;
+  },
+  approvedIdentifier?: ApprovedIdentifier
+): Promise<ClassifyTagResponse> {
   return apiFetch<ClassifyTagResponse>("/entities/classify", {
     method: "POST",
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...data,
+      ...(approvedIdentifier ? { approved_identifier: approvedIdentifier } : {}),
+    }),
   });
 }
 
 // ---------------------------------------------------------------------------
 // Standalone entity creation types (for POST /api/v1/entities)
 // ---------------------------------------------------------------------------
+
+/**
+ * An external knowledge-base identifier a user has explicitly approved to
+ * ground a new entity (Feature 067, US3). Approval is always a deliberate
+ * user action — never auto-applied from a search result.
+ */
+export interface ApprovedIdentifier {
+  source: "wikidata";
+  id: string;
+}
 
 /** Request body for POST /api/v1/entities */
 export interface CreateEntityRequest {
@@ -815,6 +879,8 @@ export interface CreateEntityResponse {
   entity_type: string;
   description: string | null;
   alias_count: number;
+  /** Whether the created entity carries an approved external identifier (Feature 067, US3). */
+  grounded: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -829,16 +895,95 @@ export interface CreateEntityResponse {
  * taxonomy (e.g. people, places, organisations mentioned in transcripts).
  *
  * @param data - Entity creation payload (name, entity_type, optional description/aliases)
- * @returns CreateEntityResponse with the new entity_id and summary
+ * @param approvedIdentifier - A Wikidata match the user has explicitly approved
+ *   to ground the entity (Feature 067, US3). Omit for an ungrounded entity —
+ *   grounding is always optional and never blocks creation.
+ * @returns CreateEntityResponse with the new entity_id, summary, and `grounded` flag
  * @throws ApiError with status 409 if an entity with the same name and type already exists
  */
 export async function createEntity(
-  data: CreateEntityRequest
+  data: CreateEntityRequest,
+  approvedIdentifier?: ApprovedIdentifier
 ): Promise<CreateEntityResponse> {
   return apiFetch<CreateEntityResponse>("/entities", {
     method: "POST",
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...data,
+      ...(approvedIdentifier ? { approved_identifier: approvedIdentifier } : {}),
+    }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Wikidata candidate lookup types (for GET /api/v1/entities/wikidata-candidates)
+// Feature 067, US3 — grounded entity creation.
+// ---------------------------------------------------------------------------
+
+/** A single Wikidata match candidate for a proposed entity name. */
+export interface WikidataCandidate {
+  qid: string;
+  label: string;
+  description: string | null;
+  instance_of: string[];
+  statement_count: number;
+  sitelink_count: number;
+  /** True when Wikidata holds only minimal data for this item. */
+  is_stub: boolean;
+  /** True when the candidate's Wikidata type is compatible with the entity_type searched for. */
+  type_matches: boolean;
+}
+
+/**
+ * Payload of the Wikidata candidate lookup. `unavailable: true` means the
+ * lookup itself failed or timed out (a soft failure) — distinct from
+ * `candidates: []` with `unavailable: false`, which means the lookup
+ * succeeded but found no match. Callers must message these two cases
+ * differently; neither should block entity creation.
+ */
+export interface WikidataCandidatesData {
+  /** Ranked shortlist, already capped by the backend (≤ `limit`). */
+  candidates: WikidataCandidate[];
+  unavailable: boolean;
+}
+
+/** Response envelope for GET /api/v1/entities/wikidata-candidates */
+export interface WikidataCandidatesResponse {
+  data: WikidataCandidatesData;
+}
+
+// ---------------------------------------------------------------------------
+// Wikidata candidate lookup fetcher
+// ---------------------------------------------------------------------------
+
+/**
+ * Looks up ranked Wikidata candidates for a proposed entity name and type, so
+ * a user can optionally ground a new entity to an external identifier before
+ * creating it.
+ *
+ * @param name - Proposed canonical name to search for
+ * @param entityType - Entity type (e.g. "person", "organization", "place")
+ * @param limit - Max candidates to return (backend default 5)
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns Ranked candidates and whether the lookup itself failed
+ */
+export async function fetchWikidataCandidates(
+  name: string,
+  entityType: string,
+  limit = 5,
+  signal?: AbortSignal
+): Promise<WikidataCandidatesData> {
+  const params = new URLSearchParams({
+    name,
+    entity_type: entityType,
+    limit: String(limit),
+  });
+  const res = await apiFetch<WikidataCandidatesResponse>(
+    `/entities/wikidata-candidates?${params.toString()}`,
+    {
+      ...(signal !== undefined ? { externalSignal: signal } : {}),
+    }
+  );
+  return res.data;
 }
 
 // ---------------------------------------------------------------------------

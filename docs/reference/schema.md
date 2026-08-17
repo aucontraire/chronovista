@@ -509,6 +509,7 @@ Named entities extracted from video tags (people, places, organizations, etc.).
 | `entity_subtype` | VARCHAR(100) | yes |  |  |
 | `description` | TEXT | yes |  |  |
 | `external_ids` | JSONB | no | `'{}'::jsonb` |  |
+| `properties` | JSONB | no | `'{}'::jsonb` |  |
 | `exclusion_patterns` | JSONB | no | `'[]'::jsonb` |  |
 | `mention_count` | INTEGER | no | `0` |  |
 | `video_count` | INTEGER | no | `0` |  |

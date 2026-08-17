@@ -18,6 +18,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { CooccurringPanel } from "../components/entity/CooccurringPanel";
+import { EntityEnrichmentSection } from "../components/entity/EntityEnrichmentSection";
 import { EntityTagSection } from "../components/entity/EntityTagSection";
 import { EntityTypeBadge } from "../components/EntityTypeBadge";
 import { AssociationBreakdown } from "../components/AssociationBreakdown";
@@ -1523,6 +1524,13 @@ export function EntityDetailPage() {
       {entityId && (
         <EntityTagSection entityId={entityId} entityName={entity.canonical_name} />
       )}
+
+      {/* Enrichment section (Feature 067, US2) */}
+      <EntityEnrichmentSection
+        {...(entity.enrichment !== undefined
+          ? { enrichment: entity.enrichment }
+          : {})}
+      />
 
       {/* Exclusion Patterns section */}
       {entityId && (

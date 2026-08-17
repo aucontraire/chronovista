@@ -102,6 +102,20 @@ same `video_count` (with a per-source breakdown) rather than each counting a
 different subset — which is what previously let the list show a mention-only
 number while the detail showed the combined one.
 
+### Knowledge-base enrichment lives on the entity row
+
+A grounded entity carries two JSONB columns on `named_entities`. `external_ids` maps each
+source (`wikidata`, `dbpedia`) to a structured record: the identifier, whether a human
+verified it, whether the source was searched and found nothing, and how the link was
+established. `properties` holds the grounded fact bag — occupation, country, dates, and the
+rest — mirrored verbatim from the resolution pipeline rather than reshaped into rigid columns,
+because the fact set is open and varies by entity type. Neither column is indexed for querying
+yet: a facet is promoted to an index only when a surface actually filters on it.
+
+The database is authoritative once the enrichment is loaded; the pipeline's export file is
+historical. Grounding an entity in the app writes only its identifier — the fact bag is filled
+by the batch pipeline, not on creation.
+
 ### One canonical user identity
 
 Every table holding user-scoped data keys on a single identity, resolved once and

@@ -36,6 +36,11 @@ class _PartialClient:
         return _PARTIAL
 
 
+class _NoDbpedia:
+    async def resolve(self, qid: str) -> tuple[str, str] | None:
+        return None
+
+
 class TestPartialPersistence:
     async def test_partial_bag_persisted_unresolved_qid_kept(
         self, db_session: AsyncSession
@@ -53,7 +58,9 @@ class TestPartialPersistence:
 
         factory = async_sessionmaker(bind=db_session.bind, expire_on_commit=False)
         service = EntityEnrichmentService(
-            factory, client_factory=lambda: _PartialClient()
+            factory,
+            client_factory=lambda: _PartialClient(),
+            dbpedia_factory=lambda: _NoDbpedia(),
         )
         await service.enrich_on_approval(entity_id, "Q000001")
 

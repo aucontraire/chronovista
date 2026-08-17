@@ -54,9 +54,42 @@ class _BlockingClient:
         return dict(_FETCHED)
 
 
-def _install_service(factory: async_sessionmaker[AsyncSession], client: Any) -> None:
-    service = EntityEnrichmentService(factory, client_factory=lambda: client)
+class _NoDbpedia:
+    async def resolve(self, qid: str) -> tuple[str, str] | None:
+        return None
+
+
+class _LinkDbpedia:
+    async def resolve(self, qid: str) -> tuple[str, str] | None:
+        return "http://dbpedia.org/resource/Placeholder", "owl:sameAs from wikidata"
+
+
+def _install_service(
+    factory: async_sessionmaker[AsyncSession], client: Any, dbpedia: Any = None
+) -> None:
+    resolver = dbpedia if dbpedia is not None else _NoDbpedia()
+    service = EntityEnrichmentService(
+        factory,
+        client_factory=lambda: client,
+        dbpedia_factory=lambda: resolver,
+    )
     app.dependency_overrides[get_enrichment_service] = lambda: service
+
+
+async def _dbpedia_ids(client: AsyncClient, entity_id: str) -> list[dict[str, Any]]:
+    r = await client.get(f"/api/v1/entities/{entity_id}")
+    assert r.status_code == 200, r.text
+    ids: list[dict[str, Any]] = r.json()["data"]["enrichment"]["identifiers"]
+    return [i for i in ids if i["source"] == "dbpedia"]
+
+
+async def _drain_until_dbpedia(client: AsyncClient, entity_id: str) -> dict[str, Any]:
+    for _ in range(80):
+        await asyncio.sleep(0.05)
+        dbp = await _dbpedia_ids(client, entity_id)
+        if dbp:
+            return dbp[0]
+    pytest.fail("dbpedia identifier never appeared after the background fetch window")
 
 
 async def _properties(client: AsyncClient, entity_id: str) -> dict[str, Any]:
@@ -135,6 +168,35 @@ class TestOnApprovalEnrichmentEndpoints:
         # Identifier still present after the properties-only write.
         detail = await async_client.get(f"/api/v1/entities/{entity_id}")
         ids = detail.json()["data"]["enrichment"]["identifiers"]
+        assert any(i["source"] == "wikidata" and i["id"] == "Q000009" for i in ids)
+
+    async def test_grounded_create_gets_dbpedia(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        # When DBpedia resolves, a grounded create also gets a DBpedia identifier — appearing on the
+        # detail page alongside the (preserved) verified Wikidata one, no manual step.
+        _install_service(
+            integration_session_factory, _FakeClient(), dbpedia=_LinkDbpedia()
+        )
+        r = await async_client.post(
+            "/api/v1/entities",
+            json={
+                "name": f"Grounded {uuid.uuid4().hex[:10]}",
+                "entity_type": "person",
+                "approved_identifier": {"source": "wikidata", "id": "Q000009"},
+            },
+        )
+        assert r.status_code == 201, r.text
+        entity_id = r.json()["entity_id"]
+
+        dbp = await _drain_until_dbpedia(async_client, entity_id)
+        assert dbp["id"] == "http://dbpedia.org/resource/Placeholder"
+        # The verified Wikidata identifier survived the DBpedia merge.
+        ids = (await async_client.get(f"/api/v1/entities/{entity_id}")).json()["data"][
+            "enrichment"
+        ]["identifiers"]
         assert any(i["source"] == "wikidata" and i["id"] == "Q000009" for i in ids)
 
     async def test_ungrounded_create_no_fetch(

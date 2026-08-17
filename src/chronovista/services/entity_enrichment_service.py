@@ -30,19 +30,22 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from chronovista.models.entity_enrichment import ExternalIdentifier
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
+from chronovista.services.dbpedia_resolver import DbpediaResolver
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
 
 logger = logging.getLogger(__name__)
 
 
 class EntityEnrichmentService:
-    """Fetch-and-persist curated Wikidata properties for a just-grounded entity."""
+    """Fetch-and-persist curated Wikidata properties (and a DBpedia link) for a grounded entity."""
 
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         client_factory: Callable[[], WikidataClient] = WikidataClient,
+        dbpedia_factory: Callable[[], DbpediaResolver] = DbpediaResolver,
     ) -> None:
         """Initialise the service.
 
@@ -52,9 +55,12 @@ class EntityEnrichmentService:
             Factory for the service's own background session (NOT the request session).
         client_factory : Callable[[], WikidataClient]
             Returns a Wikidata client. Overridable in tests with a ``MockTransport``-backed client.
+        dbpedia_factory : Callable[[], DbpediaResolver]
+            Returns a DBpedia resolver. Overridable in tests.
         """
         self._session_factory = session_factory
         self._client_factory = client_factory
+        self._dbpedia_factory = dbpedia_factory
         self._repo = NamedEntityRepository()
 
     async def enrich_on_approval(
@@ -80,7 +86,18 @@ class EntityEnrichmentService:
         caught and logged at warning level with the entity id + reason (FR-006a), leaving the entity
         grounded and its properties to be filled by the next batch run. The done-callback that retires
         the task handle must therefore never need to inspect an exception.
+
+        Two independent best-effort steps: the Wikidata **properties** write (primary), then a DBpedia
+        **identifier** merge. The DBpedia step is separate on purpose — its public endpoint is
+        unreliable, so a DBpedia failure must not affect the properties that already landed.
         """
+        entity_present = await self._write_properties(entity_id, qid)
+        if entity_present is False:
+            return  # entity absent — nothing to attach a DBpedia link to either
+        await self._store_dbpedia(entity_id, qid)
+
+    async def _write_properties(self, entity_id: uuid.UUID, qid: str) -> bool | None:
+        """Fetch + persist properties. Returns False if the entity is absent, else True/None."""
         try:
             client = self._client_factory()
             properties: dict[str, Any] = await client.fetch_properties(qid)
@@ -95,8 +112,9 @@ class EntityEnrichmentService:
                         entity_id,
                         qid,
                     )
-                    return
+                    return False
                 await session.commit()
+                return True
         except WikidataUnavailable as exc:
             logger.warning(
                 "on-approval enrichment could not reach the knowledge base for "
@@ -109,6 +127,38 @@ class EntityEnrichmentService:
         except Exception as exc:  # noqa: BLE001 (detached task must not surface)
             logger.warning(
                 "on-approval enrichment failed for entity %s (qid=%s): %s",
+                entity_id,
+                qid,
+                exc,
+            )
+        return None
+
+    async def _store_dbpedia(self, entity_id: uuid.UUID, qid: str) -> None:
+        """Best-effort: resolve the DBpedia IRI for ``qid`` and merge it into ``external_ids``.
+
+        Never raises and never disturbs the verified Wikidata identifier (the write is a JSONB merge,
+        not a replace). A flaky/unreachable DBpedia endpoint, or an item with no English Wikipedia
+        article, simply leaves no DBpedia link — the batch pipeline can fill it later.
+        """
+        try:
+            link = await self._dbpedia_factory().resolve(qid)
+            if link is None:
+                return
+            iri, provenance = link
+            identifier = ExternalIdentifier(
+                id=iri,
+                verified=False,
+                status="confirmed",
+                link_provenance=provenance,
+            ).model_dump()
+            async with self._session_factory() as session:
+                await self._repo.add_external_id(
+                    session, entity_id, source="dbpedia", identifier=identifier
+                )
+                await session.commit()
+        except Exception as exc:  # noqa: BLE001 (detached task must not surface)
+            logger.warning(
+                "on-approval DBpedia resolution failed for entity %s (qid=%s): %s",
                 entity_id,
                 qid,
                 exc,

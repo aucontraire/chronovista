@@ -36,6 +36,18 @@ class _OkClient:
         return {"occupation": {"values": ["x"], "qids": [], "source": "wikidata"}}
 
 
+class _NoDbpedia:
+    """A DBpedia resolver that finds nothing (keeps tests off the live endpoint)."""
+
+    async def resolve(self, qid: str) -> tuple[str, str] | None:
+        return None
+
+
+class _RaisingDbpedia:
+    async def resolve(self, qid: str) -> tuple[str, str] | None:
+        raise RuntimeError("dbpedia endpoint down")
+
+
 def _factory_yielding(session: Any) -> MagicMock:
     """A session_factory whose ``async with`` yields ``session``."""
     factory = MagicMock()
@@ -52,7 +64,9 @@ class TestDegradation:
         # A session factory that must NOT be used when the fetch fails before any write.
         factory = MagicMock(name="session_factory")
         service = EntityEnrichmentService(
-            factory, client_factory=lambda: _UnavailableClient()
+            factory,
+            client_factory=lambda: _UnavailableClient(),
+            dbpedia_factory=lambda: _NoDbpedia(),
         )
 
         with caplog.at_level(logging.WARNING):
@@ -72,7 +86,9 @@ class TestDegradation:
     ) -> None:
         entity_id = uuid.uuid4()
         service = EntityEnrichmentService(
-            MagicMock(), client_factory=lambda: _BrokenClient()
+            MagicMock(),
+            client_factory=lambda: _BrokenClient(),
+            dbpedia_factory=lambda: _NoDbpedia(),
         )
         with caplog.at_level(logging.WARNING):
             await service.enrich_on_approval(entity_id, "Q000009")
@@ -90,10 +106,34 @@ class TestDegradation:
         session.execute = AsyncMock(return_value=result)
         session.commit = AsyncMock()
         service = EntityEnrichmentService(
-            _factory_yielding(session), client_factory=lambda: _OkClient()
+            _factory_yielding(session),
+            client_factory=lambda: _OkClient(),
+            dbpedia_factory=lambda: _NoDbpedia(),
         )
         with caplog.at_level(logging.WARNING):
             await service.enrich_on_approval(entity_id, "Q000009")
         assert session.commit.await_count == 0, "no commit when nothing was written"
         joined = " ".join(r.getMessage() for r in caplog.records)
         assert "no row" in joined and str(entity_id) in joined
+
+    async def test_dbpedia_failure_does_not_affect_properties(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # DBpedia's endpoint is flaky; a DBpedia failure must NOT lose the properties that landed.
+        entity_id = uuid.uuid4()
+        session = MagicMock()
+        result = MagicMock()
+        result.rowcount = 1
+        session.execute = AsyncMock(return_value=result)
+        session.commit = AsyncMock()
+        service = EntityEnrichmentService(
+            _factory_yielding(session),
+            client_factory=lambda: _OkClient(),
+            dbpedia_factory=lambda: _RaisingDbpedia(),
+        )
+        with caplog.at_level(logging.WARNING):
+            await service.enrich_on_approval(entity_id, "Q000009")
+        # The properties write committed even though DBpedia raised.
+        assert session.commit.await_count == 1
+        joined = " ".join(r.getMessage() for r in caplog.records).lower()
+        assert "dbpedia" in joined  # the DBpedia failure was logged, not raised

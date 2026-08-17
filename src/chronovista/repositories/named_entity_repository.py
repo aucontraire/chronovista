@@ -10,7 +10,8 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import bindparam, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import NamedEntity as NamedEntityDB
@@ -127,6 +128,48 @@ class NamedEntityRepository(
             update(NamedEntityDB)
             .where(NamedEntityDB.id == entity_id)
             .values(properties=properties)
+        )
+        result = await session.execute(stmt)
+        return result.rowcount
+
+    async def add_external_id(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+        *,
+        source: str,
+        identifier: dict[str, Any],
+    ) -> int:
+        """Merge one external identifier into ``external_ids`` without disturbing the others.
+
+        Uses a JSONB **merge** (``external_ids = external_ids || {source: identifier}``), NOT a full
+        replacement — so adding, say, a DBpedia link on approval preserves the verified Wikidata
+        identifier already stored (the anti-clobber invariant that makes ``replace_properties``
+        properties-only; here the same invariant is met by merging rather than replacing). If
+        ``source`` already exists it is overwritten; every other key survives. UPDATE-only: 0 rows
+        means the entity is absent.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        entity_id : uuid.UUID
+            Target entity's primary key.
+        source : str
+            The identifier source key, e.g. ``"dbpedia"``.
+        identifier : dict[str, Any]
+            The structured identifier value (an ``ExternalIdentifier`` dump).
+
+        Returns
+        -------
+        int
+            Number of rows updated: 1 if the entity existed, 0 if it was absent.
+        """
+        merge = bindparam("merge", value={source: identifier}, type_=JSONB())
+        stmt = (
+            update(NamedEntityDB)
+            .where(NamedEntityDB.id == entity_id)
+            .values(external_ids=NamedEntityDB.external_ids.op("||")(merge))
         )
         result = await session.execute(stmt)
         return result.rowcount

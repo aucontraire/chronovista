@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-08-17
+
+### Added
+- **Grounding an entity now also fetches its DBpedia link, not just Wikidata.** When you ground an entity against Wikidata at creation, the background enrichment now also resolves the entity's DBpedia identifier (by QID, via `owl:sameAs` with an English-Wikipedia-sitelink fallback) and adds it to the entity — closing the gap where app-grounded entities had Wikidata properties but no DBpedia link, while batch-imported ones had both. The DBpedia step is best-effort and independent: its public endpoint is unreliable, so a DBpedia failure never affects the Wikidata properties that already landed, and an entity with no English Wikipedia article correctly gets no DBpedia link. The verified Wikidata identifier is preserved (the write merges into the identifier set rather than replacing it).
+
 ## [0.70.1] - 2026-08-17
 
 ### Fixed

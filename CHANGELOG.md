@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.71.1] - 2026-08-18
+
+### Fixed
+- **ASR Error Patterns no longer over-counts "remaining" matches.** The diff-analysis page tallied a pattern's remaining occurrences with a substring match, so a token was counted inside longer words it merely begins (e.g. `ACME` inside `ACMES`). This over-reported the count and kept fully-corrected patterns showing as actionable while Find & Replace — which matches whole words — found nothing; a token that is a prefix of its own correction could never reach zero, since each correction re-creates the substring. The remaining count now matches **whole words** (word boundaries), consistent with what Find & Replace will actually change. The trigram-index prefilter and the result ceiling are preserved, and matching stays case-sensitive (a case-insensitive option is intentionally deferred, as it would sweep in false positives for common-word tokens).
+
 ## [0.71.0] - 2026-08-17
 
 ### Added

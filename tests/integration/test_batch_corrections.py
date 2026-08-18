@@ -32,6 +32,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.api.routers.batch_corrections import _remaining_whole_word_matches
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
@@ -1251,3 +1252,67 @@ class TestCrossFeatureDataContract:
             f"Audit record must have corrected_by_user_id='{ACTOR_CLI_BATCH}', "
             f"got {correction.corrected_by_user_id!r}"
         )
+
+
+class TestRemainingWholeWordCount:
+    """Real-DB regression for diff-analysis remaining_matches (the substring over-count).
+
+    remaining_matches is computed by
+    ``batch_corrections._remaining_whole_word_matches``. The endpoint's own unit tests
+    mock the count scalar, so only a real database exercises substring-vs-word-boundary —
+    which is exactly how the substring over-count shipped: a fully corrected pattern kept
+    matching the token inside a larger word ("ACME" inside "ACMES") and looked actionable.
+    """
+
+    async def test_whole_word_excludes_substring_inside_a_larger_word(
+        self, db_session: AsyncSession
+    ) -> None:
+        await _seed_video(db_session)
+        await _seed_transcript(db_session)
+        # One genuine whole-word occurrence, one where the token is only a substring.
+        await _seed_segment(db_session, text="talk about ACME today", sequence_number=0)
+        await _seed_segment(
+            db_session, text="the ACMES report is out", sequence_number=1
+        )
+        await db_session.flush()
+
+        remaining = await _remaining_whole_word_matches(db_session, "ACME")
+
+        assert remaining == 1, "only the whole-word 'ACME' counts; 'ACMES' must not"
+
+    async def test_token_removed_by_a_correction_is_not_counted(
+        self, db_session: AsyncSession
+    ) -> None:
+        await _seed_video(db_session)
+        await _seed_transcript(db_session)
+        # Raw text still holds the token (so it passes the substring super-set), but the
+        # correction replaced it — the recheck runs on the effective text, so it is 0.
+        await _seed_segment(
+            db_session,
+            text="the ACME building",
+            corrected_text="the Corp building",
+            has_correction=True,
+            sequence_number=0,
+        )
+        await db_session.flush()
+
+        remaining = await _remaining_whole_word_matches(db_session, "ACME")
+
+        assert remaining == 0
+
+    async def test_case_is_unchanged_still_case_sensitive(
+        self, db_session: AsyncSession
+    ) -> None:
+        # Documents the deliberate scope of this fix: word-boundary only. Case stays
+        # case-sensitive (matching the Find & Replace default), so 'Acme' is not counted
+        # for token 'ACME'. Flipping this is a separate, explicit decision.
+        await _seed_video(db_session)
+        await _seed_transcript(db_session)
+        await _seed_segment(
+            db_session, text="the Acme building stood there", sequence_number=0
+        )
+        await db_session.flush()
+
+        remaining = await _remaining_whole_word_matches(db_session, "ACME")
+
+        assert remaining == 0

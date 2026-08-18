@@ -31,6 +31,7 @@ from chronovista.api.main import app
 from chronovista.api.routers.batch_corrections import (
     _PATTERN_TOKENISE_CAP,
     _REMAINING_MATCH_CAP,
+    _whole_word_regex,
 )
 from chronovista.models.batch_correction_models import CorrectionPattern
 
@@ -615,3 +616,30 @@ class TestRemainingMatchCap:
             "the count query has no LIMIT — the heap fetch is unbounded again, "
             f"got: {count_sql[0][:200]}"
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Whole-word regex builder (word-boundary remaining count)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestWholeWordRegex:
+    """`_whole_word_regex` wraps a token in word boundaries and escapes metacharacters.
+
+    remaining_matches counts whole words, not substrings, so the pattern must be
+    ``\\y<token>\\y`` — and a token that happens to contain regex metacharacters must be
+    matched literally, never interpreted as a pattern.
+    """
+
+    def test_wraps_token_in_word_boundaries(self) -> None:
+        assert _whole_word_regex("ACME") == r"\yACME\y"
+
+    def test_escapes_a_dot_so_it_is_literal(self) -> None:
+        # Without escaping, "A.B" would match "AXB"; the dot must be literal.
+        assert _whole_word_regex("A.B") == r"\yA\.B\y"
+
+    def test_escapes_multiple_metacharacters(self) -> None:
+        assert _whole_word_regex("a+b*c") == r"\ya\+b\*c\y"
+
+    def test_leaves_plain_alphanumerics_untouched(self) -> None:
+        assert _whole_word_regex("Acme2") == r"\yAcme2\y"

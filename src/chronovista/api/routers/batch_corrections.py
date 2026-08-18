@@ -522,6 +522,65 @@ async def _find_entity_by_name(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+# Whole-word matching for remaining-match counts. The tokens are word-level (from
+# word_level_diff), so the count must be word-level too — a substring match counts a token
+# inside a larger word ("ACME" inside "ACMES"), which over-reports and keeps a fully
+# corrected pattern looking actionable.
+_REGEX_METACHARS = frozenset(r".\[](){}*+?|^$")
+
+
+def _whole_word_regex(token: str) -> str:
+    r"""Return a POSIX regex matching ``token`` as a whole word (``\y…\y`` boundaries).
+
+    Regex metacharacters are backslash-escaped so an ASR token such as ``U.S`` is matched
+    literally instead of acting as a pattern.
+    """
+    escaped = "".join(f"\\{c}" if c in _REGEX_METACHARS else c for c in token)
+    return rf"\y{escaped}\y"
+
+
+async def _remaining_whole_word_matches(session: AsyncSession, error_token: str) -> int:
+    r"""Count segments whose effective text still contains ``error_token`` as a whole word.
+
+    Word-boundary, **not** substring: the token does not match inside a larger word, so
+    ``"ACME"`` no longer counts ``"ACMES"``. This is the same boundary rule the Find & Replace
+    search uses (``\bACME\b``), so ``remaining_matches`` now agrees with what a replace would
+    actually change. Case is unchanged (case-sensitive), matching the Find & Replace default.
+
+    The trigram-eligible substring **super-set** on the raw columns is kept as an index
+    prefilter (a whole-word match implies the substring is present, so nothing true is
+    dropped), with the word-boundary regex as the exact recheck on the effective
+    (post-correction) text. The count is capped at ``_REMAINING_MATCH_CAP`` (#212).
+    """
+    effective_text = case(
+        (TranscriptSegmentDB.has_correction, TranscriptSegmentDB.corrected_text),
+        else_=TranscriptSegmentDB.text,
+    )
+    matching_rows = (
+        select(literal(1))
+        .select_from(TranscriptSegmentDB)
+        .where(
+            # Index-eligible super-set on the RAW columns so PostgreSQL can use the
+            # pg_trgm GIN indexes (idx_segments_text_trgm / idx_segments_corrected_text_trgm).
+            # A CASE expression is opaque to them and forces a parallel seq scan of ~2M
+            # rows — once per token. Same fix as #150.
+            or_(
+                TranscriptSegmentDB.text.contains(error_token),
+                TranscriptSegmentDB.corrected_text.contains(error_token),
+            ),
+            # Exact recheck against the super-set: whole-word (word boundary), not
+            # substring. A segment whose correction removed the token is excluded too,
+            # because the recheck runs on the effective (post-correction) text.
+            effective_text.op("~")(_whole_word_regex(error_token)),
+        )
+        # The ceiling bounds the heap fetch (#212).
+        .limit(_REMAINING_MATCH_CAP)
+        .subquery()
+    )
+    result = await session.execute(select(func.count()).select_from(matching_rows))
+    return int(result.scalar_one())
+
+
 @router.get(
     "/diff-analysis",
     response_model=ApiResponse[list[DiffErrorPatternResponse]],
@@ -604,56 +663,18 @@ async def get_diff_analysis(
             key = (error_token, canonical_form)
             aggregated[key] = aggregated.get(key, 0) + p.occurrences
 
-    # Recompute remaining_matches at the token level: count segments whose
-    # effective text (corrected_text if corrected, else text) still contains
-    # the error token.  This replaces the repository's full-segment-level
-    # remaining_matches which doesn't work after word-level extraction.
-    effective_text = case(
-        (TranscriptSegmentDB.has_correction, TranscriptSegmentDB.corrected_text),
-        else_=TranscriptSegmentDB.text,
-    )
-
-    # Build response items with entity enrichment.
+    # Build response items with entity enrichment. remaining_matches is recomputed
+    # per token (whole-word) because the repository's segment-level figure does not
+    # survive word-level extraction — see _remaining_whole_word_matches.
     results: list[DiffErrorPatternResponse] = []
     for (error_token, canonical_form), freq in aggregated.items():
         # An empty error_token reaches here whenever the canonical form is
-        # non-empty (the skip above requires *both* to be empty), and
-        # `contains("")` compiles to LIKE '%%', which matches every row in the
-        # corpus. That is both a meaningless count and the single most
-        # expensive query this loop can issue.
+        # non-empty (the skip above requires *both* to be empty). Counting it would
+        # match every row (LIKE '%%'), so it is skipped.
         if not error_token:
             remaining = 0
         else:
-            matching_rows = (
-                select(literal(1))
-                .select_from(TranscriptSegmentDB)
-                .where(
-                    # Index-eligible super-set on the RAW columns so PostgreSQL
-                    # can use the pg_trgm GIN indexes (idx_segments_text_trgm /
-                    # idx_segments_corrected_text_trgm). A CASE expression is
-                    # opaque to them and forces a parallel seq scan of ~2M rows
-                    # — once per token. Same fix as #150.
-                    or_(
-                        TranscriptSegmentDB.text.contains(error_token),
-                        TranscriptSegmentDB.corrected_text.contains(error_token),
-                    ),
-                    # Exact predicate, re-checked against the super-set. A
-                    # segment whose raw text matches but whose correction
-                    # removed the token must not be counted, so this stays.
-                    effective_text.contains(error_token),
-                )
-                # The ceiling is what bounds the heap fetch (#212). A short
-                # token yields few trigrams, so the index returns a huge
-                # candidate set that the recheck mostly discards: measured at
-                # 99,210 candidates and 27,970 heap blocks to find 3,333 rows,
-                # 96.6% thrown away. Stopping early caps that work.
-                .limit(_REMAINING_MATCH_CAP)
-                .subquery()
-            )
-            remaining_result = await session.execute(
-                select(func.count()).select_from(matching_rows)
-            )
-            remaining = remaining_result.scalar_one()
+            remaining = await _remaining_whole_word_matches(session, error_token)
 
         # A count equal to the ceiling means counting stopped, not that exactly
         # that many remain. Reported rather than silently presented as exact.

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-08-18
+
+### Fixed
+- **Entities named with accents now surface every mention of them, not just accent-exact ones.** Entity-mention detection already matches names accent-insensitively, but the queries that decide which entities appear on a video's entities panel and in an entity's video list re-checked the mention text case-insensitively yet **accent-sensitively** — so a mention written with a diacritic the saved name lacks (or vice versa) was recorded but hidden from both views, and the stored counts under-reported it. Membership and the counter recompute now fold accents the same way detection does (via the Postgres `unaccent` extension, applied per entity so it can never create a cross-entity association), so already-recorded accented mentions appear without re-scanning.
+
+### Added
+- **`chronovista entities recount`** — an operator maintenance command that recomputes the stored entity mention/video counts and alias occurrence counts from existing mentions using the accent-insensitive rule. Full and idempotent, with `--dry-run` to preview the deltas before applying. Run once after upgrading (take a database backup first); it is intentionally not run inside the migration.
+
+### Migration
+- New migration enables the `unaccent` PostgreSQL extension (a trusted extension, creatable by the database owner). Schema-only — no table or column changes, no data rewrite; the one-time counter reconciliation is the separate `entities recount` step above.
+
 ## [0.71.1] - 2026-08-18
 
 ### Fixed

@@ -402,3 +402,40 @@ class TestFoldedRecount:
             )
         ).all()
         assert len(rows) == 1
+
+
+class TestRecountDryRunSeam:
+    """The recount command's dry-run must NOT persist — the real get_session seam.
+
+    Regression for a bug found in deployment: ``db_manager.get_session`` commits on normal scope
+    exit, so a dry-run that merely skipped ``commit`` still auto-committed its pending UPDATEs. The
+    CLI unit test mocked the session and only checked "commit not called", so it missed the ambient
+    auto-commit (a mocked collaborator cannot fail the way the real one does). ``_recount_counters``
+    now rolls back explicitly on dry-run; this crosses the real DB seam to prove it.
+    """
+
+    async def test_dry_run_persists_nothing_then_apply_writes(
+        self, db_session: AsyncSession
+    ) -> None:
+        from chronovista.cli.entity_commands import _recount_counters
+
+        vid = "vidDrySeam1"
+        await _seed_video(db_session, vid)
+        eid = await _seed_entity(db_session, "Rene")
+        await _seed_mention(db_session, eid, vid, "René", mention_source="description")
+        # Commit the seed so a rollback inside the dry-run cannot discard it.
+        await db_session.commit()
+
+        before = await _entity_counts(db_session, eid)
+        assert before == (0, 0)
+
+        # Dry-run computes a real change but MUST NOT persist it.
+        _, entities_changed, _ = await _recount_counters(db_session, dry_run=True)
+        assert entities_changed >= 1, "dry-run should detect a pending change"
+        assert (
+            await _entity_counts(db_session, eid) == before
+        ), "dry-run persisted counters — the rollback did not take effect"
+
+        # Apply DOES persist.
+        await _recount_counters(db_session, dry_run=False)
+        assert await _entity_counts(db_session, eid) != before

@@ -29,6 +29,7 @@ from rich.progress import (
 )
 from rich.table import Table
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.config.database import db_manager
 from chronovista.db.models import EntityAlias as EntityAliasDB
@@ -816,6 +817,56 @@ def backfill_descriptions(
     asyncio.run(_run())
 
 
+async def _recount_counters(
+    session: AsyncSession, *, dry_run: bool
+) -> tuple[int, int, int]:
+    """Recompute all entity/alias counters; roll back on dry-run, commit on apply.
+
+    Returns ``(entities_recomputed, entity_counters_changed, alias_counters_changed)``.
+
+    The explicit ``rollback``/``commit`` is REQUIRED, not cosmetic: ``db_manager.get_session``
+    commits on normal scope exit, so a dry-run that merely *avoids* calling ``commit`` would still
+    have its pending UPDATEs auto-committed when the session scope closes — i.e. the "preview" would
+    silently write. Rolling back makes dry-run truly side-effect-free regardless of the ambient
+    session scope, and committing here makes apply explicit (the later scope commit is then a no-op).
+    """
+    mention_repo = EntityMentionRepository()
+    entity_ids = [
+        row[0] for row in (await session.execute(select(NamedEntityDB.id))).all()
+    ]
+
+    entity_cols = select(
+        NamedEntityDB.id, NamedEntityDB.mention_count, NamedEntityDB.video_count
+    )
+    alias_cols = select(EntityAliasDB.id, EntityAliasDB.occurrence_count)
+
+    before_e = {
+        r.id: (r.mention_count, r.video_count)
+        for r in await session.execute(entity_cols)
+    }
+    before_a = {r.id: r.occurrence_count for r in await session.execute(alias_cols)}
+
+    # Recompute in-session; the same session sees its own writes when we re-select below.
+    await mention_repo.update_entity_counters(session, entity_ids)
+    await mention_repo.update_alias_counters(session, entity_ids)
+
+    after_e = {
+        r.id: (r.mention_count, r.video_count)
+        for r in await session.execute(entity_cols)
+    }
+    after_a = {r.id: r.occurrence_count for r in await session.execute(alias_cols)}
+
+    entities_changed = sum(1 for k, v in after_e.items() if before_e.get(k) != v)
+    aliases_changed = sum(1 for k, v in after_a.items() if before_a.get(k) != v)
+
+    if dry_run:
+        await session.rollback()
+    else:
+        await session.commit()
+
+    return len(entity_ids), entities_changed, aliases_changed
+
+
 @entity_app.command("recount")
 def recount(
     dry_run: bool = typer.Option(
@@ -834,48 +885,13 @@ def recount(
     """
 
     async def _run() -> None:
-        mention_repo = EntityMentionRepository()
-
         async for session in db_manager.get_session(echo=False):
-            entity_ids = [
-                row[0]
-                for row in (await session.execute(select(NamedEntityDB.id))).all()
-            ]
-
-            _entity_cols = select(
-                NamedEntityDB.id,
-                NamedEntityDB.mention_count,
-                NamedEntityDB.video_count,
+            recomputed, entities_changed, aliases_changed = await _recount_counters(
+                session, dry_run=dry_run
             )
-            _alias_cols = select(EntityAliasDB.id, EntityAliasDB.occurrence_count)
-
-            before_e = {
-                r.id: (r.mention_count, r.video_count)
-                for r in await session.execute(_entity_cols)
-            }
-            before_a = {
-                r.id: r.occurrence_count for r in await session.execute(_alias_cols)
-            }
-
-            # Recompute in-session (uncommitted); the same session sees its own writes.
-            await mention_repo.update_entity_counters(session, entity_ids)
-            await mention_repo.update_alias_counters(session, entity_ids)
-
-            after_e = {
-                r.id: (r.mention_count, r.video_count)
-                for r in await session.execute(_entity_cols)
-            }
-            after_a = {
-                r.id: r.occurrence_count for r in await session.execute(_alias_cols)
-            }
-
-            entities_changed = sum(
-                1 for k, v in after_e.items() if before_e.get(k) != v
-            )
-            aliases_changed = sum(1 for k, v in after_a.items() if before_a.get(k) != v)
 
             summary = (
-                f"[bold]Entities recomputed:[/bold] {len(entity_ids)}\n"
+                f"[bold]Entities recomputed:[/bold] {recomputed}\n"
                 f"[bold]Entity counters changed:[/bold] {entities_changed}\n"
                 f"[bold]Alias counters changed:[/bold] {aliases_changed}"
             )
@@ -889,7 +905,6 @@ def recount(
                     )
                 )
             else:
-                await session.commit()
                 console.print(
                     Panel(
                         summary,

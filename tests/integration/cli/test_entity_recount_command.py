@@ -55,14 +55,18 @@ def _run_recount(*args: str) -> tuple[Any, AsyncMock]:
 
 
 class TestRecountCommand:
-    def test_dry_run_does_not_commit(self) -> None:
+    def test_dry_run_rolls_back_and_does_not_commit(self) -> None:
         result, session = _run_recount("--dry-run")
         assert result.exit_code == 0, result.output
-        assert session.commit.await_count == 0  # dry run writes nothing
+        # Dry-run must ROLL BACK explicitly (not merely skip commit) — get_session auto-commits on
+        # scope exit, so a skipped commit alone would still persist. This is the deployment bug.
+        assert session.rollback.await_count == 1
+        assert session.commit.await_count == 0
         assert "dry run" in result.output.lower()
 
-    def test_apply_commits(self) -> None:
+    def test_apply_commits_and_does_not_rollback(self) -> None:
         result, session = _run_recount()
         assert result.exit_code == 0, result.output
         assert session.commit.await_count == 1  # apply persists
+        assert session.rollback.await_count == 0
         assert "complete" in result.output.lower()

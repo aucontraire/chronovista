@@ -117,6 +117,7 @@ export interface DiffErrorPattern {
   canonical_form: string;
   frequency: number;
   remaining_matches: number;
+  remaining_matches_capped: boolean;
   entity_id: string | null;
   entity_name: string | null;
 }

@@ -56,7 +56,7 @@ function DiffAnalysisSkeleton() {
     >
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="bg-slate-100 px-6 py-3 flex gap-6">
-          {[100, 120, 80, 100, 90].map((w, i) => (
+          {[100, 120, 80, 80, 100, 90].map((w, i) => (
             <div
               key={i}
               className="h-4 rounded bg-slate-300"
@@ -71,6 +71,7 @@ function DiffAnalysisSkeleton() {
           >
             <div className="h-4 rounded bg-slate-200" style={{ width: 120 }} />
             <div className="h-4 rounded bg-slate-200" style={{ width: 140 }} />
+            <div className="h-4 rounded bg-slate-200" style={{ width: 50 }} />
             <div className="h-4 rounded bg-slate-200" style={{ width: 50 }} />
             <div className="h-4 rounded bg-slate-200" style={{ width: 110 }} />
             <div className="h-8 rounded bg-slate-200" style={{ width: 110 }} />
@@ -161,6 +162,10 @@ function PatternRow({ pattern, onFindAndReplace }: PatternRowProps) {
       </td>
       <td className={`px-4 py-3 text-sm tabular-nums${completed ? " text-slate-400" : " text-slate-700"}`}>
         {pattern.frequency.toLocaleString()}
+      </td>
+      <td className={`px-4 py-3 text-sm tabular-nums${completed ? " text-slate-400" : " text-slate-700"}`}>
+        {pattern.remaining_matches.toLocaleString()}
+        {pattern.remaining_matches_capped ? "+" : ""}
       </td>
       <td className="px-4 py-3 text-sm text-slate-600">
         {pattern.entity_id !== null && pattern.entity_name !== null ? (
@@ -494,6 +499,12 @@ export function DiffAnalysisPage() {
                       Frequency
                       <SortIcon direction={sortDirection} />
                     </button>
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider"
+                  >
+                    Remaining
                   </th>
                   <th
                     scope="col"

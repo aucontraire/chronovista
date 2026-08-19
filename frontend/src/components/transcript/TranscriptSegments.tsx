@@ -30,7 +30,7 @@
  * @module components/transcript/TranscriptSegments
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type React from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
@@ -584,6 +584,12 @@ function VirtualizedSegmentList({
     getScrollElement: () => containerRef.current,
     estimateSize: () => VIRTUALIZATION_CONFIG.estimatedHeight, // NFR-P15: 48px
     overscan: VIRTUALIZATION_CONFIG.overscan, // NFR-P14: 5 segments
+    // Key measurements by segment id, not positional index. When
+    // fetchPreviousPage prepends earlier segments, every existing segment's
+    // index shifts — without a stable key the virtualizer would reattach
+    // index-keyed measured heights to the wrong (new) segments at those
+    // indices, corrupting the scroll-anchor math on prepend.
+    getItemKey: (index) => segments[index]?.id ?? index,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
@@ -776,7 +782,13 @@ export function TranscriptSegments({
 }: TranscriptSegmentsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const loadPreviousRef = useRef<HTMLDivElement>(null);
   const previousLanguageRef = useRef<string>(languageCode);
+
+  // Scroll anchor captured just before fetchPreviousPage prepends earlier
+  // segments, so the viewport can be restored after the prepend renders
+  // (see the useLayoutEffect below).
+  const scrollAnchorRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
 
   // Deep link highlight state (FR-008)
   const [highlightedSegmentId, setHighlightedSegmentId] = useState<number | null>(null);
@@ -846,9 +858,12 @@ export function TranscriptSegments({
     isLoading,
     isFetchingNextPage,
     hasNextPage,
+    isFetchingPreviousPage,
+    hasPreviousPage,
     isError,
     // error is available but not displayed; we use isError for conditional rendering
     fetchNextPage,
+    fetchPreviousPage,
     retry,
     seekToTimestamp,
   } = useTranscriptSegments(videoId, languageCode);
@@ -1094,6 +1109,72 @@ export function TranscriptSegments({
     };
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
+  // Fetches earlier segments (bidirectional paging around a deep-link
+  // window), capturing a scroll anchor first so the viewport can be restored
+  // once the prepended segments render (see the useLayoutEffect below).
+  const handleFetchPreviousPage = useCallback(() => {
+    if (!hasPreviousPage || isFetchingPreviousPage) return;
+    const container = containerRef.current;
+    if (container) {
+      scrollAnchorRef.current = {
+        scrollTop: container.scrollTop,
+        scrollHeight: container.scrollHeight,
+      };
+    }
+    fetchPreviousPage();
+  }, [hasPreviousPage, isFetchingPreviousPage, fetchPreviousPage]);
+
+  // Restores scroll position after fetchPreviousPage prepends earlier
+  // segments. Prepending grows the container's scrollHeight and shifts every
+  // existing segment's index/offset, which would otherwise visually jump the
+  // viewport. useLayoutEffect runs after the DOM commits the new segments
+  // but before the browser paints, so the adjustment is invisible to the
+  // user. Guarded by scrollAnchorRef — only does work right after a
+  // handleFetchPreviousPage call, not on every segments change (e.g. a
+  // normal fetchNextPage append needs no adjustment).
+  useLayoutEffect(() => {
+    const anchor = scrollAnchorRef.current;
+    if (!anchor) return;
+    scrollAnchorRef.current = null;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const heightDelta = container.scrollHeight - anchor.scrollHeight;
+    if (heightDelta > 0) {
+      container.scrollTop = anchor.scrollTop + heightDelta;
+    }
+  }, [segments]);
+
+  // Intersection Observer for bidirectional infinite scroll — earlier
+  // segments load when the user scrolls near the top (mirrors the bottom
+  // sentinel above).
+  useEffect(() => {
+    const loadPreviousElement = loadPreviousRef.current;
+    if (!loadPreviousElement || !hasPreviousPage || isFetchingPreviousPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting) {
+          handleFetchPreviousPage();
+        }
+      },
+      {
+        root: containerRef.current,
+        // Trigger 200px from top (mirrors FR-020c's 200px-from-bottom trigger)
+        rootMargin: `${INFINITE_SCROLL_CONFIG.triggerDistance}px 0px 0px 0px`,
+        threshold: 0,
+      }
+    );
+
+    observer.observe(loadPreviousElement);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hasPreviousPage, isFetchingPreviousPage, handleFetchPreviousPage]);
+
   // Keyboard navigation handler (NFR-A11-A14)
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -1147,19 +1228,27 @@ export function TranscriptSegments({
     []
   );
 
-  // Handle scroll for manual infinite scroll trigger (fallback)
+  // Handle scroll for manual infinite scroll trigger (fallback) — both
+  // directions: 200px from bottom loads later segments (FR-020c), 200px
+  // from top loads earlier segments (bidirectional paging fallback,
+  // mirrors FR-020c for the IntersectionObserver-unavailable case).
   const handleScroll = useCallback(() => {
     const container = containerRef.current;
-    if (!container || !hasNextPage || isFetchingNextPage) return;
+    if (!container) return;
 
     const { scrollTop, scrollHeight, clientHeight } = container;
-    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-    // FR-020c: Trigger 200px from bottom
-    if (distanceFromBottom < INFINITE_SCROLL_CONFIG.triggerDistance) {
-      fetchNextPage();
+    if (hasNextPage && !isFetchingNextPage) {
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      if (distanceFromBottom < INFINITE_SCROLL_CONFIG.triggerDistance) {
+        fetchNextPage();
+      }
     }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+    if (scrollTop < INFINITE_SCROLL_CONFIG.triggerDistance) {
+      handleFetchPreviousPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, handleFetchPreviousPage]);
 
   // --- Feature 035: Edit mode handlers ---
 
@@ -1413,6 +1502,27 @@ export function TranscriptSegments({
         max-h-[calc(40vh-100px)] sm:max-h-[calc(50vh-100px)] lg:max-h-[calc(60vh-100px)]
       `}
     >
+      {/* Intersection observer target for bidirectional infinite scroll (earlier segments) */}
+      {hasPreviousPage && !isFetchingPreviousPage && (
+        <div
+          ref={loadPreviousRef}
+          className="h-1"
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Loading indicator for earlier segments (bidirectional paging) */}
+      {isFetchingPreviousPage && (
+        <div role="status" aria-label="Loading earlier segments">
+          {Array.from({ length: INFINITE_SCROLL_CONFIG.skeletonCount }).map(
+            (_, index) => (
+              <SkeletonSegment key={`loading-previous-${index}`} />
+            )
+          )}
+          <span className="sr-only">Loading earlier segments...</span>
+        </div>
+      )}
+
       {/* Segment list - virtualized or standard based on count */}
       {useVirtualization ? (
         <VirtualizedSegmentList

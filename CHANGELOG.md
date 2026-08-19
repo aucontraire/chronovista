@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.72.2] - 2026-08-19
+
+### Fixed
+- **Deep-linking to a transcript segment no longer shows a timestamp discontinuity.** Jumping to a specific segment (from a batch find-&-replace result or the transcript search page) previously loaded the start of the transcript *plus* a separate window around the target, leaving an unfetched gap — so scrolling up from the target jumped across several minutes of missing segments. The transcript now loads one contiguous window centered on the target and pages in **both** directions (earlier segments on scroll-up, later on scroll-down), so the surrounding context is continuous.
+
 ## [0.72.1] - 2026-08-19
 
 ### Changed

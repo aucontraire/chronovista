@@ -181,6 +181,14 @@ export const INFINITE_SCROLL_CONFIG = {
   triggerDistance: 200,
   /** FR-020d: Number of skeleton items to show during loading */
   skeletonCount: 3,
+  /**
+   * Deep-link window radius: number of segments to load on each side of the
+   * deep-link target when resetting the infinite-query cache to a contiguous
+   * offset-paginated window (fixes the timestamp-discontinuity bug where a
+   * time-windowed page was appended after offset-0 pages, skipping segments
+   * in between). Window size = radius * 2.
+   */
+  deepLinkWindowRadius: 75,
 } as const;
 
 /**

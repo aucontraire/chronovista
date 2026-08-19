@@ -52,17 +52,31 @@ export interface UseTranscriptSegmentsResult {
   isFetchingNextPage: boolean;
   /** Whether there are more segments to load */
   hasNextPage: boolean;
+  /** Whether fetching the previous page (bidirectional paging around a deep-link window) */
+  isFetchingPreviousPage: boolean;
+  /** Whether there are earlier segments to load (bidirectional paging around a deep-link window) */
+  hasPreviousPage: boolean;
   /** Whether an error occurred */
   isError: boolean;
   /** Error object if an error occurred */
   error: ApiError | null;
   /** Function to fetch the next page of segments */
   fetchNextPage: () => void;
+  /** Function to fetch the previous (earlier) page of segments */
+  fetchPreviousPage: () => void;
   /** Function to retry after an error */
   retry: () => void;
   /** Function to cancel in-flight requests (for language switching) */
   cancelRequests: () => void;
-  /** Seek to load segments around a target timestamp (for deep link jumps) */
+  /**
+   * Seek to a target timestamp for deep-link navigation. Resets the
+   * infinite-query cache to a single, contiguous, offset-paginated window
+   * centered on the target instead of appending a disjoint time-windowed
+   * page — this is what fixes the timestamp-discontinuity bug (a gap of
+   * un-fetched segments between the offset-0 pages and the appended page).
+   * Subsequent fetchNextPage/fetchPreviousPage calls page contiguously by
+   * pure offset from this window in either direction.
+   */
   seekToTimestamp: (targetTimestamp: number) => Promise<boolean>;
 }
 
@@ -201,6 +215,22 @@ export function useTranscriptSegments(
           limit: INFINITE_SCROLL_CONFIG.subsequentBatchSize,
         };
       },
+      // Bidirectional paging: lets scrolling UP from a deep-link window load
+      // earlier segments. Always offset-based (never start_time-based), so
+      // every page — forward or backward — is contiguous with its neighbors.
+      // Contiguous by construction: previousOffset + previousLimit === the
+      // current first page's offset, so there is never a gap or overlap.
+      getPreviousPageParam: (_firstPage, _allPages, firstPageParam) => {
+        if (firstPageParam.offset <= 0) {
+          return undefined;
+        }
+        const previousLimit = Math.min(
+          INFINITE_SCROLL_CONFIG.subsequentBatchSize,
+          firstPageParam.offset
+        );
+        const previousOffset = firstPageParam.offset - previousLimit;
+        return { offset: previousOffset, limit: previousLimit };
+      },
       enabled: enabled && !!videoId && !!languageCode,
       staleTime: 5 * 60 * 1000, // 5 minutes
     });
@@ -224,63 +254,95 @@ export function useTranscriptSegments(
     query.refetch();
   }, [query]);
 
-  // Seek to load segments around a target timestamp using the backend's
-  // start_time filter. Makes a single API call with start_time parameter
-  // instead of guessing the offset — the database index on
-  // (video_id, language_code, start_time) handles the lookup efficiently.
-  // Returns true if data was fetched successfully.
+  // Fetches a single page with a 5s timeout, wired through apiFetch's
+  // `externalSignal` (NOT `signal` — apiFetch only merges caller cancellation
+  // via `externalSignal`; a bare `signal` in fetchOptions is silently
+  // overwritten by apiFetch's own internal AbortController).
+  const fetchWithTimeout = useCallback(
+    (searchParams: URLSearchParams): Promise<SegmentListResponse> => {
+      const endpoint = `/videos/${videoId}/transcript/segments?${searchParams.toString()}`;
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => timeoutController.abort(), 5000);
+      return apiFetch<SegmentListResponse>(endpoint, {
+        externalSignal: timeoutController.signal,
+      }).finally(() => clearTimeout(timeoutId));
+    },
+    [videoId]
+  );
+
+  // Seek to a target timestamp for deep-link navigation (batch find-&-replace
+  // results and the search page both land here via `?seg=&t=`).
+  //
+  // Computes the target's ABSOLUTE offset without guessing:
+  //   full_total     = pagination.total from an offset=0 (no start_time) call
+  //   filtered_total = pagination.total from a start_time=target call
+  //                    (count of segments AT/AFTER the target — segments are
+  //                    ordered ASC by start_time, so these are the LAST
+  //                    `filtered_total` rows of the full ordered set)
+  //   absoluteOffset = full_total − filtered_total
+  //
+  // Then RESETS the infinite-query cache (does not append) to a single,
+  // contiguous, pure-offset window centered on that absolute offset. This is
+  // the fix for the timestamp-discontinuity bug: the old implementation
+  // appended a start_time-windowed page after the offset-0 pages already in
+  // the cache, leaving an un-fetched gap between them that the flattened,
+  // unsorted render made visible as a timestamp jump. Because every page
+  // (including the ones fetchNextPage/fetchPreviousPage load afterward) is
+  // now pure offset paging from this window, there is no gap in either
+  // scroll direction.
+  //
+  // Returns true if the window was fetched and installed successfully.
   const seekToTimestamp = useCallback(
     async (targetTimestamp: number): Promise<boolean> => {
       try {
-        // Subtract a small buffer so the target segment is within the window,
-        // not right at the edge (accounts for segment duration overlap).
-        const startTime = Math.max(0, targetTimestamp - 5);
+        const [fullTotalResponse, filteredTotalResponse] = await Promise.all([
+          fetchWithTimeout(
+            new URLSearchParams({ language: languageCode, offset: "0", limit: "1" })
+          ),
+          fetchWithTimeout(
+            new URLSearchParams({
+              language: languageCode,
+              start_time: targetTimestamp.toString(),
+              offset: "0",
+              limit: "1",
+            })
+          ),
+        ]);
 
-        const params = new URLSearchParams({
-          language: languageCode,
-          start_time: startTime.toString(),
-          offset: "0",
-          limit: "100",
+        const fullTotal = fullTotalResponse.pagination.total;
+        const filteredTotal = filteredTotalResponse.pagination.total;
+        if (fullTotal === 0) return false;
+
+        const absoluteOffset = Math.max(0, fullTotal - filteredTotal);
+        const radius = INFINITE_SCROLL_CONFIG.deepLinkWindowRadius;
+        const windowOffset = Math.max(0, absoluteOffset - radius);
+        const windowLimit = radius * 2;
+
+        const windowData = await fetchWithTimeout(
+          new URLSearchParams({
+            language: languageCode,
+            offset: windowOffset.toString(),
+            limit: windowLimit.toString(),
+          })
+        );
+
+        if (windowData.data.length === 0) return false;
+
+        // Reset — not append — so the cache holds exactly this contiguous
+        // window and nothing else.
+        const qKey = segmentsQueryKey(videoId, languageCode);
+        queryClient.setQueryData<InfiniteData<SegmentListResponse, PageParam>>(qKey, {
+          pages: [windowData],
+          pageParams: [
+            { offset: windowData.pagination.offset, limit: windowData.pagination.limit },
+          ],
         });
-
-        const endpoint = `/videos/${videoId}/transcript/segments?${params.toString()}`;
-
-        const timeoutController = new AbortController();
-        const timeoutId = setTimeout(() => timeoutController.abort(), 5000);
-
-        try {
-          const data = await apiFetch<SegmentListResponse>(endpoint, {
-            signal: timeoutController.signal,
-          });
-          clearTimeout(timeoutId);
-
-          if (data.data.length === 0) return false;
-
-          // Inject the fetched page into the infinite query cache
-          const qKey = segmentsQueryKey(videoId, languageCode);
-          queryClient.setQueryData<InfiniteData<SegmentListResponse, PageParam>>(
-            qKey,
-            (old) => {
-              if (!old) return undefined;
-              return {
-                pages: [...old.pages, data],
-                pageParams: [
-                  ...old.pageParams,
-                  { offset: data.pagination.offset, limit: data.pagination.limit },
-                ],
-              };
-            }
-          );
-          return true;
-        } catch {
-          clearTimeout(timeoutId);
-          return false;
-        }
+        return true;
       } catch {
         return false;
       }
     },
-    [videoId, languageCode, queryClient]
+    [videoId, languageCode, queryClient, fetchWithTimeout]
   );
 
   return {
@@ -289,9 +351,12 @@ export function useTranscriptSegments(
     isLoading: query.isLoading,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: query.hasNextPage ?? false,
+    isFetchingPreviousPage: query.isFetchingPreviousPage,
+    hasPreviousPage: query.hasPreviousPage ?? false,
     isError: query.isError,
     error: query.error ?? null,
     fetchNextPage: query.fetchNextPage,
+    fetchPreviousPage: query.fetchPreviousPage,
     retry,
     cancelRequests,
     seekToTimestamp,

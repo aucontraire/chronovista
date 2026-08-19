@@ -594,6 +594,41 @@ function VirtualizedSegmentList({
 
   const virtualItems = virtualizer.getVirtualItems();
 
+  // Track the previously-scrolled activeSegmentIndex so we only scroll when
+  // the user navigates to a *different* match (not when new pages load and
+  // searchMatches changes while currentIndex stays the same). Local to this
+  // component — VirtualizedSegmentList and StandardSegmentList are mutually
+  // exclusive mounts (the outer component renders one or the other), so a
+  // shared ref isn't needed.
+  const prevActiveSegmentIndexRef = useRef<number | undefined>(undefined);
+
+  // Scroll to the active search match via the virtualizer's own
+  // scrollToIndex, which uses measured item offsets and re-corrects once the
+  // target renders — unlike a fixed index * estimatedHeight calculation,
+  // this stays accurate no matter how much variable-height rows have thrown
+  // off the naive estimate by this point in the list (the bug: later matches
+  // were never rendered because the old math scrolled past/short of them).
+  // align: "center" also no-ops/adjusts gracefully for already-visible
+  // targets, so nearby matches don't jump.
+  const activeSegmentIndex = searchProps?.activeSegmentIndex;
+  useEffect(() => {
+    if (activeSegmentIndex === undefined) {
+      prevActiveSegmentIndexRef.current = undefined;
+      return;
+    }
+
+    // Skip — same segment as last time (e.g. new pages loaded but user didn't
+    // press next/prev, so the active match index is unchanged).
+    if (activeSegmentIndex === prevActiveSegmentIndexRef.current) return;
+    prevActiveSegmentIndexRef.current = activeSegmentIndex;
+
+    virtualizer.scrollToIndex(activeSegmentIndex, { align: "center" });
+    // virtualizer is intentionally omitted: @tanstack/react-virtual returns a
+    // new object reference on most renders, which would refire this effect
+    // and fight the user's own scrolling.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSegmentIndex]);
+
   return (
     <div
       style={{
@@ -661,6 +696,7 @@ function VirtualizedSegmentList({
  */
 function StandardSegmentList({
   segments,
+  containerRef,
   highlightedSegmentId,
   highlightTransitionClass,
   activeSegmentId,
@@ -668,6 +704,8 @@ function StandardSegmentList({
   searchProps,
 }: {
   segments: TranscriptSegment[];
+  /** Scoped querySelector target for the search-nav scroll effect below. */
+  containerRef: React.RefObject<HTMLDivElement | null>;
   highlightedSegmentId: number | null;
   highlightTransitionClass: string;
   /** ID of the segment currently active under the playback cursor (FR-014). */
@@ -675,6 +713,39 @@ function StandardSegmentList({
   editModeProps: EditModeProps;
   searchProps?: TranscriptSegmentsProps["searchProps"];
 }) {
+  // Track the previously-scrolled activeSegmentIndex so we only scroll when
+  // the user navigates to a *different* match (not when new pages load and
+  // searchMatches changes while currentIndex stays the same). Local to this
+  // component — VirtualizedSegmentList and StandardSegmentList are mutually
+  // exclusive mounts (the outer component renders one or the other), so a
+  // shared ref isn't needed.
+  const prevActiveSegmentIndexRef = useRef<number | undefined>(undefined);
+
+  // Scroll to the active search match. Every row is already in the DOM here
+  // (no virtualization), so a direct querySelector + scrollIntoView is all
+  // that's needed — no pre-scroll-then-refine step like the deep link
+  // handler uses for the virtualized case.
+  const activeSegmentIndex = searchProps?.activeSegmentIndex;
+  useEffect(() => {
+    if (activeSegmentIndex === undefined) {
+      prevActiveSegmentIndexRef.current = undefined;
+      return;
+    }
+
+    // Skip — same segment as last time (e.g. new pages loaded but user didn't
+    // press next/prev, so the active match index is unchanged).
+    if (activeSegmentIndex === prevActiveSegmentIndexRef.current) return;
+    prevActiveSegmentIndexRef.current = activeSegmentIndex;
+
+    const segmentId = segments[activeSegmentIndex]?.id;
+    if (segmentId === undefined) return;
+
+    const el = containerRef.current?.querySelector(
+      `[data-segment-id="${segmentId}"]`
+    );
+    el?.scrollIntoView({ block: "center" });
+  }, [activeSegmentIndex, segments, containerRef]);
+
   return (
     <>
       {segments.map((segment, segmentIndex) => {
@@ -905,39 +976,6 @@ export function TranscriptSegments({
       previousLanguageRef.current = languageCode;
     }
   }, [languageCode, onScrollPositionReset]);
-
-  // Track the previously-scrolled activeSegmentIndex so we only scroll when
-  // the user navigates to a *different* match (not when new pages load and
-  // searchMatches changes while currentIndex stays the same).
-  const prevActiveSegmentIndexRef = useRef<number | undefined>(undefined);
-
-  // Scroll the virtualizer container to the active search match when the user
-  // navigates (next / prev). Uses containerRef.scrollTop instead of DOM
-  // scrollIntoView so it works even when the target segment is outside the
-  // virtual window and hasn't been rendered yet (fixes the "scroll fails for
-  // off-screen virtual segments" problem described in the bug report).
-  const activeSegmentIndex = searchProps?.activeSegmentIndex;
-  useEffect(() => {
-    if (activeSegmentIndex === undefined) {
-      prevActiveSegmentIndexRef.current = undefined;
-      return;
-    }
-
-    // Skip — same segment as last time (e.g. new pages loaded but user didn't
-    // press next/prev, so the active match index is unchanged).
-    if (activeSegmentIndex === prevActiveSegmentIndexRef.current) return;
-    prevActiveSegmentIndexRef.current = activeSegmentIndex;
-
-    if (!containerRef.current) return;
-
-    // Center the target segment in the viewport by calculating its approximate
-    // pixel position from the top of the list.
-    const containerHeight = containerRef.current.clientHeight;
-    const targetTop = activeSegmentIndex * VIRTUALIZATION_CONFIG.estimatedHeight;
-    const centeredTop = Math.max(0, targetTop - containerHeight / 2);
-
-    containerRef.current.scrollTop = centeredTop;
-  }, [activeSegmentIndex]);
 
   /**
    * Handles the deep link scroll, highlight, focus, and cleanup sequence.
@@ -1538,6 +1576,7 @@ export function TranscriptSegments({
       ) : (
         <StandardSegmentList
           segments={segments}
+          containerRef={containerRef}
           highlightedSegmentId={highlightedSegmentId}
           highlightTransitionClass={highlightTransitionClass}
           activeSegmentId={activeSegmentId}

@@ -71,6 +71,7 @@ function makePattern(overrides: Partial<DiffErrorPattern> = {}): DiffErrorPatter
     canonical_form: "Barack",
     frequency: 12,
     remaining_matches: 8,
+    remaining_matches_capped: false,
     entity_id: null,
     entity_name: null,
     ...overrides,
@@ -779,5 +780,75 @@ describe("DiffAnalysisPage", () => {
     const entityLink = screen.getByRole("link", { name: "Barack Obama" });
     expect(entityLink).toBeInTheDocument();
     expect(entityLink).toHaveAttribute("href", "/entities/entity-uuid-xyz");
+  });
+
+  // -------------------------------------------------------------------------
+  // Remaining column (surfaces remaining_matches)
+  // -------------------------------------------------------------------------
+
+  it("renders a Remaining column header", () => {
+    mockedUseDiffAnalysis.mockReturnValue(
+      makeDefaultQueryResult({ isSuccess: true, data: [makePattern()] })
+    );
+
+    renderPage();
+
+    expect(
+      screen.getByRole("columnheader", { name: /remaining/i })
+    ).toBeInTheDocument();
+  });
+
+  it("renders the remaining_matches value in the Remaining cell", () => {
+    const pattern = makePattern({
+      error_token: "acme",
+      canonical_form: "Acme",
+      frequency: 42,
+      remaining_matches: 17,
+      remaining_matches_capped: false,
+    });
+
+    mockedUseDiffAnalysis.mockReturnValue(
+      makeDefaultQueryResult({ isSuccess: true, data: [pattern] })
+    );
+
+    renderPage();
+
+    expect(screen.getByText("42")).toBeInTheDocument();
+    expect(screen.getByText("17")).toBeInTheDocument();
+  });
+
+  it("renders remaining_matches with a '+' suffix when remaining_matches_capped is true", () => {
+    const pattern = makePattern({
+      error_token: "foo",
+      canonical_form: "Foo",
+      remaining_matches: 1000,
+      remaining_matches_capped: true,
+    });
+
+    mockedUseDiffAnalysis.mockReturnValue(
+      makeDefaultQueryResult({ isSuccess: true, data: [pattern] })
+    );
+
+    renderPage();
+
+    expect(screen.getByText("1,000+")).toBeInTheDocument();
+  });
+
+  it("does not render a '+' suffix when remaining_matches_capped is false", () => {
+    const pattern = makePattern({
+      error_token: "foo",
+      canonical_form: "Foo",
+      remaining_matches: 250,
+      remaining_matches_capped: false,
+    });
+
+    mockedUseDiffAnalysis.mockReturnValue(
+      makeDefaultQueryResult({ isSuccess: true, data: [pattern] })
+    );
+
+    renderPage();
+
+    expect(screen.getByText("250")).toBeInTheDocument();
+    expect(screen.queryByText("250+")).not.toBeInTheDocument();
   });
 });

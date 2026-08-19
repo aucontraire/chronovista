@@ -30,6 +30,7 @@ const DIFF_PATTERN: DiffErrorPattern = {
   canonical_form: "climate",
   frequency: 12,
   remaining_matches: 8,
+  remaining_matches_capped: false,
   entity_id: null,
   entity_name: null,
 };

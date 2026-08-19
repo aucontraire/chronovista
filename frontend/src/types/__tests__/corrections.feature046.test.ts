@@ -53,6 +53,7 @@ describe("Feature 046 type interfaces (T001)", () => {
         canonical_form: "white",
         frequency: 5,
         remaining_matches: 3,
+        remaining_matches_capped: false,
         entity_id: null,
         entity_name: null,
       };
@@ -68,6 +69,7 @@ describe("Feature 046 type interfaces (T001)", () => {
         canonical_form: "Henry",
         frequency: 10,
         remaining_matches: 7,
+        remaining_matches_capped: false,
         entity_id: "3f4a7b2c-1d9e-4f6a-b8c2-9e0d1f2a3b4c",
         entity_name: "Henry Whitfield",
       };
@@ -167,6 +169,7 @@ describe("Feature 046 type interfaces (T001)", () => {
         canonical_form: "token",
         frequency: 1,
         remaining_matches: 1,
+        remaining_matches_capped: false,
         entity_id: null,
         entity_name: null,
       };

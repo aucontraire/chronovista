@@ -40,6 +40,7 @@ function makeDiffErrorPattern(
     canonical_form: "Barack",
     frequency: 12,
     remaining_matches: 8,
+    remaining_matches_capped: false,
     entity_id: null,
     entity_name: null,
     ...overrides,

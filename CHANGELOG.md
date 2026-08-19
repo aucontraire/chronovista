@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **The ASR Error Patterns page now shows a "Remaining" column.** Each row now displays how many segments still contain the error token as a whole word (the actionable count), alongside the existing "Frequency" (how many times that correction was historically applied). Previously only Frequency was shown — and it does not decrease as you fix instances, so it read as "still N to do" when it wasn't. A capped count renders as e.g. `1,000+`.
+
 ## [0.72.0] - 2026-08-18
 
 ### Fixed

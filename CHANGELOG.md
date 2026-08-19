@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.72.3] - 2026-08-19
+
+### Fixed
+- **Searching within a transcript now scrolls precisely to each match.** Pressing next/prev between search hits positioned the view using a fixed per-row height estimate, so with variable-height (multi-line) rows the target drifted further off the further down the transcript you searched — later matches were scrolled past the virtualized render window, so they were skipped and lost their active (orange) highlight. Navigation now scrolls using the list's real measured row offsets, centering each match reliably anywhere in the transcript and keeping its highlight visible. (Frontend 0.35.4.)
+
 ## [0.72.2] - 2026-08-19
 
 ### Fixed

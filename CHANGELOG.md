@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-08-18
+
 ### Fixed
 - **Entities named with accents now surface every mention of them, not just accent-exact ones.** Entity-mention detection already matches names accent-insensitively, but the queries that decide which entities appear on a video's entities panel and in an entity's video list re-checked the mention text case-insensitively yet **accent-sensitively** — so a mention written with a diacritic the saved name lacks (or vice versa) was recorded but hidden from both views, and the stored counts under-reported it. Membership and the counter recompute now fold accents the same way detection does (via the Postgres `unaccent` extension, applied per entity so it can never create a cross-entity association), so already-recorded accented mentions appear without re-scanning.
 

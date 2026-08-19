@@ -10,6 +10,7 @@ import os
 from collections.abc import AsyncGenerator
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from chronovista.db.models import Base
@@ -39,6 +40,12 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
     # Create tables
     async with engine.begin() as conn:
+        # The integration schema is built via create_all, which does NOT run Alembic
+        # migrations — so a `CREATE EXTENSION` in a migration never reaches this DB. Mirror
+        # it here or accent-folded queries (lower(unaccent(...))) fail with
+        # "function unaccent does not exist". `unaccent` is a trusted extension creatable by
+        # the DB owner without superuser.
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
         await conn.run_sync(Base.metadata.create_all)
 
     # Create session

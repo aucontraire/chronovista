@@ -12,6 +12,8 @@ from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import (
+    ColumnElement,
+    ColumnExpressionArgument,
     ScalarSelect,
     Select,
     String,
@@ -90,6 +92,26 @@ _TRANSCRIPT_SCOPE_SOURCES = (
     MentionSource.TRANSCRIPT.value,
     MentionSource.MANUAL.value,
 )
+
+
+def _folded(col: ColumnExpressionArgument[str]) -> ColumnElement[str]:
+    """Fold a name column to its case- and accent-insensitive form for visible-name matching.
+
+    Returns ``lower(unaccent(col))`` — the ONE fold shared by every visible-name membership site
+    (video panel, entity video list, the Feature 066 shared resolver, provenance filter) and by the
+    stored-counter recompute, so they cannot drift apart (FR-011, single definition).
+
+    This fold matches how mention **detection** already recognises names (NFD + drop combining marks;
+    ``unaccent`` folds the same Latin diacritics), so a mention detection accepted is not then hidden
+    by membership. It deliberately does NOT match the stored ``*_normalized`` columns, which retain
+    Tier-2 marks (tilde, cedilla) — those are for tag identity, not membership, and are out of scope.
+
+    Applying it is safe even though ``unaccent`` folds slightly more aggressively than detection
+    (e.g. ``ø→o``): membership is always evaluated per entity (``entity_id = mention.entity_id``), so
+    a wider fold can only ever match a mention to its own entity — never introduce a cross-entity
+    association (data-model INV-2). Requires the ``unaccent`` extension (enabled by migration).
+    """
+    return func.lower(func.unaccent(col))
 
 
 class EntityMentionRepository(
@@ -363,12 +385,12 @@ class EntityMentionRepository(
         # should be counted, so that ASR-error alias mentions are excluded.
         canonical_names = select(
             NamedEntityDB.id.label("entity_id"),
-            func.lower(NamedEntityDB.canonical_name).label("name_lower"),
+            _folded(NamedEntityDB.canonical_name).label("name_lower"),
         ).where(NamedEntityDB.id.in_(entity_ids))
 
         non_asr_aliases = select(
             EntityAliasDB.entity_id,
-            func.lower(EntityAliasDB.alias_name).label("name_lower"),
+            _folded(EntityAliasDB.alias_name).label("name_lower"),
         ).where(
             EntityAliasDB.entity_id.in_(entity_ids),
             EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
@@ -387,8 +409,7 @@ class EntityMentionRepository(
                 visible_names,
                 and_(
                     EntityMentionDB.entity_id == visible_names.c.entity_id,
-                    func.lower(EntityMentionDB.mention_text)
-                    == visible_names.c.name_lower,
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
                 ),
             )
             .where(EntityMentionDB.entity_id.in_(entity_ids))
@@ -445,13 +466,13 @@ class EntityMentionRepository(
         mention_counts_subq = (
             select(
                 EntityMentionDB.entity_id,
-                func.lower(EntityMentionDB.mention_text).label("mention_lower"),
+                _folded(EntityMentionDB.mention_text).label("mention_lower"),
                 func.count().label("cnt"),
             )
             .where(EntityMentionDB.entity_id.in_(entity_ids))
             .group_by(
                 EntityMentionDB.entity_id,
-                func.lower(EntityMentionDB.mention_text),
+                _folded(EntityMentionDB.mention_text),
             )
             .subquery()
         )
@@ -462,7 +483,7 @@ class EntityMentionRepository(
             update(EntityAliasDB)
             .where(
                 EntityAliasDB.entity_id == mention_counts_subq.c.entity_id,
-                func.lower(EntityAliasDB.alias_name)
+                _folded(EntityAliasDB.alias_name)
                 == mention_counts_subq.c.mention_lower,
             )
             .values(occurrence_count=mention_counts_subq.c.cnt)
@@ -476,7 +497,7 @@ class EntityMentionRepository(
                 mention_counts_subq,
                 (EntityAliasDB.entity_id == mention_counts_subq.c.entity_id)
                 & (
-                    func.lower(EntityAliasDB.alias_name)
+                    _folded(EntityAliasDB.alias_name)
                     == mention_counts_subq.c.mention_lower
                 ),
             )
@@ -726,11 +747,11 @@ class EntityMentionRepository(
         # counters stored on named_entities (which also exclude ASR-error
         # alias mentions).
         canonical_names = select(
-            func.lower(NamedEntityDB.canonical_name).label("name_lower"),
+            _folded(NamedEntityDB.canonical_name).label("name_lower"),
         ).where(NamedEntityDB.id == entity_id)
 
         non_asr_aliases = select(
-            func.lower(EntityAliasDB.alias_name).label("name_lower"),
+            _folded(EntityAliasDB.alias_name).label("name_lower"),
         ).where(
             EntityAliasDB.entity_id == entity_id,
             EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
@@ -744,7 +765,7 @@ class EntityMentionRepository(
         mention_filter = and_(
             EntityMentionDB.entity_id == entity_id,
             or_(
-                func.lower(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
                 EntityMentionDB.detection_method == "manual",
             ),
         )
@@ -766,7 +787,7 @@ class EntityMentionRepository(
             select(distinct(EntityMentionDB.video_id))
             .outerjoin(
                 visible_names,
-                func.lower(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
             )
             .where(mention_filter)
         )
@@ -840,8 +861,7 @@ class EntityMentionRepository(
                 )
                 .outerjoin(
                     visible_names,
-                    func.lower(EntityMentionDB.mention_text)
-                    == visible_names.c.name_lower,
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
                 )
                 .join(VideoDB, EntityMentionDB.video_id == VideoDB.video_id)
                 .outerjoin(Channel, VideoDB.channel_id == Channel.channel_id)
@@ -901,7 +921,7 @@ class EntityMentionRepository(
                     )
                     .outerjoin(
                         visible_names,
-                        func.lower(EntityMentionDB.mention_text)
+                        _folded(EntityMentionDB.mention_text)
                         == visible_names.c.name_lower,
                     )
                     .where(
@@ -909,7 +929,7 @@ class EntityMentionRepository(
                         EntityMentionDB.video_id == row.video_id,
                         EntityMentionDB.detection_method != "manual",
                         or_(
-                            func.lower(EntityMentionDB.mention_text)
+                            _folded(EntityMentionDB.mention_text)
                             == visible_names.c.name_lower,
                             EntityMentionDB.detection_method == "manual",
                         ),
@@ -1395,11 +1415,11 @@ class EntityMentionRepository(
         visible_names = union(
             select(
                 NamedEntityDB.id.label("entity_id"),
-                func.lower(NamedEntityDB.canonical_name).label("name_lower"),
+                _folded(NamedEntityDB.canonical_name).label("name_lower"),
             ).where(NamedEntityDB.id.in_(ids)),
             select(
                 EntityAliasDB.entity_id.label("entity_id"),
-                func.lower(EntityAliasDB.alias_name).label("name_lower"),
+                _folded(EntityAliasDB.alias_name).label("name_lower"),
             ).where(
                 EntityAliasDB.entity_id.in_(ids),
                 EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
@@ -1420,8 +1440,7 @@ class EntityMentionRepository(
                 visible_names,
                 and_(
                     visible_names.c.entity_id == EntityMentionDB.entity_id,
-                    func.lower(EntityMentionDB.mention_text)
-                    == visible_names.c.name_lower,
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
                 ),
             )
             .where(
@@ -1676,11 +1695,11 @@ class EntityMentionRepository(
         visible_names = union(
             select(
                 NamedEntityDB.id.label("entity_id"),
-                func.lower(NamedEntityDB.canonical_name).label("name_lower"),
+                _folded(NamedEntityDB.canonical_name).label("name_lower"),
             ),
             select(
                 EntityAliasDB.entity_id.label("entity_id"),
-                func.lower(EntityAliasDB.alias_name).label("name_lower"),
+                _folded(EntityAliasDB.alias_name).label("name_lower"),
             ).where(EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR),
         ).subquery()
 
@@ -1690,8 +1709,7 @@ class EntityMentionRepository(
                 visible_names,
                 and_(
                     visible_names.c.entity_id == EntityMentionDB.entity_id,
-                    func.lower(EntityMentionDB.mention_text)
-                    == visible_names.c.name_lower,
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
                 ),
             )
             .where(
@@ -1889,11 +1907,11 @@ class EntityMentionRepository(
         # Step 1: Fetch transcript-mention video IDs (no language filter —
         # the header count should reflect all languages).
         canonical_names = select(
-            func.lower(NamedEntityDB.canonical_name).label("name_lower"),
+            _folded(NamedEntityDB.canonical_name).label("name_lower"),
         ).where(NamedEntityDB.id == entity_id)
 
         non_asr_aliases = select(
-            func.lower(EntityAliasDB.alias_name).label("name_lower"),
+            _folded(EntityAliasDB.alias_name).label("name_lower"),
         ).where(
             EntityAliasDB.entity_id == entity_id,
             EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
@@ -1904,7 +1922,7 @@ class EntityMentionRepository(
         mention_filter = and_(
             EntityMentionDB.entity_id == entity_id,
             or_(
-                func.lower(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
                 EntityMentionDB.detection_method == "manual",
             ),
         )
@@ -1913,7 +1931,7 @@ class EntityMentionRepository(
             select(distinct(EntityMentionDB.video_id))
             .outerjoin(
                 visible_names,
-                func.lower(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
             )
             .where(mention_filter)
         )

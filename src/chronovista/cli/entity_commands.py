@@ -816,6 +816,91 @@ def backfill_descriptions(
     asyncio.run(_run())
 
 
+@entity_app.command("recount")
+def recount(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Preview the counter deltas without writing.",
+    ),
+) -> None:
+    """Recompute stored entity/alias counters from mentions (accent-insensitive, Feature 069).
+
+    A full, idempotent recompute of ``named_entities.mention_count`` / ``video_count`` and
+    ``entity_aliases.occurrence_count`` using the folded visible-name rule, so accented mentions that
+    were recorded but previously hidden are reflected without re-scanning. Run this ONCE after the
+    ``unaccent`` migration is applied — take a database backup first. It is a separate operator step,
+    deliberately NOT run inside the migration (which the container auto-applies on deploy).
+    """
+
+    async def _run() -> None:
+        mention_repo = EntityMentionRepository()
+
+        async for session in db_manager.get_session(echo=False):
+            entity_ids = [
+                row[0]
+                for row in (await session.execute(select(NamedEntityDB.id))).all()
+            ]
+
+            _entity_cols = select(
+                NamedEntityDB.id,
+                NamedEntityDB.mention_count,
+                NamedEntityDB.video_count,
+            )
+            _alias_cols = select(EntityAliasDB.id, EntityAliasDB.occurrence_count)
+
+            before_e = {
+                r.id: (r.mention_count, r.video_count)
+                for r in await session.execute(_entity_cols)
+            }
+            before_a = {
+                r.id: r.occurrence_count for r in await session.execute(_alias_cols)
+            }
+
+            # Recompute in-session (uncommitted); the same session sees its own writes.
+            await mention_repo.update_entity_counters(session, entity_ids)
+            await mention_repo.update_alias_counters(session, entity_ids)
+
+            after_e = {
+                r.id: (r.mention_count, r.video_count)
+                for r in await session.execute(_entity_cols)
+            }
+            after_a = {
+                r.id: r.occurrence_count for r in await session.execute(_alias_cols)
+            }
+
+            entities_changed = sum(
+                1 for k, v in after_e.items() if before_e.get(k) != v
+            )
+            aliases_changed = sum(1 for k, v in after_a.items() if before_a.get(k) != v)
+
+            summary = (
+                f"[bold]Entities recomputed:[/bold] {len(entity_ids)}\n"
+                f"[bold]Entity counters changed:[/bold] {entities_changed}\n"
+                f"[bold]Alias counters changed:[/bold] {aliases_changed}"
+            )
+
+            if dry_run:
+                console.print(
+                    Panel(
+                        summary,
+                        title="[yellow]Recount (dry run — nothing written)[/yellow]",
+                        border_style="yellow",
+                    )
+                )
+            else:
+                await session.commit()
+                console.print(
+                    Panel(
+                        summary,
+                        title="[green]Recount Complete[/green]",
+                        border_style="green",
+                    )
+                )
+
+    asyncio.run(_run())
+
+
 def _merge_scan_results(
     transcript_result: ScanResult | None,
     metadata_result: ScanResult | None,

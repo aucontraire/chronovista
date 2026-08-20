@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 import factory
@@ -31,11 +32,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
+from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import EntityMention as EntityMentionDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TagAlias as TagAliasDB
+from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTag as VideoTagDB
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.services.tag_normalization import TagNormalizationService
 from tests.factories.named_entity_orm_factory import create_named_entity_db
 
@@ -126,6 +130,69 @@ def _new_entity(entity_name: str | None) -> NamedEntityDB:
         entity_type="organization",
         status="active",
     )
+
+
+def _video_row(video_id: str, channel_id: str, *, available: bool) -> VideoDB:
+    """Build an unpersisted Video with neutral placeholder metadata.
+
+    ``upload_date`` is deliberately OLD (2010) so these fixtures sort to the
+    bottom of the default ``/videos`` (``upload_date`` desc) page and never crowd
+    page 1 of the shared, never-reset integration DB — otherwise they would push
+    other tests' freshly-seeded videos past the default limit (this feature's
+    ranking/panel assertions are channel/entity-scoped and never depend on date).
+    """
+    return VideoDB(
+        video_id=video_id,
+        channel_id=channel_id,
+        title=f"Assoc070 {video_id}",
+        upload_date=datetime(2010, 1, 1, tzinfo=UTC),
+        duration=60,
+        availability_status=(
+            AvailabilityStatus.AVAILABLE.value
+            if available
+            else AvailabilityStatus.UNAVAILABLE.value
+        ),
+    )
+
+
+async def seed_channel_with_videos(
+    session: AsyncSession,
+    *,
+    channel_id: str,
+    available: Sequence[str],
+    unavailable: Sequence[str] = (),
+    channel_title: str = "Assoc070 Channel",
+) -> None:
+    """Persist a ``Channel`` and its videos (available + unavailable), FK-safe.
+
+    The shared primitive for the Feature 070 channel-entity-panel tests: the
+    per-entity associations are layered on afterwards with the ``seed_*``
+    association helpers. Idempotent per id (skips rows that already exist), so it
+    is safe against the never-reset integration DB.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        An open session; the rows are committed before returning.
+    channel_id : str
+        The channel to create (24-char id).
+    available : Sequence[str]
+        Video ids to create as ``available``.
+    unavailable : Sequence[str], optional
+        Video ids to create as ``unavailable`` (all-videos-basis coverage).
+    channel_title : str, optional
+        Neutral placeholder title for a newly-created channel.
+    """
+    if await session.get(ChannelDB, channel_id) is None:
+        session.add(ChannelDB(channel_id=channel_id, title=channel_title))
+        await session.flush()
+    for vid in available:
+        if await session.get(VideoDB, vid) is None:
+            session.add(_video_row(vid, channel_id, available=True))
+    for vid in unavailable:
+        if await session.get(VideoDB, vid) is None:
+            session.add(_video_row(vid, channel_id, available=False))
+    await session.commit()
 
 
 async def seed_tag_only_association(

@@ -90,6 +90,85 @@ class VideoEntitiesResponse(BaseModel):
     data: list[VideoEntitySummary]
 
 
+class ChannelEntityRanking(BaseModel):
+    """One entity's standing on a channel, ranked by distinctiveness (#171).
+
+    ``share`` (``channel_video_count / corpus_video_count``, all-videos basis) is
+    the ranking signal — an entity concentrated on this channel ranks above one
+    that is merely corpus-frequent (FR-002). Both counts come from the same
+    Feature 066 resolver as the entity's counts elsewhere, so the panel readout
+    and the pinned ``/videos`` filter agree by construction (FR-004/FR-007).
+
+    Attributes
+    ----------
+    entity_id : str
+        Named entity UUID (serialized as string in JSON).
+    display_name : str
+        The entity's display name (``canonical_name``).
+    entity_type : str
+        Entity type (person, organization, place, ...), for the badge.
+    channel_video_count : int
+        Distinct videos on this channel associated with the entity (FR-011).
+    corpus_video_count : int
+        Distinct videos anywhere associated with the entity (the denominator).
+    share : float
+        ``channel_video_count / corpus_video_count`` in ``(0, 1]``; rendered as a
+        percentage client-side (FR-011).
+    is_ranked : bool
+        ``channel_video_count >= 2`` -> share-ranked; else in the "also appears"
+        group (FR-008).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    entity_id: str = Field(..., description="Named entity UUID")
+    display_name: str = Field(..., description="Entity display name")
+    entity_type: str = Field(
+        ..., description="Entity type (person, organization, place, ...)"
+    )
+    channel_video_count: int = Field(
+        ..., ge=1, description="Distinct channel videos associated (all-videos basis)"
+    )
+    corpus_video_count: int = Field(
+        ..., ge=1, description="Distinct videos anywhere associated (denominator)"
+    )
+    share: float = Field(
+        ..., gt=0, le=1, description="channel_video_count / corpus_video_count"
+    )
+    is_ranked: bool = Field(
+        ...,
+        description=(
+            "True when channel_video_count >= 2 (share-ranked); False puts the "
+            "entity in the lower 'also appears' group"
+        ),
+    )
+
+
+class ChannelEntitiesResponse(BaseModel):
+    """Response envelope for the channel entity ranking endpoint (#171).
+
+    Attributes
+    ----------
+    channel_id : str
+        The channel ID (echo of the path param).
+    total_entities : int
+        Total entities associated with the channel (for the "Show all N" control).
+    items : list[ChannelEntityRanking]
+        Full ranked list: the share-ranked group first, then the "also appears"
+        group. Top-N slicing is a client concern.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    channel_id: str = Field(..., description="Channel ID (echo of the path param)")
+    total_entities: int = Field(
+        ..., ge=0, description="Total entities associated with the channel"
+    )
+    items: list[ChannelEntityRanking] = Field(
+        ..., description="Full ranked list (ranked group, then 'also appears')"
+    )
+
+
 class MentionPreview(BaseModel):
     """Preview of a single mention occurrence in a transcript segment.
 

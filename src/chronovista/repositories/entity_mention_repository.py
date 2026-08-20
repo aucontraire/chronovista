@@ -72,6 +72,7 @@ from chronovista.exceptions import APIValidationError, ConflictError, NotFoundEr
 from chronovista.models.entity_association import (
     AssociationCount,
     AssociationSourceBreakdown,
+    ChannelEntityRankingRow,
 )
 from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.enums import (
@@ -1812,6 +1813,239 @@ class EntityMentionRepository(
                 ),
             )
         return counts
+
+    async def get_channel_entity_rankings(
+        self,
+        session: AsyncSession,
+        channel_id: str,
+    ) -> list[ChannelEntityRankingRow]:
+        """Entities on a channel, ranked by distinctiveness (Feature 070 / #171).
+
+        Returns one :class:`ChannelEntityRankingRow` per entity associated with
+        any of the channel's videos, ordered: the share-ranked group
+        (``channel_video_count >= 2``) by ``share`` descending — tie-broken by
+        ``channel_video_count`` desc, then ``corpus_video_count`` asc (rarer
+        wins), then display name — followed by the "also appears" group
+        (``channel_video_count == 1``) by display name (FR-002/FR-008).
+
+        "Associated" is the **single** Feature 066 definition: a mention (the
+        visible-name / manual rule, #89) or a tag (canonical-tag or alias-tag) at
+        ``ANY`` scope. Both the channel count and the corpus denominator are
+        derived from that one definition — the shared association arms
+        (:meth:`_tag_inclusive_association_arms`) — so the corpus denominator
+        equals ``get_association_counts(...).total`` by construction and the panel
+        cannot drift from the pinned ``/videos?channel_id=&entity_id=`` filter
+        (which reuses the same arms since #260) (FR-004/FR-007).
+
+        Query shape (research R2): channel video ids are resolved once; a superset
+        of candidate entity ids is discovered through the three association paths
+        (over-inclusion is safe — an entity that does not actually appear on the
+        channel gets ``channel_video_count == 0`` and is dropped). The channel
+        count and the corpus denominator are then computed in **one** set-based
+        pass over the arms via a conditional aggregate
+        (``COUNT(DISTINCT video_id) FILTER (WHERE <on this channel>)`` for the
+        channel count, plain ``COUNT(DISTINCT video_id)`` for the corpus) — no
+        second corpus-wide counts query, no correlated subquery, no
+        join-before-paginate. The small per-entity result set is scored and
+        sorted in Python. (The separate ``get_association_counts`` call this
+        previously made dominated latency on entity-dense channels; folding it
+        into the same aggregate is the SC-007 optimization — see research R4.)
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        channel_id : str
+            The channel whose entities to rank.
+
+        Returns
+        -------
+        list[ChannelEntityRankingRow]
+            Ranked rows; empty when the channel has no videos or no associated
+            entities. The caller (endpoint) handles the unknown-channel 404.
+        """
+        # 1. Resolve the channel's video ids (all-videos basis — no availability
+        #    filter; FR-003).
+        channel_video_ids = list(
+            (
+                await session.execute(
+                    select(VideoDB.video_id).where(VideoDB.channel_id == channel_id)
+                )
+            ).scalars()
+        )
+        if not channel_video_ids:
+            return []
+
+        # Bind the channel's video-id list as a single Postgres array + ``unnest``
+        # rather than one bind per id. Mirrors the arms' own workaround
+        # (:meth:`_tag_inclusive_association_arms`) so even a very large channel
+        # stays a single bind and never approaches asyncpg's 32,767
+        # bind-parameter ceiling. Used at all four channel-video filter sites.
+        # ``col`` is a video-id column expression (an ORM attribute or a subquery
+        # column); typed ``Any`` to accept both, matching this file's convention
+        # for SQLAlchemy expression internals.
+        def _in_channel_videos(col: Any) -> Any:
+            return col.in_(
+                select(
+                    func.unnest(
+                        bindparam(
+                            "channel_video_ids",
+                            value=channel_video_ids,
+                            type_=ARRAY(String),
+                            unique=True,
+                        )
+                    )
+                )
+            )
+
+        # 2. Discover a SUPERSET of the entity ids associated with those videos,
+        #    via the same three association paths the resolver uses. Over-inclusion
+        #    is safe: step 3 recomputes the exact channel count through the shared
+        #    arms and drops anything that does not actually qualify.
+        candidate_ids: set[uuid.UUID] = set()
+
+        # 2a. mention-path candidates. The visible-name rule (#89) is applied for
+        #     real in step 3; this any-mention scan is deliberately a superset.
+        candidate_ids.update(
+            (
+                await session.execute(
+                    select(distinct(EntityMentionDB.entity_id)).where(
+                        _in_channel_videos(EntityMentionDB.video_id)
+                    )
+                )
+            ).scalars()
+        )
+
+        # 2b. canonical-tag-path candidates. ``CanonicalTag.entity_id`` is nullable
+        #     (unlinked tags), so drop NULLs even though the WHERE excludes them.
+        candidate_ids.update(
+            eid
+            for eid in (
+                await session.execute(
+                    select(distinct(CanonicalTagDB.entity_id))
+                    .join(TagAliasDB, TagAliasDB.canonical_tag_id == CanonicalTagDB.id)
+                    .join(VideoTagDB, VideoTagDB.tag == TagAliasDB.raw_form)
+                    .where(
+                        _in_channel_videos(VideoTagDB.video_id),
+                        CanonicalTagDB.entity_id.is_not(None),
+                    )
+                )
+            ).scalars()
+            if eid is not None
+        )
+
+        # 2c. alias-tag-path candidates. Normalisation is Python-side (the #207
+        #     duplicate-normaliser trap — the stored ``alias_name_normalized`` is
+        #     the ENTITY normaliser's output, not the TAG normaliser's, so it must
+        #     not be relied on here). Collect the channel's tag normalized_forms,
+        #     then keep entities whose non-ASR alias normalises into that set.
+        #     Note: the channel_forms query IS channel-scoped, but the alias fetch
+        #     below scans the whole (non-ASR) entity_aliases table — its cost is
+        #     O(total aliases), not O(channel size). Cheap at current corpus size
+        #     (~1.7k rows); revisit if the alias table grows large (perf T019).
+        channel_forms = set(
+            (
+                await session.execute(
+                    select(distinct(TagAliasDB.normalized_form))
+                    .join(VideoTagDB, VideoTagDB.tag == TagAliasDB.raw_form)
+                    .where(_in_channel_videos(VideoTagDB.video_id))
+                )
+            ).scalars()
+        )
+        if channel_forms:
+            normalizer = TagNormalizationService()
+            alias_rows = (
+                await session.execute(
+                    select(EntityAliasDB.entity_id, EntityAliasDB.alias_name).where(
+                        EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR
+                    )
+                )
+            ).all()
+            for entity_id, alias_name in alias_rows:
+                normalized = normalizer.normalize(alias_name)
+                if normalized is not None and normalized in channel_forms:
+                    candidate_ids.add(entity_id)
+
+        if not candidate_ids:
+            return []
+
+        # 3. Compute BOTH the channel count and the corpus denominator in ONE pass
+        #    over the shared association arms. The arms hold every candidate's
+        #    associations corpus-wide (they are filtered by entity_id, NOT by
+        #    channel), so a conditional aggregate yields the channel count (rows
+        #    restricted to the channel's videos) and the corpus count (all rows) at
+        #    once — the corpus count equals ``get_association_counts(...).total`` by
+        #    construction (same arms, same COUNT(DISTINCT video_id)), so FR-004 and
+        #    the ``corpus >= channel`` invariant hold, and the separate, corpus-wide
+        #    counts query is avoided (it dominated the latency on large channels).
+        assoc = await self._tag_inclusive_association_arms(
+            session, list(candidate_ids), EvidenceScope.ANY
+        )
+        channel_pred = _in_channel_videos(assoc.c.video_id)
+        counts_stmt = select(
+            assoc.c.entity_id.label("entity_id"),
+            func.count(distinct(assoc.c.video_id))
+            .filter(channel_pred)
+            .label("channel_video_count"),
+            func.count(distinct(assoc.c.video_id)).label("corpus_video_count"),
+        ).group_by(assoc.c.entity_id)
+        # (entity_id -> (channel_count, corpus_count)); keep only entities that
+        # actually appear on the channel (discovery over-includes by design).
+        counts: dict[uuid.UUID, tuple[int, int]] = {
+            row.entity_id: (row.channel_video_count, row.corpus_video_count)
+            for row in (await session.execute(counts_stmt)).all()
+            if row.channel_video_count > 0
+        }
+        if not counts:
+            return []
+
+        surviving_ids = list(counts)
+
+        # 4. Display fields for the surviving entities.
+        display: dict[uuid.UUID, tuple[str, str]] = {
+            row.id: (row.canonical_name, row.entity_type)
+            for row in (
+                await session.execute(
+                    select(
+                        NamedEntityDB.id,
+                        NamedEntityDB.canonical_name,
+                        NamedEntityDB.entity_type,
+                    ).where(NamedEntityDB.id.in_(surviving_ids))
+                )
+            ).all()
+        }
+
+        # 5. Build rows + share; floor + tie-break in Python over the small set.
+        rows: list[ChannelEntityRankingRow] = []
+        for eid, (ch_count, corpus_total) in counts.items():
+            name, etype = display[eid]
+            rows.append(
+                ChannelEntityRankingRow(
+                    entity_id=eid,
+                    display_name=name,
+                    entity_type=etype,
+                    channel_video_count=ch_count,
+                    corpus_video_count=corpus_total,
+                    share=ch_count / corpus_total,
+                    is_ranked=ch_count >= 2,
+                )
+            )
+
+        # Ordering (data-model): ranked group first, by share desc, tie-break
+        # channel desc -> corpus asc -> display name; then the "also appears"
+        # group (channel == 1), by display name. The uniform key keeps the
+        # also-appears constants (share/corpus terms) from perturbing its order.
+        def _sort_key(r: ChannelEntityRankingRow) -> tuple[int, float, int, int, str]:
+            return (
+                0 if r.is_ranked else 1,
+                -r.share if r.is_ranked else 0.0,
+                -r.channel_video_count,
+                r.corpus_video_count if r.is_ranked else 0,
+                r.display_name,
+            )
+
+        rows.sort(key=_sort_key)
+        return rows
 
     async def _visible_name_mention_entity_ids(
         self,

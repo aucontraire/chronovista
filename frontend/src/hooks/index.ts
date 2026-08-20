@@ -4,9 +4,11 @@
 
 export { useCategories, type Category } from "./useCategories";
 export { useChannelDetail } from "./useChannelDetail";
+export { useChannelEntities } from "./useChannelEntities";
 export { useChannels } from "./useChannels";
 export { useDebounce } from "./useDebounce";
 export { useChannelVideos } from "./useChannelVideos";
+export { usePinnedEntities } from "./usePinnedEntities";
 export { useTags } from "./useTags";
 export { useTopics } from "./useTopics";
 export { usePlaylistDetail } from "./usePlaylistDetail";

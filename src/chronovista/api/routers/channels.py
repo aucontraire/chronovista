@@ -3,6 +3,7 @@
 This module provides REST API endpoints for channel operations:
 - GET /channels - List channels with pagination and filtering
 - GET /channels/{channel_id} - Get channel details by ID
+- GET /channels/{channel_id}/entities - Rank a channel's entities by distinctiveness
 - GET /channels/{channel_id}/videos - Get videos belonging to a channel
 - POST /channels/{channel_id}/recover - Recover metadata for unavailable channel
 
@@ -37,6 +38,10 @@ from chronovista.api.schemas.channels import (
     ChannelRecoveryResponse,
     ChannelRecoveryResultData,
 )
+from chronovista.api.schemas.entity_mentions import (
+    ChannelEntitiesResponse,
+    ChannelEntityRanking,
+)
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.sorting import SortOrder
 from chronovista.api.schemas.topics import TopicSummary
@@ -60,6 +65,7 @@ from chronovista.exceptions import (
     NotFoundError,
 )
 from chronovista.models.enums import AvailabilityStatus
+from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +345,82 @@ async def get_channel(
     )
 
     return ChannelDetailResponse(data=detail)
+
+
+@router.get(
+    "/channels/{channel_id}/entities",
+    response_model=ChannelEntitiesResponse,
+    responses=GET_ITEM_ERRORS,
+)
+async def get_channel_entities(
+    channel_id: str = Path(
+        ...,
+        min_length=24,
+        max_length=24,
+        description="YouTube channel ID (24 characters)",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> ChannelEntitiesResponse:
+    """
+    Get the named entities appearing on a channel's videos, ranked by distinctiveness.
+
+    Returns the entities associated with the channel's videos (Feature 070 /
+    #171), ordered by ``channel_video_count / corpus_video_count`` — the
+    share-ranked group first, then the "also appears" group. "Associated" is the
+    Feature 066 definition (mentions plus tag associations), the same one the
+    entity's counts use elsewhere, so this panel and the pinned
+    ``/videos?channel_id=&entity_id=`` filter agree by construction
+    (FR-004/FR-007).
+
+    Parameters
+    ----------
+    channel_id : str
+        YouTube channel ID (exactly 24 characters).
+    db : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    ChannelEntitiesResponse
+        The full ranked entity list. ``items`` is empty when the channel exists
+        but has no associated entities (FR-012).
+
+    Raises
+    ------
+    NotFoundError
+        If the channel does not exist (FR-016).
+    """
+    # Distinguish an unknown channel (404) from a known channel with no entities
+    # (200 empty): the ranking method returns [] for both, so verify existence
+    # first — mirrors get_channel's own existence check.
+    exists = await db.scalar(
+        select(ChannelDB.channel_id).where(ChannelDB.channel_id == channel_id)
+    )
+    if exists is None:
+        raise NotFoundError(
+            resource_type="Channel",
+            identifier=channel_id,
+            hint="Verify the channel ID or run a sync.",
+        )
+
+    rows = await EntityMentionRepository().get_channel_entity_rankings(db, channel_id)
+    items = [
+        ChannelEntityRanking(
+            entity_id=str(row.entity_id),
+            display_name=row.display_name,
+            entity_type=row.entity_type,
+            channel_video_count=row.channel_video_count,
+            corpus_video_count=row.corpus_video_count,
+            share=row.share,
+            is_ranked=row.is_ranked,
+        )
+        for row in rows
+    ]
+    return ChannelEntitiesResponse(
+        channel_id=channel_id,
+        total_entities=len(items),
+        items=items,
+    )
 
 
 @router.get(

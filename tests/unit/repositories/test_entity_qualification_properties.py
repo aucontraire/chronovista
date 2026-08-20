@@ -15,10 +15,13 @@ counted over ``DISTINCT entity_id`` rather than raw rows.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from typing import Any, cast
 
 from hypothesis import given
 from hypothesis import strategies as st
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.models.enums import EvidenceScope
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
@@ -31,8 +34,30 @@ _REPO = EntityMentionRepository()
 _POOL = [uuid.UUID(int=n) for n in range(1, 9)]
 
 
+class _EmptyResult:
+    def all(self) -> list[Any]:
+        return []
+
+
+class _NoAliasSession:
+    """A stand-in session that yields no alias-tag pairs.
+
+    ``build_entity_qualification_subquery`` is async only because it fetches
+    Python-normalised alias-tag pairs from the session (#260). These SQL-shape
+    properties do not depend on any alias data, so a session returning no rows
+    keeps the statement compilable with ``literal_binds`` (no un-inlined array
+    bind) while still exercising the real mention and canonical-tag arms.
+    """
+
+    async def execute(self, *args: Any, **kwargs: Any) -> _EmptyResult:
+        return _EmptyResult()
+
+
 def _compiled(entity_ids: list[uuid.UUID], scope: EvidenceScope) -> str:
-    subquery = _REPO.build_entity_qualification_subquery(entity_ids, scope)
+    session = cast(AsyncSession, _NoAliasSession())
+    subquery = asyncio.run(
+        _REPO.build_entity_qualification_subquery(session, entity_ids, scope)
+    )
     return str(
         subquery.element.compile(compile_kwargs={"literal_binds": True})
     ).replace("\n", " ")
@@ -82,16 +107,25 @@ def test_qualification_counts_distinct_entities_not_rows(
 
 
 @given(ids=st.lists(st.sampled_from(_POOL), min_size=1, max_size=20))
-def test_transcript_scope_always_constrains_source(ids: list[uuid.UUID]) -> None:
-    """Scope is expressed over mention SOURCE only, never detection method.
+def test_transcript_scope_constrains_by_source_only_under_transcript(
+    ids: list[uuid.UUID],
+) -> None:
+    """Scope narrows by mention SOURCE, and only at TRANSCRIPT.
 
-    FR-020d: the two are orthogonal, and every human-added mention is
-    transcript-sourced. A scope that filtered on detection_method would discard
-    the highest-trust evidence in the system.
+    FR-020d: evidence scope is a mention-source constraint. Under TRANSCRIPT the
+    mention arm gains a ``mention_source IN (...)`` restriction; under ANY it has
+    none (and the tag arms are admitted instead, FR-007).
+
+    Since #260 the mention arm derives from the shared visible-name builder
+    (``_mention_assoc_stmt``, research R6), so ``detection_method`` legitimately
+    appears as the manual-mention identity rule -- it is NOT a scope filter,
+    which is why the scope assertion is made over the source restriction:
+    present at TRANSCRIPT, absent at ANY.
     """
-    sql = _compiled(ids, EvidenceScope.TRANSCRIPT).lower()
-    assert "mention_source" in sql
-    assert "detection_method" not in sql
+    transcript_sql = _compiled(ids, EvidenceScope.TRANSCRIPT).lower()
+    any_sql = _compiled(ids, EvidenceScope.ANY).lower()
+    assert "mention_source in" in transcript_sql
+    assert "mention_source in" not in any_sql
 
 
 @given(ids=st.lists(st.sampled_from(_POOL), min_size=1, max_size=20))

@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import (
     ColumnElement,
     ColumnExpressionArgument,
+    Integer,
     ScalarSelect,
     Select,
     String,
@@ -1066,22 +1067,153 @@ class EntityMentionRepository(
 
         return paginated, filtered_total if wanted is not None else total_count
 
-    def build_entity_qualification_subquery(
+    async def _tag_inclusive_association_arms(
         self,
+        session: AsyncSession,
+        entity_ids: list[uuid.UUID],
+        evidence_scope: EvidenceScope,
+    ) -> Subquery:
+        """UNION ALL of the association arms for ``entity_ids``.
+
+        Exposes ``(entity_id, video_id, mention_weight)`` -- the **single**
+        association definition shared with :meth:`get_association_counts`
+        (Feature 066), so the entity filter and the counts cannot drift
+        (FR-005). One row per association event:
+
+        - **mention arm** -- :meth:`_mention_assoc_stmt` (the visible-name /
+          manual rule, #89), ``mention_weight = 1``. This is the count's own
+          mention builder, adopted here so the filter's mention side matches the
+          count by construction (research R6); it replaces the older
+          ``entity_id IN (…)`` any-mention rule.
+        - **canonical-tag arm** and **alias-tag arm** -- ``mention_weight = 0``,
+          included **only at** ``EvidenceScope.ANY`` (FR-007). A tag is not
+          transcript-strength evidence, so stricter scopes stay mention-only.
+
+        ``mention_weight`` lets the qualification sum mention volume while tags
+        contribute 0 (FR-006), with no second query.
+
+        The alias-tag pairs are Python-normalised (:meth:`_alias_tag_pairs`; the
+        #207 duplicate-normaliser trap keeps them out of SQL) and injected via
+        **two** ``unnest`` **array binds** -- never a row-per-pair ``VALUES`` --
+        so a heavy page's tens of thousands of pairs stay two binds and never
+        approach asyncpg's 32,767 bind-parameter ceiling (mirrors
+        :meth:`get_association_counts`).
+
+        Because both the qualification (required-AND, in
+        :meth:`build_entity_qualification_subquery`) and the exclusion
+        (excluded-OR, in :meth:`build_entity_exclusion_subquery`) build their
+        video set from this one selectable, they use the identical definition of
+        "associated" by construction (FR-003).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Session used to fetch the alias-tag pairs (Python normalisation).
+        entity_ids : list[uuid.UUID]
+            The entities whose associations to assemble. Assumed already
+            deduplicated by the caller.
+        evidence_scope : EvidenceScope
+            ``ANY`` includes the tag arms; ``TRANSCRIPT`` restricts the mention
+            arm to ``_TRANSCRIPT_SCOPE_SOURCES`` and omits the tag arms.
+
+        Returns
+        -------
+        Subquery
+            ``assoc`` exposing ``entity_id``, ``video_id`` and
+            ``mention_weight``.
+        """
+        mention_stmt = self._mention_assoc_stmt(entity_ids)
+        if evidence_scope is EvidenceScope.TRANSCRIPT:
+            mention_stmt = mention_stmt.where(
+                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
+            )
+        mention_sub = mention_stmt.subquery()
+        arms: list[Any] = [
+            select(
+                mention_sub.c.entity_id.label("entity_id"),
+                mention_sub.c.video_id.label("video_id"),
+                literal(1).label("mention_weight"),
+            )
+        ]
+
+        # Tag associations qualify only at the default ANY scope (FR-007); a tag
+        # is not transcript-strength evidence.
+        if evidence_scope is EvidenceScope.ANY:
+            canonical_sub = self._canonical_tag_assoc_stmt(entity_ids).subquery()
+            arms.append(
+                select(
+                    canonical_sub.c.entity_id.label("entity_id"),
+                    canonical_sub.c.video_id.label("video_id"),
+                    literal(0).label("mention_weight"),
+                )
+            )
+            alias_pairs = await self._alias_tag_pairs(session, entity_ids)
+            if alias_pairs:
+                # Two array binds + unnest, NOT a row-per-pair VALUES: two binds
+                # regardless of pair count keeps a heavy page under asyncpg's
+                # 32,767 bind-parameter cap (mirrors get_association_counts).
+                arms.append(
+                    text(
+                        "SELECT e AS entity_id, v AS video_id, "
+                        "0 AS mention_weight "
+                        "FROM unnest(:alias_entity_ids, :alias_video_ids) "
+                        "AS t(e, v)"
+                    )
+                    .bindparams(
+                        bindparam(
+                            "alias_entity_ids",
+                            value=[eid for eid, _ in alias_pairs],
+                            type_=ARRAY(Uuid),
+                        ),
+                        bindparam(
+                            "alias_video_ids",
+                            value=[vid for _, vid in alias_pairs],
+                            type_=ARRAY(String),
+                        ),
+                    )
+                    .columns(entity_id=Uuid, video_id=String, mention_weight=Integer)
+                )
+
+        return union_all(*arms).subquery("assoc")
+
+    async def build_entity_qualification_subquery(
+        self,
+        session: AsyncSession,
         entity_ids: Sequence[uuid.UUID],
         evidence_scope: EvidenceScope = EvidenceScope.ANY,
     ) -> Subquery:
         """
         Build the qualification subquery for an entity intersection.
 
-        Produces ``(video_id, total_mentions)`` for exactly those videos in
-        which **every** requested entity has at least one qualifying mention.
+        Produces ``(video_id, total_mentions)`` for exactly those videos
+        **associated with every** requested entity, where "associated" means the
+        same thing the entity counts mean (Feature 066): a mention **or** a tag
+        (canonical-tag or alias-tag) at the default ``ANY`` scope, mentions only
+        at ``TRANSCRIPT`` (FR-001/FR-007). This is what makes the filter and
+        :meth:`get_association_counts` agree for every entity (FR-002).
 
-        Duplicate-safe by construction. ``entity_mentions`` holds multiple rows
+        The association set comes from :meth:`_tag_inclusive_association_arms`,
+        the one selectable that also feeds the counts, so there is no parallel
+        definition of "associated" to drift (FR-005).
+
+        The ``count == filter`` parity (FR-002) assumes referential integrity
+        between ``entity_mentions`` / ``video_tags`` and ``videos``:
+        :meth:`get_association_counts` does not join ``videos`` (it counts
+        association rows directly), whereas this subquery is joined to
+        ``videos`` by the caller. A mention or video-tag row pointing at a
+        ``video_id`` with no ``videos`` row would be counted but not returned,
+        breaking the equality. FK constraints on those tables keep that from
+        happening.
+
+        ``total_mentions`` is ``SUM(mention_weight)`` -- mention-arm rows only,
+        since tag arms carry weight 0 -- so a tag-only video scores 0 and the
+        RELEVANCE sort ranks by mention volume alone (FR-006).
+
+        Duplicate-safe by construction. The association arms hold multiple rows
         per ``(entity_id, video_id)`` by design -- across sources, and within a
         source. Qualification counts *distinct* entity ids, so row multiplicity
-        can neither make a video qualify for an entity it does not mention nor
-        raise the bar for one it does (FR-003, FR-004).
+        can neither make a video qualify for an entity it is not associated with
+        nor raise the bar for one it is (FR-003, FR-004).
 
         ``transcript_segments`` is deliberately NOT joined here. Joining it
         before pagination returns byte-identical results at roughly eight times
@@ -1090,13 +1222,15 @@ class EntityMentionRepository(
 
         Parameters
         ----------
+        session : AsyncSession
+            Session used to fetch the Python-normalised alias-tag pairs.
         entity_ids : Sequence[uuid.UUID]
             Required entities. Deduplicated internally, so requesting the same
             entity twice is idempotent and does not raise the bar.
         evidence_scope : EvidenceScope
-            Which mentions qualify. ``ANY`` accepts all three sources;
-            ``TRANSCRIPT`` restricts to transcript-sourced mentions, which
-            inherently retains every human-added mention (FR-020c).
+            Which associations qualify. ``ANY`` accepts mentions and tags;
+            ``TRANSCRIPT`` restricts to transcript-sourced mentions (retaining
+            every human-added mention, FR-020c) and excludes tags (FR-007).
 
         Returns
         -------
@@ -1104,71 +1238,75 @@ class EntityMentionRepository(
             Joinable subquery exposing ``video_id`` and ``total_mentions``.
         """
         distinct_ids = list(dict.fromkeys(entity_ids))
-        stmt = select(
-            EntityMentionDB.video_id.label("video_id"),
-            # Raw row count, deliberately NOT count(distinct(segment_id)) as
-            # get_video_entity_summary uses. Each row is a distinct mention
-            # event -- a different segment, or the same entity in the title AND
-            # the transcript -- and relevance ranks by mention VOLUME. The two
-            # fields are both called a mention count and are computed
-            # differently on purpose; see FR-009 and research R3.
-            func.count().label("total_mentions"),
-        ).where(EntityMentionDB.entity_id.in_(distinct_ids))
-
-        if evidence_scope is EvidenceScope.TRANSCRIPT:
-            stmt = stmt.where(
-                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
-            )
-
+        assoc = await self._tag_inclusive_association_arms(
+            session, distinct_ids, evidence_scope
+        )
         return (
-            stmt.group_by(EntityMentionDB.video_id)
-            .having(
-                func.count(distinct(EntityMentionDB.entity_id)) == len(distinct_ids)
+            select(
+                assoc.c.video_id.label("video_id"),
+                # SUM of the per-row weight = mention-arm row count (mention
+                # VOLUME); tag rows weigh 0. Deliberately NOT a distinct count:
+                # each mention row is a distinct event, and relevance ranks by
+                # volume (FR-006, research R3).
+                func.sum(assoc.c.mention_weight).label("total_mentions"),
             )
+            .group_by(assoc.c.video_id)
+            .having(func.count(distinct(assoc.c.entity_id)) == len(distinct_ids))
             .subquery()
         )
 
-    def build_entity_exclusion_subquery(
+    async def build_entity_exclusion_subquery(
         self,
+        session: AsyncSession,
         entity_ids: Sequence[uuid.UUID],
         evidence_scope: EvidenceScope = EvidenceScope.ANY,
     ) -> ScalarSelect[str]:
         """
         Build the set of video ids disqualified by an excluded-entity filter.
 
-        A video mentioning **any** of the excluded entities is disqualified,
-        regardless of how many required entities it matches (FR-014). This is
-        OR semantics, in deliberate contrast to the AND semantics of
-        qualification.
+        A video **associated with any** of the excluded entities is
+        disqualified, regardless of how many required entities it matches
+        (FR-014). This is OR semantics, in deliberate contrast to the AND
+        semantics of qualification.
+
+        "Associated" is the **same** tag-inclusive definition qualification
+        uses: the excluded-video set is the distinct ``video_id``\\ s in
+        :meth:`_tag_inclusive_association_arms` for the excluded entities —
+        a mention **or** a tag (canonical-tag or alias-tag) at the default
+        ``ANY`` scope, mentions only at ``TRANSCRIPT`` (FR-003/FR-007). Both
+        sides consuming that one selectable is what keeps them symmetric by
+        construction: a video excluded by ``exclude_entity_id=E`` is exactly a
+        video that ``entity_id=E`` would include, so no request can treat the
+        same video as both associated and not-associated (the incoherence the
+        old asymmetric definition risked).
 
         The evidence scope is applied symmetrically with qualification: under
-        ``TRANSCRIPT``, a video whose only mention of an excluded entity is in
-        its title is **not** disqualified, because that mention does not
-        qualify. "Qualifying mention" is one definition, and applying it to one
-        side of the filter but not the other would mean the same video both
-        does and does not mention the entity within a single request.
+        ``TRANSCRIPT``, tags do not disqualify (they are not transcript-strength
+        evidence) and a mention whose text is not one of the entity's visible
+        names does not disqualify, because it does not qualify on the other side
+        either.
 
         Parameters
         ----------
+        session : AsyncSession
+            Session used to fetch the Python-normalised alias-tag pairs (via the
+            shared association helper).
         entity_ids : Sequence[uuid.UUID]
             Excluded entities. Deduplicated internally.
         evidence_scope : EvidenceScope
-            Which mentions count as mentioning. Must match the scope used for
-            qualification.
+            Which associations count as associating. Must match the scope used
+            for qualification.
 
         Returns
         -------
         ScalarSelect[str]
             Scalar subquery of ``video_id`` suitable for ``notin_()``.
         """
-        stmt = select(EntityMentionDB.video_id).where(
-            EntityMentionDB.entity_id.in_(list(dict.fromkeys(entity_ids)))
+        distinct_ids = list(dict.fromkeys(entity_ids))
+        assoc = await self._tag_inclusive_association_arms(
+            session, distinct_ids, evidence_scope
         )
-        if evidence_scope is EvidenceScope.TRANSCRIPT:
-            stmt = stmt.where(
-                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
-            )
-        return stmt.distinct().scalar_subquery()
+        return select(assoc.c.video_id).distinct().scalar_subquery()
 
     def build_cooccurrence_query(
         self,

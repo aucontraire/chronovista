@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.73.0] - 2026-08-20
+
+### Fixed
+- **Filtering videos by an entity now returns every video associated with that entity, matching the counts shown elsewhere.** The `/videos` entity filter qualified videos on transcript/title/manual *mentions* only, so a video associated with an entity solely through a **tag** was dropped from the filtered list even though it was counted in the entity's totals and shown on the entity's video panel. The filter — both the required (`entity_id`, AND) and excluded (`exclude_entity_id`, OR) sides — now uses the same association definition as the counts (mentions plus canonical-tag and alias-tag associations), so the list and the counts agree by construction. Measured on production, this surfaces roughly 13,900 videos across 434 entities that were previously hidden from the filter, and removes none. Tag associations are included only at the default evidence scope; strict `min_evidence=transcript` behaviour is unchanged (measured 0 affected videos). (#260)
+
 ## [0.72.3] - 2026-08-19
 
 ### Fixed

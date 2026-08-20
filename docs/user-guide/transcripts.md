@@ -524,11 +524,11 @@ After running `find-replace`, you should:
 The entity scan reads segment-level effective text (corrected_text if available), but `rebuild-text` keeps the full-text search index and the "Full Text" view in the web UI in sync.
 
 **ASR alias registration (v0.41.0+):**
-When `find-replace` corrects text that matches a known entity name, the original misspelling form is automatically registered as an `asr_error` alias on that entity. In regex mode, each distinct matched form (e.g., "Lovelace", "Loveless", "Lovelach") is registered as a separate alias. This means a subsequent `entities scan` will find more mentions because the alias list has grown. This is the intended closed-loop pipeline: corrections → aliases → expanded mention coverage.
+When `find-replace` corrects text that matches a known entity name, the original misspelling form is automatically registered as an `asr_error` alias on that entity. In regex mode, each distinct matched form (e.g., "Lovelace", "Loveless", "Lovelach") is registered as a separate alias. These `asr_error` aliases are **correction-memory records** — they feed the correction tooling (surfacing and suggesting similar corrections later). They are **deliberately excluded from the entity scan** because using a phonetic-error string as a match pattern produces false mentions, and they are hidden from mention counts and entity displays.
 
 ## Entity Mention Scanning (v0.41.0+)
 
-After correcting transcripts, you can scan your library to discover where named entities are mentioned. The scanner matches entity names and all their known aliases (including ASR error aliases) against transcript segments using word-boundary regex.
+After correcting transcripts, you can scan your library to discover where named entities are mentioned. The scanner matches entity names and their name-variant aliases against transcript segments using word-boundary regex. `asr_error` aliases are **excluded** from scanning — they record how ASR mangled a name and would produce false mentions if used as match patterns.
 
 ### Quick Start
 

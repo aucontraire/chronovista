@@ -37,7 +37,7 @@ from uuid_utils import uuid7
 
 from chronovista.db.models import EntityMention as EntityMentionDB
 from chronovista.models.entity_mention import EntityMentionCreate
-from chronovista.models.enums import DetectionMethod
+from chronovista.models.enums import DetectionMethod, EvidenceScope
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from tests.factories.entity_mention_factory import (
     EntityMentionCreateFactory,
@@ -4286,3 +4286,182 @@ class TestEntityMentionRepositorySourceMapping:
         # Should appear exactly once (deduplicated)
         assert result["sources"].count("transcript") == 1
         assert result["sources"].count("title") == 1
+
+
+class TestTagInclusiveAssociationArms:
+    """T003/T004 (#260) — the shared tag-inclusive association-arm helper.
+
+    ``_tag_inclusive_association_arms`` is the single definition of "associated"
+    the entity filter shares with ``get_association_counts``. These inspect the
+    compiled SQL (not just return values) per the Cross-Feature Data Contract:
+    the tag arms appear only at ``ANY``, mentions weigh 1, tags weigh 0, and the
+    Python-normalised alias pairs are injected via ``unnest`` array binds — never
+    a row-per-pair ``VALUES`` (asyncpg's 32,767 bind-parameter cap).
+    """
+
+    _IDS = [uuid.UUID(int=1), uuid.UUID(int=2)]
+
+    async def _compiled(
+        self,
+        scope: EvidenceScope,
+        alias_pairs: list[tuple[uuid.UUID, str]] | None = None,
+        literal_binds: bool = True,
+    ) -> str:
+        repo = EntityMentionRepository()
+        session = MagicMock(spec=AsyncSession)
+        with patch.object(
+            repo, "_alias_tag_pairs", AsyncMock(return_value=alias_pairs or [])
+        ):
+            assoc = await repo._tag_inclusive_association_arms(
+                session, self._IDS, scope
+            )
+        kwargs = {"literal_binds": True} if literal_binds else {}
+        return str(assoc.element.compile(compile_kwargs=kwargs)).lower()
+
+    async def test_any_scope_includes_canonical_and_alias_tag_arms(self) -> None:
+        sql = await self._compiled(EvidenceScope.ANY)
+        assert "canonical_tags" in sql
+        assert "tag_aliases" in sql
+        assert "video_tags" in sql
+
+    async def test_transcript_scope_omits_tag_arms(self) -> None:
+        sql = await self._compiled(EvidenceScope.TRANSCRIPT)
+        assert "canonical_tags" not in sql
+        assert "video_tags" not in sql
+        # The mention arm keeps today's source restriction under TRANSCRIPT.
+        assert "mention_source in" in sql
+
+    async def test_mention_rows_weigh_one_tag_rows_weigh_zero(self) -> None:
+        sql = await self._compiled(EvidenceScope.ANY)
+        assert "1 as mention_weight" in sql
+        assert "0 as mention_weight" in sql
+
+    async def test_transcript_scope_has_no_zero_weight_rows(self) -> None:
+        sql = await self._compiled(EvidenceScope.TRANSCRIPT)
+        assert "1 as mention_weight" in sql
+        assert "0 as mention_weight" not in sql
+
+    async def test_alias_pairs_injected_via_unnest_not_values(self) -> None:
+        pairs = [(uuid.UUID(int=1), "aliasvid0001")]
+        sql = await self._compiled(
+            EvidenceScope.ANY, alias_pairs=pairs, literal_binds=False
+        )
+        assert "unnest" in sql
+        # Never a row-per-pair VALUES literal — that would blow asyncpg's
+        # 32,767 bind cap on a heavy page (research R1).
+        assert "values" not in sql
+
+
+class TestQualificationTagArmsSqlInspection:
+    """T006 (#260) — SQL inspection of ``build_entity_qualification_subquery``.
+
+    The qualification consumes the shared helper, so at ``ANY`` its statement
+    carries the tag arms and sums mention weight; at ``TRANSCRIPT`` it is
+    mention-only. Asserted over the compiled SQL, since a value-only test cannot
+    distinguish the broadened query from the old mentions-only one on a fixture
+    lacking tag-only videos.
+    """
+
+    _IDS = [uuid.UUID(int=1), uuid.UUID(int=2)]
+
+    async def _sql(self, scope: EvidenceScope) -> str:
+        repo = EntityMentionRepository()
+        session = MagicMock(spec=AsyncSession)
+        with patch.object(repo, "_alias_tag_pairs", AsyncMock(return_value=[])):
+            sub = await repo.build_entity_qualification_subquery(
+                session, self._IDS, scope
+            )
+        return str(sub.element.compile(compile_kwargs={"literal_binds": True})).lower()
+
+    async def test_any_scope_statement_includes_tag_arms(self) -> None:
+        sql = await self._sql(EvidenceScope.ANY)
+        assert "canonical_tags" in sql
+        assert "tag_aliases" in sql
+        assert "video_tags" in sql
+
+    async def test_transcript_scope_statement_excludes_tag_arms(self) -> None:
+        sql = await self._sql(EvidenceScope.TRANSCRIPT)
+        assert "canonical_tags" not in sql
+        assert "video_tags" not in sql
+
+    async def test_total_mentions_sums_weight(self) -> None:
+        sql = await self._sql(EvidenceScope.ANY)
+        assert "sum(" in sql
+        assert "as total_mentions" in sql
+
+    async def test_bar_counts_distinct_entities(self) -> None:
+        sql = await self._sql(EvidenceScope.ANY)
+        assert "count(distinct" in sql
+        assert "= 2" in sql  # HAVING count(distinct entity_id) = len(required)
+
+    async def test_mention_arm_uses_visible_name_rule_not_raw_in(self) -> None:
+        """Mutation check (R6): the mention arm is ``_mention_assoc_stmt`` (the
+        visible-name / manual rule), not the old ``entity_id IN (…)``. The join
+        to ``entity_aliases`` with the accent fold (``unaccent``) is the
+        fingerprint the raw-IN form lacked — reverting to raw-IN drops it.
+        """
+        sql = await self._sql(EvidenceScope.ANY)
+        assert "entity_aliases" in sql
+        assert "unaccent" in sql
+
+
+class TestQualificationExclusionSymmetry:
+    """T010 (#260) — qualification and exclusion share one association helper.
+
+    FR-003 symmetry: the excluded video set must be exactly the video set the
+    same ``entity_id`` would include, so no request considers a video both
+    associated and not-associated. Both builders derive their association set
+    from :meth:`_tag_inclusive_association_arms`; these prove that shared
+    sourcing (a spy on the helper) and that the tag arms appear on **both**
+    sides at ``ANY`` and on **neither** at ``TRANSCRIPT``.
+    """
+
+    _IDS = [uuid.UUID(int=1), uuid.UUID(int=2)]
+
+    async def test_both_builders_consume_the_same_helper_with_same_args(
+        self,
+    ) -> None:
+        repo = EntityMentionRepository()
+        session = MagicMock(spec=AsyncSession)
+        with (
+            patch.object(repo, "_alias_tag_pairs", AsyncMock(return_value=[])),
+            patch.object(
+                repo,
+                "_tag_inclusive_association_arms",
+                wraps=repo._tag_inclusive_association_arms,
+            ) as spy,
+        ):
+            await repo.build_entity_qualification_subquery(
+                session, self._IDS, EvidenceScope.ANY
+            )
+            await repo.build_entity_exclusion_subquery(
+                session, self._IDS, EvidenceScope.ANY
+            )
+        assert spy.call_count == 2
+        qual_call, excl_call = spy.call_args_list
+        # Same session, same deduplicated entity ids, same scope — so the
+        # included set and the excluded set are built from one definition.
+        assert qual_call.args == excl_call.args
+
+    async def _exclusion_sql(self, scope: EvidenceScope) -> str:
+        repo = EntityMentionRepository()
+        session = MagicMock(spec=AsyncSession)
+        with patch.object(repo, "_alias_tag_pairs", AsyncMock(return_value=[])):
+            sub = await repo.build_entity_exclusion_subquery(session, self._IDS, scope)
+        return str(sub.compile(compile_kwargs={"literal_binds": True})).lower()
+
+    async def test_tag_associated_video_is_excludable_at_any_scope(self) -> None:
+        """A tag-only video is *includable* by ``entity_id=E`` (proved by the
+        qualification tests) and, symmetrically, *excludable* by
+        ``exclude_entity_id=E``: the exclusion statement carries the same tag
+        arms at ``ANY``.
+        """
+        sql = await self._exclusion_sql(EvidenceScope.ANY)
+        assert "canonical_tags" in sql
+        assert "tag_aliases" in sql
+        assert "video_tags" in sql
+
+    async def test_exclusion_omits_tag_arms_at_transcript_scope(self) -> None:
+        sql = await self._exclusion_sql(EvidenceScope.TRANSCRIPT)
+        assert "canonical_tags" not in sql
+        assert "video_tags" not in sql

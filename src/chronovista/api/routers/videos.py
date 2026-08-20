@@ -867,14 +867,14 @@ async def list_videos(
     entity_repo = EntityMentionRepository()
     qualification = None
     if required_entity_ids:
-        qualification = entity_repo.build_entity_qualification_subquery(
-            required_entity_ids, min_evidence
+        qualification = await entity_repo.build_entity_qualification_subquery(
+            session, required_entity_ids, min_evidence
         )
         query = query.join(qualification, VideoDB.video_id == qualification.c.video_id)
 
     if excluded_entity_ids:
-        excluded_videos = entity_repo.build_entity_exclusion_subquery(
-            excluded_entity_ids, min_evidence
+        excluded_videos = await entity_repo.build_entity_exclusion_subquery(
+            session, excluded_entity_ids, min_evidence
         )
         query = query.where(VideoDB.video_id.notin_(excluded_videos))
 

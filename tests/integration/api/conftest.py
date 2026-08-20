@@ -145,7 +145,16 @@ def integration_db_schema_setup(integration_test_db_url):
 
     async def create_tables() -> None:
         """Create all tables defined in Base.metadata."""
+        from sqlalchemy import text
+
         async with engine.begin() as conn:
+            # create_all does NOT run Alembic migrations, so a migration's
+            # `CREATE EXTENSION` never reaches this DB. Mirror it here or
+            # accent-folded queries (lower(unaccent(...)), used by the entity
+            # filter's visible-name rule) fail with "function unaccent does not
+            # exist". `unaccent` is a trusted extension creatable by the DB
+            # owner without superuser. Mirrors tests/integration/conftest.py.
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS unaccent"))
             await conn.run_sync(Base.metadata.create_all)
 
     async def drop_tables_and_cleanup() -> None:

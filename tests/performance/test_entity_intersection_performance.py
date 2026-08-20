@@ -275,13 +275,16 @@ class TestQueryShape:
     """
 
     async def test_qualification_never_joins_transcript_segments(
-        self, perf_seed: dict[str, Any]
+        self,
+        perf_seed: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
     ) -> None:
         """Timestamps are fetched for the returned page only (R1)."""
         repo = EntityMentionRepository()
-        subquery = repo.build_entity_qualification_subquery(
-            perf_seed["entity_ids"][:3], EvidenceScope.ANY
-        )
+        async with integration_session_factory() as session:
+            subquery = await repo.build_entity_qualification_subquery(
+                session, perf_seed["entity_ids"][:3], EvidenceScope.ANY
+            )
         sql = str(subquery.element.compile()).lower()
         assert "transcript_segments" not in sql
         assert "count(distinct" in sql

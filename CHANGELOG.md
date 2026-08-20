@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-08-20
+
+### Added
+- **Channel pages now show the named entities that characterize the channel, ranked by distinctiveness.** A new "Entities" panel on each channel detail page lists the entities appearing across that channel's videos, ordered by how concentrated each one is on this channel (its share of that entity's appearances everywhere) rather than by raw frequency — so the list reflects what *this* channel is about instead of surfacing the same corpus-wide entities on every channel. Entities appearing in only one of the channel's videos are grouped separately under "Also appears", and large channels show the top 10 with a "Show all N" control.
+- **Pin entities to filter a channel's videos.** Pinning one or more entities from the panel narrows the channel's video list to the videos associated with **all** pinned entities (AND). The filter lives in the URL, so it is shareable, reload-safe, and works with browser back/forward. The panel's per-entity count and the filtered result agree by construction — both use the same association definition (mentions plus tag associations), so a video associated with an entity only through a tag appears in both. Entity-dense channels (a few hundred entities) take a few seconds to compute the ranking; typical channels are fast. (Feature 070, #171)
+
 ## [0.73.0] - 2026-08-20
 
 ### Fixed

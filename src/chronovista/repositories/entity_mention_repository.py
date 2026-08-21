@@ -910,73 +910,18 @@ class EntityMentionRepository(
                     sources.append("tag")
                     sources.sort()
 
-                # Fetch up to 5 transcript-derived mention previews
-                preview_stmt = (
-                    select(
-                        EntityMentionDB.segment_id,
-                        TranscriptSegmentDB.start_time,
-                        EntityMentionDB.mention_text,
-                    )
-                    .join(
-                        TranscriptSegmentDB,
-                        EntityMentionDB.segment_id == TranscriptSegmentDB.id,
-                    )
-                    .outerjoin(
-                        visible_names,
-                        _folded(EntityMentionDB.mention_text)
-                        == visible_names.c.name_lower,
-                    )
-                    .where(
-                        EntityMentionDB.entity_id == entity_id,
-                        EntityMentionDB.video_id == row.video_id,
-                        EntityMentionDB.detection_method != "manual",
-                        or_(
-                            _folded(EntityMentionDB.mention_text)
-                            == visible_names.c.name_lower,
-                            EntityMentionDB.detection_method == "manual",
-                        ),
-                    )
-                )
-                if language_code is not None:
-                    preview_stmt = preview_stmt.where(
-                        EntityMentionDB.language_code == language_code
-                    )
-                preview_stmt = preview_stmt.order_by(
-                    TranscriptSegmentDB.start_time.asc()
-                ).limit(5)
-
-                preview_result = await session.execute(preview_stmt)
-                previews = [
-                    {
-                        "segment_id": p.segment_id,
-                        "start_time": p.start_time,
-                        "mention_text": p.mention_text,
-                    }
-                    for p in preview_result.all()
-                ]
-
-                # Fetch description context if this video has description mentions
-                description_context: str | None = None
-                if "description" in (row.mention_sources or []):
-                    desc_ctx_stmt = (
-                        select(EntityMentionDB.mention_context)
-                        .where(
-                            EntityMentionDB.entity_id == entity_id,
-                            EntityMentionDB.video_id == row.video_id,
-                            EntityMentionDB.mention_source == "description",
-                            EntityMentionDB.mention_context.isnot(None),
-                        )
-                        .limit(1)
-                    )
-                    desc_ctx_result = await session.execute(desc_ctx_stmt)
-                    description_context = desc_ctx_result.scalar_one_or_none()
-
+                # Previews and description context are NOT fetched here. Doing so
+                # per video was an N+1 over the entity's ENTIRE video population
+                # (a 20-item page still ran ~10k preview queries), which timed
+                # out for high-volume entities (#269). They are fetched in Step 7
+                # for the paginated page only. Sorting (Step 5) and the source
+                # filter (Step 5b) need only the metadata below.
                 results_dict[row.video_id] = {
                     "video_id": row.video_id,
                     "video_title": row.video_title,
                     "channel_name": row.channel_name,
                     "mention_count": row.mention_count,
-                    "mentions": previews,
+                    "mentions": [],
                     "sources": sources,
                     "has_manual": bool(row.has_manual),
                     "first_mention_time": (
@@ -989,7 +934,7 @@ class EntityMentionRepository(
                         if row.upload_date is not None
                         else None
                     ),
-                    "description_context": description_context,
+                    "description_context": None,
                 }
 
         # ------------------------------------------------------------------
@@ -1065,6 +1010,76 @@ class EntityMentionRepository(
         # ------------------------------------------------------------------
         filtered_total = len(sorted_results)
         paginated = sorted_results[offset : offset + limit]
+
+        # ------------------------------------------------------------------
+        # Step 7: Enrich the PAGE only — mention previews + description context
+        # for the transcript videos on this page. Fetching these for every video
+        # before pagination was an N+1 over the entity's whole population that
+        # timed out for high-volume entities (#269); scoped to the ~20 returned
+        # rows the cost is O(page).
+        # ------------------------------------------------------------------
+        for item in paginated:
+            video_id = item["video_id"]
+            if video_id not in transcript_video_ids:
+                continue  # tag-only video has no transcript previews
+
+            preview_stmt = (
+                select(
+                    EntityMentionDB.segment_id,
+                    TranscriptSegmentDB.start_time,
+                    EntityMentionDB.mention_text,
+                )
+                .join(
+                    TranscriptSegmentDB,
+                    EntityMentionDB.segment_id == TranscriptSegmentDB.id,
+                )
+                .outerjoin(
+                    visible_names,
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                )
+                .where(
+                    EntityMentionDB.entity_id == entity_id,
+                    EntityMentionDB.video_id == video_id,
+                    EntityMentionDB.detection_method != "manual",
+                    or_(
+                        _folded(EntityMentionDB.mention_text)
+                        == visible_names.c.name_lower,
+                        EntityMentionDB.detection_method == "manual",
+                    ),
+                )
+            )
+            if language_code is not None:
+                preview_stmt = preview_stmt.where(
+                    EntityMentionDB.language_code == language_code
+                )
+            preview_stmt = preview_stmt.order_by(
+                TranscriptSegmentDB.start_time.asc()
+            ).limit(5)
+            preview_result = await session.execute(preview_stmt)
+            item["mentions"] = [
+                {
+                    "segment_id": p.segment_id,
+                    "start_time": p.start_time,
+                    "mention_text": p.mention_text,
+                }
+                for p in preview_result.all()
+            ]
+
+            # Description context, only when this video has a description mention.
+            if "description" in item["sources"]:
+                desc_ctx_stmt = (
+                    select(EntityMentionDB.mention_context)
+                    .where(
+                        EntityMentionDB.entity_id == entity_id,
+                        EntityMentionDB.video_id == video_id,
+                        EntityMentionDB.mention_source == "description",
+                        EntityMentionDB.mention_context.isnot(None),
+                    )
+                    .limit(1)
+                )
+                item["description_context"] = (
+                    await session.execute(desc_ctx_stmt)
+                ).scalar_one_or_none()
 
         return paginated, filtered_total if wanted is not None else total_count
 

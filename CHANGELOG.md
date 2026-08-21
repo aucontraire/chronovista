@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.2] - 2026-08-21
+
+### Fixed
+- **Entity pages with thousands of videos now load instead of timing out.** The entity video list built mention previews and description context for the entity's *entire* video population before paginating — an extra query per video — so a single 20-item page for a high-volume entity ran roughly one query per video (~10,000 for the largest) and blew past the query timeout, which the page then rendered as "No videos found." It now paginates first and enriches only the videos on the requested page. Measured on production, the largest entity's first page dropped from a ~20 s timeout to ~0.75 s; the result list, sort order, and source filtering are unchanged. (#269)
+
 ## [0.74.1] - 2026-08-21
 
 ### Changed

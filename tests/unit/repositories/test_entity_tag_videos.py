@@ -1004,11 +1004,12 @@ class TestGetEntityVideoListTagIntegration:
                 return_value=set(),
             ),
         ):
-            # Call sequence for get_entity_video_list:
+            # Call sequence for get_entity_video_list (#269: previews moved after
+            # pagination, so tag-only metadata now precedes them):
             # 1. transcript_vid_stmt — distinct transcript video IDs
             # 2. main_stmt — grouped transcript mention rows
-            # 3. preview_stmt — mention previews for the transcript video
-            # 4. tag_meta_stmt — metadata for tag-only videos
+            # 3. tag_meta_stmt — metadata for tag-only videos
+            # 4. preview_stmt — previews for the page's transcript videos only
             upload_date = _MockUploadDate("2024-01-15")
             mock_session.execute.side_effect = [
                 _scalars_result([transcript_vid]),  # transcript video IDs
@@ -1021,13 +1022,13 @@ class TestGetEntityVideoListTagIntegration:
                         ),
                     ]
                 ),
-                _row_result([]),  # preview query (empty for simplicity)
                 _row_result(
                     [  # tag-only video metadata
                         _make_tag_meta_row(video_id=tv, upload_date=upload_date)
                         for tv in tag_vids
                     ]
                 ),
+                _row_result([]),  # page preview (transcript_vid, empty for simplicity)
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1273,12 +1274,14 @@ class TestGetEntityVideoListTagIntegration:
                         ),
                     ]
                 ),
-                _row_result([]),  # preview query
+                # #269: tag-only metadata is now fetched BEFORE the page previews
+                # (previews moved after pagination), so it comes first here.
                 _row_result(
                     [
                         _make_tag_meta_row(video_id=tag_vid, upload_date=new_date),
                     ]
                 ),
+                _row_result([]),  # page preview query (transcript_vid, on the page)
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1330,14 +1333,15 @@ class TestGetEntityVideoListTagIntegration:
                         for vid in transcript_vids
                     ]
                 ),
-                _row_result([]),  # preview for vid_t1
-                _row_result([]),  # preview for vid_t2
+                # #269: tag-only metadata now precedes the page previews.
                 _row_result(
                     [  # tag-only metadata (vid_tag1, vid_tag2)
                         _make_tag_meta_row(video_id=vid, upload_date=upload_date)
                         for vid in ["vid_tag1", "vid_tag2"]
                     ]
                 ),
+                _row_result([]),  # page preview (a transcript video on the page)
+                _row_result([]),  # page preview (the other transcript video)
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1692,11 +1696,7 @@ class TestCombinedVideoCount:
                         for vid in transcript_vids
                     ]
                 ),
-                _row_result([]),  # preview for vid_t_1
-                _row_result([]),  # preview for vid_t_2
-                _row_result([]),  # preview for vid_t_3
-                _row_result([]),  # preview for vid_t_4
-                _row_result([]),  # preview for vid_t_5
+                # #269: tag-only metadata now precedes the page previews.
                 _row_result(
                     [  # tag-only video metadata
                         _make_tag_meta_row(
@@ -1705,6 +1705,11 @@ class TestCombinedVideoCount:
                         ),
                     ]
                 ),
+                _row_result([]),  # page preview for vid_t_1
+                _row_result([]),  # page preview for vid_t_2
+                _row_result([]),  # page preview for vid_t_3
+                _row_result([]),  # page preview for vid_t_4
+                _row_result([]),  # page preview for vid_t_5
             ]
 
             results, total = await repository.get_entity_video_list(
@@ -1763,9 +1768,7 @@ class TestCombinedVideoCount:
                         for vid in transcript_vids
                     ]
                 ),
-                _row_result([]),  # preview for vid_t_1
-                _row_result([]),  # preview for vid_t_2
-                _row_result([]),  # preview for vid_t_3
+                # #269: tag-only metadata now precedes the page previews.
                 _row_result(
                     [  # tag-only video metadata
                         _make_tag_meta_row(
@@ -1775,6 +1778,9 @@ class TestCombinedVideoCount:
                         for vid in sorted(tag_vids)
                     ]
                 ),
+                _row_result([]),  # page preview for vid_t_1
+                _row_result([]),  # page preview for vid_t_2
+                _row_result([]),  # page preview for vid_t_3
             ]
 
             results, total = await repository.get_entity_video_list(

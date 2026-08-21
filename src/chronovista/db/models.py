@@ -274,6 +274,7 @@ class Video(Base):
     __table_args__ = (
         Index("idx_videos_availability_status", "availability_status"),
         Index("idx_videos_category_id", "category_id"),
+        Index("idx_videos_channel_id", "channel_id"),
         Index(
             "idx_videos_channel_hint",
             "channel_name_hint",

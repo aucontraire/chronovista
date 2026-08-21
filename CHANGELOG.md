@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.1] - 2026-08-21
+
+### Changed
+- **Filtering videos by channel no longer scans the whole library.** Added a plain index on `videos.channel_id`. Only partial (`channel_id IS NULL`) indexes existed before, so any `channel_id = …` lookup sequentially scanned every video — which slowed the channel videos list, the channel entity panel, and the channel-scoped video filter. Measured on production (~55,800 videos), the largest channel's lookup drops from a full sequential scan to a bitmap index scan (buffers read fall roughly 6,300 → 1,100). Additive, reversible, no data change. (#264)
+
 ## [0.74.0] - 2026-08-20
 
 ### Added

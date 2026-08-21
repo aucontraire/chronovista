@@ -3051,30 +3051,44 @@ class TestPerformanceAssertions:
     ) -> None:
         """GET /api/v1/entities/search must complete within 300 ms (NFR-001).
 
-        Uses the ``seed_search_data`` fixture which seeds "Barbara Liskov"
-        so the search query 'Barb' always returns at least one result,
-        exercising the full DB lookup path.
+        Measured as the MEDIAN of several samples after a discarded warm-up, so a
+        single slow request under CI-runner load does not flip a hard single-shot
+        threshold (the flake that failed a prior merge — #265). Uses the
+        ``seed_search_data`` fixture so the query 'Barb' always returns at least
+        one result, exercising the full DB lookup path.
         """
         budget_ms: float = 300.0
 
-        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
-            mock_oauth.is_authenticated.return_value = True
-
+        async def _timed_search() -> float:
             t_start = time.perf_counter()
             response = await async_client.get(
                 _search_entities_url(), params={"q": "Barb"}
             )
             elapsed_ms = (time.perf_counter() - t_start) * 1_000
+            # The functional contract (200) must hold; timing is only meaningful
+            # when the handler actually ran to completion.
+            assert response.status_code == 200, (
+                f"NFR-001: Expected 200 from /entities/search, "
+                f"got {response.status_code}: {response.text}"
+            )
+            return elapsed_ms
 
-        # The functional contract (200) must hold; timing is only meaningful
-        # when the handler actually ran to completion.
-        assert response.status_code == 200, (
-            f"NFR-001: Expected 200 from /entities/search, "
-            f"got {response.status_code}: {response.text}"
-        )
-        assert elapsed_ms < budget_ms, (
-            f"NFR-001 VIOLATED: GET /api/v1/entities/search took "
-            f"{elapsed_ms:.1f} ms, budget is {budget_ms:.0f} ms"
+        with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+
+            # Warm up (exclude cold connection / first-query overhead), then take
+            # the MEDIAN of several samples: a single slow request under CI-runner
+            # load must not fail an otherwise-fast endpoint. A real regression
+            # slows the median too, so the guard keeps its teeth (#265).
+            await _timed_search()  # warm-up, discarded
+            samples = sorted([await _timed_search() for _ in range(5)])
+
+        median_ms = samples[len(samples) // 2]
+        assert median_ms < budget_ms, (
+            "NFR-001 VIOLATED: median GET /api/v1/entities/search over "
+            f"{len(samples)} samples took {median_ms:.1f} ms, budget is "
+            f"{budget_ms:.0f} ms (samples ms: "
+            f"{', '.join(f'{s:.0f}' for s in samples)})"
         )
 
     async def test_nfr_002_entity_videos_loads_under_2000ms(

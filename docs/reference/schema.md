@@ -75,6 +75,7 @@ Enhanced video model with language support and content restrictions.
 - INDEX `idx_videos_availability_status` on `availability_status`
 - INDEX `idx_videos_category_id` on `category_id`
 - INDEX `idx_videos_channel_hint` on `channel_name_hint`
+- INDEX `idx_videos_channel_id` on `channel_id`
 - INDEX `idx_videos_null_channel` on `video_id`
 
 ### `video_categories`

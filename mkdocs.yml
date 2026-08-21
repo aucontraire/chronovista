@@ -143,6 +143,7 @@ nav:
       - Correct transcripts: user-guide/corrections.md
       - Analyze topics: user-guide/topic-analytics.md
       - Find entity intersections: user-guide/entity-intersection.md
+      - See what a channel is about: user-guide/channel-entities.md
       - Fix an over-matching entity: user-guide/entity-curation.md
       - Attach tags to an entity: user-guide/entity-tags.md
       - Ground entities in a knowledge base: user-guide/entity-enrichment.md

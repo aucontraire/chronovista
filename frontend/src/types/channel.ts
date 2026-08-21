@@ -72,3 +72,40 @@ export interface ChannelDetailResponse {
   /** Channel detail data */
   data: ChannelDetail;
 }
+
+/**
+ * A single entity's ranking within a channel, as returned by
+ * `GET /channels/{channel_id}/entities` (Feature 070).
+ */
+export interface ChannelEntityRanking {
+  /** Entity UUID (string form) */
+  entity_id: string;
+  /** Entity's canonical display name */
+  display_name: string;
+  /** Raw entity_type value (e.g. "person", "place") */
+  entity_type: string;
+  /** Number of this channel's videos the entity appears in */
+  channel_video_count: number;
+  /** Number of videos across the whole corpus the entity appears in */
+  corpus_video_count: number;
+  /** Distinctiveness share, a float in (0, 1] */
+  share: number;
+  /**
+   * Whether this entity is in the share-ranked group (true) or the
+   * "also appears" group of single-video entities (false). The API already
+   * orders `items` accordingly — ranked group first, then unranked.
+   */
+  is_ranked: boolean;
+}
+
+/**
+ * Response from the channel entities ranking API endpoint.
+ */
+export interface ChannelEntitiesResponse {
+  /** Channel ID the ranking belongs to */
+  channel_id: string;
+  /** Total number of entities associated with the channel */
+  total_entities: number;
+  /** Ranked entities, server-ordered: is_ranked group first, then unranked */
+  items: ChannelEntityRanking[];
+}

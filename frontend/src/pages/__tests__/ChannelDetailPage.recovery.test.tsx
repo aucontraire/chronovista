@@ -64,6 +64,19 @@ vi.mock('../../hooks/useChannelVideos', () => ({
   })),
 }));
 
+// Mock useChannelEntities (Feature 070) — panel is mounted unconditionally on
+// the page; without this mock its real hook hits the shared apiFetch mock and
+// pollutes call-count assertions for the recovery mutation below.
+vi.mock('../../hooks/useChannelEntities', () => ({
+  useChannelEntities: vi.fn(() => ({
+    data: { channel_id: 'test-channel', total_entities: 0, items: [] },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  })),
+}));
+
 // Mock VideoGrid
 vi.mock('../../components/VideoGrid', () => ({
   VideoGrid: () => <div data-testid="video-grid" />,

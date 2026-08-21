@@ -54,6 +54,8 @@ interface UseVideosOptions {
   hasTranscript?: boolean;
   /** Filter to videos saved in a curated playlist and never watched */
   savedUnwatched?: boolean;
+  /** Restrict results to a single channel (Feature 070, US2 pinned entities) */
+  channelId?: string;
 }
 
 interface UseVideosReturn {
@@ -116,6 +118,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
     minEvidence,
     hasTranscript,
     savedUnwatched,
+    channelId,
   } = options;
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -151,6 +154,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
         entityIds,
         excludedEntityIds,
         minEvidence,
+        channelId,
       },
     ],
     queryFn: async ({ pageParam, signal }) => {
@@ -182,6 +186,7 @@ export function useVideos(options: UseVideosOptions = {}): UseVideosReturn {
       entityIds.forEach(id => params.append('entity_id', id));
       excludedEntityIds.forEach(id => params.append('exclude_entity_id', id));
       if (minEvidence) params.set('min_evidence', minEvidence);
+      if (channelId) params.set('channel_id', channelId);
 
       // FR-004/FR-005: Pass TanStack Query signal as externalSignal so it is
       // combined with the internal timeout guard via AbortSignal.any().

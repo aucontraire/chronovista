@@ -7,11 +7,13 @@ import { Link, useNavigate, useParams, useSearchParams, useBlocker } from "react
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { VideoGrid } from "../components/VideoGrid";
+import { ChannelEntityPanel } from "../components/channel/ChannelEntityPanel";
 import { LoadingState } from "../components/LoadingState";
 import { SortDropdown } from "../components/SortDropdown";
 import { FilterToggle } from "../components/FilterToggle";
 import { UnavailabilityBanner } from "../components/UnavailabilityBanner";
-import { useChannelDetail, useChannelVideos } from "../hooks";
+import { useChannelDetail, useChannelVideos, useVideos } from "../hooks";
+import { usePinnedEntities } from "../hooks/usePinnedEntities";
 import { useUrlParamBoolean } from "../hooks/useUrlParam";
 import { cardPatterns, colorTokens } from "../styles";
 import { apiFetch, API_BASE_URL, RECOVERY_TIMEOUT } from "../api/config";
@@ -81,6 +83,15 @@ export function ChannelDetailPage() {
   const sortBy = urlSortBy && validSortFields.includes(urlSortBy) ? urlSortBy : undefined;
   const sortOrder = urlSortOrder && validSortOrders.includes(urlSortOrder) ? urlSortOrder : undefined;
 
+  // Feature 070, US2: pinned entities (repeated `entity_id` URL params) filter
+  // the channel's video list to their AND-intersection. `ChannelVideoSortField`
+  // and `VideoSortField` are the same literal union ('upload_date' | 'title'),
+  // so the active sort carries over to the pinned request unchanged — no
+  // mapping/fallback needed to satisfy FR-005 (pins compose with, not reset,
+  // the page's existing sort).
+  const { pinnedEntityIds, clearPins } = usePinnedEntities();
+  const hasPins = pinnedEntityIds.length > 0;
+
   const {
     data: channel,
     isLoading: channelLoading,
@@ -88,6 +99,28 @@ export function ChannelDetailPage() {
     error: channelErrorObj,
     refetch: channelRefetch,
   } = useChannelDetail(channelId);
+
+  // Both video-fetch hooks are called unconditionally (Rules of Hooks) and
+  // gated via `enabled` so only the one matching the current pin state fetches.
+  const channelVideosResult = useChannelVideos(channelId, {
+    likedOnly,
+    ...(sortBy !== undefined && { sortBy }),
+    ...(sortOrder !== undefined && { sortOrder }),
+    enabled: !hasPins,
+  });
+
+  // include_unavailable=true is mandatory here: the panel's per-entity
+  // channel_video_count is the all-videos basis, so omitting it would make
+  // the pinned result count fall below the panel's count (FR-007).
+  const pinnedVideosResult = useVideos({
+    ...(channelId !== undefined && { channelId }),
+    entityIds: pinnedEntityIds,
+    includeUnavailable: true,
+    likedOnly,
+    ...(sortBy !== undefined && { sortBy }),
+    ...(sortOrder !== undefined && { sortOrder }),
+    enabled: hasPins,
+  });
 
   const {
     videos,
@@ -100,11 +133,7 @@ export function ChannelDetailPage() {
     isFetchingNextPage,
     retry: videosRetry,
     loadMoreRef,
-  } = useChannelVideos(channelId, {
-    likedOnly,
-    ...(sortBy !== undefined && { sortBy }),
-    ...(sortOrder !== undefined && { sortOrder }),
-  });
+  } = hasPins ? pinnedVideosResult : channelVideosResult;
 
   // Recovery store actions and session
   const { startRecovery, updatePhase, setResult, setError, setAbortController } = useRecoveryStore();
@@ -204,10 +233,13 @@ export function ChannelDetailPage() {
     };
   }, [channel?.title]);
 
-  // Scroll to top when sort or filter changes (FR-031)
+  // Scroll to top when sort or filter changes (FR-031); pinned entities are
+  // a filter too, so joining the ids keeps this from re-running on unrelated
+  // URL changes while still firing on every pin/unpin.
+  const pinnedEntityIdsKey = pinnedEntityIds.join(",");
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [sortBy, sortOrder, likedOnly]);
+  }, [sortBy, sortOrder, likedOnly, pinnedEntityIdsKey]);
 
   // Loading state
   if (channelLoading) {
@@ -598,6 +630,9 @@ export function ChannelDetailPage() {
         </div>
       </div>
 
+      {/* Entities Panel (Feature 070, US1) */}
+      {channelId && <ChannelEntityPanel channelId={channelId} />}
+
       {/* Videos Section */}
       <div>
         <h2 className={`text-2xl font-bold text-${colorTokens.text.primary} mb-6`}>
@@ -614,6 +649,22 @@ export function ChannelDetailPage() {
           />
           <FilterToggle paramKey="liked_only" label="Show Liked Only" />
         </div>
+
+        {/* Pinned entity filter summary + unpin affordance (Feature 070, US2) */}
+        {hasPins && (
+          <div className="flex flex-wrap items-center gap-3 mb-6 text-sm">
+            <span className={`text-${colorTokens.text.secondary}`}>
+              Filtered by {pinnedEntityIds.length} pinned entit{pinnedEntityIds.length === 1 ? "y" : "ies"}
+            </span>
+            <button
+              type="button"
+              onClick={clearPins}
+              className="font-medium text-blue-600 underline hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 rounded"
+            >
+              Clear pinned entities
+            </button>
+          </div>
+        )}
 
         {/* ARIA live region for filtered count (FR-005) */}
         {!videosLoading && !videosError && videosTotal !== null && videosTotal > 0 && (
@@ -640,7 +691,7 @@ export function ChannelDetailPage() {
             <button
               type="button"
               onClick={videosRetry}
-              className={`inline-flex items-center px-4 py-2 bg-${colorTokens.status.error.text} text-white font-medium rounded-md hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-${colorTokens.status.error.text} focus:ring-offset-2 transition-opacity`}
+              className="inline-flex items-center px-4 py-2 bg-red-600 text-white font-medium rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
             >
               Retry
             </button>
@@ -650,8 +701,46 @@ export function ChannelDetailPage() {
         {/* Videos List */}
         {!videosLoading && !videosError && (
           <>
+            {/* Empty State — pinned entity AND-intersection has no matches (US2 scenario 4) */}
+            {videos.length === 0 && hasPins && (
+              <div
+                className="bg-white border border-gray-200 rounded-xl shadow-lg p-12 text-center"
+                role="status"
+              >
+                <div className="mx-auto w-20 h-20 mb-6 text-gray-400 bg-gray-100 rounded-full p-4">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5V16h14v-1.5l-4.091-4.091a2.25 2.25 0 0 1-.659-1.591V3.104M12 16v5M3 3l18 18"
+                    />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">
+                  No videos match these pinned entities
+                </h3>
+                <p className="text-gray-600 max-w-md mx-auto mb-6">
+                  No videos in this channel mention all of the pinned entities together. Unpin one to broaden the results.
+                </p>
+                <button
+                  type="button"
+                  onClick={clearPins}
+                  className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200"
+                >
+                  Clear pinned entities
+                </button>
+              </div>
+            )}
+
             {/* Empty State — Liked filter active (FR-025) */}
-            {videos.length === 0 && likedOnly && (
+            {videos.length === 0 && !hasPins && likedOnly && (
               <div
                 className="bg-white border border-gray-200 rounded-xl shadow-lg p-12 text-center"
                 role="status"
@@ -682,7 +771,7 @@ export function ChannelDetailPage() {
             )}
 
             {/* Empty State — No filter active (EC-003) */}
-            {videos.length === 0 && !likedOnly && (
+            {videos.length === 0 && !hasPins && !likedOnly && (
               <div
                 className="bg-white border border-gray-200 rounded-xl shadow-lg p-12 text-center"
                 role="status"

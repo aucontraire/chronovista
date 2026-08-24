@@ -2835,6 +2835,108 @@ class TestExportScanIgnoresHiddenFiles:
         assert OnboardingService._get_export_mtime(tmp_path) is None
 
 
+class TestExportSignatureDetection:
+    """New-data detection keys on export *content*, not mtime (#270).
+
+    Regression: a crash/restart/Finder/sync that only bumps folder mtimes with
+    no content change kept ``new_data_available`` stuck on True. The signature
+    is name-based, so a pure mtime bump is invisible to it.
+    """
+
+    def test_signature_ignores_mtime_bumps(self, tmp_path: Path) -> None:
+        import os
+
+        from chronovista.services.onboarding_service import OnboardingService
+
+        folder = tmp_path / "YouTube and YouTube Music"
+        folder.mkdir()
+        before = OnboardingService._export_signature(tmp_path)
+        # A pure mtime bump — the exact bug trigger — with no content change.
+        os.utime(folder, (2_000_000.0, 2_000_000.0))
+        after = OnboardingService._export_signature(tmp_path)
+        assert before is not None
+        assert before == after
+
+    def test_signature_changes_when_a_new_export_folder_appears(
+        self, tmp_path: Path
+    ) -> None:
+        from chronovista.services.onboarding_service import OnboardingService
+
+        (tmp_path / "YouTube and YouTube Music").mkdir()
+        first = OnboardingService._export_signature(tmp_path)
+        # A genuinely new Takeout arrives as a new top-level (dated) folder.
+        (tmp_path / "YouTube and YouTube Music 2026-09-14").mkdir()
+        second = OnboardingService._export_signature(tmp_path)
+        assert first is not None and second is not None
+        assert first != second
+
+    def test_signature_ignores_dotfiles(self, tmp_path: Path) -> None:
+        from chronovista.services.onboarding_service import OnboardingService
+
+        (tmp_path / "YouTube and YouTube Music").mkdir()
+        base = OnboardingService._export_signature(tmp_path)
+        (tmp_path / ".DS_Store").write_text("junk")
+        assert OnboardingService._export_signature(tmp_path) == base
+
+    def test_signature_none_when_missing_or_empty(self, tmp_path: Path) -> None:
+        from chronovista.services.onboarding_service import OnboardingService
+
+        assert OnboardingService._export_signature(tmp_path / "nope") is None
+        assert OnboardingService._export_signature(tmp_path) is None  # empty dir
+        (tmp_path / ".DS_Store").write_text("junk")
+        assert OnboardingService._export_signature(tmp_path) is None  # only dotfiles
+
+    def test_matching_signature_suppresses_mtime_false_positive(self) -> None:
+        """THE bug: export mtime newer than the last load, but content identical."""
+        from chronovista.services.onboarding_service import OnboardingService
+
+        assert (
+            OnboardingService._detect_new_data(
+                data_export_detected=True,
+                export_mtime=2_000_000.0,  # bumped AFTER the last load
+                videos_loaded=100,
+                last_loaded_at=1_000_000.0,
+                stored_signature="abc",
+                current_signature="abc",  # ...but the content is unchanged
+            )
+            is False
+        )
+
+    def test_differing_signature_flags_new_data(self) -> None:
+        from chronovista.services.onboarding_service import OnboardingService
+
+        assert (
+            OnboardingService._detect_new_data(
+                data_export_detected=True,
+                export_mtime=None,  # the signature path needs no mtime
+                videos_loaded=100,
+                last_loaded_at=1_000_000.0,
+                stored_signature="abc",
+                current_signature="def",
+            )
+            is True
+        )
+
+    def test_record_load_completion_persists_signature(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from chronovista.config.settings import settings
+        from chronovista.services.onboarding_service import OnboardingService
+
+        export = tmp_path / "takeout"
+        export.mkdir()
+        (export / "YouTube and YouTube Music").mkdir()
+        data_dir = tmp_path / "data"
+        monkeypatch.setenv("TAKEOUT_DIR", str(export))
+        monkeypatch.setattr(settings, "data_dir", data_dir)
+
+        assert OnboardingService._read_export_signature() is None
+        OnboardingService._record_load_completion()
+        stored = OnboardingService._read_export_signature()
+        assert stored is not None
+        assert stored == OnboardingService._export_signature(export)
+
+
 class TestLoadCompletionMarker:
     """The load_data completion marker clears the signal on idempotent re-loads."""
 

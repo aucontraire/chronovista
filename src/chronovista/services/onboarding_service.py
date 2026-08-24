@@ -194,6 +194,8 @@ class OnboardingService:
             export_mtime=export_mtime,
             videos_loaded=counts.videos,
             last_loaded_at=last_loaded_at,
+            stored_signature=self._read_export_signature(),
+            current_signature=self._export_signature(data_export_path),
         )
         active_task = self._get_active_task()
 
@@ -488,6 +490,8 @@ class OnboardingService:
         export_mtime: float | None,
         videos_loaded: int,
         last_loaded_at: float | None = None,
+        stored_signature: str | None = None,
+        current_signature: str | None = None,
     ) -> bool:
         """Determine whether new export data is available for import.
 
@@ -517,9 +521,17 @@ class OnboardingService:
             return False
         if videos_loaded == 0:
             return False
+        # Prefer the content signature once a baseline was recorded at load
+        # time: a fresh Takeout changes the set of top-level entries, while a
+        # crash/restart/Finder/sync only bumps mtimes. This is immune to the
+        # mtime false-positive (#270).
+        if stored_signature is not None and current_signature is not None:
+            return current_signature != stored_signature
+        # Legacy fallback (no signature recorded yet — e.g. a load predating
+        # this fix): the mtime heuristic, until the next load records a
+        # signature and the robust path above takes over.
         if export_mtime is None:
             return False
-        # Only signal new data if export dir was modified after last load
         return not (last_loaded_at is not None and export_mtime <= last_loaded_at)
 
     @staticmethod
@@ -549,22 +561,82 @@ class OnboardingService:
             return None
 
     @staticmethod
-    def _record_load_completion() -> None:
-        """Persist the completion time of a load_data run.
+    def _export_signature_path() -> Path:
+        """Path of the file recording the export content signature at last load.
 
-        Recorded independently of whether new video rows were created, so the
-        "new data available" signal clears even for an idempotent re-import
-        (a Takeout whose videos are all already in the database). Without this,
-        ``last_loaded_at`` was inferred from ``MAX(video.created_at)``, which
-        never advances when a load inserts no new rows.
+        Sits beside the timestamp marker in the writable data dir, and is kept
+        separate so the marker's format (a bare float) stays unchanged.
         """
-        path = OnboardingService._load_marker_path()
+        from chronovista.config.settings import settings
+
+        return settings.data_dir / "onboarding_export_signature"
+
+    @staticmethod
+    def _export_signature(export_path: Path) -> str | None:
+        """A content signature of the export: its set of top-level entry names.
+
+        Deliberately name-based, not mtime-based (#270). A fresh Takeout arrives
+        as a new top-level (dated) folder, which changes this set; a crash,
+        restart, Finder access or sync client only bumps mtimes, which this
+        ignores. Dotfiles (e.g. ``.DS_Store``) are excluded, matching
+        ``_detect_data_export``. Returns ``None`` when the directory is missing,
+        empty, or unreadable.
+        """
+        import hashlib
+
+        if not export_path.is_dir():
+            return None
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            now = datetime.datetime.now(datetime.UTC).timestamp()
-            path.write_text(str(now))
+            names = sorted(
+                entry.name
+                for entry in export_path.iterdir()
+                if not entry.name.startswith(".")
+            )
+        except OSError:
+            return None
+        if not names:
+            return None
+        return hashlib.sha256("\n".join(names).encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _read_export_signature() -> str | None:
+        """Return the export signature recorded at the last load, or ``None``."""
+        try:
+            text = OnboardingService._export_signature_path().read_text().strip()
+        except (FileNotFoundError, OSError):
+            return None
+        return text or None
+
+    @staticmethod
+    def _record_load_completion() -> None:
+        """Persist the completion time AND export content signature of a load.
+
+        The timestamp clears the signal for an idempotent re-import (a Takeout
+        whose videos are all already in the database — ``MAX(video.created_at)``
+        never advances there). The signature is the durable evidence of *what*
+        was loaded, so a later mtime-only change (crash/restart/Finder/sync) is
+        not mistaken for new data (#270). Both are recorded independently of
+        whether new video rows were created.
+        """
+        from chronovista.config.settings import settings
+
+        now = datetime.datetime.now(datetime.UTC).timestamp()
+        try:
+            os.makedirs(settings.data_dir, exist_ok=True)
+            OnboardingService._load_marker_path().write_text(str(now))
         except OSError as exc:
             logger.warning("Could not record load completion marker: %s", exc)
+
+        signature = OnboardingService._export_signature(
+            OnboardingService._get_data_export_path()
+        )
+        if signature is None:
+            return
+        try:
+            os.makedirs(settings.data_dir, exist_ok=True)
+            OnboardingService._export_signature_path().write_text(signature)
+        except OSError as exc:
+            logger.warning("Could not record export signature: %s", exc)
 
     @staticmethod
     def _check_auth() -> bool:

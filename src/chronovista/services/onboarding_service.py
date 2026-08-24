@@ -573,30 +573,38 @@ class OnboardingService:
 
     @staticmethod
     def _export_signature(export_path: Path) -> str | None:
-        """A content signature of the export: its set of top-level entry names.
+        """A content signature of the export: a manifest of file paths + sizes.
 
-        Deliberately name-based, not mtime-based (#270). A fresh Takeout arrives
-        as a new top-level (dated) folder, which changes this set; a crash,
-        restart, Finder access or sync client only bumps mtimes, which this
-        ignores. Dotfiles (e.g. ``.DS_Store``) are excluded, matching
-        ``_detect_data_export``. Returns ``None`` when the directory is missing,
-        empty, or unreadable.
+        Name- and size-based, never mtime-based (#270). A fresh Takeout adds or
+        changes files — a new dated folder, or updated contents within one —
+        which moves the manifest; a crash, restart, Finder access or sync client
+        only bumps mtimes, which this ignores. Dotfiles and dot-directories
+        (``.DS_Store`` and friends) are excluded at *every* level, so Finder
+        churn anywhere in the tree cannot perturb it. Returns ``None`` when the
+        directory is missing, holds no non-hidden files, or is unreadable.
         """
         import hashlib
 
         if not export_path.is_dir():
             return None
-        try:
-            names = sorted(
-                entry.name
-                for entry in export_path.iterdir()
-                if not entry.name.startswith(".")
-            )
-        except OSError:
+        entries: list[str] = []
+        for root, dirs, files in os.walk(export_path, onerror=lambda _err: None):
+            # Prune hidden directories in place so os.walk never descends them.
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for name in files:
+                if name.startswith("."):
+                    continue
+                full = os.path.join(root, name)
+                try:
+                    size = os.path.getsize(full)
+                except OSError:
+                    continue
+                rel = os.path.relpath(full, export_path)
+                entries.append(f"{rel}\0{size}")
+        if not entries:
             return None
-        if not names:
-            return None
-        return hashlib.sha256("\n".join(names).encode("utf-8")).hexdigest()
+        entries.sort()
+        return hashlib.sha256("\n".join(entries).encode("utf-8")).hexdigest()
 
     @staticmethod
     def _read_export_signature() -> str | None:

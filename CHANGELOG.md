@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.3] - 2026-08-23
+
+### Fixed
+- **Onboarding no longer falsely reports "new data available" after a restart, file sync, or Finder access.** The "Load Data Export" step decided whether a new import was available by comparing the Takeout export folder's modification time against the last load — so a crash/restart, Finder access, cloud-sync client, or bind-mount remount that only bumped the folder's mtime (without changing its contents) re-flagged already-loaded data as new, re-enabling the Start button on a library that was fully caught up. Detection now compares a content signature of the export — a manifest of every file's path and size, recorded at load time — so a pure mtime bump is ignored while a genuinely new export (a new dated folder, or added/edited files) is still detected. Dotfiles and dot-directories are excluded at every level, so macOS Finder churn anywhere in the tree does not trip it. The previous mtime check remains only as a fallback for projects loaded before this fix, until their next load records a signature. (#270)
+
 ## [0.74.2] - 2026-08-21
 
 ### Fixed

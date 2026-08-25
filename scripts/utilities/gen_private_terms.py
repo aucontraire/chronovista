@@ -66,6 +66,26 @@ ALLOWLIST = {
     "Vector Database",
 }
 
+# Country / region names that appear ONLY as language-variant display labels
+# (e.g. "Spanish (Mexico)" for es-MX in models/language_names.py and its
+# frontend mirror). They are UI labels for BCP-47 codes, not references to
+# library entities, so they must not trip the guard. Kept separate from the
+# toolchain ALLOWLIST because the reason is different.
+LANGUAGE_REGION_NAMES = {
+    "Mexico",
+    "Spain",
+    "Russia",
+    "India",
+    "Argentina",
+    "Colombia",
+    "France",
+    "Germany",
+    "Italy",
+    "Brazil",
+    "Korea",
+    "Egypt",
+}
+
 # Aliases that are ordinary English words. Word boundaries do not rescue these
 # — "web UI", "fork the repo", "peek at the output", "check mate" are all
 # legitimate, and a detector that fires on them gets switched off. Each of these
@@ -144,7 +164,12 @@ async def main(dsn: str) -> int:
             # other casings ("Openai" beside "OpenAI"), and an exact-set
             # subtraction leaves those behind for the case-insensitive matcher
             # to flag — allowlisting a term must allowlist all its spellings.
-            excluded = ALLOWLIST | COMMON_WORD_ALIASES | FIXTURE_ENTITIES
+            excluded = (
+                ALLOWLIST
+                | LANGUAGE_REGION_NAMES
+                | COMMON_WORD_ALIASES
+                | FIXTURE_ENTITIES
+            )
             blocked = {a.casefold() for a in excluded}
             terms = sorted(
                 {
@@ -169,6 +194,7 @@ async def main(dsn: str) -> int:
     print(
         f"Wrote {len(terms)} terms to {OUTPUT.name}\n"
         f"  excluded: {len(ALLOWLIST)} toolchain, "
+        f"{len(LANGUAGE_REGION_NAMES)} language-region labels, "
         f"{len(COMMON_WORD_ALIASES)} word collisions, "
         f"{len(FIXTURE_ENTITIES)} accepted fixture entities"
     )

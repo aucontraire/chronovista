@@ -376,7 +376,7 @@ class TestGetLanguageDisplayName:
     def test_get_spanish_name(self) -> None:
         """Test getting Spanish language name."""
         result = get_language_display_name("es-MX")
-        assert result == "Spanish (Peru)"
+        assert result == "Spanish (Mexico)"
 
     def test_get_unknown_code(self) -> None:
         """Test unknown code returns the code itself."""

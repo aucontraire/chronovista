@@ -42,6 +42,9 @@ from chronovista.exceptions import (
     RateLimitError,
 )
 from chronovista.models.enums import AvailabilityStatus
+from chronovista.models.language_names import (
+    get_language_name as _canonical_language_name,
+)
 from chronovista.models.user_language_preference import (
     UserLanguagePreference as UserLanguagePreferenceDomain,
 )
@@ -96,28 +99,7 @@ def get_language_name(code: str) -> str:
     str
         Human-readable language name, or the code itself if unknown.
     """
-    # Lowercase lookup dictionary for case-insensitive matching
-    names = {
-        "en": "English",
-        "en-us": "English (US)",
-        "en-gb": "English (UK)",
-        "es": "Spanish",
-        "es-es": "Spanish (Portugal)",
-        "es-mx": "Spanish (Peru)",
-        "fr": "French",
-        "de": "German",
-        "it": "Italian",
-        "pt": "Portuguese",
-        "pt-br": "Portuguese (Brazil)",
-        "zh-cn": "Chinese (Simplified)",
-        "zh-tw": "Chinese (Traditional)",
-        "ja": "Japanese",
-        "ko": "Korean",
-        "ru": "Russian",
-        "ar": "Arabic",
-        "hi": "Hindi",
-    }
-    return names.get(code.lower(), code)
+    return _canonical_language_name(code)
 
 
 @router.get(

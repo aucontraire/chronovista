@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.4] - 2026-08-25
+
+### Fixed
+- **Transcript download no longer silently fails for videos that publish only region-qualified caption tracks.** The preference-aware download matched a video's available tracks against the user's language preferences by exact code, so a video offering only regional variants (e.g. `en-US`, `es-MX`) returned nothing for users whose preferences are bare codes (`en`, `es`) — a deterministic failure that surfaced as "no transcript." Downloads now fall back to base-language matching (a bare `en` request resolves an `en-US` track, preferring a manually-created one), and the transcript is stored under its real code.
+- **Corrected several mislabeled language display names** — `es-MX` (Mexico), `es-ES` (Spain), `ru-RU` (Russia), `hi-IN` and `en-IN` (India) — which previously showed the wrong country.
+
+### Changed
+- **Language display names now come from a single source of truth.** The code-to-name mapping, previously copy-pasted across the CLI, the settings API, the transcript API, and the frontend, is consolidated into one backend module and one frontend module (the settings and CLI paths no longer duplicate it, removing an API-to-CLI import dependency). Regional variant names are standardized on their fuller forms (e.g. "English (United States)").
+
 ## [0.74.3] - 2026-08-23
 
 ### Fixed

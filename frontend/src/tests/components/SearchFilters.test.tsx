@@ -49,10 +49,10 @@ describe("SearchFilters", () => {
       // Should show both base codes and regional variants with region labels
       const languageTexts = languageOptions.map(opt => opt.textContent);
       expect(languageTexts).toContain("English");
-      expect(languageTexts).toContain("English (US)");
-      expect(languageTexts).toContain("English (UK)");
+      expect(languageTexts).toContain("English (United States)");
+      expect(languageTexts).toContain("English (United Kingdom)");
       expect(languageTexts).toContain("Spanish");
-      expect(languageTexts).toContain("Spanish (Peru)");
+      expect(languageTexts).toContain("Spanish (Mexico)");
     });
 
     it("should handle empty language list gracefully", () => {

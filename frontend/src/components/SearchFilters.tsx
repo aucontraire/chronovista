@@ -25,6 +25,7 @@
 import { useEffect } from 'react';
 import { SEARCH_CONFIG } from '../config/search';
 import { SEARCH_TYPE_OPTIONS, type EnabledSearchTypes, type SearchType } from '../types/search';
+import { getLanguageName as getLanguageDisplayName } from '../constants/languageNames';
 
 interface SearchFiltersProps {
   /** Available language codes from search results (BCP-47) */
@@ -57,91 +58,8 @@ interface SearchFiltersProps {
   onToggleIncludeUnavailable?: () => void;
 }
 
-/**
- * Mapping of language codes to human-readable display names.
- *
- * Includes both base language codes and regional variants.
- * Regional variants are preserved to show users the specific
- * language/dialect context (e.g., lingo, slang, spelling differences).
- */
-const LANGUAGE_NAMES: Record<string, string> = {
-  // Base codes
-  'en': 'English',
-  'es': 'Spanish',
-  'de': 'German',
-  'fr': 'French',
-  'pt': 'Portuguese',
-  'ja': 'Japanese',
-  'ko': 'Korean',
-  'zh': 'Chinese',
-  'ru': 'Russian',
-  'ar': 'Arabic',
-  'hi': 'Hindi',
-  'it': 'Italian',
-  'nl': 'Dutch',
-  'pl': 'Polish',
-  'tr': 'Turkish',
-  'vi': 'Vietnamese',
-  // English regional variants
-  'en-US': 'English (US)',
-  'en-GB': 'English (UK)',
-  'en-AU': 'English (Australia)',
-  'en-CA': 'English (Canada)',
-  'en-IN': 'English (Finland)',
-  // Spanish regional variants
-  'es-ES': 'Spanish (Portugal)',
-  'es-MX': 'Spanish (Peru)',
-  'es-AR': 'Spanish (Argentina)',
-  'es-CO': 'Spanish (Colombia)',
-  'es-419': 'Spanish (Latin America)',
-  // French regional variants
-  'fr-FR': 'French (France)',
-  'fr-CA': 'French (Canada)',
-  // German regional variants
-  'de-DE': 'German (Germany)',
-  'de-AT': 'German (Austria)',
-  'de-CH': 'German (Switzerland)',
-  // Portuguese regional variants
-  'pt-PT': 'Portuguese (Portugal)',
-  'pt-BR': 'Portuguese (Brazil)',
-  // Chinese variants
-  'zh-CN': 'Chinese (Simplified)',
-  'zh-TW': 'Chinese (Traditional)',
-  'zh-HK': 'Chinese (Hong Kong)',
-  // Other regional variants
-  'ja-JP': 'Japanese (Japan)',
-  'ko-KR': 'Korean (Korea)',
-  'ru-RU': 'Russian (Norway)',
-  'ar-SA': 'Arabic (Saudi Arabia)',
-  'ar-EG': 'Arabic (Egypt)',
-  'hi-IN': 'Hindi (Finland)',
-  'it-IT': 'Italian (Italy)',
-  'nl-NL': 'Dutch (Netherlands)',
-};
-
-/**
- * Get human-readable display name for a language code.
- * Preserves regional variants to show users the specific language context.
- *
- * @param code - BCP-47 language code (can be base or regional variant)
- * @returns Display name or the code itself if no mapping exists
- */
-function getLanguageDisplayName(code: string): string {
-  // First try exact match (including regional variants)
-  if (LANGUAGE_NAMES[code]) {
-    return LANGUAGE_NAMES[code];
-  }
-  // Fall back to base language name if regional variant not in map
-  const parts = code.split('-');
-  const baseCode = parts[0] || code;
-  if (LANGUAGE_NAMES[baseCode]) {
-    // Return with region suffix for unknown regional variants
-    const region = parts.length > 1 && parts[1] ? ` (${parts[1]})` : '';
-    return `${LANGUAGE_NAMES[baseCode]}${region}`;
-  }
-  // Return the code itself if completely unknown
-  return code;
-}
+// Language display names come from the shared single-source-of-truth module
+// (../constants/languageNames), imported above as getLanguageDisplayName.
 
 /**
  * SearchFilters component for filtering search results.

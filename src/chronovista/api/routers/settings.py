@@ -28,7 +28,6 @@ from chronovista.api.schemas.settings import (
 )
 from chronovista.api.schemas.sync import SyncOperationType
 from chronovista.api.services.sync_manager import sync_manager
-from chronovista.cli.language_commands import LANGUAGE_NAMES
 from chronovista.config.settings import settings
 from chronovista.db.models import (
     CanonicalTag,
@@ -39,6 +38,7 @@ from chronovista.db.models import (
     VideoTranscript,
 )
 from chronovista.models.enums import LanguageCode
+from chronovista.models.language_names import LANGUAGE_NAMES
 from chronovista.services.image_cache import ImageCacheConfig, ImageCacheService
 
 logger = logging.getLogger(__name__)

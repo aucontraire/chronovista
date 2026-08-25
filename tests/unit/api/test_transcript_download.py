@@ -1227,8 +1227,8 @@ class TestDownloadTranscriptLanguageNameResolution:
         "code, expected_name",
         [
             ("en", "English"),
-            ("en-us", "English (US)"),
-            ("en-gb", "English (UK)"),
+            ("en-us", "English (United States)"),
+            ("en-gb", "English (United Kingdom)"),
             ("es", "Spanish"),
             ("fr", "French"),
             ("de", "German"),

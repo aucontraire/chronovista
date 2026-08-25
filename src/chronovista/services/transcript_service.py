@@ -64,6 +64,26 @@ class TranscriptServiceUnavailableError(TranscriptServiceError):
     pass
 
 
+def _match_native_by_base(requested_lc: str, native_map: dict[str, Any]) -> Any | None:
+    """Find a native track whose *base* language matches ``requested_lc``.
+
+    Handles the common mismatch where a preference is a bare code (``en``) but
+    the video only publishes region-qualified tracks (``en-US`` / ``es-MX``).
+    Prefers a manually-created track over an auto-generated one; returns
+    ``None`` when no base-language match exists.
+    """
+    base = requested_lc.split("-", 1)[0].lower()
+    fallback: Any | None = None
+    for lc, transcript in native_map.items():
+        if lc.split("-", 1)[0].lower() != base:
+            continue
+        if not transcript.is_generated:
+            return transcript
+        if fallback is None:
+            fallback = transcript
+    return fallback
+
+
 class TranscriptService(TranscriptServiceInterface):
     """Service for downloading and processing YouTube transcripts."""
 
@@ -917,9 +937,13 @@ class TranscriptService(TranscriptServiceInterface):
 
             lc_lower = lang_code.lower()
             try:
-                if lc_lower in native_map:
-                    # Native match: fetch it directly (1 API call)
-                    native_t = native_map[lc_lower]
+                native_t = native_map.get(lc_lower) or _match_native_by_base(
+                    lc_lower, native_map
+                )
+                if native_t is not None:
+                    # Native match — exact, or a regional variant of the same
+                    # base language (e.g. requested 'en', served by 'en-US').
+                    # The transcript is stored under its real code (en-US).
                     fetched = native_t.fetch()
                     transcript_data = [
                         {

@@ -1147,7 +1147,7 @@ def test_convert_source_metadata_includes_original_language_code() -> None:
     result = service._convert_fetched_to_raw_data(
         video_id=VIDEO_ID,
         used_language_code="es-MX",
-        language_name="Spanish (Peru)",
+        language_name="Spanish (Mexico)",
         is_generated=False,
         is_translatable=True,
         transcript_data=[_minimal_snippet_dict()],
@@ -2075,3 +2075,79 @@ class TestIpBlockPartialSuccessDoesNotRaise:
         assert result["en"] is not None
         assert result["es"] is None
         assert result["fr"] is None
+
+
+class TestBaseLanguageMatching:
+    """A bare requested code resolves a region-qualified native track.
+
+    Regression for the failure where a video that publishes only region
+    variants (e.g. en-US / es-MX) returned nothing for users whose
+    preferences are bare codes (en / es).
+    """
+
+    async def test_bare_code_matches_region_qualified_track(self) -> None:
+        en_us = _make_transcript_mock(
+            language_code="en-US",
+            language="English (United States)",
+            fetch_snippets=[_make_snippet_mock("Hello", 0.0, 2.0)],
+        )
+        es_mx = _make_transcript_mock(
+            language_code="es-MX",
+            language="Spanish (Mexico)",
+            fetch_snippets=[_make_snippet_mock("Hola", 0.0, 2.0)],
+        )
+        transcript_list = _make_transcript_list([en_us, es_mx])
+
+        service = _service_with_api()
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.return_value = transcript_list
+
+        with patch(
+            "chronovista.services.transcript_service.YouTubeTranscriptApi",
+            return_value=mock_api_instance,
+        ):
+            result = await service.get_transcripts_for_languages(
+                video_id=VIDEO_ID,
+                language_codes=["en", "es"],
+            )
+
+        # Both bare requests resolve, stored under the tracks' real codes.
+        assert result["en"] is not None
+        assert result["en"].language_code == "en-US"
+        assert result["es"] is not None
+        assert result["es"].language_code == "es-MX"
+        en_us.fetch.assert_called_once()
+        es_mx.fetch.assert_called_once()
+
+    async def test_base_match_prefers_manual_over_generated(self) -> None:
+        en_gen = _make_transcript_mock(
+            language_code="en-US",
+            language="English (United States)",
+            is_generated=True,
+            fetch_snippets=[_make_snippet_mock("auto", 0.0, 2.0)],
+        )
+        en_man = _make_transcript_mock(
+            language_code="en-GB",
+            language="English (United Kingdom)",
+            is_generated=False,
+            fetch_snippets=[_make_snippet_mock("manual", 0.0, 2.0)],
+        )
+        transcript_list = _make_transcript_list([en_gen, en_man])
+
+        service = _service_with_api()
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.return_value = transcript_list
+
+        with patch(
+            "chronovista.services.transcript_service.YouTubeTranscriptApi",
+            return_value=mock_api_instance,
+        ):
+            result = await service.get_transcripts_for_languages(
+                video_id=VIDEO_ID,
+                language_codes=["en"],
+            )
+
+        assert result["en"] is not None
+        assert result["en"].language_code == "en-GB"  # manual preferred
+        en_man.fetch.assert_called_once()
+        en_gen.fetch.assert_not_called()

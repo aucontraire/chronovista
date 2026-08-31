@@ -22,7 +22,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from chronovista.api.deps import get_db, get_recovery_deps, require_auth
+from chronovista.api.deps import (
+    get_channel_repository,
+    get_db,
+    get_entity_mention_repository,
+    get_recovery_deps,
+    require_auth,
+)
 from chronovista.api.routers.responses import (
     CONFLICT_RESPONSE,
     GET_ITEM_ERRORS,
@@ -65,6 +71,7 @@ from chronovista.exceptions import (
     NotFoundError,
 )
 from chronovista.models.enums import AvailabilityStatus
+from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 
 logger = logging.getLogger(__name__)
@@ -159,6 +166,7 @@ async def list_channels(
         False,
         description="Include unavailable records in results",
     ),
+    channel_repo: ChannelRepository = Depends(get_channel_repository),
     db: AsyncSession = Depends(get_db),
 ) -> ChannelListResponse:
     """
@@ -197,56 +205,16 @@ async def list_channels(
     ChannelListResponse
         Paginated list of channels with metadata.
     """
-    # Build base query
-    query = select(ChannelDB)
-
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        query = query.where(
-            ChannelDB.availability_status == AvailabilityStatus.AVAILABLE
-        )
-
-    # Apply has_videos filter
-    if has_videos is True:
-        query = query.where(ChannelDB.video_count > 0)
-    elif has_videos is False:
-        query = query.where(
-            (ChannelDB.video_count == 0) | (ChannelDB.video_count.is_(None))
-        )
-
-    # Apply subscription filter
-    if is_subscribed is True:
-        query = query.where(ChannelDB.is_subscribed == True)  # noqa: E712
-    elif is_subscribed is False:
-        query = query.where(ChannelDB.is_subscribed == False)  # noqa: E712
-
-    # Count total before pagination
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Build sort clause
-    sort_column_map = {
-        ChannelSortField.VIDEO_COUNT: ChannelDB.video_count,
-        ChannelSortField.NAME: ChannelDB.title,
-    }
-    sort_column = sort_column_map[sort_by]
-
-    if sort_order == SortOrder.ASC:
-        order_clause = sort_column.asc().nulls_last()
-    else:
-        order_clause = sort_column.desc().nulls_last()
-
-    # Apply ordering and pagination (secondary sort by channel_id for determinism)
-    query = (
-        query.order_by(order_clause, ChannelDB.channel_id.asc())
-        .offset(offset)
-        .limit(limit)
+    channels, total = await channel_repo.list_filtered(
+        db,
+        include_unavailable=include_unavailable,
+        has_videos=has_videos,
+        is_subscribed=is_subscribed,
+        order_by_name=(sort_by == ChannelSortField.NAME),
+        descending=(sort_order == SortOrder.DESC),
+        skip=offset,
+        limit=limit,
     )
-
-    # Execute query
-    result = await db.execute(query)
-    channels = result.scalars().all()
 
     # Transform to response items
     items: list[ChannelListItem] = []
@@ -288,6 +256,7 @@ async def get_channel(
         max_length=24,
         description="YouTube channel ID (24 characters)",
     ),
+    channel_repo: ChannelRepository = Depends(get_channel_repository),
     db: AsyncSession = Depends(get_db),
 ) -> ChannelDetailResponse:
     """
@@ -312,11 +281,7 @@ async def get_channel(
     NotFoundError
         If channel with given ID does not exist.
     """
-    # Query channel by ID
-    result = await db.execute(
-        select(ChannelDB).where(ChannelDB.channel_id == channel_id)
-    )
-    channel = result.scalar_one_or_none()
+    channel = await channel_repo.get_by_channel_id(db, channel_id)
 
     if not channel:
         raise NotFoundError(
@@ -359,6 +324,10 @@ async def get_channel_entities(
         max_length=24,
         description="YouTube channel ID (24 characters)",
     ),
+    channel_repo: ChannelRepository = Depends(get_channel_repository),
+    entity_mention_repo: EntityMentionRepository = Depends(
+        get_entity_mention_repository
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> ChannelEntitiesResponse:
     """
@@ -393,17 +362,14 @@ async def get_channel_entities(
     # Distinguish an unknown channel (404) from a known channel with no entities
     # (200 empty): the ranking method returns [] for both, so verify existence
     # first — mirrors get_channel's own existence check.
-    exists = await db.scalar(
-        select(ChannelDB.channel_id).where(ChannelDB.channel_id == channel_id)
-    )
-    if exists is None:
+    if not await channel_repo.exists_by_channel_id(db, channel_id):
         raise NotFoundError(
             resource_type="Channel",
             identifier=channel_id,
             hint="Verify the channel ID or run a sync.",
         )
 
-    rows = await EntityMentionRepository().get_channel_entity_rankings(db, channel_id)
+    rows = await entity_mention_repo.get_channel_entity_rankings(db, channel_id)
     items = [
         ChannelEntityRanking(
             entity_id=str(row.entity_id),
@@ -646,6 +612,7 @@ async def recover_channel_endpoint(
         le=2026,
         description="Only search snapshots up to this year (2005-2026)",
     ),
+    channel_repo: ChannelRepository = Depends(get_channel_repository),
     session: AsyncSession = Depends(get_db),
 ) -> ChannelRecoveryResponse | JSONResponse:
     """
@@ -697,9 +664,7 @@ async def recover_channel_endpoint(
         )
 
     # Verify channel exists
-    channel_query = select(ChannelDB).where(ChannelDB.channel_id == channel_id)
-    result = await session.execute(channel_query)
-    channel = result.scalar_one_or_none()
+    channel = await channel_repo.get_by_channel_id(session, channel_id)
 
     if not channel:
         raise NotFoundError(

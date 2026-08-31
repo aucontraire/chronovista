@@ -19,6 +19,7 @@ from chronovista.models.channel import (
     ChannelStatistics,
     ChannelUpdate,
 )
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.youtube_types import ChannelId
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 
@@ -213,6 +214,90 @@ class ChannelRepository(
             .where(ChannelDB.channel_id == channel_id)
         )
         return result.scalar_one_or_none()
+
+    async def list_filtered(
+        self,
+        session: AsyncSession,
+        *,
+        include_unavailable: bool = False,
+        has_videos: bool | None = None,
+        is_subscribed: bool | None = None,
+        order_by_name: bool = False,
+        descending: bool = True,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[ChannelDB], int]:
+        """
+        List channels with filtering, sorting, pagination, and a total count.
+
+        Encapsulates the filtered channel-list query the /channels endpoint
+        previously built inline (issue #256). Sorting is expressed as primitives
+        (``order_by_name`` / ``descending``) so the repository does not depend on
+        the API layer's sort enums.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        include_unavailable : bool, optional
+            When False (default), only AVAILABLE channels are returned.
+        has_videos : bool | None, optional
+            True -> only channels with video_count > 0; False -> only channels
+            with no videos (0 or NULL); None (default) -> no filter.
+        is_subscribed : bool | None, optional
+            True/False filter by subscription status; None (default) -> no filter.
+        order_by_name : bool, optional
+            When True, sort by title; when False (default), sort by video_count.
+        descending : bool, optional
+            Sort direction; NULLs are ordered last either way. Default True.
+        skip : int, optional
+            Number of rows to skip (pagination offset); default 0.
+        limit : int, optional
+            Maximum number of rows to return; default 20.
+
+        Returns
+        -------
+        tuple[list[ChannelDB], int]
+            The page of channels and the total row count before pagination.
+        """
+        query = select(ChannelDB)
+        if not include_unavailable:
+            query = query.where(
+                ChannelDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        if has_videos is True:
+            query = query.where(ChannelDB.video_count > 0)
+        elif has_videos is False:
+            query = query.where(
+                (ChannelDB.video_count == 0) | (ChannelDB.video_count.is_(None))
+            )
+        if is_subscribed is True:
+            query = query.where(ChannelDB.is_subscribed.is_(True))
+        elif is_subscribed is False:
+            query = query.where(ChannelDB.is_subscribed.is_(False))
+
+        # Count over the FILTERED-but-unpaginated set. This MUST be built from
+        # `query` before the order_by/offset/limit below are appended — a filter
+        # added after this point would silently desync the count from the rows.
+        total_result = await session.execute(
+            select(func.count()).select_from(query.subquery())
+        )
+        total = total_result.scalar() or 0
+
+        sort_column = ChannelDB.title if order_by_name else ChannelDB.video_count
+        order_clause = (
+            sort_column.desc().nulls_last()
+            if descending
+            else sort_column.asc().nulls_last()
+        )
+        # Secondary sort by channel_id for a deterministic order under ties.
+        query = (
+            query.order_by(order_clause, ChannelDB.channel_id.asc())
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await session.execute(query)
+        return list(result.scalars().all()), total
 
     async def search_channels(
         self, session: AsyncSession, filters: ChannelSearchFilters

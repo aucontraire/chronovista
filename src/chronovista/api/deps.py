@@ -19,6 +19,7 @@ from chronovista.config.settings import settings
 from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
+    EntityMentionRepository,
     NamedEntityRepository,
     PlaylistRepository,
     TranscriptSegmentRepository,
@@ -228,6 +229,20 @@ def get_video_repository() -> VideoRepository:
     from chronovista.container import container
 
     return container.create_video_repository()
+
+
+def get_channel_repository() -> ChannelRepository:
+    """Dependency providing a ChannelRepository via the DI container (#256)."""
+    from chronovista.container import container
+
+    return container.create_channel_repository()
+
+
+def get_entity_mention_repository() -> EntityMentionRepository:
+    """Dependency providing an EntityMentionRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_entity_mention_repository()
 
 
 def get_named_entity_repository() -> NamedEntityRepository:

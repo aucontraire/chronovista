@@ -284,3 +284,19 @@ class TestBatchAndEntityDependencies:
         assert isinstance(service._correction_repo, TranscriptCorrectionRepository)
         assert isinstance(service._segment_repo, TranscriptSegmentRepository)
         assert isinstance(service._correction_service, TranscriptCorrectionService)
+
+
+class TestChannelAndEntityMentionDependencies:
+    """Tests for the channel/entity-mention dependencies added for issue #256."""
+
+    def test_get_channel_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_channel_repository
+        from chronovista.repositories import ChannelRepository
+
+        assert isinstance(get_channel_repository(), ChannelRepository)
+
+    def test_get_entity_mention_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_entity_mention_repository
+        from chronovista.repositories import EntityMentionRepository
+
+        assert isinstance(get_entity_mention_repository(), EntityMentionRepository)

@@ -47,6 +47,7 @@ from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
     ChannelTopicRepository,
+    EntityMentionRepository,
     NamedEntityRepository,
     PlaylistRepository,
     TopicCategoryRepository,
@@ -408,6 +409,27 @@ class Container:
         True
         """
         return TranscriptSegmentRepository()
+
+    def create_entity_mention_repository(self) -> EntityMentionRepository:
+        """
+        Create a new EntityMentionRepository instance.
+
+        Returns a fresh repository instance for entity mention operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        EntityMentionRepository
+            A new EntityMentionRepository instance for entity mention
+            operations.
+
+        Examples
+        --------
+        >>> repo = container.create_entity_mention_repository()
+        >>> isinstance(repo, EntityMentionRepository)
+        True
+        """
+        return EntityMentionRepository()
 
     def create_named_entity_repository(self) -> NamedEntityRepository:
         """

@@ -125,6 +125,15 @@ POETRY_RUN := $(POETRY) run
 PACKAGE_NAME := chronovista
 SRC_DIR := src
 TEST_DIR := tests
+
+# Gitignored research/design scripts live under src/$(PACKAGE_NAME)/docs/ (see
+# .gitignore). They are not part of the shipped package and are absent from CI's
+# checkout, but `mypy src/$(PACKAGE_NAME)/` recurses the local working tree and
+# fails on them — which would abort pre-push before the frontend/integration jobs
+# on any branch. Exclude the subtree so the local gate matches CI. (mypy's config
+# `exclude` is a no-op here — a known asymmetry with explicit_package_bases and a
+# passed directory — so the CLI flag is used instead.)
+MYPY_EXCLUDE := --exclude 'docs/'
 # Keep in step with the --fail-under in the CI "Coverage Gate" job.
 COV_MIN := 76
 DOCS_DIR := docs
@@ -265,7 +274,7 @@ format-check:
 # 69 errors that no gate enforces, which makes the target unpassable and trains
 # people to ignore it.
 type-check:
-	$(POETRY_RUN) mypy $(SRC_DIR)/$(PACKAGE_NAME)/ --strict --no-error-summary
+	$(POETRY_RUN) mypy $(SRC_DIR)/$(PACKAGE_NAME)/ --strict $(MYPY_EXCLUDE) --no-error-summary
 
 quality: format-check lint type-check
 	@echo "✅ All quality checks passed!"
@@ -290,7 +299,7 @@ pre-push:
 	@echo "==> [2/6] black --check"
 	$(POETRY_RUN) black --check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
 	@echo "==> [3/6] mypy --strict"
-	$(POETRY_RUN) mypy $(SRC_DIR)/$(PACKAGE_NAME)/ --strict --no-error-summary
+	$(POETRY_RUN) mypy $(SRC_DIR)/$(PACKAGE_NAME)/ --strict $(MYPY_EXCLUDE) --no-error-summary
 	@echo "==> [4/6] backend unit tests"
 	NO_COLOR=1 $(POETRY_RUN) pytest $(TEST_DIR)/unit/ -x -q -o "addopts=-v --strict-markers --strict-config" -m "not db"
 	@echo "==> [5/6] frontend type check + tests"
@@ -488,7 +497,7 @@ ci-test:
 ci-quality:
 	$(POETRY_RUN) ruff check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/ --output-format=github
 	$(POETRY_RUN) black --check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
-	$(POETRY_RUN) mypy $(SRC_DIR)/$(PACKAGE_NAME)/ --strict --no-error-summary
+	$(POETRY_RUN) mypy $(SRC_DIR)/$(PACKAGE_NAME)/ --strict $(MYPY_EXCLUDE) --no-error-summary
 
 ci: ci-quality ci-test
 	@echo "✅ CI checks complete!"

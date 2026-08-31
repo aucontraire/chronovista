@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
 from chronovista.config.settings import settings
+from chronovista.repositories.video_category_repository import VideoCategoryRepository
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
 from chronovista.services.recovery.page_parser import PageParser
 
@@ -124,6 +125,26 @@ def get_tag_management_service() -> "TagManagementService":
         entity_alias_repo=EntityAliasRepository(),
         operation_log_repo=TagOperationLogRepository(),
     )
+
+
+def get_video_category_repository() -> VideoCategoryRepository:
+    """
+    Dependency providing a VideoCategoryRepository via the DI container.
+
+    Wires the container's repository factory into FastAPI's ``Depends()``
+    (issue #256), so endpoints inject the repository instead of constructing
+    queries inline. The repository is session-agnostic — the session flows in
+    per method call — so a fresh per-request instance is cheap, and tests can
+    override this dependency to substitute a fake.
+
+    Returns
+    -------
+    VideoCategoryRepository
+        A repository instance for video category operations.
+    """
+    from chronovista.container import container
+
+    return container.create_video_category_repository()
 
 
 def get_recovery_deps() -> tuple[CDXClient, PageParser, RateLimiter]:

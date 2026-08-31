@@ -7,11 +7,14 @@ and bulk creation support for seeding.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import Video
 from chronovista.db.models import VideoCategory as VideoCategoryDB
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.video_category import (
+    CategoryVideoCount,
     VideoCategoryCreate,
     VideoCategoryUpdate,
 )
@@ -92,6 +95,77 @@ class VideoCategoryRepository(
             select(VideoCategoryDB).order_by(VideoCategoryDB.name)
         )
         return list(result.scalars().all())
+
+    async def get_with_video_counts(
+        self,
+        session: AsyncSession,
+        *,
+        include_unavailable: bool = False,
+        only_with_videos: bool = False,
+    ) -> list[CategoryVideoCount]:
+        """
+        Get categories paired with their associated video counts.
+
+        Encapsulates the video-count aggregate that the sidebar and
+        category-list endpoints previously built inline (issue #256). The count
+        per category comes from a LEFT JOIN over ``Video`` with a FILTERed
+        aggregate (see the implementation comment); results are ordered by video
+        count descending (most populated first).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        include_unavailable : bool, optional
+            When False (default), only videos with availability status
+            AVAILABLE are counted; when True, all videos count.
+        only_with_videos : bool, optional
+            When True, categories whose count is zero are excluded (the sidebar
+            behavior); when False (default), every category is returned.
+
+        Returns
+        -------
+        list[CategoryVideoCount]
+            Categories with their video counts, ordered by count descending.
+        """
+        # Count videos per category with a LEFT JOIN + FILTERed aggregate rather
+        # than a per-row correlated subquery: on production data this is ~7-13x
+        # cheaper (a single hash join + aggregate vs. a subplan re-executed per
+        # category), and it matches the query shape get_channel_entity_rankings
+        # deliberately adopted for the same reason (#256). A LEFT JOIN keeps
+        # categories with zero matching videos (video_count == 0), and the
+        # FILTER — not a WHERE — is what preserves that for the availability
+        # filter (a WHERE would drop only-unavailable categories entirely).
+        base_count = func.count(Video.video_id)
+        count_expr = (
+            base_count.filter(Video.availability_status == AvailabilityStatus.AVAILABLE)
+            if not include_unavailable
+            else base_count
+        )
+
+        query = (
+            select(
+                VideoCategoryDB.category_id,
+                VideoCategoryDB.name,
+                count_expr.label("video_count"),
+            )
+            .select_from(VideoCategoryDB)
+            .outerjoin(Video, Video.category_id == VideoCategoryDB.category_id)
+            .group_by(VideoCategoryDB.category_id, VideoCategoryDB.name)
+        )
+        if only_with_videos:
+            query = query.having(count_expr > 0)
+        query = query.order_by(count_expr.desc())
+
+        result = await session.execute(query)
+        return [
+            CategoryVideoCount(
+                category_id=row.category_id,
+                name=row.name,
+                video_count=row.video_count or 0,
+            )
+            for row in result.all()
+        ]
 
     async def get_assignable(self, session: AsyncSession) -> list[VideoCategoryDB]:
         """

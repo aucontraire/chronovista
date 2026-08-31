@@ -109,3 +109,19 @@ class VideoCategory(VideoCategoryBase):
         from_attributes=True,  # Enable ORM mode for SQLAlchemy compatibility
         validate_assignment=True,
     )
+
+
+class CategoryVideoCount(BaseModel):
+    """A video category paired with its associated video count.
+
+    Aggregate projection returned by
+    ``VideoCategoryRepository.get_with_video_counts``. A domain model (not an API
+    schema) so the repository can return it without depending on the API layer,
+    mirroring ``ChannelEntityRankingRow`` (issue #256).
+    """
+
+    category_id: str
+    name: str
+    video_count: int = Field(ge=0)
+
+    model_config = ConfigDict(strict=True)

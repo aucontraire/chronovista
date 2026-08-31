@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chronovista.api.deps import (
     get_db,
     get_entity_alias_repository,
+    get_entity_curation_service,
     get_entity_mention_repository,
     get_named_entity_repository,
     get_video_repository,
@@ -1891,6 +1892,9 @@ async def update_entity(
     entity_id: str = Path(..., description="Named entity UUID"),
     body: UpdateEntityRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    curation_service: EntityCurationService = Depends(get_entity_curation_service),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """Edit a named entity's display name, description, and/or type.
 
@@ -1931,7 +1935,7 @@ async def update_entity(
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     try:
-        updated = await _entity_curation_service.update_entity(
+        updated = await curation_service.update_entity(
             session,
             parsed_entity_id,
             canonical_name=body.canonical_name,
@@ -1954,8 +1958,8 @@ async def update_entity(
     return await get_entity_detail(
         str(updated.id),
         session,
-        entity_repo=_entity_repo,
-        mention_repo=_mention_repo,
+        entity_repo=entity_repo,
+        mention_repo=mention_repo,
     )
 
 
@@ -1967,6 +1971,9 @@ async def update_entity(
 async def undo_entity_operation(
     operation_id: uuid.UUID = Path(..., description="Entity operation ID to undo"),
     session: AsyncSession = Depends(get_db),
+    curation_service: EntityCurationService = Depends(get_entity_curation_service),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """Undo an entity name/description edit, restoring the previous values.
 
@@ -1995,7 +2002,7 @@ async def undo_entity_operation(
         Already rolled back, or restoring would collide — 409.
     """
     try:
-        restored = await _entity_curation_service.undo_operation(
+        restored = await curation_service.undo_operation(
             session,
             operation_id,
             actor=ACTOR_USER_LOCAL,
@@ -2021,8 +2028,8 @@ async def undo_entity_operation(
     return await get_entity_detail(
         str(restored.id),
         session,
-        entity_repo=_entity_repo,
-        mention_repo=_mention_repo,
+        entity_repo=entity_repo,
+        mention_repo=mention_repo,
     )
 
 

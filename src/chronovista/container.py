@@ -61,6 +61,9 @@ from chronovista.repositories import (
     VideoTopicRepository,
     VideoTranscriptRepository,
 )
+from chronovista.repositories.entity_operation_log_repository import (
+    EntityOperationLogRepository,
+)
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
@@ -473,6 +476,27 @@ class Container:
         True
         """
         return EntityAliasRepository()
+
+    def create_entity_operation_log_repository(self) -> EntityOperationLogRepository:
+        """
+        Create a new EntityOperationLogRepository instance.
+
+        Returns a fresh repository instance for the entity-curation audit log.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        EntityOperationLogRepository
+            A new EntityOperationLogRepository instance for entity operation
+            log CRUD operations.
+
+        Examples
+        --------
+        >>> repo = container.create_entity_operation_log_repository()
+        >>> isinstance(repo, EntityOperationLogRepository)
+        True
+        """
+        return EntityOperationLogRepository()
 
     def create_canonical_tag_repository(self) -> CanonicalTagRepository:
         """

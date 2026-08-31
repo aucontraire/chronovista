@@ -149,6 +149,16 @@ class TestRepositoryFactories:
         repo = c.create_entity_alias_repository()
         assert isinstance(repo, EntityAliasRepository)
 
+    def test_create_entity_operation_log_repository(self) -> None:
+        """Verify entity operation log repository factory returns correct type."""
+        from chronovista.repositories.entity_operation_log_repository import (
+            EntityOperationLogRepository,
+        )
+
+        c = Container()
+        repo = c.create_entity_operation_log_repository()
+        assert isinstance(repo, EntityOperationLogRepository)
+
 
 # =============================================================================
 # Phase 3: US1 - Repository Access (T016-T020)

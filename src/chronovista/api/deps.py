@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from chronovista.services.batch_correction_service import BatchCorrectionService
+    from chronovista.services.entity_curation_service import EntityCurationService
     from chronovista.services.tag_management import TagManagementService
     from chronovista.services.transcript_correction_service import (
         TranscriptCorrectionService,
@@ -346,6 +347,29 @@ def get_transcript_correction_service() -> "TranscriptCorrectionService":
         correction_repo=container.create_transcript_correction_repository(),
         segment_repo=container.create_transcript_segment_repository(),
         transcript_repo=container.create_video_transcript_repository(),
+    )
+
+
+def get_entity_curation_service() -> "EntityCurationService":
+    """
+    Dependency providing an EntityCurationService via the DI container (#256).
+
+    Replaces the router's module-level _entity_curation_service singleton with a
+    per-request, container-wired instance. The service is stateless (it holds
+    only its two repositories plus a normalizer it constructs), so per-request
+    construction is cheap.
+
+    Returns
+    -------
+    EntityCurationService
+        A service wired with the named-entity and entity-operation-log repos.
+    """
+    from chronovista.container import container
+    from chronovista.services.entity_curation_service import EntityCurationService
+
+    return EntityCurationService(
+        named_entity_repo=container.create_named_entity_repository(),
+        operation_log_repo=container.create_entity_operation_log_repository(),
     )
 
 

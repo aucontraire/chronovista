@@ -318,3 +318,9 @@ class TestChannelAndEntityMentionDependencies:
         from chronovista.repositories import EntityAliasRepository
 
         assert isinstance(get_entity_alias_repository(), EntityAliasRepository)
+
+    def test_get_entity_curation_service_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_entity_curation_service
+        from chronovista.services.entity_curation_service import EntityCurationService
+
+        assert isinstance(get_entity_curation_service(), EntityCurationService)

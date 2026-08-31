@@ -112,10 +112,11 @@ class TestGetPhoneticMatches:
         mock_session: AsyncMock,
     ) -> None:
         """Endpoint returns 200 with phonetic matches and video titles."""
-        # Mock entity existence
-        entity_mock = MagicMock()
-        entity_mock.id = _ENTITY_ID
-        mock_session.get = AsyncMock(return_value=entity_mock)
+        # Entity existence now runs through NamedEntityRepository.exists
+        # (session.execute → .first()); title enrichment through
+        # VideoRepository.get_titles_by_ids (session.execute → .all()).
+        exists_result = MagicMock()
+        exists_result.first.return_value = (_ENTITY_ID,)
 
         # Mock phonetic matcher
         match = _make_match(video_id="vid1")
@@ -123,13 +124,10 @@ class TestGetPhoneticMatches:
         mock_instance.match_entity = AsyncMock(return_value=[match])
         mock_matcher_cls.return_value = mock_instance
 
-        # Mock video title query
-        video_row = MagicMock()
-        video_row.video_id = "vid1"
-        video_row.title = "Test Video Title"
-        execute_result = MagicMock()
-        execute_result.all.return_value = [video_row]
-        mock_session.execute = AsyncMock(return_value=execute_result)
+        # Video title lookup — a (video_id, title) Row tuple.
+        titles_result = MagicMock()
+        titles_result.all.return_value = [("vid1", "Test Video Title")]
+        mock_session.execute = AsyncMock(side_effect=[exists_result, titles_result])
 
         response = await client.get(self._url())
 
@@ -174,7 +172,10 @@ class TestGetPhoneticMatches:
         mock_session: AsyncMock,
     ) -> None:
         """Endpoint returns 404 when entity does not exist."""
-        mock_session.get = AsyncMock(return_value=None)
+        # entity_repo.exists → session.execute(...).first() is None
+        not_found_result = MagicMock()
+        not_found_result.first.return_value = None
+        mock_session.execute = AsyncMock(return_value=not_found_result)
 
         response = await client.get(self._url())
 
@@ -230,9 +231,8 @@ class TestGetPhoneticMatches:
         mock_session: AsyncMock,
     ) -> None:
         """Matches with no corresponding video entry get null video_title."""
-        entity_mock = MagicMock()
-        entity_mock.id = _ENTITY_ID
-        mock_session.get = AsyncMock(return_value=entity_mock)
+        exists_result = MagicMock()
+        exists_result.first.return_value = (_ENTITY_ID,)
 
         matches = [
             _make_match(video_id="vid1"),
@@ -242,13 +242,10 @@ class TestGetPhoneticMatches:
         mock_instance.match_entity = AsyncMock(return_value=matches)
         mock_matcher_cls.return_value = mock_instance
 
-        # Only vid1 has a title
-        video_row = MagicMock()
-        video_row.video_id = "vid1"
-        video_row.title = "Known Video"
-        execute_result = MagicMock()
-        execute_result.all.return_value = [video_row]
-        mock_session.execute = AsyncMock(return_value=execute_result)
+        # Only vid1 has a title — (video_id, title) Row tuples.
+        titles_result = MagicMock()
+        titles_result.all.return_value = [("vid1", "Known Video")]
+        mock_session.execute = AsyncMock(side_effect=[exists_result, titles_result])
 
         response = await client.get(self._url())
 

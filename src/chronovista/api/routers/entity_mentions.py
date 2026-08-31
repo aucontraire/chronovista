@@ -16,7 +16,6 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import (
@@ -74,8 +73,6 @@ from chronovista.api.schemas.entity_mentions import (
 )
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.config.database import db_manager
-from chronovista.db.models import NamedEntity as NamedEntityDB
-from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import (
     APIValidationError,
     BadRequestError,
@@ -449,6 +446,7 @@ async def check_duplicate_entity(
         ..., description="Entity type (person, organization, place, etc.)"
     ),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
 ) -> DuplicateCheckResponse | JSONResponse:
     """Check whether an entity with the same normalized name and type already exists.
 
@@ -497,13 +495,9 @@ async def check_duplicate_entity(
         return DuplicateCheckResponse(is_duplicate=False, existing_entity=None)
 
     # Query for an active entity with the same normalized name and type
-    query = select(NamedEntityDB).where(
-        NamedEntityDB.canonical_name_normalized == normalized_name,
-        NamedEntityDB.entity_type == type,
-        NamedEntityDB.status == "active",
+    entity = await entity_repo.find_active_by_normalized_and_type(
+        session, normalized_name, type
     )
-    result = await session.execute(query)
-    entity = result.scalar_one_or_none()
 
     if entity is not None:
         return DuplicateCheckResponse(
@@ -1148,6 +1142,9 @@ async def get_phonetic_matches(
     entity_id: uuid.UUID,
     threshold: float = Query(default=0.5, ge=0.0, le=1.0),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
+    video_repo: VideoRepository = Depends(get_video_repository),
 ) -> ApiResponse[list[PhoneticMatchResponse]]:
     """Find suspected phonetic ASR variants for a named entity.
 
@@ -1175,12 +1172,11 @@ async def get_phonetic_matches(
         If the entity does not exist in the database (404).
     """
     # Verify entity exists
-    entity = await session.get(NamedEntityDB, entity_id)
-    if entity is None:
+    if not await entity_repo.exists(session, entity_id):
         raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
 
     # Run phonetic matcher
-    matcher = PhoneticMatcher(entity_mention_repo=EntityMentionRepository())
+    matcher = PhoneticMatcher(entity_mention_repo=mention_repo)
     matches = await run_with_timeout(
         matcher.match_entity(
             entity_id=entity_id,
@@ -1193,14 +1189,7 @@ async def get_phonetic_matches(
 
     # Video title enrichment
     video_ids = list({m.video_id for m in matches})
-    if video_ids:
-        stmt = select(VideoDB.video_id, VideoDB.title).where(
-            VideoDB.video_id.in_(video_ids)
-        )
-        rows = (await session.execute(stmt)).all()
-        title_map = {r.video_id: r.title for r in rows}
-    else:
-        title_map = {}
+    title_map = await video_repo.get_titles_by_ids(session, video_ids)
 
     results = [
         PhoneticMatchResponse(

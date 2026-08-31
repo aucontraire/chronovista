@@ -170,6 +170,36 @@ class VideoRepository(
         )
         return result.first() is not None
 
+    async def get_titles_by_ids(
+        self, session: AsyncSession, video_ids: list[str]
+    ) -> dict[str, str]:
+        """Return a ``{video_id: title}`` map for the given ids (#256).
+
+        A single batched title lookup for result enrichment (avoids an N+1). Ids
+        with no matching video are simply absent from the map; an empty input
+        returns an empty map without a query.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_ids : list[str]
+            The video ids to fetch titles for.
+
+        Returns
+        -------
+        dict[str, str]
+            Maps each present video id to its title.
+        """
+        if not video_ids:
+            return {}
+        result = await session.execute(
+            select(VideoDB.video_id, VideoDB.title).where(
+                VideoDB.video_id.in_(video_ids)
+            )
+        )
+        return {row[0]: row[1] for row in result.all()}
+
     async def get_multi(
         self, session: AsyncSession, *, skip: int = 0, limit: int = 100
     ) -> list[VideoDB]:

@@ -306,3 +306,9 @@ class TestChannelAndEntityMentionDependencies:
         from chronovista.repositories import PlaylistRepository
 
         assert isinstance(get_playlist_repository(), PlaylistRepository)
+
+    def test_get_user_video_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_user_video_repository
+        from chronovista.repositories import UserVideoRepository
+
+        assert isinstance(get_user_video_repository(), UserVideoRepository)

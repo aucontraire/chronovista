@@ -256,6 +256,40 @@ class UserVideoRepository(
         result = await session.execute(query)
         return list(result.scalars().all())
 
+    async def get_watched_video_ids_in(
+        self, session: AsyncSession, video_ids: list[str]
+    ) -> set[str]:
+        """Return which of the given video ids have a watch-history record.
+
+        A single batched lookup for a page of results (avoids an N+1 over rows).
+        A video is watched iff a ``user_videos`` row has a non-null
+        ``watched_at`` — never inferred from playlist membership.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_ids : list[str]
+            Candidate video ids (typically one page of results).
+
+        Returns
+        -------
+        set[str]
+            The subset of ``video_ids`` with ``watched_at IS NOT NULL``. Empty
+            when ``video_ids`` is empty.
+        """
+        if not video_ids:
+            return set()
+        result = await session.execute(
+            select(UserVideoDB.video_id)
+            .where(
+                UserVideoDB.video_id.in_(video_ids),
+                UserVideoDB.watched_at.is_not(None),
+            )
+            .distinct()
+        )
+        return {row[0] for row in result.all()}
+
     async def get_most_watched_videos(
         self, session: AsyncSession, user_id: UserId, limit: int = 10
     ) -> list[UserVideoDB]:

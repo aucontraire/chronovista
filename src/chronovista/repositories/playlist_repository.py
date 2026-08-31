@@ -9,14 +9,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import and_, case, desc, func, or_, select, update
+from sqlalchemy import ColumnElement, and_, case, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import Playlist as PlaylistDB
 from chronovista.db.models import PlaylistMembership as PlaylistMembershipDB
 from chronovista.db.models import UserVideo as UserVideoDB
-from chronovista.models.enums import PlaylistType
+from chronovista.db.models import Video as VideoDB
+from chronovista.db.models import VideoTranscript as VideoTranscriptDB
+from chronovista.models.enums import AvailabilityStatus, PlaylistType, WatchedStatus
 from chronovista.models.playlist import (
     PlaylistAnalytics,
     PlaylistCreate,
@@ -414,6 +416,163 @@ class PlaylistRepository(
         )
         result = await session.execute(query)
         return list(result.scalars().all()), total
+
+    async def list_playlist_videos_page(
+        self,
+        session: AsyncSession,
+        *,
+        playlist_id: str,
+        include_unavailable: bool = True,
+        unavailable_only: bool = False,
+        liked_only: bool = False,
+        has_transcript: bool = False,
+        watched_status: WatchedStatus = WatchedStatus.ALL,
+        sort_by: str = "position",
+        descending: bool = False,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[tuple[PlaylistMembershipDB, VideoDB]], int, int, int]:
+        """Return one page of a playlist's videos, plus its count and watch stats.
+
+        Encapsulates the membership↔video join, the availability / liked /
+        transcript / watched filters, the result count, and the playlist watch
+        stats in a single method so the filter set is built once and cannot drift
+        between the page and its count (the hand-rebuilt-count fragility that
+        research R8 flagged in the old router).
+
+        Filter order matters: the stats header is computed from the pre-watched
+        context, so switching all/watched/unwatched changes the listed videos and
+        the result count but never the three stats figures (Feature 061, FR-005b).
+        Watched membership is read from watch history via ``watched_video_ids()``,
+        never inferred from playlist membership.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        playlist_id : str
+            The playlist whose memberships to page.
+        include_unavailable : bool
+            If False, drop videos that are not AVAILABLE (default True).
+        unavailable_only : bool
+            If True, keep only videos that are not AVAILABLE.
+        liked_only : bool
+            If True, keep only videos the user liked.
+        has_transcript : bool
+            If True, keep only videos that have a transcript.
+        watched_status : WatchedStatus
+            Narrow the page and count to watched / unwatched (default all). Does
+            not affect the returned stats.
+        sort_by : str
+            One of ``"position"``, ``"upload_date"``, ``"title"``.
+        descending : bool
+            Sort direction (default False → ascending, matching position order).
+        skip : int
+            Pagination offset.
+        limit : int
+            Page size.
+
+        Returns
+        -------
+        tuple[list[tuple[PlaylistMembershipDB, VideoDB]], int, int, int]
+            ``(rows, total, stats_total, stats_watched)`` — the page of
+            ``(membership, video)`` pairs, the watched-filtered result count, and
+            the pre-watched-filter distinct-video totals for the stats header.
+        """
+        join_on = PlaylistMembershipDB.video_id == VideoDB.video_id
+
+        # Every filter EXCEPT the watched filter — shared by the page, the count,
+        # and the stats base, so they can never disagree.
+        conditions: list[ColumnElement[bool]] = [
+            PlaylistMembershipDB.playlist_id == playlist_id
+        ]
+        if not include_unavailable:
+            conditions.append(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        if unavailable_only:
+            conditions.append(
+                VideoDB.availability_status != AvailabilityStatus.AVAILABLE
+            )
+        if liked_only:
+            conditions.append(
+                VideoDB.video_id.in_(
+                    select(UserVideoDB.video_id)
+                    .where(UserVideoDB.liked.is_(True))
+                    .distinct()
+                    .scalar_subquery()
+                )
+            )
+        if has_transcript:
+            conditions.append(
+                VideoDB.video_id.in_(
+                    select(VideoTranscriptDB.video_id).distinct().scalar_subquery()
+                )
+            )
+
+        # Stats header — distinct videos in the pre-watched context, and how many
+        # of them are watched. Counting DISTINCT video_id keeps it duplicate-safe.
+        stats_base = (
+            select(PlaylistMembershipDB)
+            .join(VideoDB, join_on)
+            .where(*conditions)
+            .subquery()
+        )
+        stats_total_raw, stats_watched_raw = (
+            await session.execute(
+                select(
+                    func.count(func.distinct(stats_base.c.video_id)),
+                    func.count(func.distinct(stats_base.c.video_id)).filter(
+                        stats_base.c.video_id.in_(watched_video_ids())
+                    ),
+                ).select_from(stats_base)
+            )
+        ).one()
+        stats_total = int(stats_total_raw or 0)
+        stats_watched = int(stats_watched_raw or 0)
+
+        # The watched filter narrows the page and the result count (a different
+        # quantity from stats_total), but never the stats above (R8).
+        watched_conditions = list(conditions)
+        if watched_status is WatchedStatus.WATCHED:
+            watched_conditions.append(VideoDB.video_id.in_(watched_video_ids()))
+        elif watched_status is WatchedStatus.UNWATCHED:
+            watched_conditions.append(VideoDB.video_id.not_in(watched_video_ids()))
+
+        count = (
+            await session.execute(
+                select(func.count()).select_from(
+                    select(PlaylistMembershipDB)
+                    .join(VideoDB, join_on)
+                    .where(*watched_conditions)
+                    .subquery()
+                )
+            )
+        ).scalar() or 0
+
+        sort_column_map = {
+            "position": PlaylistMembershipDB.position,
+            "upload_date": VideoDB.upload_date,
+            "title": VideoDB.title,
+        }
+        sort_column = sort_column_map[sort_by]
+        order_clause = sort_column.desc() if descending else sort_column.asc()
+
+        page_query = (
+            select(PlaylistMembershipDB, VideoDB)
+            .join(VideoDB, join_on)
+            .where(*watched_conditions)
+            .options(selectinload(VideoDB.transcripts))
+            .options(selectinload(VideoDB.channel))
+            .order_by(order_clause, VideoDB.video_id.asc())
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await session.execute(page_query)
+        rows: list[tuple[PlaylistMembershipDB, VideoDB]] = [
+            (row[0], row[1]) for row in result.all()
+        ]
+        return rows, count, stats_total, stats_watched
 
     async def promote_playlist_type(
         self, session: AsyncSession, playlist_id: str, new_type: PlaylistType

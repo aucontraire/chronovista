@@ -1132,5 +1132,37 @@ class TranscriptSegmentRepository(
             for seg_id, prev_text, next_text in result.all()
         }
 
+    async def get_video_ids_with_corrections(
+        self, session: AsyncSession, video_ids: list[str]
+    ) -> set[str]:
+        """Return which of the given video ids have a corrected segment.
+
+        A single batched lookup for a page of results (avoids an N+1 over rows).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_ids : list[str]
+            Candidate video ids (typically one page of results).
+
+        Returns
+        -------
+        set[str]
+            The subset of ``video_ids`` that have at least one segment with
+            ``has_correction`` set. Empty when ``video_ids`` is empty.
+        """
+        if not video_ids:
+            return set()
+        result = await session.execute(
+            select(TranscriptSegmentDB.video_id)
+            .where(
+                TranscriptSegmentDB.video_id.in_(video_ids),
+                TranscriptSegmentDB.has_correction.is_(True),
+            )
+            .distinct()
+        )
+        return {row[0] for row in result.all()}
+
 
 __all__ = ["TranscriptSegmentRepository"]

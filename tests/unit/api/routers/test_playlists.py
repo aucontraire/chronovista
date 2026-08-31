@@ -96,8 +96,10 @@ async def async_client_no_playlist() -> AsyncGenerator[AsyncClient, None]:
 
         async def mock_execute(query, *args, **kwargs):
             result = MagicMock()
-            # Playlist not found
+            # Playlist not found. The existence check now runs through
+            # PlaylistRepository.exists_by_playlist_id, which reads `.first()`.
             result.scalar_one_or_none.return_value = None
+            result.first.return_value = None
             return result
 
         mock_session.execute = AsyncMock(side_effect=mock_execute)

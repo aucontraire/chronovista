@@ -23,6 +23,7 @@ from chronovista.repositories import (
     NamedEntityRepository,
     PlaylistRepository,
     TranscriptSegmentRepository,
+    UserVideoRepository,
     VideoRepository,
     VideoTranscriptRepository,
 )
@@ -306,6 +307,13 @@ def get_playlist_repository() -> PlaylistRepository:
     from chronovista.container import container
 
     return container.create_playlist_repository()
+
+
+def get_user_video_repository() -> UserVideoRepository:
+    """Dependency providing a UserVideoRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_user_video_repository()
 
 
 def get_transcript_correction_service() -> "TranscriptCorrectionService":

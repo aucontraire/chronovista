@@ -47,6 +47,7 @@ from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
     ChannelTopicRepository,
+    EntityAliasRepository,
     EntityMentionRepository,
     NamedEntityRepository,
     PlaylistRepository,
@@ -451,6 +452,27 @@ class Container:
         True
         """
         return NamedEntityRepository()
+
+    def create_entity_alias_repository(self) -> EntityAliasRepository:
+        """
+        Create a new EntityAliasRepository instance.
+
+        Returns a fresh repository instance for entity alias operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        EntityAliasRepository
+            A new EntityAliasRepository instance for entity alias CRUD
+            operations.
+
+        Examples
+        --------
+        >>> repo = container.create_entity_alias_repository()
+        >>> isinstance(repo, EntityAliasRepository)
+        True
+        """
+        return EntityAliasRepository()
 
     def create_canonical_tag_repository(self) -> CanonicalTagRepository:
         """

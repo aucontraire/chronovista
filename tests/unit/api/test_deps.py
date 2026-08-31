@@ -312,3 +312,9 @@ class TestChannelAndEntityMentionDependencies:
         from chronovista.repositories import UserVideoRepository
 
         assert isinstance(get_user_video_repository(), UserVideoRepository)
+
+    def test_get_entity_alias_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_entity_alias_repository
+        from chronovista.repositories import EntityAliasRepository
+
+        assert isinstance(get_entity_alias_repository(), EntityAliasRepository)

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import (
     get_db,
+    get_entity_alias_repository,
     get_entity_mention_repository,
     get_named_entity_repository,
     get_video_repository,
@@ -71,7 +72,6 @@ from chronovista.api.schemas.entity_mentions import (
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.config.database import db_manager
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
-from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import (
@@ -969,6 +969,8 @@ async def create_entity_alias(
     entity_id: str = Path(..., description="Named entity UUID"),
     body: CreateEntityAliasRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    alias_repo: EntityAliasRepository = Depends(get_entity_alias_repository),
 ) -> dict[str, Any]:
     """Create a new alias for a named entity.
 
@@ -1003,11 +1005,8 @@ async def create_entity_alias(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    # Look up entity
-    entity_query = select(NamedEntityDB).where(NamedEntityDB.id == parsed_entity_id)
-    entity_result = await session.execute(entity_query)
-    entity = entity_result.scalar_one_or_none()
-    if entity is None:
+    # Verify the entity exists
+    if not await entity_repo.exists(session, parsed_entity_id):
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
     # Normalize alias name
@@ -1019,12 +1018,9 @@ async def create_entity_alias(
         )
 
     # Check for duplicate (same entity + same normalized name)
-    dup_query = select(EntityAliasDB).where(
-        EntityAliasDB.entity_id == parsed_entity_id,
-        EntityAliasDB.alias_name_normalized == normalized_alias,
+    existing_alias = await alias_repo.get_by_entity_and_normalized(
+        session, parsed_entity_id, normalized_alias
     )
-    dup_result = await session.execute(dup_query)
-    existing_alias = dup_result.scalar_one_or_none()
     if existing_alias is not None:
         raise ConflictError(
             message=(
@@ -1048,7 +1044,7 @@ async def create_entity_alias(
         alias_type=EntityAliasType(body.alias_type),
         occurrence_count=0,
     )
-    db_alias = await _alias_repo.create(session, obj_in=alias_create)
+    db_alias = await alias_repo.create(session, obj_in=alias_create)
     await session.commit()
     await session.refresh(db_alias)
 
@@ -1078,6 +1074,8 @@ async def update_entity_alias(
     alias_id: uuid.UUID = Path(..., description="Alias UUID"),
     body: UpdateEntityAliasRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    alias_repo: EntityAliasRepository = Depends(get_entity_alias_repository),
 ) -> dict[str, Any]:
     """Set whether an alias matches case-sensitively.
 
@@ -1108,11 +1106,10 @@ async def update_entity_alias(
     NotFoundError
         If the entity does not exist, or the alias does not exist on it (404).
     """
-    entity = await session.get(NamedEntityDB, entity_id)
-    if entity is None:
+    if not await entity_repo.exists(session, entity_id):
         raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
 
-    alias = await session.get(EntityAliasDB, alias_id)
+    alias = await alias_repo.get(session, alias_id)
     # The entity_id check is what makes the path meaningful: without it, an
     # alias could be updated through any entity's URL, and a 404 for a
     # mismatched pair would instead silently succeed.

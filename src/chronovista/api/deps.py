@@ -19,6 +19,7 @@ from chronovista.config.settings import settings
 from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
+    EntityAliasRepository,
     EntityMentionRepository,
     NamedEntityRepository,
     PlaylistRepository,
@@ -244,6 +245,13 @@ def get_entity_mention_repository() -> EntityMentionRepository:
     from chronovista.container import container
 
     return container.create_entity_mention_repository()
+
+
+def get_entity_alias_repository() -> EntityAliasRepository:
+    """Dependency providing an EntityAliasRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_entity_alias_repository()
 
 
 def get_named_entity_repository() -> NamedEntityRepository:

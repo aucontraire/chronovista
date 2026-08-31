@@ -28,7 +28,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+import chronovista.api.routers.entity_mentions as _em_module
+from chronovista.api.deps import (
+    get_db,
+    get_entity_alias_repository,
+    get_named_entity_repository,
+    require_auth,
+)
 from chronovista.api.main import app
 
 # CRITICAL: ensures all async tests in this module are picked up by pytest-asyncio
@@ -170,6 +176,8 @@ def _make_session_entity_not_found() -> AsyncMock:
 
     entity_result = MagicMock()
     entity_result.scalar_one_or_none.return_value = None
+    # NamedEntityRepository.exists reads .first(); None => entity absent => 404.
+    entity_result.first.return_value = None
 
     mock_session.execute = AsyncMock(return_value=entity_result)
     return mock_session
@@ -228,6 +236,16 @@ async def _build_client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, 
 
     app.dependency_overrides[get_db] = mock_get_db
     app.dependency_overrides[require_auth] = mock_require_auth
+    # create_entity_alias now takes its repos via Depends (#256), so patching
+    # the module-level _entity_repo/_alias_repo no longer reaches it. Route the
+    # dependencies to those module attributes — evaluated per-request, so a
+    # test's patch(..._alias_repo) flows through.
+    app.dependency_overrides[get_named_entity_repository] = (
+        lambda: _em_module._entity_repo
+    )
+    app.dependency_overrides[get_entity_alias_repository] = (
+        lambda: _em_module._alias_repo
+    )
 
     try:
         transport = ASGITransport(app=app)
@@ -266,6 +284,7 @@ class TestCreateEntityAliasHappyPath:
                 ) as mock_normalizer,
             ):
                 mock_normalizer.normalize.return_value = "dijkstra"
+                mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
                 response = await client.post(
@@ -297,6 +316,7 @@ class TestCreateEntityAliasHappyPath:
                 ) as mock_normalizer,
             ):
                 mock_normalizer.normalize.return_value = "the technoking"
+                mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
                 response = await client.post(
@@ -333,6 +353,7 @@ class TestCreateEntityAliasHappyPath:
                 ) as mock_normalizer,
             ):
                 mock_normalizer.normalize.return_value = "em"
+                mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
                 # No alias_type in body → should default to "name_variant"
@@ -366,6 +387,7 @@ class TestCreateEntityAliasHappyPath:
                 ) as mock_normalizer,
             ):
                 mock_normalizer.normalize.return_value = "spacex ceo"
+                mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
                 await client.post(
@@ -396,6 +418,7 @@ class TestCreateEntityAliasHappyPath:
                 ) as mock_normalizer,
             ):
                 mock_normalizer.normalize.return_value = "dijkstra"
+                mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
                 await client.post(
@@ -765,6 +788,7 @@ class TestCreateEntityAliasValidation:
                 ) as mock_normalizer,
             ):
                 mock_normalizer.normalize.return_value = "a" * 500
+                mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
                 response = await client.post(
@@ -874,6 +898,7 @@ class TestCreateEntityAliasAllowedTypes:
                 ) as mock_normalizer,
             ):
                 mock_normalizer.normalize.return_value = "dijkstra"
+                mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
 
                 response = await client.post(

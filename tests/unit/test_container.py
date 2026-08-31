@@ -26,6 +26,7 @@ from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
     ChannelTopicRepository,
+    EntityAliasRepository,
     EntityMentionRepository,
     NamedEntityRepository,
     PlaylistRepository,
@@ -141,6 +142,12 @@ class TestRepositoryFactories:
         c = Container()
         repo = c.create_entity_mention_repository()
         assert isinstance(repo, EntityMentionRepository)
+
+    def test_create_entity_alias_repository(self) -> None:
+        """Verify entity alias repository factory returns correct type."""
+        c = Container()
+        repo = c.create_entity_alias_repository()
+        assert isinstance(repo, EntityAliasRepository)
 
 
 # =============================================================================

@@ -26,6 +26,7 @@ from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
     ChannelTopicRepository,
+    NamedEntityRepository,
     PlaylistRepository,
     TopicCategoryRepository,
     TranscriptSegmentRepository,
@@ -127,6 +128,12 @@ class TestRepositoryFactories:
         c = Container()
         repo = c.create_transcript_segment_repository()
         assert isinstance(repo, TranscriptSegmentRepository)
+
+    def test_create_named_entity_repository(self) -> None:
+        """Verify named entity repository factory returns correct type."""
+        c = Container()
+        repo = c.create_named_entity_repository()
+        assert isinstance(repo, NamedEntityRepository)
 
 
 # =============================================================================

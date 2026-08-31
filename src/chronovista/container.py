@@ -47,6 +47,7 @@ from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
     ChannelTopicRepository,
+    NamedEntityRepository,
     PlaylistRepository,
     TopicCategoryRepository,
     TranscriptSegmentRepository,
@@ -407,6 +408,27 @@ class Container:
         True
         """
         return TranscriptSegmentRepository()
+
+    def create_named_entity_repository(self) -> NamedEntityRepository:
+        """
+        Create a new NamedEntityRepository instance.
+
+        Returns a fresh repository instance for named entity operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        NamedEntityRepository
+            A new NamedEntityRepository instance for named entity CRUD
+            operations.
+
+        Examples
+        --------
+        >>> repo = container.create_named_entity_repository()
+        >>> isinstance(repo, NamedEntityRepository)
+        True
+        """
+        return NamedEntityRepository()
 
     def create_canonical_tag_repository(self) -> CanonicalTagRepository:
         """

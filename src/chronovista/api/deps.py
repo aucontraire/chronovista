@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
+    from chronovista.services.batch_correction_service import BatchCorrectionService
     from chronovista.services.tag_management import TagManagementService
     from chronovista.services.transcript_correction_service import (
         TranscriptCorrectionService,
@@ -18,6 +19,7 @@ from chronovista.config.settings import settings
 from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
+    NamedEntityRepository,
     PlaylistRepository,
     TranscriptSegmentRepository,
     VideoRepository,
@@ -226,6 +228,48 @@ def get_video_repository() -> VideoRepository:
     from chronovista.container import container
 
     return container.create_video_repository()
+
+
+def get_named_entity_repository() -> NamedEntityRepository:
+    """Dependency providing a NamedEntityRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_named_entity_repository()
+
+
+def get_batch_correction_service() -> "BatchCorrectionService":
+    """
+    Dependency providing a BatchCorrectionService via the DI container.
+
+    Replaces the batch-corrections router's module-level service singleton
+    (issue #256) with a per-request, container-wired instance. The batch service
+    wraps a TranscriptCorrectionService; all three repositories are stateless, so
+    per-request construction is cheap. The correction and segment repositories are
+    shared between the two services, mirroring the original singleton wiring.
+
+    Returns
+    -------
+    BatchCorrectionService
+        A service wired with a correction service and the segment/correction repos.
+    """
+    from chronovista.container import container
+    from chronovista.services.batch_correction_service import BatchCorrectionService
+    from chronovista.services.transcript_correction_service import (
+        TranscriptCorrectionService,
+    )
+
+    correction_repo = container.create_transcript_correction_repository()
+    segment_repo = container.create_transcript_segment_repository()
+    correction_service = TranscriptCorrectionService(
+        correction_repo=correction_repo,
+        segment_repo=segment_repo,
+        transcript_repo=container.create_video_transcript_repository(),
+    )
+    return BatchCorrectionService(
+        correction_service=correction_service,
+        segment_repo=segment_repo,
+        correction_repo=correction_repo,
+    )
 
 
 def get_transcript_segment_repository() -> TranscriptSegmentRepository:

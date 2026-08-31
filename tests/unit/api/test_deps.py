@@ -247,3 +247,40 @@ class TestRepositoryAndServiceDependencies:
         assert isinstance(service._correction_repo, TranscriptCorrectionRepository)
         assert isinstance(service._segment_repo, TranscriptSegmentRepository)
         assert isinstance(service._transcript_repo, VideoTranscriptRepository)
+
+
+class TestBatchAndEntityDependencies:
+    """Tests for the batch/entity dependencies added for issue #256."""
+
+    def test_get_named_entity_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_named_entity_repository
+        from chronovista.repositories import NamedEntityRepository
+
+        assert isinstance(get_named_entity_repository(), NamedEntityRepository)
+
+    def test_get_batch_correction_service_wires_correct_types(self) -> None:
+        """The batch service is built with the correct repo/service types.
+
+        Guards against a wiring transposition in the composed dependency, which
+        mock-based endpoint tests (they override the whole service) would miss.
+        """
+        from chronovista.api.deps import get_batch_correction_service
+        from chronovista.repositories.transcript_correction_repository import (
+            TranscriptCorrectionRepository,
+        )
+        from chronovista.repositories.transcript_segment_repository import (
+            TranscriptSegmentRepository,
+        )
+        from chronovista.services.batch_correction_service import (
+            BatchCorrectionService,
+        )
+        from chronovista.services.transcript_correction_service import (
+            TranscriptCorrectionService,
+        )
+
+        service = get_batch_correction_service()
+
+        assert isinstance(service, BatchCorrectionService)
+        assert isinstance(service._correction_repo, TranscriptCorrectionRepository)
+        assert isinstance(service._segment_repo, TranscriptSegmentRepository)
+        assert isinstance(service._correction_service, TranscriptCorrectionService)

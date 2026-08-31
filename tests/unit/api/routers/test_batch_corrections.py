@@ -19,13 +19,18 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_batch_correction_service,
+    get_db,
+    get_transcript_correction_repository,
+    require_auth,
+)
 from chronovista.api.main import app
 from chronovista.models.batch_correction_models import (
     BatchCorrectionResult,
@@ -34,6 +39,7 @@ from chronovista.models.batch_correction_models import (
 from tests.factories.batch_correction_factory import BatchListItemFactory
 
 # CRITICAL: This line ensures async tests work with coverage
+pytestmark = pytest.mark.asyncio
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers
@@ -94,8 +100,24 @@ def mock_session() -> AsyncMock:
 
 
 @pytest.fixture
-async def client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, None]:
-    """FastAPI test client with DB and auth overridden."""
+def mock_correction_repo() -> MagicMock:
+    """Mock repo injected via get_transcript_correction_repository."""
+    return MagicMock()
+
+
+@pytest.fixture
+def mock_batch_service() -> MagicMock:
+    """Mock service injected via get_batch_correction_service."""
+    return MagicMock()
+
+
+@pytest.fixture
+async def client(
+    mock_session: AsyncMock,
+    mock_correction_repo: MagicMock,
+    mock_batch_service: MagicMock,
+) -> AsyncGenerator[AsyncClient, None]:
+    """FastAPI test client with DB, auth, and batch deps overridden."""
 
     async def _get_db() -> AsyncGenerator[AsyncSession, None]:
         yield mock_session
@@ -105,6 +127,10 @@ async def client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = _get_db
     app.dependency_overrides[require_auth] = _require_auth
+    app.dependency_overrides[get_transcript_correction_repository] = (
+        lambda: mock_correction_repo
+    )
+    app.dependency_overrides[get_batch_correction_service] = lambda: mock_batch_service
 
     try:
         transport = ASGITransport(app=app)
@@ -126,17 +152,13 @@ class TestListBatches:
     # Basic 200 / empty result
     # ------------------------------------------------------------------
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_returns_200_with_empty_list(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """GET /batches returns 200 with an empty data list when no batches exist."""
-        mock_repo.get_batch_list = AsyncMock(return_value=[])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[])
 
         response = await client.get("/api/v1/corrections/batch/batches")
 
@@ -144,13 +166,9 @@ class TestListBatches:
         body = response.json()
         assert body["data"] == []
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_returns_batch_items(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """GET /batches returns each batch's fields in the response data."""
@@ -160,7 +178,7 @@ class TestListBatches:
             pattern="teh",
             replacement="the",
         )
-        mock_repo.get_batch_list = AsyncMock(return_value=[item])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[item])
 
         response = await client.get("/api/v1/corrections/batch/batches")
 
@@ -176,37 +194,29 @@ class TestListBatches:
     # Pagination
     # ------------------------------------------------------------------
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_pagination_offset_and_limit_forwarded(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """The offset and limit query params are passed to get_batch_list."""
-        mock_repo.get_batch_list = AsyncMock(return_value=[])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[])
 
         await client.get("/api/v1/corrections/batch/batches?offset=10&limit=5")
 
-        mock_repo.get_batch_list.assert_awaited_once()
-        call_kwargs = mock_repo.get_batch_list.call_args.kwargs
+        mock_correction_repo.get_batch_list.assert_awaited_once()
+        call_kwargs = mock_correction_repo.get_batch_list.call_args.kwargs
         assert call_kwargs["offset"] == 10
         assert call_kwargs["limit"] == 5
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_pagination_meta_has_more_false_when_partial_page(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """has_more is False when fewer items are returned than the page limit."""
         items = [_make_batch_list_item() for _ in range(3)]
-        mock_repo.get_batch_list = AsyncMock(return_value=items)
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=items)
 
         response = await client.get("/api/v1/corrections/batch/batches?limit=20")
 
@@ -214,18 +224,14 @@ class TestListBatches:
         pagination = response.json()["pagination"]
         assert pagination["has_more"] is False
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_pagination_meta_has_more_true_when_full_page(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """has_more is True when the returned count equals the page limit."""
         items = [_make_batch_list_item() for _ in range(5)]
-        mock_repo.get_batch_list = AsyncMock(return_value=items)
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=items)
 
         response = await client.get("/api/v1/corrections/batch/batches?limit=5")
 
@@ -233,50 +239,38 @@ class TestListBatches:
         pagination = response.json()["pagination"]
         assert pagination["has_more"] is True
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_default_limit_is_20(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Omitting limit defaults to 20 in the get_batch_list call."""
-        mock_repo.get_batch_list = AsyncMock(return_value=[])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[])
 
         await client.get("/api/v1/corrections/batch/batches")
 
-        call_kwargs = mock_repo.get_batch_list.call_args.kwargs
+        call_kwargs = mock_correction_repo.get_batch_list.call_args.kwargs
         assert call_kwargs["limit"] == 20
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_limit_above_100_returns_422(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """A limit > 100 is rejected with HTTP 422."""
-        mock_repo.get_batch_list = AsyncMock(return_value=[])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[])
 
         response = await client.get("/api/v1/corrections/batch/batches?limit=101")
 
         assert response.status_code == 422
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_negative_offset_returns_422(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """A negative offset is rejected with HTTP 422."""
-        mock_repo.get_batch_list = AsyncMock(return_value=[])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[])
 
         response = await client.get("/api/v1/corrections/batch/batches?offset=-1")
 
@@ -286,52 +280,40 @@ class TestListBatches:
     # corrected_by_user_id filter
     # ------------------------------------------------------------------
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_user_id_filter_forwarded(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """The corrected_by_user_id query param is forwarded to get_batch_list."""
-        mock_repo.get_batch_list = AsyncMock(return_value=[])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[])
 
         await client.get("/api/v1/corrections/batch/batches?corrected_by_user_id=cli")
 
-        call_kwargs = mock_repo.get_batch_list.call_args.kwargs
+        call_kwargs = mock_correction_repo.get_batch_list.call_args.kwargs
         assert call_kwargs["corrected_by_user_id"] == "cli"
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_omitting_user_id_filter_passes_none(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Omitting corrected_by_user_id sends None to get_batch_list."""
-        mock_repo.get_batch_list = AsyncMock(return_value=[])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[])
 
         await client.get("/api/v1/corrections/batch/batches")
 
-        call_kwargs = mock_repo.get_batch_list.call_args.kwargs
+        call_kwargs = mock_correction_repo.get_batch_list.call_args.kwargs
         assert call_kwargs["corrected_by_user_id"] is None
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_user_id_filter_restricts_results(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """When user filter matches, only those items appear in data."""
         item = _make_batch_list_item(corrected_by_user_id="api")
-        mock_repo.get_batch_list = AsyncMock(return_value=[item])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[item])
 
         response = await client.get(
             "/api/v1/corrections/batch/batches?corrected_by_user_id=api"
@@ -345,13 +327,9 @@ class TestListBatches:
     # Sort order / multiple items
     # ------------------------------------------------------------------
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_most_recent_first_order_preserved(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Items are returned in the order provided by get_batch_list (most recent first)."""
@@ -364,7 +342,7 @@ class TestListBatches:
             batch_timestamp=datetime(2024, 6, 1, tzinfo=UTC),
         )
         # Simulate repository returning newest first
-        mock_repo.get_batch_list = AsyncMock(return_value=[newer, older])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[newer, older])
 
         response = await client.get("/api/v1/corrections/batch/batches")
 
@@ -373,19 +351,15 @@ class TestListBatches:
         assert data[0]["pattern"] == "new"
         assert data[1]["pattern"] == "old"
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_batch_id_is_uuid_string_in_response(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """The batch_id field in the response is a valid UUID string."""
         fixed_id = uuid.UUID("01932f4a-dead-7000-beef-000000000001")
         item = _make_batch_list_item(batch_id=fixed_id)
-        mock_repo.get_batch_list = AsyncMock(return_value=[item])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[item])
 
         response = await client.get("/api/v1/corrections/batch/batches")
 
@@ -394,17 +368,13 @@ class TestListBatches:
         # Validate it round-trips as a UUID
         assert uuid.UUID(returned_id) == fixed_id
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_pagination_meta_limit_and_offset_echoed(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Pagination meta echoes the requested limit and offset."""
-        mock_repo.get_batch_list = AsyncMock(return_value=[])
+        mock_correction_repo.get_batch_list = AsyncMock(return_value=[])
 
         response = await client.get(
             "/api/v1/corrections/batch/batches?offset=5&limit=10"
@@ -429,28 +399,20 @@ class TestRevertBatch:
     # 200 success
     # ------------------------------------------------------------------
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_success_200_returns_reverted_count(
         self,
-        mock_svc: MagicMock,
-        mock_repo: MagicMock,
+        mock_batch_service: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """DELETE returns 200 with reverted_count matching total_applied."""
         from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 
         correction = MagicMock(spec=TranscriptCorrectionDB)
-        mock_repo.get_by_batch_id = AsyncMock(return_value=[correction])
+        mock_correction_repo.get_by_batch_id = AsyncMock(return_value=[correction])
 
         revert_result = _make_revert_result(total_applied=4, total_matched=4)
-        mock_svc.batch_revert = AsyncMock(return_value=revert_result)
+        mock_batch_service.batch_revert = AsyncMock(return_value=revert_result)
 
         response = await client.delete(
             f"/api/v1/corrections/batch/{self.VALID_BATCH_ID}"
@@ -460,25 +422,17 @@ class TestRevertBatch:
         data = response.json()["data"]
         assert data["reverted_count"] == 4
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_success_includes_skipped_count(
         self,
-        mock_svc: MagicMock,
-        mock_repo: MagicMock,
+        mock_batch_service: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """DELETE response includes skipped_count = skipped + failed."""
         from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 
         correction = MagicMock(spec=TranscriptCorrectionDB)
-        mock_repo.get_by_batch_id = AsyncMock(return_value=[correction])
+        mock_correction_repo.get_by_batch_id = AsyncMock(return_value=[correction])
 
         revert_result = _make_revert_result(
             total_applied=2,
@@ -486,7 +440,7 @@ class TestRevertBatch:
             total_failed=1,
             total_matched=4,
         )
-        mock_svc.batch_revert = AsyncMock(return_value=revert_result)
+        mock_batch_service.batch_revert = AsyncMock(return_value=revert_result)
 
         response = await client.delete(
             f"/api/v1/corrections/batch/{self.VALID_BATCH_ID}"
@@ -497,50 +451,38 @@ class TestRevertBatch:
         # skipped_count = total_skipped + total_failed = 1 + 1
         assert data["skipped_count"] == 2
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_batch_revert_called_with_correct_batch_id(
         self,
-        mock_svc: MagicMock,
-        mock_repo: MagicMock,
+        mock_batch_service: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """The batch_id is forwarded correctly to batch_service.batch_revert."""
         from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 
         correction = MagicMock(spec=TranscriptCorrectionDB)
-        mock_repo.get_by_batch_id = AsyncMock(return_value=[correction])
+        mock_correction_repo.get_by_batch_id = AsyncMock(return_value=[correction])
 
         revert_result = _make_revert_result(total_applied=1)
-        mock_svc.batch_revert = AsyncMock(return_value=revert_result)
+        mock_batch_service.batch_revert = AsyncMock(return_value=revert_result)
 
         await client.delete(f"/api/v1/corrections/batch/{self.VALID_BATCH_ID}")
 
-        mock_svc.batch_revert.assert_awaited_once()
-        call_kwargs = mock_svc.batch_revert.call_args.kwargs
+        mock_batch_service.batch_revert.assert_awaited_once()
+        call_kwargs = mock_batch_service.batch_revert.call_args.kwargs
         assert call_kwargs["batch_id"] == self.VALID_BATCH_ID
 
     # ------------------------------------------------------------------
     # 404 — batch not found
     # ------------------------------------------------------------------
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_404_when_batch_id_not_found(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """DELETE returns 404 when no corrections exist for the batch_id."""
-        mock_repo.get_by_batch_id = AsyncMock(return_value=[])
+        mock_correction_repo.get_by_batch_id = AsyncMock(return_value=[])
 
         response = await client.delete(
             f"/api/v1/corrections/batch/{self.VALID_BATCH_ID}"
@@ -548,17 +490,13 @@ class TestRevertBatch:
 
         assert response.status_code == 404
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
     async def test_404_response_contains_batch_id(
         self,
-        mock_repo: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """The 404 response body references the missing batch_id."""
-        mock_repo.get_by_batch_id = AsyncMock(return_value=[])
+        mock_correction_repo.get_by_batch_id = AsyncMock(return_value=[])
 
         response = await client.delete(
             f"/api/v1/corrections/batch/{self.VALID_BATCH_ID}"
@@ -572,32 +510,24 @@ class TestRevertBatch:
     # 409 — already reverted
     # ------------------------------------------------------------------
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_409_when_all_corrections_already_reverted(
         self,
-        mock_svc: MagicMock,
-        mock_repo: MagicMock,
+        mock_batch_service: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """DELETE returns 409 when batch_revert reports 0 applied and 0 matched."""
         from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 
         correction = MagicMock(spec=TranscriptCorrectionDB)
-        mock_repo.get_by_batch_id = AsyncMock(return_value=[correction])
+        mock_correction_repo.get_by_batch_id = AsyncMock(return_value=[correction])
 
         # Simulates fully-reverted batch: nothing was matched or applied
         already_reverted = _make_revert_result(
             total_applied=0,
             total_matched=0,
         )
-        mock_svc.batch_revert = AsyncMock(return_value=already_reverted)
+        mock_batch_service.batch_revert = AsyncMock(return_value=already_reverted)
 
         response = await client.delete(
             f"/api/v1/corrections/batch/{self.VALID_BATCH_ID}"
@@ -605,31 +535,23 @@ class TestRevertBatch:
 
         assert response.status_code == 409
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._correction_repo",
-        new_callable=MagicMock,
-    )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_409_response_mentions_batch_id(
         self,
-        mock_svc: MagicMock,
-        mock_repo: MagicMock,
+        mock_batch_service: MagicMock,
+        mock_correction_repo: MagicMock,
         client: AsyncClient,
     ) -> None:
         """The 409 response body references the already-reverted batch_id."""
         from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 
         correction = MagicMock(spec=TranscriptCorrectionDB)
-        mock_repo.get_by_batch_id = AsyncMock(return_value=[correction])
+        mock_correction_repo.get_by_batch_id = AsyncMock(return_value=[correction])
 
         already_reverted = _make_revert_result(
             total_applied=0,
             total_matched=0,
         )
-        mock_svc.batch_revert = AsyncMock(return_value=already_reverted)
+        mock_batch_service.batch_revert = AsyncMock(return_value=already_reverted)
 
         response = await client.delete(
             f"/api/v1/corrections/batch/{self.VALID_BATCH_ID}"
@@ -675,13 +597,9 @@ class TestRevertBatch:
 class TestApplyBatchId:
     """Tests that POST /apply generates a batch_id for provenance tracking."""
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_apply_generates_and_passes_batch_id(
         self,
-        mock_svc: MagicMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """POST /apply generates a UUIDv7 batch_id and passes it to apply_to_segments."""
@@ -695,7 +613,7 @@ class TestApplyBatchId:
             affected_video_ids=["vid1"],
             rebuild_triggered=True,
         )
-        mock_svc.apply_to_segments = AsyncMock(return_value=mock_result)
+        mock_batch_service.apply_to_segments = AsyncMock(return_value=mock_result)
 
         response = await client.post(
             "/api/v1/corrections/batch/apply",
@@ -709,17 +627,13 @@ class TestApplyBatchId:
 
         assert response.status_code == 200
         # Verify batch_id was generated and passed
-        call_kwargs = mock_svc.apply_to_segments.call_args.kwargs
+        call_kwargs = mock_batch_service.apply_to_segments.call_args.kwargs
         assert "batch_id" in call_kwargs
         assert isinstance(call_kwargs["batch_id"], uuid.UUID)
 
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_apply_batch_id_is_unique_per_call(
         self,
-        mock_svc: MagicMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Each POST /apply call generates a distinct batch_id."""
@@ -733,7 +647,7 @@ class TestApplyBatchId:
             affected_video_ids=["vid1"],
             rebuild_triggered=True,
         )
-        mock_svc.apply_to_segments = AsyncMock(return_value=mock_result)
+        mock_batch_service.apply_to_segments = AsyncMock(return_value=mock_result)
 
         await client.post(
             "/api/v1/corrections/batch/apply",
@@ -744,7 +658,9 @@ class TestApplyBatchId:
                 "correction_type": "proper_noun",
             },
         )
-        first_batch_id = mock_svc.apply_to_segments.call_args.kwargs["batch_id"]
+        first_batch_id = mock_batch_service.apply_to_segments.call_args.kwargs[
+            "batch_id"
+        ]
 
         await client.post(
             "/api/v1/corrections/batch/apply",
@@ -755,6 +671,8 @@ class TestApplyBatchId:
                 "correction_type": "proper_noun",
             },
         )
-        second_batch_id = mock_svc.apply_to_segments.call_args.kwargs["batch_id"]
+        second_batch_id = mock_batch_service.apply_to_segments.call_args.kwargs[
+            "batch_id"
+        ]
 
         assert first_batch_id != second_batch_id

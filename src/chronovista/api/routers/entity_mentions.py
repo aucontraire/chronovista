@@ -20,11 +20,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import (
+    get_canonical_tag_repository,
     get_db,
     get_entity_alias_repository,
     get_entity_curation_service,
     get_entity_mention_repository,
     get_named_entity_repository,
+    get_tag_management_service,
     get_video_repository,
     require_auth,
 )
@@ -72,7 +74,6 @@ from chronovista.api.schemas.entity_mentions import (
 )
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.config.database import db_manager
-from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import (
@@ -1507,6 +1508,9 @@ async def classify_tag(
     body: ClassifyTagRequest = Body(...),
     session: AsyncSession = Depends(get_db),
     enrichment_service: EntityEnrichmentService = Depends(get_enrichment_service),
+    tag_mgmt_service: TagManagementService = Depends(get_tag_management_service),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
 ) -> dict[str, Any]:
     """Classify an existing canonical tag to create or link a named entity.
 
@@ -1547,7 +1551,7 @@ async def classify_tag(
     # supplies the entity_type when the caller omitted it.
     effective_entity_type = body.entity_type
     if body.link_entity_id is not None:
-        target_entity = await session.get(NamedEntityDB, body.link_entity_id)
+        target_entity = await entity_repo.get(session, body.link_entity_id)
         if target_entity is None:
             raise NotFoundError(
                 resource_type="NamedEntity",
@@ -1602,7 +1606,7 @@ async def classify_tag(
         ).model_dump()
 
     try:
-        result = await _tag_mgmt_service.classify(
+        result = await tag_mgmt_service.classify(
             session,
             body.normalized_form,
             entity_type_enum,
@@ -1623,16 +1627,16 @@ async def classify_tag(
             ) from exc
 
         if "already classified" in error_msg.lower():
-            # Look up the canonical tag to get existing entity details
-            tag_query = select(CanonicalTagDB).where(
-                CanonicalTagDB.normalized_form == body.normalized_form,
+            # Look up the canonical tag to get existing entity details (any
+            # status — the tag may be inactive, so status=None mirrors the
+            # original unfiltered query).
+            tag = await canonical_tag_repo.get_by_normalized_form(
+                session, body.normalized_form, status=None
             )
-            tag_result = await session.execute(tag_query)
-            tag = tag_result.scalar_one_or_none()
 
             existing_entity_data: dict[str, Any] | None = None
             if tag is not None and tag.entity_id is not None:
-                entity = await session.get(NamedEntityDB, tag.entity_id)
+                entity = await entity_repo.get(session, tag.entity_id)
                 if entity is not None:
                     existing_entity_data = {
                         "entity_id": str(entity.id),
@@ -1673,11 +1677,9 @@ async def classify_tag(
         ) from exc
 
     # After successful classification, look up the canonical tag to get entity_id
-    tag_query = select(CanonicalTagDB).where(
-        CanonicalTagDB.normalized_form == body.normalized_form,
+    tag = await canonical_tag_repo.get_by_normalized_form(
+        session, body.normalized_form, status=None
     )
-    tag_result = await session.execute(tag_query)
-    tag = tag_result.scalar_one_or_none()
 
     entity_id_str: str | None = None
     canonical_name = result.canonical_form
@@ -1686,7 +1688,7 @@ async def classify_tag(
     # The entity the tag now resolves to — the newly created one OR a linked existing one.
     resolved_entity_id: uuid.UUID | None = None
     if tag is not None and tag.entity_id is not None:
-        entity = await session.get(NamedEntityDB, tag.entity_id)
+        entity = await entity_repo.get(session, tag.entity_id)
         if entity is not None:
             entity_id_str = str(entity.id)
             canonical_name = entity.canonical_name

@@ -59,9 +59,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import chronovista.api.routers.entity_mentions as _em_module
 from chronovista.api.deps import (
+    get_canonical_tag_repository,
     get_db,
     get_entity_alias_repository,
     get_named_entity_repository,
+    get_tag_management_service,
     require_auth,
 )
 from chronovista.api.main import app
@@ -202,18 +204,17 @@ def _make_named_entity_row(
 def _make_session_success(tag_row: MagicMock, entity_row: MagicMock) -> AsyncMock:
     """Build a mock AsyncSession for the happy path.
 
-    The endpoint makes these DB calls after a successful classify():
-    1. session.execute(SELECT CanonicalTagDB WHERE normalized_form == ...)
-       → tag_row
-    2. session.get(NamedEntityDB, tag.entity_id) → entity_row
-    3. session.commit()
+    After a successful classify(), the endpoint now runs two selects through the
+    injected repos (#256): canonical_tag_repo.get_by_normalized_form, then
+    entity_repo.get — both via ``session.execute(...).scalar_one_or_none()``. The
+    mock returns the tag result first, the entity result second.
 
     Parameters
     ----------
     tag_row : MagicMock
-        The CanonicalTagDB mock row returned by execute.
+        The CanonicalTagDB mock row returned by the first execute.
     entity_row : MagicMock
-        The NamedEntityDB mock row returned by session.get.
+        The NamedEntityDB mock row returned by the second execute.
 
     Returns
     -------
@@ -222,13 +223,12 @@ def _make_session_success(tag_row: MagicMock, entity_row: MagicMock) -> AsyncMoc
     """
     mock_session = AsyncMock(spec=AsyncSession)
 
-    # execute() → scalar_one_or_none() → tag_row
     tag_result = MagicMock()
     tag_result.scalar_one_or_none.return_value = tag_row
-    mock_session.execute = AsyncMock(return_value=tag_result)
-
-    # session.get() → entity_row
-    mock_session.get = AsyncMock(return_value=entity_row)
+    entity_result = MagicMock()
+    entity_result.scalar_one_or_none.return_value = entity_row
+    # 1) canonical tag lookup, 2) entity lookup (both session.execute now)
+    mock_session.execute = AsyncMock(side_effect=[tag_result, entity_result])
 
     mock_session.commit = AsyncMock()
     return mock_session
@@ -261,16 +261,17 @@ def _make_session_conflict_with_existing_entity(
     """Build a mock session for the 'already classified' conflict branch.
 
     When the service raises ValueError("already classified ...") the endpoint
-    performs two extra DB queries to fetch existing entity details:
-    1. SELECT CanonicalTagDB WHERE normalized_form == ...
-    2. session.get(NamedEntityDB, tag.entity_id)
+    performs two extra lookups through the injected repos (#256), both via
+    ``session.execute(...).scalar_one_or_none()``:
+    1. canonical_tag_repo.get_by_normalized_form → the tag
+    2. entity_repo.get(tag.entity_id) → the entity that claims it
 
     Parameters
     ----------
     tag_row : MagicMock
-        The CanonicalTagDB mock row returned by execute.
+        The CanonicalTagDB mock row returned by the first execute.
     entity_row : MagicMock
-        The NamedEntityDB mock row returned by session.get.
+        The NamedEntityDB mock row returned by the second execute.
 
     Returns
     -------
@@ -281,8 +282,10 @@ def _make_session_conflict_with_existing_entity(
 
     tag_result = MagicMock()
     tag_result.scalar_one_or_none.return_value = tag_row
-    mock_session.execute = AsyncMock(return_value=tag_result)
-    mock_session.get = AsyncMock(return_value=entity_row)
+    entity_result = MagicMock()
+    entity_result.scalar_one_or_none.return_value = entity_row
+    # 1) canonical tag lookup, 2) entity lookup (both session.execute now)
+    mock_session.execute = AsyncMock(side_effect=[tag_result, entity_result])
     mock_session.commit = AsyncMock()
     return mock_session
 
@@ -323,6 +326,14 @@ async def _build_client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, 
     )
     app.dependency_overrides[get_entity_alias_repository] = (
         lambda: _em_module._alias_repo
+    )
+    # classify_tag now takes its service/repo via Depends too, so route those to
+    # the module singletons the tests patch (evaluated per-request).
+    app.dependency_overrides[get_tag_management_service] = (
+        lambda: _em_module._tag_mgmt_service
+    )
+    app.dependency_overrides[get_canonical_tag_repository] = (
+        lambda: _em_module._canonical_tag_repo
     )
 
     try:
@@ -800,8 +811,10 @@ class TestClassifyTagConflict:
         # The ConflictError details should carry existing entity information.
         # RFC-7807 responses in this project include an "errors" or "details" key.
         assert "status" in body or "type" in body
-
-    async def test_already_classified_no_tag_row_still_returns_409(self) -> None:
+        # The rewritten conflict message names the claiming entity, which only
+        # resolves if the entity lookup (entity_repo.get) returned the entity —
+        # not the tag. This is what guards the post-conflict entity resolution.
+        assert "Edsger Dijkstra" in response.text
         """409 returned even when the post-conflict tag lookup returns None.
 
         Edge case: the service reports "already classified" but the subsequent

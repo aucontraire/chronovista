@@ -1386,6 +1386,7 @@ async def create_manual_association(
     video_id: str = Path(..., description="YouTube video ID"),
     entity_id: str = Path(..., description="Named entity UUID"),
     session: AsyncSession = Depends(get_db),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """Create a manual association between a named entity and a video.
 
@@ -1423,7 +1424,7 @@ async def create_manual_association(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    mention = await _mention_repo.create_manual_association(
+    mention = await mention_repo.create_manual_association(
         session, video_id=video_id, entity_id=parsed_entity_id
     )
     await session.commit()
@@ -1456,6 +1457,7 @@ async def delete_manual_association(
     video_id: str = Path(..., description="YouTube video ID"),
     entity_id: str = Path(..., description="Named entity UUID"),
     session: AsyncSession = Depends(get_db),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> Response:
     """Remove a manual association between a named entity and a video.
 
@@ -1483,7 +1485,7 @@ async def delete_manual_association(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    await _mention_repo.delete_manual_association(
+    await mention_repo.delete_manual_association(
         session, video_id=video_id, entity_id=parsed_entity_id
     )
     await session.commit()

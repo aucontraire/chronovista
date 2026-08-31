@@ -530,6 +530,50 @@ class TestTranscriptCorrectionRepositoryQueries:
         mock_session.execute.assert_called_once()
 
     # ------------------------------------------------------------------
+    # count_by_segment
+    # ------------------------------------------------------------------
+
+    async def test_count_by_segment_returns_total(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """count_by_segment() returns the total corrections for a single segment."""
+        mock_result = MagicMock()
+        mock_result.scalar_one.return_value = 3
+        mock_session.execute.return_value = mock_result
+
+        count = await repository.count_by_segment(
+            mock_session,
+            video_id="dQw4w9WgXcQ",
+            language_code="en",
+            segment_id=42,
+        )
+
+        assert count == 3
+        mock_session.execute.assert_called_once()
+
+    async def test_count_by_segment_returns_zero_when_no_corrections(
+        self,
+        repository: TranscriptCorrectionRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """count_by_segment() returns 0 when the segment has no corrections."""
+        mock_result = MagicMock()
+        mock_result.scalar_one.return_value = 0
+        mock_session.execute.return_value = mock_result
+
+        count = await repository.count_by_segment(
+            mock_session,
+            video_id="dQw4w9WgXcQ",
+            language_code="en",
+            segment_id=99,
+        )
+
+        assert count == 0
+        mock_session.execute.assert_called_once()
+
+    # ------------------------------------------------------------------
     # get_latest_version
     # ------------------------------------------------------------------
 

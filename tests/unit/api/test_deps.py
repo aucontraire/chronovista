@@ -188,3 +188,56 @@ class TestGetStatsRepositories:
         assert isinstance(repos.transcript, VideoTranscriptRepository)
         assert isinstance(repos.correction, TranscriptCorrectionRepository)
         assert isinstance(repos.canonical_tag, CanonicalTagRepository)
+
+
+class TestRepositoryAndServiceDependencies:
+    """Tests for the repository/service dependencies added for issue #256."""
+
+    def test_get_video_repository_returns_video_repository(self) -> None:
+        from chronovista.api.deps import get_video_repository
+        from chronovista.repositories import VideoRepository
+
+        assert isinstance(get_video_repository(), VideoRepository)
+
+    def test_get_transcript_segment_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_transcript_segment_repository
+        from chronovista.repositories import TranscriptSegmentRepository
+
+        assert isinstance(
+            get_transcript_segment_repository(), TranscriptSegmentRepository
+        )
+
+    def test_get_transcript_correction_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_transcript_correction_repository
+        from chronovista.repositories.transcript_correction_repository import (
+            TranscriptCorrectionRepository,
+        )
+
+        assert isinstance(
+            get_transcript_correction_repository(), TranscriptCorrectionRepository
+        )
+
+    def test_get_transcript_correction_service_wires_correct_repos(self) -> None:
+        """The service is built with the three correct repository types.
+
+        Guards against a wiring transposition (e.g. passing the transcript repo
+        where the segment repo belongs), which mock-based endpoint tests miss.
+        """
+        from chronovista.api.deps import get_transcript_correction_service
+        from chronovista.repositories import (
+            TranscriptSegmentRepository,
+            VideoTranscriptRepository,
+        )
+        from chronovista.repositories.transcript_correction_repository import (
+            TranscriptCorrectionRepository,
+        )
+        from chronovista.services.transcript_correction_service import (
+            TranscriptCorrectionService,
+        )
+
+        service = get_transcript_correction_service()
+
+        assert isinstance(service, TranscriptCorrectionService)
+        assert isinstance(service._correction_repo, TranscriptCorrectionRepository)
+        assert isinstance(service._segment_repo, TranscriptSegmentRepository)
+        assert isinstance(service._transcript_repo, VideoTranscriptRepository)

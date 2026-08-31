@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from chronovista.services.tag_management import TagManagementService
+    from chronovista.services.transcript_correction_service import (
+        TranscriptCorrectionService,
+    )
 
 from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
@@ -16,6 +19,7 @@ from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
     PlaylistRepository,
+    TranscriptSegmentRepository,
     VideoRepository,
     VideoTranscriptRepository,
 )
@@ -207,6 +211,52 @@ def get_stats_repositories() -> StatsRepositories:
         transcript=container.create_video_transcript_repository(),
         correction=container.create_transcript_correction_repository(),
         canonical_tag=container.create_canonical_tag_repository(),
+    )
+
+
+def get_video_repository() -> VideoRepository:
+    """Dependency providing a VideoRepository via the DI container (issue #256)."""
+    from chronovista.container import container
+
+    return container.create_video_repository()
+
+
+def get_transcript_segment_repository() -> TranscriptSegmentRepository:
+    """Dependency providing a TranscriptSegmentRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_transcript_segment_repository()
+
+
+def get_transcript_correction_repository() -> TranscriptCorrectionRepository:
+    """Dependency providing a TranscriptCorrectionRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_transcript_correction_repository()
+
+
+def get_transcript_correction_service() -> "TranscriptCorrectionService":
+    """
+    Dependency providing a TranscriptCorrectionService via the DI container.
+
+    Replaces the router's module-level service singleton (issue #256) with a
+    per-request, container-wired instance. The service is stateless (it holds
+    only its three repositories), so per-request construction is cheap.
+
+    Returns
+    -------
+    TranscriptCorrectionService
+        A service wired with the correction, segment, and transcript repos.
+    """
+    from chronovista.container import container
+    from chronovista.services.transcript_correction_service import (
+        TranscriptCorrectionService,
+    )
+
+    return TranscriptCorrectionService(
+        correction_repo=container.create_transcript_correction_repository(),
+        segment_repo=container.create_transcript_segment_repository(),
+        transcript_repo=container.create_video_transcript_repository(),
     )
 
 

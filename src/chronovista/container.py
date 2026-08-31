@@ -49,6 +49,7 @@ from chronovista.repositories import (
     ChannelTopicRepository,
     PlaylistRepository,
     TopicCategoryRepository,
+    TranscriptSegmentRepository,
     UserLanguagePreferenceRepository,
     UserVideoRepository,
     VideoCategoryRepository,
@@ -385,6 +386,27 @@ class Container:
         True
         """
         return TranscriptCorrectionRepository()
+
+    def create_transcript_segment_repository(self) -> TranscriptSegmentRepository:
+        """
+        Create a new TranscriptSegmentRepository instance.
+
+        Returns a fresh repository instance for transcript segment operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        TranscriptSegmentRepository
+            A new TranscriptSegmentRepository instance for transcript segment
+            CRUD operations.
+
+        Examples
+        --------
+        >>> repo = container.create_transcript_segment_repository()
+        >>> isinstance(repo, TranscriptSegmentRepository)
+        True
+        """
+        return TranscriptSegmentRepository()
 
     def create_canonical_tag_repository(self) -> CanonicalTagRepository:
         """

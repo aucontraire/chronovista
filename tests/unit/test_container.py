@@ -28,6 +28,7 @@ from chronovista.repositories import (
     ChannelTopicRepository,
     PlaylistRepository,
     TopicCategoryRepository,
+    TranscriptSegmentRepository,
     UserVideoRepository,
     VideoCategoryRepository,
     VideoRepository,
@@ -120,6 +121,12 @@ class TestRepositoryFactories:
         c = Container()
         repo = c.create_canonical_tag_repository()
         assert isinstance(repo, CanonicalTagRepository)
+
+    def test_create_transcript_segment_repository(self) -> None:
+        """Verify transcript segment repository factory returns correct type."""
+        c = Container()
+        repo = c.create_transcript_segment_repository()
+        assert isinstance(repo, TranscriptSegmentRepository)
 
 
 # =============================================================================

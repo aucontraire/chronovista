@@ -16,11 +16,16 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_db,
+    get_entity_mention_repository,
+    get_named_entity_repository,
+    get_video_repository,
+    require_auth,
+)
 from chronovista.api.query_protection import (
     check_rate_limit,
     get_client_id,
@@ -101,6 +106,7 @@ from chronovista.repositories.tag_alias_repository import TagAliasRepository
 from chronovista.repositories.tag_operation_log_repository import (
     TagOperationLogRepository,
 )
+from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.entity_curation_service import (
     EntityCurationService,
     EntityNameCollisionError,
@@ -227,6 +233,8 @@ async def list_entities(
         ),
     ),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """List named entities with optional filters, search, and sorting.
 
@@ -271,72 +279,25 @@ async def list_entities(
     # Default to "active" to preserve backwards-compatible behaviour.
     effective_status = status if status is not None else "active"
 
-    # Base query: filter by status
-    base = select(NamedEntityDB).where(NamedEntityDB.status == effective_status)
-    count_base = select(func.count(NamedEntityDB.id)).where(
-        NamedEntityDB.status == effective_status
+    # Parse the comma-separated alias-type exclusion list (request concern).
+    excluded_types = (
+        [t.strip() for t in exclude_alias_types.split(",") if t.strip()]
+        if exclude_alias_types
+        else None
     )
 
-    # Apply filters
-    if type is not None:
-        base = base.where(NamedEntityDB.entity_type == type)
-        count_base = count_base.where(NamedEntityDB.entity_type == type)
-
-    if has_mentions is True:
-        base = base.where(NamedEntityDB.mention_count > 0)
-        count_base = count_base.where(NamedEntityDB.mention_count > 0)
-    elif has_mentions is False:
-        base = base.where(NamedEntityDB.mention_count == 0)
-        count_base = count_base.where(NamedEntityDB.mention_count == 0)
-
-    if search:
-        if search_aliases:
-            # Build the list of excluded alias types from the comma-separated param.
-            excluded_types: list[str] = (
-                [t.strip() for t in exclude_alias_types.split(",") if t.strip()]
-                if exclude_alias_types
-                else []
-            )
-
-            # Sub-select: entity IDs that have a matching alias (not excluded).
-            alias_select = select(EntityAliasDB.entity_id).where(
-                EntityAliasDB.alias_name.ilike(f"%{search}%")
-            )
-            if excluded_types:
-                alias_select = alias_select.where(
-                    EntityAliasDB.alias_type.notin_(excluded_types)
-                )
-            alias_scalar_subq = alias_select.scalar_subquery()
-
-            # Match on canonical_name OR matching alias.
-            name_filter = NamedEntityDB.canonical_name.ilike(f"%{search}%")
-            alias_filter = NamedEntityDB.id.in_(alias_scalar_subq)
-            combined_filter = or_(name_filter, alias_filter)
-            base = base.where(combined_filter)
-            count_base = count_base.where(combined_filter)
-        else:
-            base = base.where(NamedEntityDB.canonical_name.ilike(f"%{search}%"))
-            count_base = count_base.where(
-                NamedEntityDB.canonical_name.ilike(f"%{search}%")
-            )
-
-    # Total count
-    total = (await session.execute(count_base)).scalar() or 0
-
-    # Sorting
-    if sort == "mentions":
-        base = base.order_by(
-            NamedEntityDB.mention_count.desc(),
-            NamedEntityDB.canonical_name.asc(),
-        )
-    else:
-        base = base.order_by(NamedEntityDB.canonical_name.asc())
-
-    # Pagination
-    base = base.offset(offset).limit(limit)
-
-    result = await session.execute(base)
-    entities = list(result.scalars().all())
+    entities, total = await entity_repo.list_filtered(
+        session,
+        status=effective_status,
+        entity_type=type,
+        has_mentions=has_mentions,
+        search=search,
+        search_aliases=search_aliases,
+        exclude_alias_types=excluded_types,
+        sort=sort,
+        skip=offset,
+        limit=limit,
+    )
 
     # video_count is the combined association count (mentions ∪ tag ∪ manual),
     # computed once for the whole page by the shared resolver so the list and the
@@ -344,7 +305,7 @@ async def list_entities(
     # (Feature 066, FR-001/FR-002). Previously this read the denormalised
     # mention-only column, which showed 0 for a tag-only entity that the detail
     # reported in full. Batched — one set of queries for the page, not per row.
-    counts = await _mention_repo.get_association_counts(
+    counts = await mention_repo.get_association_counts(
         session, [e.id for e in entities]
     )
 
@@ -385,6 +346,7 @@ async def search_entities(
     ),
     limit: int = Query(default=10, ge=1, le=20, description="Max results"),
     session: AsyncSession = Depends(get_db),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """Search named entities by name or alias for autocomplete.
 
@@ -409,7 +371,7 @@ async def search_entities(
     dict
         List of entity search results wrapped in a ``data`` envelope.
     """
-    results = await _mention_repo.search_entities(
+    results = await mention_repo.search_entities(
         session, query=q, video_id=video_id, limit=limit
     )
     return {"data": [EntitySearchResult(**r) for r in results]}
@@ -427,6 +389,8 @@ async def get_video_entities(
         default=None, description="BCP-47 language code filter"
     ),
     session: AsyncSession = Depends(get_db),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> VideoEntitiesResponse:
     """Get all named entities mentioned in a video with mention counts.
 
@@ -454,15 +418,13 @@ async def get_video_entities(
         If the video does not exist in the database (404).
     """
     # Check video existence
-    video_query = select(VideoDB.video_id).where(VideoDB.video_id == video_id)
-    video_result = await session.execute(video_query)
-    if not video_result.scalar_one_or_none():
+    if not await video_repo.exists_by_video_id(session, video_id):
         raise NotFoundError(resource_type="Video", identifier=video_id)
 
     # Fetch entity associations from the shared resolver — entities linked
     # through ANY source (tag-only and manual included), matching the entity
     # detail's membership by construction (US2 / FR-005 / FR-006).
-    summaries = await _mention_repo.get_video_entity_associations(
+    summaries = await mention_repo.get_video_entity_associations(
         session, video_id=video_id, language_code=language_code
     )
 
@@ -662,6 +624,8 @@ def _build_enrichment(
 async def get_entity_detail(
     entity_id: str = Path(..., description="Named entity UUID"),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """Get detail for a single named entity.
 
@@ -687,13 +651,7 @@ async def get_entity_detail(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    entity_query = (
-        select(NamedEntityDB)
-        .where(NamedEntityDB.id == parsed_entity_id)
-        .options(selectinload(NamedEntityDB.aliases))
-    )
-    entity_result = await session.execute(entity_query)
-    entity = entity_result.scalar_one_or_none()
+    entity = await entity_repo.get_with_aliases(session, parsed_entity_id)
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
@@ -719,7 +677,7 @@ async def get_entity_detail(
     # (Feature 066, FR-001/FR-002/FR-004). Supersedes the single-purpose
     # get_combined_video_count.
     association = (
-        await _mention_repo.get_association_counts(session, [parsed_entity_id])
+        await mention_repo.get_association_counts(session, [parsed_entity_id])
     )[parsed_entity_id]
 
     return {
@@ -768,6 +726,8 @@ async def get_cooccurring_entities(
         ),
     ),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> CooccurringEntitiesResponse:
     """Get the entities most often appearing alongside this one.
 
@@ -802,17 +762,14 @@ async def get_cooccurring_entities(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    entity_exists = await session.execute(
-        select(NamedEntityDB.id).where(NamedEntityDB.id == parsed_entity_id)
-    )
-    if not entity_exists.scalar_one_or_none():
+    if not await entity_repo.exists(session, parsed_entity_id):
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
     # MAX_COOCCURRING_LIMIT bounds the result SIZE, not the query cost: the
     # scan is over the entity's whole co-occurrence set before the limit
     # applies. Measured at 923 ms on the most connected entity.
     partners = await run_with_timeout(
-        _mention_repo.get_cooccurring_entities(
+        mention_repo.get_cooccurring_entities(
             session,
             entity_id=parsed_entity_id,
             limit=limit,
@@ -909,6 +866,8 @@ async def get_entity_videos(
     limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> EntityVideoResponse:
     """Get a paginated list of videos where a named entity is mentioned.
 
@@ -949,9 +908,7 @@ async def get_entity_videos(
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     # Check entity existence
-    entity_query = select(NamedEntityDB.id).where(NamedEntityDB.id == parsed_entity_id)
-    entity_result = await session.execute(entity_query)
-    if not entity_result.scalar_one_or_none():
+    if not await entity_repo.exists(session, parsed_entity_id):
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
     # Normalise the multi-select provenance filter (raises on invalid values,
@@ -963,7 +920,7 @@ async def get_entity_videos(
     # in Python after the query — cost scales with the entity's whole video
     # population, not with the requested page.
     results, total = await run_with_timeout(
-        _mention_repo.get_entity_video_list(
+        mention_repo.get_entity_video_list(
             session,
             entity_id=parsed_entity_id,
             language_code=language_code,
@@ -1995,7 +1952,12 @@ async def update_entity(
         raise ConflictError(message=str(exc), details={"entity_id": entity_id}) from exc
 
     await session.commit()
-    return await get_entity_detail(str(updated.id), session)
+    return await get_entity_detail(
+        str(updated.id),
+        session,
+        entity_repo=_entity_repo,
+        mention_repo=_mention_repo,
+    )
 
 
 @router.post(
@@ -2057,7 +2019,12 @@ async def undo_entity_operation(
         ) from exc
 
     await session.commit()
-    return await get_entity_detail(str(restored.id), session)
+    return await get_entity_detail(
+        str(restored.id),
+        session,
+        entity_repo=_entity_repo,
+        mention_repo=_mention_repo,
+    )
 
 
 # ---------------------------------------------------------------------------

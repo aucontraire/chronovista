@@ -27,7 +27,12 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
-from chronovista.api.deps import get_db, require_auth
+import chronovista.api.routers.entity_mentions as _em_module
+from chronovista.api.deps import (
+    get_db,
+    get_entity_mention_repository,
+    require_auth,
+)
 from chronovista.api.main import app
 from chronovista.models.entity_association import (
     AssociationCount,
@@ -75,6 +80,13 @@ async def _build_client(
 
     app.dependency_overrides[get_db] = mock_get_db
     app.dependency_overrides[require_auth] = mock_require_auth
+    # The migrated read endpoints (#256) take EntityMentionRepository via
+    # Depends, so patching the module-level _mention_repo no longer reaches
+    # them. Route the dependency to whatever _mention_repo currently is —
+    # evaluated per-request, so a test's `patch(..._mention_repo)` flows through.
+    app.dependency_overrides[get_entity_mention_repository] = (
+        lambda: _em_module._mention_repo
+    )
 
     try:
         transport = ASGITransport(app=app)

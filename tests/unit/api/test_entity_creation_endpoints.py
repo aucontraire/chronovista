@@ -57,7 +57,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+import chronovista.api.routers.entity_mentions as _em_module
+from chronovista.api.deps import (
+    get_db,
+    get_entity_alias_repository,
+    get_named_entity_repository,
+    require_auth,
+)
 from chronovista.api.main import app
 from chronovista.services.tag_management import ClassifyResult
 
@@ -308,6 +314,16 @@ async def _build_client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, 
 
     app.dependency_overrides[get_db] = mock_get_db
     app.dependency_overrides[require_auth] = mock_require_auth
+    # create_entity now takes its repos via Depends (#256), so patching the
+    # module-level _entity_repo/_alias_repo no longer reaches it. Route those
+    # dependencies to the module attributes — evaluated per-request, so a test's
+    # patch(..._entity_repo)/patch(..._alias_repo) flows through.
+    app.dependency_overrides[get_named_entity_repository] = (
+        lambda: _em_module._entity_repo
+    )
+    app.dependency_overrides[get_entity_alias_repository] = (
+        lambda: _em_module._alias_repo
+    )
 
     try:
         transport = ASGITransport(app=app)
@@ -1711,6 +1727,9 @@ class TestCreateEntityEndpoint:
                     lambda text: text.strip().lower()
                 )
 
+                mock_entity_repo.find_active_by_normalized_and_type = AsyncMock(
+                    return_value=None
+                )
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())
 
@@ -1762,6 +1781,9 @@ class TestCreateEntityEndpoint:
                 ) as mock_normalizer,
             ):
                 mock_normalizer.normalize.return_value = "radia perlman"
+                mock_entity_repo.find_active_by_normalized_and_type = AsyncMock(
+                    return_value=None
+                )
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())
 
@@ -1915,6 +1937,9 @@ class TestCreateEntityEndpoint:
                 # "ed turing"     -> "ed turing" (DUPLICATE -> skipped)
                 mock_normalizer.normalize.side_effect = (
                     lambda text: text.strip().lower()
+                )
+                mock_entity_repo.find_active_by_normalized_and_type = AsyncMock(
+                    return_value=None
                 )
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())

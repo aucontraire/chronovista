@@ -94,6 +94,40 @@ class NamedEntityRepository(
         )
         return result.first() is not None
 
+    async def find_active_by_normalized_and_type(
+        self, session: AsyncSession, normalized_name: str, entity_type: str
+    ) -> NamedEntityDB | None:
+        """Return the active entity with this normalized name + type (#256).
+
+        The duplicate check for standalone entity creation. The
+        ``uq_named_entity_canonical`` unique constraint on
+        ``(canonical_name_normalized, entity_type)`` guarantees at most one row
+        exists for the pair regardless of status, so filtering to ``active``
+        yields zero or one — ``scalar_one_or_none`` is safe.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        normalized_name : str
+            The normalized canonical name to match.
+        entity_type : str
+            The entity type value (e.g. ``"person"``).
+
+        Returns
+        -------
+        NamedEntityDB | None
+            The active matching entity, or ``None`` if none exists.
+        """
+        result = await session.execute(
+            select(NamedEntityDB).where(
+                NamedEntityDB.canonical_name_normalized == normalized_name,
+                NamedEntityDB.entity_type == entity_type,
+                NamedEntityDB.status == "active",
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_with_aliases(
         self, session: AsyncSession, id: uuid.UUID
     ) -> NamedEntityDB | None:

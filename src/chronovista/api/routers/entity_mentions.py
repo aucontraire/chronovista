@@ -1732,6 +1732,8 @@ async def create_entity(
     body: CreateEntityRequest = Body(...),
     session: AsyncSession = Depends(get_db),
     enrichment_service: EntityEnrichmentService = Depends(get_enrichment_service),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    alias_repo: EntityAliasRepository = Depends(get_entity_alias_repository),
 ) -> dict[str, Any]:
     """Create a standalone named entity with optional aliases.
 
@@ -1784,13 +1786,9 @@ async def create_entity(
     canonical_name = body.name.strip()
 
     # 4. Check for duplicate (same normalized name + type + active status)
-    dup_query = select(NamedEntityDB).where(
-        NamedEntityDB.canonical_name_normalized == normalized_name,
-        NamedEntityDB.entity_type == entity_type_enum.value,
-        NamedEntityDB.status == "active",
+    existing = await entity_repo.find_active_by_normalized_and_type(
+        session, normalized_name, entity_type_enum.value
     )
-    dup_result = await session.execute(dup_query)
-    existing = dup_result.scalar_one_or_none()
     if existing is not None:
         raise ConflictError(
             message=(
@@ -1829,7 +1827,7 @@ async def create_entity(
         confidence=1.0,
         external_ids=external_ids,
     )
-    db_entity = await _entity_repo.create(session, obj_in=entity_create)
+    db_entity = await entity_repo.create(session, obj_in=entity_create)
 
     # 6. Create canonical name as first alias
     canonical_alias = EntityAliasCreate(
@@ -1839,7 +1837,7 @@ async def create_entity(
         alias_type=EntityAliasType.NAME_VARIANT,
         occurrence_count=0,
     )
-    await _alias_repo.create(session, obj_in=canonical_alias)
+    await alias_repo.create(session, obj_in=canonical_alias)
 
     # 7. Create additional aliases, skipping normalized duplicates
     seen_normalized: set[str] = {normalized_name}
@@ -1855,7 +1853,7 @@ async def create_entity(
             alias_type=EntityAliasType.NAME_VARIANT,
             occurrence_count=0,
         )
-        await _alias_repo.create(session, obj_in=alias_create)
+        await alias_repo.create(session, obj_in=alias_create)
 
     # 8. Commit and return 201
     await session.commit()

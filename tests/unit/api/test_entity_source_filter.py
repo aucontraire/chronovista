@@ -155,13 +155,16 @@ def _make_entity_session(entity_id: uuid.UUID) -> AsyncMock:
     """
     mock_session = AsyncMock(spec=AsyncSession)
 
-    # session.get(NamedEntityDB, entity_id) returns a mock entity
+    # scan_entity validates via NamedEntityRepository.get, i.e.
+    # session.execute(...).scalar_one_or_none() (#256), not session.get.
     @dataclass
     class _FakeEntity:
         id: uuid.UUID
         status: str = "active"
 
-    mock_session.get = AsyncMock(return_value=_FakeEntity(id=entity_id))
+    entity_result = MagicMock()
+    entity_result.scalar_one_or_none.return_value = _FakeEntity(id=entity_id)
+    mock_session.execute = AsyncMock(return_value=entity_result)
     mock_session.commit = AsyncMock()
     return mock_session
 
@@ -181,9 +184,11 @@ def _make_video_session(video_id: str) -> AsyncMock:
     """
     mock_session = AsyncMock(spec=AsyncSession)
 
-    video_mock = MagicMock()
-    video_mock.video_id = video_id
-    mock_session.get = AsyncMock(return_value=video_mock)
+    # scan_video_entities validates via VideoRepository.exists_by_video_id, i.e.
+    # session.execute(...).first() is not None (#256), not session.get.
+    video_result = MagicMock()
+    video_result.first.return_value = (video_id,)
+    mock_session.execute = AsyncMock(return_value=video_result)
     mock_session.commit = AsyncMock()
     return mock_session
 

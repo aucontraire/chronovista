@@ -2294,6 +2294,7 @@ async def scan_entity(
     entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
     request: ScanRequest = Body(default_factory=ScanRequest),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
 ) -> ScanJobResponse:
     """Launch an asynchronous entity mention scan for a single entity.
 
@@ -2318,7 +2319,7 @@ async def scan_entity(
         The created scan job (status ``"running"``) wrapped in ``data``.
     """
     # 1. Validate entity exists
-    entity = await session.get(NamedEntityDB, entity_id)
+    entity = await entity_repo.get(session, entity_id)
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
 
@@ -2369,6 +2370,7 @@ async def scan_video_entities(
     video_id: str = Path(..., description="YouTube video ID"),
     request: ScanRequest = Body(default_factory=ScanRequest),
     session: AsyncSession = Depends(get_db),
+    video_repo: VideoRepository = Depends(get_video_repository),
 ) -> ScanJobResponse:
     """Launch an asynchronous entity mention scan for a single video.
 
@@ -2399,8 +2401,7 @@ async def scan_video_entities(
         If a scan is already in progress for this video (409).
     """
     # 1. Validate video exists
-    video = await session.get(VideoDB, video_id)
-    if video is None:
+    if not await video_repo.exists_by_video_id(session, video_id):
         raise NotFoundError(resource_type="Video", identifier=video_id)
 
     # 2. Concurrency guard

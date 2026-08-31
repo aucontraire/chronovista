@@ -300,6 +300,121 @@ class PlaylistRepository(
         )
         return list(result.scalars().all())
 
+    async def get_active_by_playlist_id(
+        self, session: AsyncSession, playlist_id: str
+    ) -> PlaylistDB | None:
+        """Get a single non-hidden playlist by id.
+
+        Filters ``deleted_flag = False`` so a playlist an enrichment run hid
+        (#149) reads as absent here — the detail endpoint returns 404 for it,
+        matching the list views that also exclude hidden rows.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        playlist_id : str
+            The playlist id (YouTube or internal).
+
+        Returns
+        -------
+        PlaylistDB | None
+            The playlist, or ``None`` if absent or hidden.
+        """
+        result = await session.execute(
+            select(PlaylistDB)
+            .where(PlaylistDB.playlist_id == playlist_id)
+            .where(PlaylistDB.deleted_flag.is_(False))
+        )
+        return result.scalar_one_or_none()
+
+    async def list_filtered(
+        self,
+        session: AsyncSession,
+        *,
+        linked: bool | None = None,
+        unlinked: bool | None = None,
+        playlist_type: PlaylistType | None = None,
+        sort_by: str = "created_at",
+        descending: bool = True,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[PlaylistDB], int]:
+        """List non-hidden playlists with linked/type filters, sorted + paginated.
+
+        Excludes ``deleted_flag`` rows. ``linked`` / ``unlinked`` are the caller's
+        already-validated mutually-exclusive intent (the 400 for ``linked=True``
+        AND ``unlinked=True`` is raised in the router before this is called);
+        each resolves to a YouTube-prefix set (``PL``/``LL``/``WL``/``HL``) or the
+        internal ``int_`` prefix. The count is taken over the filtered-but-
+        unpaginated set, so totals reflect every filter.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        linked : bool | None
+            ``True`` → YouTube-linked only; ``False`` → internal only.
+        unlinked : bool | None
+            ``True`` → internal only; ``False`` → YouTube-linked only.
+        playlist_type : PlaylistType | None
+            Restrict to a single playlist type (Feature 058).
+        sort_by : str
+            One of ``"title"``, ``"created_at"``, ``"video_count"``.
+        descending : bool
+            Sort direction (default True → newest/largest first).
+        skip : int
+            Pagination offset.
+        limit : int
+            Page size.
+
+        Returns
+        -------
+        tuple[list[PlaylistDB], int]
+            The page of playlists and the total matching count.
+        """
+        linked_condition = or_(
+            PlaylistDB.playlist_id.like("PL%"),
+            PlaylistDB.playlist_id.like("LL%"),
+            PlaylistDB.playlist_id.like("WL%"),
+            PlaylistDB.playlist_id.like("HL%"),
+        )
+
+        query = select(PlaylistDB).where(PlaylistDB.deleted_flag.is_(False))
+
+        # Precedence is load-bearing: `linked is False` means "show internal"
+        # and MUST be tested before `unlinked is False` means "show linked".
+        # Only the two internal branches merge (linked=True&unlinked=True is
+        # rejected upstream with a 400).
+        if linked is True:
+            query = query.where(linked_condition)
+        elif unlinked is True or linked is False:
+            query = query.where(PlaylistDB.playlist_id.like("int_%"))
+        elif unlinked is False:
+            query = query.where(linked_condition)
+
+        if playlist_type is not None:
+            query = query.where(PlaylistDB.playlist_type == playlist_type.value)
+
+        count_query = select(func.count()).select_from(query.subquery())
+        total = (await session.execute(count_query)).scalar() or 0
+
+        sort_column_map = {
+            "title": PlaylistDB.title,
+            "created_at": PlaylistDB.created_at,
+            "video_count": PlaylistDB.video_count,
+        }
+        sort_column = sort_column_map[sort_by]
+        order_clause = sort_column.desc() if descending else sort_column.asc()
+
+        query = (
+            query.order_by(order_clause, PlaylistDB.playlist_id.asc())
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await session.execute(query)
+        return list(result.scalars().all()), total
+
     async def promote_playlist_type(
         self, session: AsyncSession, playlist_id: str, new_type: PlaylistType
     ) -> None:

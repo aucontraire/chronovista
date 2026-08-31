@@ -300,3 +300,9 @@ class TestChannelAndEntityMentionDependencies:
         from chronovista.repositories import EntityMentionRepository
 
         assert isinstance(get_entity_mention_repository(), EntityMentionRepository)
+
+    def test_get_playlist_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_playlist_repository
+        from chronovista.repositories import PlaylistRepository
+
+        assert isinstance(get_playlist_repository(), PlaylistRepository)

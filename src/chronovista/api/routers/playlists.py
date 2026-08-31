@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import get_db, get_playlist_repository, require_auth
 from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.playlists import (
     HiddenPlaylistItem,
@@ -104,6 +104,7 @@ def build_transcript_summary(
 @router.get("/playlists", response_model=PlaylistListResponse, responses=LIST_ERRORS)
 async def list_playlists(
     session: AsyncSession = Depends(get_db),
+    playlist_repo: PlaylistRepository = Depends(get_playlist_repository),
     linked: bool | None = Query(
         None,
         description="Filter for YouTube-linked playlists (PL/LL/WL/HL prefix)",
@@ -169,67 +170,16 @@ async def list_playlists(
             mutually_exclusive=True,
         )
 
-    # Build base query
-    query = select(PlaylistDB).where(PlaylistDB.deleted_flag.is_(False))
-
-    # Apply linked/unlinked filters
-    if linked is True:
-        # YouTube-linked playlists start with PL, LL, WL, or HL
-        query = query.where(
-            (PlaylistDB.playlist_id.like("PL%"))
-            | (PlaylistDB.playlist_id.like("LL%"))
-            | (PlaylistDB.playlist_id.like("WL%"))
-            | (PlaylistDB.playlist_id.like("HL%"))
-        )
-    elif unlinked is True:
-        # Internal playlists start with int_
-        query = query.where(PlaylistDB.playlist_id.like("int_%"))
-    elif linked is False:
-        # linked=false means unlinked playlists
-        query = query.where(PlaylistDB.playlist_id.like("int_%"))
-    elif unlinked is False:
-        # unlinked=false means linked playlists
-        query = query.where(
-            (PlaylistDB.playlist_id.like("PL%"))
-            | (PlaylistDB.playlist_id.like("LL%"))
-            | (PlaylistDB.playlist_id.like("WL%"))
-            | (PlaylistDB.playlist_id.like("HL%"))
-        )
-
-    # Apply playlist_type filter (Feature 058, US3). Added before the count
-    # query is derived so totals reflect the filter too.
-    if playlist_type is not None:
-        query = query.where(PlaylistDB.playlist_type == playlist_type.value)
-
-    # Get total count (before pagination)
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await session.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Map sort field to database column
-    sort_column_map = {
-        PlaylistSortField.TITLE: PlaylistDB.title,
-        PlaylistSortField.CREATED_AT: PlaylistDB.created_at,
-        PlaylistSortField.VIDEO_COUNT: PlaylistDB.video_count,
-    }
-    sort_column = sort_column_map[sort_by]
-
-    # Apply sort order
-    if sort_order == SortOrder.ASC:
-        order_clause = sort_column.asc()
-    else:
-        order_clause = sort_column.desc()
-
-    # Apply ordering and pagination (secondary sort by playlist_id for determinism)
-    query = (
-        query.order_by(order_clause, PlaylistDB.playlist_id.asc())
-        .offset(offset)
-        .limit(limit)
+    playlists, total = await playlist_repo.list_filtered(
+        session,
+        linked=linked,
+        unlinked=unlinked,
+        playlist_type=playlist_type,
+        sort_by=sort_by.value,
+        descending=(sort_order == SortOrder.DESC),
+        skip=offset,
+        limit=limit,
     )
-
-    # Execute query
-    result = await session.execute(query)
-    playlists = result.scalars().all()
 
     # Transform to response items
     items = [PlaylistListItem.model_validate(p) for p in playlists]
@@ -252,6 +202,7 @@ async def list_playlists(
 )
 async def list_hidden_playlists(
     session: AsyncSession = Depends(get_db),
+    playlist_repo: PlaylistRepository = Depends(get_playlist_repository),
 ) -> HiddenPlaylistListResponse:
     """List playlists hidden from every other view by ``deleted_flag``.
 
@@ -270,7 +221,7 @@ async def list_hidden_playlists(
     HiddenPlaylistListResponse
         Hidden playlists, most recently hidden first.
     """
-    playlists = await PlaylistRepository().get_hidden_playlists(session)
+    playlists = await playlist_repo.get_hidden_playlists(session)
     return HiddenPlaylistListResponse(
         data=[HiddenPlaylistItem.model_validate(p) for p in playlists],
         total=len(playlists),
@@ -285,6 +236,7 @@ async def list_hidden_playlists(
 async def restore_playlists(
     request: PlaylistRestoreRequest,
     session: AsyncSession = Depends(get_db),
+    playlist_repo: PlaylistRepository = Depends(get_playlist_repository),
 ) -> PlaylistRestoreResponse:
     """Un-hide playlists that were marked deleted.
 
@@ -308,13 +260,14 @@ async def restore_playlists(
     PlaylistRestoreResponse
         Count restored, plus any requested IDs that were not hidden.
     """
-    repository = PlaylistRepository()
-    hidden_ids = {p.playlist_id for p in await repository.get_hidden_playlists(session)}
+    hidden_ids = {
+        p.playlist_id for p in await playlist_repo.get_hidden_playlists(session)
+    }
 
     targets = [pid for pid in request.playlist_ids if pid in hidden_ids]
     skipped = [pid for pid in request.playlist_ids if pid not in hidden_ids]
 
-    restored = await repository.restore_playlists(session, targets)
+    restored = await playlist_repo.restore_playlists(session, targets)
     await session.commit()
 
     return PlaylistRestoreResponse(restored=restored, skipped=skipped)
@@ -333,6 +286,7 @@ async def get_playlist(
         description="Playlist ID (YouTube or internal)",
     ),
     session: AsyncSession = Depends(get_db),
+    playlist_repo: PlaylistRepository = Depends(get_playlist_repository),
 ) -> PlaylistDetailResponse:
     """Get playlist details by ID.
 
@@ -356,15 +310,7 @@ async def get_playlist(
     NotFoundError
         If playlist not found.
     """
-    # Query playlist
-    query = (
-        select(PlaylistDB)
-        .where(PlaylistDB.playlist_id == playlist_id)
-        .where(PlaylistDB.deleted_flag.is_(False))
-    )
-
-    result = await session.execute(query)
-    playlist = result.scalar_one_or_none()
+    playlist = await playlist_repo.get_active_by_playlist_id(session, playlist_id)
 
     if not playlist:
         raise NotFoundError(

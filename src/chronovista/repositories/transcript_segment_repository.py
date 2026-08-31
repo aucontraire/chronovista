@@ -13,7 +13,17 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from sqlalchemy import ColumnElement, and_, case, delete, distinct, func, or_, select
+from sqlalchemy import (
+    ColumnElement,
+    and_,
+    case,
+    delete,
+    distinct,
+    func,
+    literal,
+    or_,
+    select,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
@@ -623,6 +633,75 @@ class TranscriptSegmentRepository(
 
         result = await session.execute(stmt)
         return result.scalars().all()
+
+    async def count_whole_word_matches(
+        self,
+        session: AsyncSession,
+        token: str,
+        whole_word_regex: str,
+        *,
+        cap: int,
+    ) -> int:
+        r"""Count segments whose effective text contains ``token`` as a whole word.
+
+        Word-boundary, **not** substring: the token does not match inside a larger
+        word, so ``"ACME"`` does not count ``"ACMES"``. The caller supplies
+        ``whole_word_regex`` (a POSIX ``\y…\y`` pattern) as the exact recheck; this
+        is the same boundary rule the Find & Replace search uses, so the count
+        agrees with what a replace would actually change. Case-sensitive.
+
+        The trigram-eligible substring super-set on the raw columns is kept as an
+        index prefilter (a whole-word match implies the substring is present, so
+        nothing true is dropped), with the word-boundary regex as the exact
+        recheck on the effective (post-correction) text. The count is capped at
+        ``cap`` (#212).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        token : str
+            The raw token, used for the trigram-index substring prefilter.
+        whole_word_regex : str
+            POSIX regex matching ``token`` as a whole word, used for the exact
+            recheck against the effective text.
+        cap : int
+            Upper bound on the count (bounds the heap fetch; #212).
+
+        Returns
+        -------
+        int
+            Number of matching segments, capped at ``cap``.
+        """
+        effective_text = case(
+            (TranscriptSegmentDB.has_correction, TranscriptSegmentDB.corrected_text),
+            else_=TranscriptSegmentDB.text,
+        )
+        matching_rows = (
+            select(literal(1))
+            .select_from(TranscriptSegmentDB)
+            .where(
+                # Index-eligible super-set on the RAW columns so PostgreSQL can use
+                # the pg_trgm GIN indexes (idx_segments_text_trgm /
+                # idx_segments_corrected_text_trgm). A CASE expression is opaque to
+                # them and forces a parallel seq scan of ~2M rows — once per token.
+                # Same fix as #150.
+                or_(
+                    TranscriptSegmentDB.text.contains(token),
+                    TranscriptSegmentDB.corrected_text.contains(token),
+                ),
+                # Exact recheck against the super-set: whole-word (word boundary),
+                # not substring. A segment whose correction removed the token is
+                # excluded too, because the recheck runs on the effective
+                # (post-correction) text.
+                effective_text.op("~")(whole_word_regex),
+            )
+            # The ceiling bounds the heap fetch (#212).
+            .limit(cap)
+            .subquery()
+        )
+        result = await session.execute(select(func.count()).select_from(matching_rows))
+        return int(result.scalar_one())
 
     async def count_filtered(
         self,

@@ -1276,7 +1276,9 @@ class TestRemainingWholeWordCount:
         )
         await db_session.flush()
 
-        remaining = await _remaining_whole_word_matches(db_session, "ACME")
+        remaining = await _remaining_whole_word_matches(
+            TranscriptSegmentRepository(), db_session, "ACME"
+        )
 
         assert remaining == 1, "only the whole-word 'ACME' counts; 'ACMES' must not"
 
@@ -1296,7 +1298,9 @@ class TestRemainingWholeWordCount:
         )
         await db_session.flush()
 
-        remaining = await _remaining_whole_word_matches(db_session, "ACME")
+        remaining = await _remaining_whole_word_matches(
+            TranscriptSegmentRepository(), db_session, "ACME"
+        )
 
         assert remaining == 0
 
@@ -1313,6 +1317,8 @@ class TestRemainingWholeWordCount:
         )
         await db_session.flush()
 
-        remaining = await _remaining_whole_word_matches(db_session, "ACME")
+        remaining = await _remaining_whole_word_matches(
+            TranscriptSegmentRepository(), db_session, "ACME"
+        )
 
         assert remaining == 0

@@ -7,14 +7,12 @@ such as category navigation with video counts.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import get_db, get_video_category_repository, require_auth
 from chronovista.api.routers.responses import LIST_ERRORS
 from chronovista.api.schemas.sidebar import SidebarCategory, SidebarCategoryResponse
-from chronovista.db.models import Video, VideoCategory
-from chronovista.models.enums import AvailabilityStatus
+from chronovista.repositories.video_category_repository import VideoCategoryRepository
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -25,6 +23,7 @@ router = APIRouter(dependencies=[Depends(require_auth)])
     responses=LIST_ERRORS,
 )
 async def get_sidebar_categories(
+    repo: VideoCategoryRepository = Depends(get_video_category_repository),
     session: AsyncSession = Depends(get_db),
     include_unavailable: bool = Query(
         False,
@@ -41,55 +40,32 @@ async def get_sidebar_categories(
 
     Parameters
     ----------
+    repo : VideoCategoryRepository
+        Video category repository injected via the DI container.
     session : AsyncSession
         Database session from dependency.
+    include_unavailable : bool
+        Include unavailable videos in the per-category counts.
 
     Returns
     -------
     SidebarCategoryResponse
         Categories ordered by video_count descending.
     """
-    # Subquery for video count per category
-    video_count_conditions = [Video.category_id == VideoCategory.category_id]
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        video_count_conditions.append(
-            Video.availability_status == AvailabilityStatus.AVAILABLE
-        )
-
-    video_count_subq = (
-        select(func.count(Video.video_id))
-        .where(*video_count_conditions)
-        .correlate(VideoCategory)
-        .scalar_subquery()
+    rows = await repo.get_with_video_counts(
+        session,
+        include_unavailable=include_unavailable,
+        only_with_videos=True,
     )
 
-    # Query categories with video counts
-    query = select(
-        VideoCategory.category_id,
-        VideoCategory.name,
-        video_count_subq.label("video_count"),
-    ).where(
-        video_count_subq > 0
-    )  # Only include categories with videos
-
-    # Order by video count descending
-    query = query.order_by(video_count_subq.desc())
-
-    # Execute query
-    result = await session.execute(query)
-    rows = result.all()
-
-    # Transform to response items with href
-    items: list[SidebarCategory] = []
-    for row in rows:
-        items.append(
-            SidebarCategory(
-                category_id=row.category_id,
-                name=row.name,
-                video_count=row.video_count or 0,
-                href=f"/videos?category={row.category_id}",
-            )
+    items = [
+        SidebarCategory(
+            category_id=row.category_id,
+            name=row.name,
+            video_count=row.video_count,
+            href=f"/videos?category={row.category_id}",
         )
+        for row in rows
+    ]
 
     return SidebarCategoryResponse(data=items)

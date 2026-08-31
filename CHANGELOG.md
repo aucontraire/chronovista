@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.74.5] - 2026-08-30
+
+### Changed
+- **Internal: migrated six API routers off inline SQL onto the repository layer and FastAPI dependency injection (#256).** The `sidebar`, `categories`, `settings`, `transcript-corrections`, `canonical-tags`, and `batch-corrections` routers no longer construct `select(...)` queries inline or hold module-level repository/service singletons; each endpoint's data access now lives in a repository method and is provided through `Depends`. There is **no user-facing or API change** — the public contract is byte-for-byte identical (verified by diffing the generated OpenAPI schema across all 83 endpoints), and each migration was checked for behavioral parity against real data. As part of the sidebar/categories work, a correlated-subquery category-count aggregate was rewritten as an indexed `LEFT JOIN` (measured ~3–13× faster on production data) and the category list gained a deterministic pagination tiebreak so pages stay stable when video counts tie.
+
 ## [0.74.4] - 2026-08-25
 
 ### Fixed

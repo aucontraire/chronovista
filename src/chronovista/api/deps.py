@@ -1,17 +1,34 @@
 """FastAPI dependencies for API endpoints."""
 
 from collections.abc import AsyncGenerator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
+    from chronovista.services.batch_correction_service import BatchCorrectionService
     from chronovista.services.tag_management import TagManagementService
+    from chronovista.services.transcript_correction_service import (
+        TranscriptCorrectionService,
+    )
 
 from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
 from chronovista.config.settings import settings
+from chronovista.repositories import (
+    CanonicalTagRepository,
+    ChannelRepository,
+    NamedEntityRepository,
+    PlaylistRepository,
+    TranscriptSegmentRepository,
+    VideoRepository,
+    VideoTranscriptRepository,
+)
+from chronovista.repositories.transcript_correction_repository import (
+    TranscriptCorrectionRepository,
+)
+from chronovista.repositories.video_category_repository import VideoCategoryRepository
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
 from chronovista.services.recovery.page_parser import PageParser
 
@@ -123,6 +140,174 @@ def get_tag_management_service() -> "TagManagementService":
         named_entity_repo=NamedEntityRepository(),
         entity_alias_repo=EntityAliasRepository(),
         operation_log_repo=TagOperationLogRepository(),
+    )
+
+
+def get_video_category_repository() -> VideoCategoryRepository:
+    """
+    Dependency providing a VideoCategoryRepository via the DI container.
+
+    Wires the container's repository factory into FastAPI's ``Depends()``
+    (issue #256), so endpoints inject the repository instead of constructing
+    queries inline. The repository is session-agnostic — the session flows in
+    per method call — so a fresh per-request instance is cheap, and tests can
+    override this dependency to substitute a fake.
+
+    Returns
+    -------
+    VideoCategoryRepository
+        A repository instance for video category operations.
+    """
+    from chronovista.container import container
+
+    return container.create_video_category_repository()
+
+
+class StatsRepositories(NamedTuple):
+    """The repositories whose row counts make up the app-info database stats.
+
+    Bundled so the app-info endpoint injects one dependency instead of six
+    (issue #256); each is a fresh, session-agnostic repository from the DI
+    container. Named access (``repos.video``) keeps the call sites readable.
+
+    Notes
+    -----
+    Always inject this by passing the factory explicitly —
+    ``Depends(get_stats_repositories)`` — never the bare ``Depends()`` idiom:
+    FastAPI would try to treat this NamedTuple's repository-typed fields as
+    request-model fields and crash at startup.
+
+    This bundle is 1:1 with ``DatabaseStats``. For an endpoint needing a
+    different subset of counts, add a second bundle rather than stretching this
+    one to cover an unrelated shape.
+    """
+
+    video: VideoRepository
+    channel: ChannelRepository
+    playlist: PlaylistRepository
+    transcript: VideoTranscriptRepository
+    correction: TranscriptCorrectionRepository
+    canonical_tag: CanonicalTagRepository
+
+
+def get_stats_repositories() -> StatsRepositories:
+    """
+    Dependency bundling the repositories the app-info endpoint counts.
+
+    Wires the container's repository factories into FastAPI's ``Depends()``
+    (issue #256) so the endpoint reads row counts via ``repo.count(session)``
+    instead of building ``select(func.count())`` inline. The repositories are
+    session-agnostic, so fresh per-request instances are cheap.
+
+    Returns
+    -------
+    StatsRepositories
+        The six repositories whose counts populate ``DatabaseStats``.
+    """
+    from chronovista.container import container
+
+    return StatsRepositories(
+        video=container.create_video_repository(),
+        channel=container.create_channel_repository(),
+        playlist=container.create_playlist_repository(),
+        transcript=container.create_video_transcript_repository(),
+        correction=container.create_transcript_correction_repository(),
+        canonical_tag=container.create_canonical_tag_repository(),
+    )
+
+
+def get_canonical_tag_repository() -> CanonicalTagRepository:
+    """Dependency providing a CanonicalTagRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_canonical_tag_repository()
+
+
+def get_video_repository() -> VideoRepository:
+    """Dependency providing a VideoRepository via the DI container (issue #256)."""
+    from chronovista.container import container
+
+    return container.create_video_repository()
+
+
+def get_named_entity_repository() -> NamedEntityRepository:
+    """Dependency providing a NamedEntityRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_named_entity_repository()
+
+
+def get_batch_correction_service() -> "BatchCorrectionService":
+    """
+    Dependency providing a BatchCorrectionService via the DI container.
+
+    Replaces the batch-corrections router's module-level service singleton
+    (issue #256) with a per-request, container-wired instance. The batch service
+    wraps a TranscriptCorrectionService; all three repositories are stateless, so
+    per-request construction is cheap. The correction and segment repositories are
+    shared between the two services, mirroring the original singleton wiring.
+
+    Returns
+    -------
+    BatchCorrectionService
+        A service wired with a correction service and the segment/correction repos.
+    """
+    from chronovista.container import container
+    from chronovista.services.batch_correction_service import BatchCorrectionService
+    from chronovista.services.transcript_correction_service import (
+        TranscriptCorrectionService,
+    )
+
+    correction_repo = container.create_transcript_correction_repository()
+    segment_repo = container.create_transcript_segment_repository()
+    correction_service = TranscriptCorrectionService(
+        correction_repo=correction_repo,
+        segment_repo=segment_repo,
+        transcript_repo=container.create_video_transcript_repository(),
+    )
+    return BatchCorrectionService(
+        correction_service=correction_service,
+        segment_repo=segment_repo,
+        correction_repo=correction_repo,
+    )
+
+
+def get_transcript_segment_repository() -> TranscriptSegmentRepository:
+    """Dependency providing a TranscriptSegmentRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_transcript_segment_repository()
+
+
+def get_transcript_correction_repository() -> TranscriptCorrectionRepository:
+    """Dependency providing a TranscriptCorrectionRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_transcript_correction_repository()
+
+
+def get_transcript_correction_service() -> "TranscriptCorrectionService":
+    """
+    Dependency providing a TranscriptCorrectionService via the DI container.
+
+    Replaces the router's module-level service singleton (issue #256) with a
+    per-request, container-wired instance. The service is stateless (it holds
+    only its three repositories), so per-request construction is cheap.
+
+    Returns
+    -------
+    TranscriptCorrectionService
+        A service wired with the correction, segment, and transcript repos.
+    """
+    from chronovista.container import container
+    from chronovista.services.transcript_correction_service import (
+        TranscriptCorrectionService,
+    )
+
+    return TranscriptCorrectionService(
+        correction_repo=container.create_transcript_correction_repository(),
+        segment_repo=container.create_transcript_segment_repository(),
+        transcript_repo=container.create_video_transcript_repository(),
     )
 
 

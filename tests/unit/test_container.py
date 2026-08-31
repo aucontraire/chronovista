@@ -23,10 +23,13 @@ import pytest
 # Module-level marker ensures all async tests work with coverage
 from chronovista.container import Container, RequestContext
 from chronovista.repositories import (
+    CanonicalTagRepository,
     ChannelRepository,
     ChannelTopicRepository,
+    NamedEntityRepository,
     PlaylistRepository,
     TopicCategoryRepository,
+    TranscriptSegmentRepository,
     UserVideoRepository,
     VideoCategoryRepository,
     VideoRepository,
@@ -35,6 +38,9 @@ from chronovista.repositories import (
 )
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
+)
+from chronovista.repositories.transcript_correction_repository import (
+    TranscriptCorrectionRepository,
 )
 
 # =============================================================================
@@ -104,6 +110,30 @@ class TestRepositoryFactories:
         c = Container()
         repo = c.create_video_category_repository()
         assert isinstance(repo, VideoCategoryRepository)
+
+    def test_create_transcript_correction_repository(self) -> None:
+        """Verify transcript correction repository factory returns correct type."""
+        c = Container()
+        repo = c.create_transcript_correction_repository()
+        assert isinstance(repo, TranscriptCorrectionRepository)
+
+    def test_create_canonical_tag_repository(self) -> None:
+        """Verify canonical tag repository factory returns correct type."""
+        c = Container()
+        repo = c.create_canonical_tag_repository()
+        assert isinstance(repo, CanonicalTagRepository)
+
+    def test_create_transcript_segment_repository(self) -> None:
+        """Verify transcript segment repository factory returns correct type."""
+        c = Container()
+        repo = c.create_transcript_segment_repository()
+        assert isinstance(repo, TranscriptSegmentRepository)
+
+    def test_create_named_entity_repository(self) -> None:
+        """Verify named entity repository factory returns correct type."""
+        c = Container()
+        repo = c.create_named_entity_repository()
+        assert isinstance(repo, NamedEntityRepository)
 
 
 # =============================================================================

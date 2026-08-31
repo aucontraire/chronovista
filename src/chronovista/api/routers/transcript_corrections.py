@@ -7,10 +7,16 @@ be added incrementally as Feature 034 tasks are implemented.
 """
 
 from fastapi import APIRouter, Body, Depends, Path, Query
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_db,
+    get_transcript_correction_repository,
+    get_transcript_correction_service,
+    get_transcript_segment_repository,
+    get_video_repository,
+    require_auth,
+)
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.api.schemas.transcript_corrections import (
     CorrectionAuditRecord,
@@ -19,9 +25,6 @@ from chronovista.api.schemas.transcript_corrections import (
     CorrectionSubmitResponse,
     SegmentCorrectionState,
 )
-from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
-from chronovista.db.models import TranscriptSegment as SegmentDB
-from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import APIValidationError, NotFoundError
 from chronovista.models.correction_actors import ACTOR_USER_LOCAL
 from chronovista.repositories.transcript_correction_repository import (
@@ -30,24 +33,12 @@ from chronovista.repositories.transcript_correction_repository import (
 from chronovista.repositories.transcript_segment_repository import (
     TranscriptSegmentRepository,
 )
-from chronovista.repositories.video_transcript_repository import (
-    VideoTranscriptRepository,
-)
+from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.transcript_correction_service import (
     TranscriptCorrectionService,
 )
 
 router = APIRouter(dependencies=[Depends(require_auth)])
-
-# Module-level service instantiation (singleton pattern)
-_correction_repo = TranscriptCorrectionRepository()
-_segment_repo = TranscriptSegmentRepository()
-_transcript_repo = VideoTranscriptRepository()
-_correction_service = TranscriptCorrectionService(
-    correction_repo=_correction_repo,
-    segment_repo=_segment_repo,
-    transcript_repo=_transcript_repo,
-)
 
 
 def _map_correction_error(error: ValueError) -> APIValidationError:
@@ -74,6 +65,28 @@ def _map_correction_error(error: ValueError) -> APIValidationError:
     return exc
 
 
+async def _segment_state(
+    segment_repo: TranscriptSegmentRepository,
+    session: AsyncSession,
+    segment_id: int,
+) -> SegmentCorrectionState:
+    """Build the current correction state for a segment after apply/revert.
+
+    The segment is guaranteed to exist here — the caller has just applied or
+    reverted a correction on it, which would have raised otherwise.
+    """
+    segment = await segment_repo.get(session, segment_id)
+    assert segment is not None  # present after a successful apply/revert
+
+    effective_text = (
+        segment.corrected_text if segment.has_correction else segment.text
+    ) or segment.text
+    return SegmentCorrectionState(
+        has_correction=segment.has_correction,
+        effective_text=effective_text,
+    )
+
+
 @router.post(
     "/videos/{video_id}/transcript/segments/{segment_id}/corrections",
     response_model=ApiResponse[CorrectionSubmitResponse],
@@ -85,6 +98,11 @@ async def submit_correction(
     segment_id: int = Path(..., description="Transcript segment primary key"),
     language_code: str = Query(..., description="BCP-47 language code"),
     body: CorrectionSubmitRequest = Body(...),
+    service: TranscriptCorrectionService = Depends(get_transcript_correction_service),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    segment_repo: TranscriptSegmentRepository = Depends(
+        get_transcript_segment_repository
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[CorrectionSubmitResponse]:
     """Submit a correction for a transcript segment.
@@ -103,6 +121,12 @@ async def submit_correction(
         BCP-47 language code (required query parameter).
     body : CorrectionSubmitRequest
         Correction details including corrected text and type.
+    service : TranscriptCorrectionService
+        Correction service injected via the DI container.
+    video_repo : VideoRepository
+        Video repository injected via the DI container.
+    segment_repo : TranscriptSegmentRepository
+        Transcript segment repository injected via the DI container.
     session : AsyncSession
         Database session (injected).
 
@@ -119,15 +143,11 @@ async def submit_correction(
         If the segment is not found, the corrected text is identical
         to the current effective text, or the correction type is invalid (422).
     """
-    # Check video existence
-    video_query = select(VideoDB.video_id).where(VideoDB.video_id == video_id)
-    video_result = await session.execute(video_query)
-    if not video_result.scalar_one_or_none():
+    if not await video_repo.exists(session, video_id):
         raise NotFoundError(resource_type="Video", identifier=video_id)
 
-    # Apply correction via service
     try:
-        correction_db = await _correction_service.apply_correction(
+        correction_db = await service.apply_correction(
             session,
             video_id=video_id,
             language_code=language_code,
@@ -140,24 +160,9 @@ async def submit_correction(
     except ValueError as e:
         raise _map_correction_error(e) from e
 
-    # Get updated segment state
-    segment_query = select(SegmentDB).where(SegmentDB.id == segment_id)
-    segment_result = await session.execute(segment_query)
-    segment = segment_result.scalar_one()
-
-    effective_text = (
-        segment.corrected_text if segment.has_correction else segment.text
-    ) or segment.text
-
-    # Build response
-    audit_record = CorrectionAuditRecord.model_validate(correction_db)
-    segment_state = SegmentCorrectionState(
-        has_correction=segment.has_correction,
-        effective_text=effective_text,
-    )
     response_data = CorrectionSubmitResponse(
-        correction=audit_record,
-        segment_state=segment_state,
+        correction=CorrectionAuditRecord.model_validate(correction_db),
+        segment_state=await _segment_state(segment_repo, session, segment_id),
     )
     return ApiResponse[CorrectionSubmitResponse](data=response_data)
 
@@ -172,6 +177,11 @@ async def revert_correction(
     video_id: str = Path(..., description="YouTube video ID"),
     segment_id: int = Path(..., description="Transcript segment primary key"),
     language_code: str = Query(..., description="BCP-47 language code"),
+    service: TranscriptCorrectionService = Depends(get_transcript_correction_service),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    segment_repo: TranscriptSegmentRepository = Depends(
+        get_transcript_segment_repository
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[CorrectionRevertResponse]:
     """Revert the most recent correction for a transcript segment.
@@ -187,6 +197,12 @@ async def revert_correction(
         Primary key of the transcript segment.
     language_code : str
         BCP-47 language code (required query parameter).
+    service : TranscriptCorrectionService
+        Correction service injected via the DI container.
+    video_repo : VideoRepository
+        Video repository injected via the DI container.
+    segment_repo : TranscriptSegmentRepository
+        Transcript segment repository injected via the DI container.
     session : AsyncSession
         Database session (injected).
 
@@ -202,38 +218,17 @@ async def revert_correction(
     APIValidationError
         If no active correction exists to revert (422).
     """
-    # Check video existence
-    video_query = select(VideoDB.video_id).where(VideoDB.video_id == video_id)
-    video_result = await session.execute(video_query)
-    if not video_result.scalar_one_or_none():
+    if not await video_repo.exists(session, video_id):
         raise NotFoundError(resource_type="Video", identifier=video_id)
 
-    # Revert correction via service
     try:
-        correction_db = await _correction_service.revert_correction(
-            session, segment_id=segment_id
-        )
+        correction_db = await service.revert_correction(session, segment_id=segment_id)
     except ValueError as e:
         raise _map_correction_error(e) from e
 
-    # Get updated segment state
-    segment_query = select(SegmentDB).where(SegmentDB.id == segment_id)
-    segment_result = await session.execute(segment_query)
-    segment = segment_result.scalar_one()
-
-    effective_text = (
-        segment.corrected_text if segment.has_correction else segment.text
-    ) or segment.text
-
-    # Build response
-    audit_record = CorrectionAuditRecord.model_validate(correction_db)
-    segment_state = SegmentCorrectionState(
-        has_correction=segment.has_correction,
-        effective_text=effective_text,
-    )
     response_data = CorrectionRevertResponse(
-        correction=audit_record,
-        segment_state=segment_state,
+        correction=CorrectionAuditRecord.model_validate(correction_db),
+        segment_state=await _segment_state(segment_repo, session, segment_id),
     )
     return ApiResponse[CorrectionRevertResponse](data=response_data)
 
@@ -250,6 +245,10 @@ async def get_correction_history(
     language_code: str = Query(..., description="BCP-47 language code"),
     limit: int = Query(default=50, ge=1, le=100, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    correction_repo: TranscriptCorrectionRepository = Depends(
+        get_transcript_correction_repository
+    ),
+    video_repo: VideoRepository = Depends(get_video_repository),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[list[CorrectionAuditRecord]]:
     """Get the correction history for a transcript segment.
@@ -270,6 +269,10 @@ async def get_correction_history(
         Maximum number of items to return (1--100, default 50).
     offset : int
         Number of items to skip (default 0).
+    correction_repo : TranscriptCorrectionRepository
+        Transcript correction repository injected via the DI container.
+    video_repo : VideoRepository
+        Video repository injected via the DI container.
     session : AsyncSession
         Database session (injected).
 
@@ -283,14 +286,10 @@ async def get_correction_history(
     NotFoundError
         If the video does not exist (404).
     """
-    # Check video existence
-    video_query = select(VideoDB.video_id).where(VideoDB.video_id == video_id)
-    video_result = await session.execute(video_query)
-    if not video_result.scalar_one_or_none():
+    if not await video_repo.exists(session, video_id):
         raise NotFoundError(resource_type="Video", identifier=video_id)
 
-    # Fetch corrections for segment
-    corrections = await _correction_repo.get_by_segment(
+    corrections = await correction_repo.get_by_segment(
         session,
         video_id=video_id,
         language_code=language_code,
@@ -298,20 +297,13 @@ async def get_correction_history(
         skip=offset,
         limit=limit,
     )
-
-    # Count total corrections for pagination
-    count_query = (
-        select(func.count())
-        .select_from(TranscriptCorrectionDB)
-        .where(
-            TranscriptCorrectionDB.video_id == video_id,
-            TranscriptCorrectionDB.language_code == language_code,
-            TranscriptCorrectionDB.segment_id == segment_id,
-        )
+    total = await correction_repo.count_by_segment(
+        session,
+        video_id=video_id,
+        language_code=language_code,
+        segment_id=segment_id,
     )
-    total = (await session.execute(count_query)).scalar() or 0
 
-    # Map to response models
     records = [CorrectionAuditRecord.model_validate(r) for r in corrections]
 
     return ApiResponse[list[CorrectionAuditRecord]](

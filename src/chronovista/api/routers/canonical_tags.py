@@ -18,10 +18,14 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, get_tag_management_service, require_auth
+from chronovista.api.deps import (
+    get_canonical_tag_repository,
+    get_db,
+    get_tag_management_service,
+    require_auth,
+)
 from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.canonical_tags import (
     CanonicalTagDetail,
@@ -46,7 +50,6 @@ from chronovista.api.schemas.videos import (
     VideoListItem,
     VideoListResponse,
 )
-from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.exceptions import NotFoundError
 from chronovista.models.correction_actors import ACTOR_USER_LOCAL
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
@@ -143,9 +146,6 @@ def _check_rate_limit(
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
-# Module-level repository instance (stateless, safe to share)
-_repository = CanonicalTagRepository()
-
 
 @router.get(
     "/canonical-tags/{normalized_form}/videos",
@@ -156,6 +156,7 @@ _repository = CanonicalTagRepository()
     },
 )
 async def get_canonical_tag_videos(
+    repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
     normalized_form: str = Path(
         ..., description="Normalized form of the canonical tag"
     ),
@@ -202,7 +203,7 @@ async def get_canonical_tag_videos(
     start = time.monotonic()
 
     # Verify canonical tag exists
-    tag = await _repository.get_by_normalized_form(session, normalized_form)
+    tag = await repo.get_by_normalized_form(session, normalized_form)
     if tag is None:
         raise NotFoundError(
             resource_type="Canonical Tag",
@@ -213,7 +214,7 @@ async def get_canonical_tag_videos(
     # Execute video query with timeout (NFR-006)
     try:
         videos, total = await asyncio.wait_for(
-            _repository.get_videos_by_normalized_form(
+            repo.get_videos_by_normalized_form(
                 session,
                 normalized_form,
                 include_unavailable=include_unavailable,
@@ -309,6 +310,7 @@ async def get_canonical_tag_videos(
     },
 )
 async def resolve_canonical_tag(
+    repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
     raw_form: str = Query(
         ...,
         min_length=1,
@@ -346,7 +348,7 @@ async def resolve_canonical_tag(
     NotFoundError
         404 if no canonical tag is linked to the given raw form.
     """
-    tag = await _repository.resolve_by_raw_form(session, raw_form)
+    tag = await repo.resolve_by_raw_form(session, raw_form)
     if tag is None:
         raise NotFoundError(
             resource_type="Canonical Tag",
@@ -354,7 +356,7 @@ async def resolve_canonical_tag(
             hint="No canonical tag found for this raw tag. It may be unresolved.",
         )
 
-    aliases = await _repository.get_top_aliases(session, tag.id, limit=alias_limit)
+    aliases = await repo.get_top_aliases(session, tag.id, limit=alias_limit)
 
     alias_items: list[TagAliasItem] = [
         TagAliasItem(
@@ -383,6 +385,7 @@ async def resolve_canonical_tag(
     responses=GET_ITEM_ERRORS,
 )
 async def get_canonical_tag_detail(
+    repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
     normalized_form: str = Path(
         ..., description="Normalized form of the canonical tag"
     ),
@@ -419,7 +422,7 @@ async def get_canonical_tag_detail(
     start = time.monotonic()
 
     # Look up canonical tag
-    tag = await _repository.get_by_normalized_form(session, normalized_form)
+    tag = await repo.get_by_normalized_form(session, normalized_form)
     if tag is None:
         raise NotFoundError(
             resource_type="Canonical Tag",
@@ -428,7 +431,7 @@ async def get_canonical_tag_detail(
         )
 
     # Get top aliases
-    aliases = await _repository.get_top_aliases(session, tag.id, limit=alias_limit)
+    aliases = await repo.get_top_aliases(session, tag.id, limit=alias_limit)
 
     # Build alias items
     alias_items: list[TagAliasItem] = [
@@ -469,6 +472,7 @@ async def get_canonical_tag_detail(
 )
 async def list_canonical_tags(
     request: Request,
+    repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
     q: str | None = Query(
         None,
         min_length=1,
@@ -564,7 +568,7 @@ async def list_canonical_tags(
             suggestions=None,
         )
 
-    items_orm, total = await _repository.search(
+    items_orm, total = await repo.search(
         session,
         q=q,
         match_mode=match_mode.value,
@@ -594,21 +598,17 @@ async def list_canonical_tags(
     suggestions: list[CanonicalTagSuggestion] | None = None
     if q is not None and len(items) == 0 and len(q) >= 2:
         try:
-            # Load top N active canonical tags ordered by video_count DESC
-            pool_query = (
-                select(CanonicalTagDB)
-                .where(CanonicalTagDB.status == "active")
-                .order_by(desc(CanonicalTagDB.video_count))
-                .limit(FUZZY_CANDIDATE_POOL_SIZE)
-            )
+            # Load top N active canonical tags ordered by video_count DESC.
             # The suggestion pool is a second, independent path to a tag name.
-            # Without this it would offer exactly the tags the caller asked to
-            # exclude, at the moment the main search returned nothing — the
-            # case where a suggestion is most likely to be acted on (FR-007).
-            if exclude_linked:
-                pool_query = pool_query.where(CanonicalTagDB.entity_id.is_(None))
-            pool_result = await session.execute(pool_query)
-            pool_tags = list(pool_result.scalars().all())
+            # Without excluding linked tags it would offer exactly the tags the
+            # caller asked to exclude, at the moment the main search returned
+            # nothing — the case where a suggestion is most likely to be acted
+            # on (FR-007).
+            pool_tags = await repo.get_fuzzy_candidate_pool(
+                session,
+                pool_size=FUZZY_CANDIDATE_POOL_SIZE,
+                exclude_linked=exclude_linked,
+            )
 
             # Extract canonical_form values as candidates
             candidates = [tag.canonical_form for tag in pool_tags]

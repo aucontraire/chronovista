@@ -191,6 +191,27 @@ class TestBaseSQLAlchemyRepository:
         assert result == []
         mock_session.execute.assert_called_once()
 
+    async def test_count_returns_scalar(
+        self, repository, mock_session: AsyncMock
+    ) -> None:
+        """count() returns the scalar row count from a single COUNT query."""
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = 42
+        mock_session.execute.return_value = mock_result
+
+        assert await repository.count(mock_session) == 42
+        mock_session.execute.assert_called_once()
+
+    async def test_count_coerces_none_to_zero(
+        self, repository, mock_session: AsyncMock
+    ) -> None:
+        """count() coerces a None scalar (defensive) to 0."""
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        assert await repository.count(mock_session) == 0
+
     def test_model_property(self, repository):
         """Test model property access."""
         assert repository.model == VideoDB

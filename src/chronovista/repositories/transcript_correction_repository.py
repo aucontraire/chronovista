@@ -302,6 +302,48 @@ class TranscriptCorrectionRepository(
         result = await session.execute(stmt)
         return result.scalar_one()
 
+    async def count_by_segment(
+        self,
+        session: AsyncSession,
+        video_id: str,
+        language_code: str,
+        segment_id: int,
+    ) -> int:
+        """
+        Count total corrections for a single transcript segment.
+
+        Companion to :meth:`get_by_segment` for pagination totals (issue #256).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            YouTube video ID.
+        language_code : str
+            BCP-47 language code.
+        segment_id : int
+            Transcript segment primary key.
+
+        Returns
+        -------
+        int
+            Total corrections for the (video_id, language_code, segment_id) tuple.
+        """
+        stmt = (
+            select(func.count())
+            .where(
+                and_(
+                    TranscriptCorrectionDB.video_id == video_id,
+                    TranscriptCorrectionDB.language_code == language_code,
+                    TranscriptCorrectionDB.segment_id == segment_id,
+                )
+            )
+            .select_from(TranscriptCorrectionDB)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one()
+
     async def get_all_filtered(
         self,
         session: AsyncSession,

@@ -52,6 +52,46 @@ class CanonicalTagRepository(
         )
         return result.first() is not None
 
+    async def get_fuzzy_candidate_pool(
+        self,
+        session: AsyncSession,
+        *,
+        pool_size: int,
+        exclude_linked: bool = False,
+    ) -> list[CanonicalTagDB]:
+        """
+        Load the candidate pool for fuzzy tag-name suggestions (issue #256).
+
+        Returns up to ``pool_size`` active canonical tags ordered by video count
+        descending — the pool the search endpoint scans with a Levenshtein
+        matcher when a prefix search returns nothing.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        pool_size : int
+            Maximum number of candidate tags to load.
+        exclude_linked : bool, optional
+            When True, only tags not yet linked to an entity
+            (``entity_id IS NULL``) are returned; default False.
+
+        Returns
+        -------
+        list[CanonicalTagDB]
+            Active canonical tags ordered by video_count descending.
+        """
+        query = (
+            select(CanonicalTagDB)
+            .where(CanonicalTagDB.status == "active")
+            .order_by(desc(CanonicalTagDB.video_count))
+            .limit(pool_size)
+        )
+        if exclude_linked:
+            query = query.where(CanonicalTagDB.entity_id.is_(None))
+        result = await session.execute(query)
+        return list(result.scalars().all())
+
     async def search(
         self,
         session: AsyncSession,

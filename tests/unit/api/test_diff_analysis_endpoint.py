@@ -26,7 +26,11 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_batch_correction_service,
+    get_db,
+    require_auth,
+)
 from chronovista.api.main import app
 from chronovista.api.routers.batch_corrections import (
     _PATTERN_TOKENISE_CAP,
@@ -36,6 +40,7 @@ from chronovista.api.routers.batch_corrections import (
 from chronovista.models.batch_correction_models import CorrectionPattern
 
 # CRITICAL: This line ensures async tests work with coverage
+pytestmark = pytest.mark.asyncio
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Helpers
@@ -80,8 +85,17 @@ def mock_session() -> AsyncMock:
 
 
 @pytest.fixture
-async def client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, None]:
-    """FastAPI test client with DB and auth overridden."""
+def mock_batch_service() -> MagicMock:
+    """Mock service injected via get_batch_correction_service."""
+    return MagicMock()
+
+
+@pytest.fixture
+async def client(
+    mock_session: AsyncMock,
+    mock_batch_service: MagicMock,
+) -> AsyncGenerator[AsyncClient, None]:
+    """FastAPI test client with DB, auth, and batch service overridden."""
 
     async def _get_db() -> AsyncGenerator[AsyncSession, None]:
         yield mock_session
@@ -91,6 +105,7 @@ async def client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = _get_db
     app.dependency_overrides[require_auth] = _require_auth
+    app.dependency_overrides[get_batch_correction_service] = lambda: mock_batch_service
 
     try:
         transport = ASGITransport(app=app)
@@ -100,8 +115,10 @@ async def client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, None]:
         app.dependency_overrides.clear()
 
 
-def _make_client_with_remaining(remaining: int) -> AsyncGenerator[AsyncClient, None]:
-    """Create a client fixture with a specific remaining_matches value."""
+def _make_client_with_remaining(
+    remaining: int, mock_batch_service: MagicMock
+) -> AsyncGenerator[AsyncClient, None]:
+    """Create a client with a specific remaining_matches value + batch service."""
     mock = _mock_session_with_remaining(remaining=remaining)
 
     async def _gen() -> AsyncGenerator[AsyncClient, None]:
@@ -113,6 +130,9 @@ def _make_client_with_remaining(remaining: int) -> AsyncGenerator[AsyncClient, N
 
         app.dependency_overrides[get_db] = _get_db
         app.dependency_overrides[require_auth] = _require_auth
+        app.dependency_overrides[get_batch_correction_service] = (
+            lambda: mock_batch_service
+        )
 
         try:
             transport = ASGITransport(app=app)
@@ -138,20 +158,16 @@ class TestGetDiffAnalysis:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_returns_200_with_patterns(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Endpoint returns 200 with patterns mapped to response schema."""
         pattern = _make_pattern()
         entity_id = uuid.uuid4()
-        mock_service.get_patterns = AsyncMock(return_value=[pattern])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (entity_id, "Johnson")
 
         response = await client.get(self.BASE_URL)
@@ -172,14 +188,10 @@ class TestGetDiffAnalysis:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_limit_truncates_the_response(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """`limit` bounds what is returned, now that it no longer bounds
@@ -192,7 +204,7 @@ class TestGetDiffAnalysis:
             _make_pattern(original_text=f"err{i}", corrected_text=f"Fix{i}")
             for i in range(5)
         ]
-        mock_service.get_patterns = AsyncMock(return_value=patterns)
+        mock_batch_service.get_patterns = AsyncMock(return_value=patterns)
         mock_find_entity.return_value = (None, None)
 
         response = await client.get(self.BASE_URL, params={"limit": 2})
@@ -204,14 +216,10 @@ class TestGetDiffAnalysis:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_every_pattern_is_tokenised_regardless_of_limit(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """A small limit must not stop tokens being derived.
@@ -225,31 +233,28 @@ class TestGetDiffAnalysis:
             _make_pattern(original_text=f"err{i}", corrected_text=f"Fix{i}")
             for i in range(5)
         ]
-        mock_service.get_patterns = AsyncMock(return_value=patterns)
+        mock_batch_service.get_patterns = AsyncMock(return_value=patterns)
         mock_find_entity.return_value = (None, None)
 
         await client.get(self.BASE_URL, params={"limit": 1})
 
         assert (
-            mock_service.get_patterns.call_args.kwargs["limit"] == _PATTERN_TOKENISE_CAP
+            mock_batch_service.get_patterns.call_args.kwargs["limit"]
+            == _PATTERN_TOKENISE_CAP
         )
 
     @patch(
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_returns_200_empty_results(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Endpoint returns 200 with an empty list when no patterns found."""
-        mock_service.get_patterns = AsyncMock(return_value=[])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[])
 
         response = await client.get(self.BASE_URL)
 
@@ -260,20 +265,16 @@ class TestGetDiffAnalysis:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_entity_name_filter_includes_matching(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Endpoint filters results when entity_name parameter is provided."""
         entity_id = uuid.uuid4()
         pattern = _make_pattern(corrected_text="Johnson")
-        mock_service.get_patterns = AsyncMock(return_value=[pattern])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (entity_id, "Johnson")
 
         response = await client.get(self.BASE_URL, params={"entity_name": "Johns"})
@@ -286,19 +287,15 @@ class TestGetDiffAnalysis:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_entity_name_filter_excludes_non_matching(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Patterns not matching entity_name filter are excluded."""
         pattern = _make_pattern(corrected_text="Johnson")
-        mock_service.get_patterns = AsyncMock(return_value=[pattern])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (uuid.uuid4(), "Johnson")
 
         response = await client.get(self.BASE_URL, params={"entity_name": "Trump"})
@@ -310,19 +307,15 @@ class TestGetDiffAnalysis:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_entity_name_filter_excludes_no_entity(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Patterns with no entity match are excluded when entity_name filter is set."""
         pattern = _make_pattern(corrected_text="the")
-        mock_service.get_patterns = AsyncMock(return_value=[pattern])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (None, None)
 
         response = await client.get(self.BASE_URL, params={"entity_name": "Johns"})
@@ -334,19 +327,15 @@ class TestGetDiffAnalysis:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_no_entity_association(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Patterns without entity matches return null entity fields."""
         pattern = _make_pattern(corrected_text="the")
-        mock_service.get_patterns = AsyncMock(return_value=[pattern])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (None, None)
 
         response = await client.get(self.BASE_URL)
@@ -361,18 +350,14 @@ class TestGetDiffAnalysis:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_passes_show_completed_true_to_service(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
         client: AsyncClient,
     ) -> None:
         """Service always receives show_completed=True (filtering happens at token level)."""
-        mock_service.get_patterns = AsyncMock(return_value=[])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[])
 
         await client.get(
             self.BASE_URL,
@@ -383,8 +368,8 @@ class TestGetDiffAnalysis:
             },
         )
 
-        mock_service.get_patterns.assert_awaited_once()
-        call_kwargs = mock_service.get_patterns.call_args.kwargs
+        mock_batch_service.get_patterns.assert_awaited_once()
+        call_kwargs = mock_batch_service.get_patterns.call_args.kwargs
         assert call_kwargs["min_occurrences"] == 5
         # NOT the caller's limit. Truncating patterns before word-level
         # extraction drops tokens that are never derived at all — measured as
@@ -405,22 +390,18 @@ class TestGetDiffAnalysis:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_show_completed_false_hides_zero_remaining(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
     ) -> None:
         """When show_completed=false, patterns with 0 remaining are excluded."""
         pattern = _make_pattern()
-        mock_service.get_patterns = AsyncMock(return_value=[pattern])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (None, None)
 
         # Create client with remaining=0
-        async for ac in _make_client_with_remaining(0):
+        async for ac in _make_client_with_remaining(0, mock_batch_service):
             response = await ac.get(self.BASE_URL, params={"show_completed": "false"})
 
         assert response.status_code == 200
@@ -430,22 +411,18 @@ class TestGetDiffAnalysis:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_show_completed_true_includes_zero_remaining(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
     ) -> None:
         """When show_completed=true, patterns with 0 remaining are included."""
         pattern = _make_pattern()
-        mock_service.get_patterns = AsyncMock(return_value=[pattern])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (None, None)
 
         # Create client with remaining=0
-        async for ac in _make_client_with_remaining(0):
+        async for ac in _make_client_with_remaining(0, mock_batch_service):
             response = await ac.get(self.BASE_URL, params={"show_completed": "true"})
 
         assert response.status_code == 200
@@ -495,19 +472,17 @@ class TestRemainingMatchCap:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_count_below_the_ceiling_is_not_flagged(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
     ) -> None:
-        mock_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
         mock_find_entity.return_value = (None, None)
 
-        async for ac in _make_client_with_remaining(_REMAINING_MATCH_CAP - 1):
+        async for ac in _make_client_with_remaining(
+            _REMAINING_MATCH_CAP - 1, mock_batch_service
+        ):
             response = await ac.get(self.BASE_URL)
 
         data = response.json()["data"]
@@ -518,20 +493,18 @@ class TestRemainingMatchCap:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_count_at_the_ceiling_is_flagged(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
     ) -> None:
         """Reaching the ceiling means "at least this many", not "exactly"."""
-        mock_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
         mock_find_entity.return_value = (None, None)
 
-        async for ac in _make_client_with_remaining(_REMAINING_MATCH_CAP):
+        async for ac in _make_client_with_remaining(
+            _REMAINING_MATCH_CAP, mock_batch_service
+        ):
             response = await ac.get(self.BASE_URL)
 
         data = response.json()["data"]
@@ -542,20 +515,16 @@ class TestRemainingMatchCap:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_zero_remaining_is_not_flagged(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
     ) -> None:
         """Guards against a `>=` that treats 0 as having hit the ceiling."""
-        mock_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
         mock_find_entity.return_value = (None, None)
 
-        async for ac in _make_client_with_remaining(0):
+        async for ac in _make_client_with_remaining(0, mock_batch_service):
             response = await ac.get(self.BASE_URL, params={"show_completed": "true"})
 
         data = response.json()["data"]
@@ -566,14 +535,10 @@ class TestRemainingMatchCap:
         "chronovista.api.routers.batch_corrections._find_entity_by_name",
         new_callable=AsyncMock,
     )
-    @patch(
-        "chronovista.api.routers.batch_corrections._batch_service",
-        new_callable=MagicMock,
-    )
     async def test_the_query_carries_a_limit(
         self,
-        mock_service: MagicMock,
         mock_find_entity: AsyncMock,
+        mock_batch_service: MagicMock,
     ) -> None:
         """The ceiling must reach the database, not just the response.
 
@@ -581,7 +546,7 @@ class TestRemainingMatchCap:
         values while doing all the work the ceiling exists to avoid — and no
         assertion on the response could tell the difference.
         """
-        mock_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
+        mock_batch_service.get_patterns = AsyncMock(return_value=[_make_pattern()])
         mock_find_entity.return_value = (None, None)
 
         captured: list[str] = []
@@ -603,6 +568,9 @@ class TestRemainingMatchCap:
 
         app.dependency_overrides[get_db] = _get_db
         app.dependency_overrides[require_auth] = _require_auth
+        app.dependency_overrides[get_batch_correction_service] = (
+            lambda: mock_batch_service
+        )
         try:
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as ac:

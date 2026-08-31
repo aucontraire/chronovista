@@ -10,11 +10,17 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_batch_correction_service,
+    get_db,
+    get_named_entity_repository,
+    get_transcript_correction_repository,
+    get_transcript_segment_repository,
+    require_auth,
+)
 from chronovista.api.schemas.batch_corrections import (
     BatchApplyRequest,
     BatchApplyResult,
@@ -28,45 +34,28 @@ from chronovista.api.schemas.batch_corrections import (
     DiffErrorPatternResponse,
 )
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
-from chronovista.db.models import EntityAlias as EntityAliasDB
-from chronovista.db.models import NamedEntity as NamedEntityDB
-from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
 from chronovista.models.batch_correction_models import BatchCorrectionResult
 from chronovista.models.correction_actors import ACTOR_USER_BATCH
 from chronovista.models.enums import CorrectionType
+from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
 from chronovista.repositories.transcript_segment_repository import (
     TranscriptSegmentRepository,
 )
-from chronovista.repositories.video_transcript_repository import (
-    VideoTranscriptRepository,
-)
 from chronovista.services.batch_correction_service import (
     BatchCorrectionService,
     word_level_diff,
 )
 from chronovista.services.cross_segment_discovery import CrossSegmentDiscovery
-from chronovista.services.transcript_correction_service import (
-    TranscriptCorrectionService,
-)
 from chronovista.utils.text import strip_boundary_punctuation
 
 router = APIRouter(
     prefix="", tags=["batch-corrections"], dependencies=[Depends(require_auth)]
 )
 
-# Module-level service instantiation (singleton pattern)
-_correction_repo = TranscriptCorrectionRepository()
-_segment_repo = TranscriptSegmentRepository()
-_transcript_repo = VideoTranscriptRepository()
-_correction_service = TranscriptCorrectionService(
-    correction_repo=_correction_repo,
-    segment_repo=_segment_repo,
-    transcript_repo=_transcript_repo,
-)
 logger = logging.getLogger(__name__)
 
 # How many correction pairs diff-analysis will tokenise.
@@ -104,12 +93,6 @@ _PATTERN_TOKENISE_CAP = 1000
 # clear of the bulk of the distribution.
 _REMAINING_MATCH_CAP = 1000
 
-_batch_service = BatchCorrectionService(
-    correction_service=_correction_service,
-    segment_repo=_segment_repo,
-    correction_repo=_correction_repo,
-)
-
 
 def _map_batch_error(error: ValueError) -> APIValidationError:
     """Map a ValueError from the batch correction service to an APIValidationError.
@@ -141,6 +124,7 @@ def _map_batch_error(error: ValueError) -> APIValidationError:
 )
 async def preview_batch_corrections(
     request: BatchPreviewRequest,
+    batch_service: BatchCorrectionService = Depends(get_batch_correction_service),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[BatchPreviewResponse]:
     """Preview segments matching a find-replace pattern.
@@ -167,7 +151,7 @@ async def preview_batch_corrections(
         If the regex pattern is invalid or times out (422).
     """
     try:
-        matches, total_count = await _batch_service.find_matching_segments(
+        matches, total_count = await batch_service.find_matching_segments(
             session,
             pattern=request.pattern,
             replacement=request.replacement,
@@ -205,6 +189,7 @@ async def preview_batch_corrections(
 )
 async def apply_batch_corrections(
     request: BatchApplyRequest,
+    batch_service: BatchCorrectionService = Depends(get_batch_correction_service),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[BatchApplyResult]:
     """Apply find-replace corrections to a set of segment IDs.
@@ -244,7 +229,7 @@ async def apply_batch_corrections(
     batch_id = uuid.UUID(bytes=uuid7().bytes)
 
     try:
-        result = await _batch_service.apply_to_segments(
+        result = await batch_service.apply_to_segments(
             session,
             pattern=request.pattern,
             replacement=request.replacement,
@@ -273,6 +258,7 @@ async def apply_batch_corrections(
 )
 async def rebuild_text(
     request: BatchRebuildRequest,
+    batch_service: BatchCorrectionService = Depends(get_batch_correction_service),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[BatchRebuildResult]:
     """Rebuild full transcript text from corrected segments.
@@ -293,7 +279,7 @@ async def rebuild_text(
         Summary of rebuilt and failed videos.
     """
     # rebuild_text returns (total_rebuilt, total_segments) when dry_run=False
-    result = await _batch_service.rebuild_text(
+    result = await batch_service.rebuild_text(
         session,
         video_ids=request.video_ids,
     )
@@ -329,6 +315,9 @@ async def list_batches(
     corrected_by_user_id: str | None = Query(
         default=None, description="Filter batches by user/actor ID"
     ),
+    correction_repo: TranscriptCorrectionRepository = Depends(
+        get_transcript_correction_repository
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[list[BatchListItemResponse]]:
     """List batch correction groups with aggregated metadata.
@@ -353,7 +342,7 @@ async def list_batches(
     ApiResponse[list[BatchListItemResponse]]
         Paginated list of batch summary items.
     """
-    items = await _correction_repo.get_batch_list(
+    items = await correction_repo.get_batch_list(
         session,
         offset=offset,
         limit=limit,
@@ -395,6 +384,10 @@ async def list_batches(
 )
 async def revert_batch(
     batch_id: uuid.UUID,
+    correction_repo: TranscriptCorrectionRepository = Depends(
+        get_transcript_correction_repository
+    ),
+    batch_service: BatchCorrectionService = Depends(get_batch_correction_service),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[BatchRevertResponse]:
     """Revert all corrections belonging to a specific batch.
@@ -423,7 +416,7 @@ async def revert_batch(
         If all corrections in the batch are already reverted (409).
     """
     # Check if the batch exists at all
-    corrections = await _correction_repo.get_by_batch_id(session, batch_id)
+    corrections = await correction_repo.get_by_batch_id(session, batch_id)
     if not corrections:
         raise NotFoundError(
             resource_type="Batch",
@@ -435,7 +428,7 @@ async def revert_batch(
     # We rely on batch_revert to determine this; if total_applied == 0
     # and total_matched == 0 after the call, everything was already reverted.
 
-    result = await _batch_service.batch_revert(
+    result = await batch_service.batch_revert(
         session,
         batch_id=batch_id,
     )
@@ -472,6 +465,7 @@ async def revert_batch(
 
 
 async def _find_entity_by_name(
+    named_entity_repo: NamedEntityRepository,
     session: AsyncSession,
     name: str,
 ) -> tuple[uuid.UUID | None, str | None]:
@@ -479,6 +473,8 @@ async def _find_entity_by_name(
 
     Parameters
     ----------
+    named_entity_repo : NamedEntityRepository
+        Named entity repository injected into the endpoint.
     session : AsyncSession
         Database session.
     name : str
@@ -489,32 +485,7 @@ async def _find_entity_by_name(
     tuple[uuid.UUID | None, str | None]
         ``(entity_id, entity_name)`` if found, otherwise ``(None, None)``.
     """
-    # Try canonical name first
-    stmt = (
-        select(NamedEntityDB.id, NamedEntityDB.canonical_name)
-        .where(NamedEntityDB.canonical_name.ilike(name))
-        .limit(1)
-    )
-    row = (await session.execute(stmt)).first()
-    if row is not None:
-        return row.id, row.canonical_name
-
-    # Try alias name
-    alias_stmt = (
-        select(EntityAliasDB.entity_id, EntityAliasDB.alias_name)
-        .where(EntityAliasDB.alias_name.ilike(name))
-        .limit(1)
-    )
-    alias_row = (await session.execute(alias_stmt)).first()
-    if alias_row is not None:
-        # Fetch the entity's canonical name
-        entity_stmt = select(NamedEntityDB.canonical_name).where(
-            NamedEntityDB.id == alias_row.entity_id
-        )
-        entity_name_val = (await session.execute(entity_stmt)).scalar_one_or_none()
-        return alias_row.entity_id, entity_name_val
-
-    return None, None
+    return await named_entity_repo.find_by_name_or_alias(session, name)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -539,46 +510,25 @@ def _whole_word_regex(token: str) -> str:
     return rf"\y{escaped}\y"
 
 
-async def _remaining_whole_word_matches(session: AsyncSession, error_token: str) -> int:
+async def _remaining_whole_word_matches(
+    segment_repo: TranscriptSegmentRepository,
+    session: AsyncSession,
+    error_token: str,
+) -> int:
     r"""Count segments whose effective text still contains ``error_token`` as a whole word.
 
-    Word-boundary, **not** substring: the token does not match inside a larger word, so
-    ``"ACME"`` no longer counts ``"ACMES"``. This is the same boundary rule the Find & Replace
-    search uses (``\bACME\b``), so ``remaining_matches`` now agrees with what a replace would
-    actually change. Case is unchanged (case-sensitive), matching the Find & Replace default.
-
-    The trigram-eligible substring **super-set** on the raw columns is kept as an index
-    prefilter (a whole-word match implies the substring is present, so nothing true is
-    dropped), with the word-boundary regex as the exact recheck on the effective
-    (post-correction) text. The count is capped at ``_REMAINING_MATCH_CAP`` (#212).
+    Thin wrapper over
+    :meth:`TranscriptSegmentRepository.count_whole_word_matches` — it passes the
+    word-boundary regex built by :func:`_whole_word_regex` and the
+    ``_REMAINING_MATCH_CAP`` ceiling (#212). See that repository method for the
+    query and its pg_trgm-index tuning.
     """
-    effective_text = case(
-        (TranscriptSegmentDB.has_correction, TranscriptSegmentDB.corrected_text),
-        else_=TranscriptSegmentDB.text,
+    return await segment_repo.count_whole_word_matches(
+        session,
+        error_token,
+        _whole_word_regex(error_token),
+        cap=_REMAINING_MATCH_CAP,
     )
-    matching_rows = (
-        select(literal(1))
-        .select_from(TranscriptSegmentDB)
-        .where(
-            # Index-eligible super-set on the RAW columns so PostgreSQL can use the
-            # pg_trgm GIN indexes (idx_segments_text_trgm / idx_segments_corrected_text_trgm).
-            # A CASE expression is opaque to them and forces a parallel seq scan of ~2M
-            # rows — once per token. Same fix as #150.
-            or_(
-                TranscriptSegmentDB.text.contains(error_token),
-                TranscriptSegmentDB.corrected_text.contains(error_token),
-            ),
-            # Exact recheck against the super-set: whole-word (word boundary), not
-            # substring. A segment whose correction removed the token is excluded too,
-            # because the recheck runs on the effective (post-correction) text.
-            effective_text.op("~")(_whole_word_regex(error_token)),
-        )
-        # The ceiling bounds the heap fetch (#212).
-        .limit(_REMAINING_MATCH_CAP)
-        .subquery()
-    )
-    result = await session.execute(select(func.count()).select_from(matching_rows))
-    return int(result.scalar_one())
 
 
 @router.get(
@@ -592,6 +542,11 @@ async def get_diff_analysis(
     limit: int = Query(default=100, ge=1, le=500),
     show_completed: bool = Query(default=True),
     entity_name: str | None = Query(default=None),
+    batch_service: BatchCorrectionService = Depends(get_batch_correction_service),
+    segment_repo: TranscriptSegmentRepository = Depends(
+        get_transcript_segment_repository
+    ),
+    named_entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[list[DiffErrorPatternResponse]]:
     """Get recurring correction patterns enriched with entity associations.
@@ -628,7 +583,7 @@ async def get_diff_analysis(
     # token below, since the segment-level figure does not survive word-level
     # extraction. Computing it here was the single largest cost in the
     # request, and the result was discarded.
-    patterns = await _batch_service.get_patterns(
+    patterns = await batch_service.get_patterns(
         session,
         min_occurrences=min_occurrences,
         limit=_PATTERN_TOKENISE_CAP,
@@ -674,7 +629,9 @@ async def get_diff_analysis(
         if not error_token:
             remaining = 0
         else:
-            remaining = await _remaining_whole_word_matches(session, error_token)
+            remaining = await _remaining_whole_word_matches(
+                segment_repo, session, error_token
+            )
 
         # A count equal to the ceiling means counting stopped, not that exactly
         # that many remain. Reported rather than silently presented as exact.
@@ -686,7 +643,7 @@ async def get_diff_analysis(
 
         lookup_text = canonical_form if canonical_form else error_token
         entity_id, matched_entity_name = await _find_entity_by_name(
-            session, lookup_text
+            named_entity_repo, session, lookup_text
         )
 
         # If entity_name filter is set, skip non-matching entries
@@ -731,6 +688,7 @@ async def get_diff_analysis(
 async def get_cross_segment_candidates(
     min_corrections: int = Query(default=3, ge=1, le=20),
     entity_name: str | None = Query(default=None),
+    batch_service: BatchCorrectionService = Depends(get_batch_correction_service),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[list[CrossSegmentCandidateResponse]]:
     """Discover adjacent segment pairs where a known error is split across a boundary.
@@ -752,7 +710,7 @@ async def get_cross_segment_candidates(
     ApiResponse[list[CrossSegmentCandidateResponse]]
         List of cross-segment ASR error candidates.
     """
-    discovery = CrossSegmentDiscovery(batch_service=_batch_service)
+    discovery = CrossSegmentDiscovery(batch_service=batch_service)
     candidates = await discovery.discover(
         session,
         min_corrections=min_corrections,

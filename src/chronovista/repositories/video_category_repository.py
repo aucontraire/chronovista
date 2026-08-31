@@ -7,11 +7,14 @@ and bulk creation support for seeding.
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import Video
 from chronovista.db.models import VideoCategory as VideoCategoryDB
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.video_category import (
+    CategoryVideoCount,
     VideoCategoryCreate,
     VideoCategoryUpdate,
 )
@@ -92,6 +95,139 @@ class VideoCategoryRepository(
             select(VideoCategoryDB).order_by(VideoCategoryDB.name)
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    def _video_count_expr(include_unavailable: bool) -> ColumnElement[int]:
+        """Build the FILTERed COUNT of a category's videos (issue #256).
+
+        Counts videos per category with a FILTERed aggregate over a LEFT JOIN
+        rather than a per-row correlated subquery: on production data this is
+        ~7-13x cheaper (a single hash join + aggregate vs. a subplan re-executed
+        per category), and it matches the query shape get_channel_entity_rankings
+        deliberately adopted for the same reason. The FILTER — not a WHERE — is
+        what lets a LEFT JOIN keep categories whose only videos are unavailable
+        (their count becomes 0) rather than dropping them entirely.
+        """
+        base_count = func.count(Video.video_id)
+        if include_unavailable:
+            return base_count
+        return base_count.filter(
+            Video.availability_status == AvailabilityStatus.AVAILABLE
+        )
+
+    async def get_with_video_counts(
+        self,
+        session: AsyncSession,
+        *,
+        include_unavailable: bool = False,
+        only_with_videos: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[CategoryVideoCount]:
+        """
+        Get categories paired with their associated video counts.
+
+        Encapsulates the video-count aggregate that the sidebar and
+        category-list endpoints previously built inline (issue #256). The count
+        per category comes from a LEFT JOIN over ``Video`` with a FILTERed
+        aggregate (see :meth:`_video_count_expr`); results are ordered by video
+        count descending (most populated first).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        include_unavailable : bool, optional
+            When False (default), only videos with availability status
+            AVAILABLE are counted; when True, all videos count.
+        only_with_videos : bool, optional
+            When True, categories whose count is zero are excluded (the sidebar
+            behavior); when False (default), every category is returned.
+        limit : int | None, optional
+            Maximum number of categories to return; None (default) returns all.
+        offset : int, optional
+            Number of leading categories to skip (pagination); default 0.
+
+        Returns
+        -------
+        list[CategoryVideoCount]
+            Categories with their video counts, ordered by count descending.
+        """
+        count_expr = self._video_count_expr(include_unavailable)
+
+        query = (
+            select(
+                VideoCategoryDB.category_id,
+                VideoCategoryDB.name,
+                VideoCategoryDB.assignable,
+                count_expr.label("video_count"),
+            )
+            .select_from(VideoCategoryDB)
+            .outerjoin(Video, Video.category_id == VideoCategoryDB.category_id)
+            .group_by(
+                VideoCategoryDB.category_id,
+                VideoCategoryDB.name,
+                VideoCategoryDB.assignable,
+            )
+        )
+        if only_with_videos:
+            query = query.having(count_expr > 0)
+        # category_id is a deterministic tiebreak so pagination stays stable when
+        # several categories share the same video count (#256).
+        query = query.order_by(count_expr.desc(), VideoCategoryDB.category_id)
+        if limit is not None:
+            # limit/offset paginate AFTER the group-by aggregate: the full LEFT
+            # JOIN + aggregate runs before LIMIT. Fine for the small
+            # video_categories table; revisit if this shape is copied for a
+            # dimension table with many rows (#256).
+            query = query.offset(offset).limit(limit)
+
+        result = await session.execute(query)
+        return [
+            CategoryVideoCount(
+                category_id=row.category_id,
+                name=row.name,
+                assignable=row.assignable,
+                video_count=row.video_count or 0,
+            )
+            for row in result.all()
+        ]
+
+    async def get_video_count(
+        self,
+        session: AsyncSession,
+        category_id: str,
+        *,
+        include_unavailable: bool = False,
+    ) -> int:
+        """
+        Count the videos in a single category (issue #256).
+
+        A single-table aggregate over the indexed ``videos.category_id`` — used
+        by the category-detail endpoint, which fetches the category metadata via
+        :meth:`get` separately.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        category_id : str
+            The YouTube category ID.
+        include_unavailable : bool, optional
+            When False (default), only AVAILABLE videos are counted.
+
+        Returns
+        -------
+        int
+            The number of videos in the category.
+        """
+        conditions = [Video.category_id == category_id]
+        if not include_unavailable:
+            conditions.append(Video.availability_status == AvailabilityStatus.AVAILABLE)
+        result = await session.execute(
+            select(func.count(Video.video_id)).where(*conditions)
+        )
+        return result.scalar_one()
 
     async def get_assignable(self, session: AsyncSession) -> list[VideoCategoryDB]:
         """

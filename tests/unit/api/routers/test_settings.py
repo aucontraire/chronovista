@@ -15,7 +15,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    StatsRepositories,
+    get_db,
+    get_stats_repositories,
+    require_auth,
+)
 from chronovista.api.main import app
 from chronovista.api.schemas.sync import SyncOperationType
 from chronovista.models.enums import LanguageCode
@@ -463,7 +468,7 @@ class TestClearCache:
 class TestGetAppInfo:
     """Tests for GET /api/v1/settings/app-info endpoint."""
 
-    def _make_mock_session_with_counts(
+    def _make_stats_repos(
         self,
         video_count: int = 100,
         channel_count: int = 20,
@@ -471,29 +476,29 @@ class TestGetAppInfo:
         transcript_count: int = 80,
         correction_count: int = 10,
         canonical_tag_count: int = 50,
-    ) -> AsyncMock:
-        """Create a mock AsyncSession whose scalar() returns counts in order."""
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_session.scalar.side_effect = [
-            video_count,
-            channel_count,
-            playlist_count,
-            transcript_count,
-            correction_count,
-            canonical_tag_count,
-        ]
-        return mock_session
+    ) -> StatsRepositories:
+        """Build a StatsRepositories of fakes whose count() returns fixed values."""
+
+        def _repo(n: int) -> AsyncMock:
+            repo = AsyncMock()
+            repo.count = AsyncMock(return_value=n)
+            return repo
+
+        return StatsRepositories(
+            video=_repo(video_count),
+            channel=_repo(channel_count),
+            playlist=_repo(playlist_count),
+            transcript=_repo(transcript_count),
+            correction=_repo(correction_count),
+            canonical_tag=_repo(canonical_tag_count),
+        )
 
     async def test_returns_200_with_api_response_envelope(
         self, async_client: AsyncClient
     ) -> None:
         """Test app-info returns 200 with data wrapped in ApiResponse envelope."""
-        mock_session = self._make_mock_session_with_counts()
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        repos = self._make_stats_repos()
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         with patch(
             "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",
@@ -509,12 +514,8 @@ class TestGetAppInfo:
         self, async_client: AsyncClient
     ) -> None:
         """Test app-info response includes all required top-level fields."""
-        mock_session = self._make_mock_session_with_counts()
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        repos = self._make_stats_repos()
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         with patch(
             "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",
@@ -533,7 +534,7 @@ class TestGetAppInfo:
         self, async_client: AsyncClient
     ) -> None:
         """Test database_stats includes counts for all tracked tables."""
-        mock_session = self._make_mock_session_with_counts(
+        repos = self._make_stats_repos(
             video_count=150,
             channel_count=30,
             playlist_count=8,
@@ -541,11 +542,7 @@ class TestGetAppInfo:
             correction_count=25,
             canonical_tag_count=75,
         )
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         with patch(
             "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",
@@ -566,7 +563,7 @@ class TestGetAppInfo:
         self, async_client: AsyncClient
     ) -> None:
         """Test that None scalar results (empty tables) are treated as zero."""
-        mock_session = self._make_mock_session_with_counts(
+        repos = self._make_stats_repos(
             video_count=0,
             channel_count=0,
             playlist_count=0,
@@ -574,11 +571,7 @@ class TestGetAppInfo:
             correction_count=0,
             canonical_tag_count=0,
         )
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         with patch(
             "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",
@@ -595,47 +588,12 @@ class TestGetAppInfo:
         assert stats["corrections"] == 0
         assert stats["canonical_tags"] == 0
 
-    async def test_null_scalar_results_coerced_to_zero(
-        self, async_client: AsyncClient
-    ) -> None:
-        """Test that None returns from session.scalar() are coerced to 0."""
-        mock_session = AsyncMock(spec=AsyncSession)
-        # Return None for all 6 COUNT queries — simulates tables with no rows
-        mock_session.scalar.side_effect = [None, None, None, None, None, None]
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
-
-        with patch(
-            "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",
-            return_value=None,
-        ):
-            response = await async_client.get("/api/v1/settings/app-info")
-
-        assert response.status_code == 200
-        stats = response.json()["data"]["database_stats"]
-        for field in [
-            "videos",
-            "channels",
-            "playlists",
-            "transcripts",
-            "corrections",
-            "canonical_tags",
-        ]:
-            assert stats[field] == 0, f"Expected 0 for {field}, got {stats[field]}"
-
     async def test_sync_timestamps_contains_all_sync_types(
         self, async_client: AsyncClient
     ) -> None:
         """Test sync_timestamps includes entries for all five sync operation types."""
-        mock_session = self._make_mock_session_with_counts()
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        repos = self._make_stats_repos()
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         expected_keys = {
             SyncOperationType.SUBSCRIPTIONS.value,
@@ -663,12 +621,8 @@ class TestGetAppInfo:
         self, async_client: AsyncClient
     ) -> None:
         """Test sync_timestamps values are null when sync has never run."""
-        mock_session = self._make_mock_session_with_counts()
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        repos = self._make_stats_repos()
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         with patch(
             "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",
@@ -687,12 +641,8 @@ class TestGetAppInfo:
         self, async_client: AsyncClient
     ) -> None:
         """Test sync_timestamps contain ISO datetime strings when sync has run."""
-        mock_session = self._make_mock_session_with_counts()
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        repos = self._make_stats_repos()
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         last_sync_time = datetime(2026, 1, 15, 12, 0, 0)
 
@@ -715,12 +665,8 @@ class TestGetAppInfo:
         self, async_client: AsyncClient
     ) -> None:
         """Test backend_version is a non-empty string from the package version."""
-        mock_session = self._make_mock_session_with_counts()
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        repos = self._make_stats_repos()
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         with patch(
             "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",
@@ -735,12 +681,8 @@ class TestGetAppInfo:
 
     async def test_frontend_version_is_set(self, async_client: AsyncClient) -> None:
         """Test frontend_version is set to the expected value."""
-        mock_session = self._make_mock_session_with_counts()
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        repos = self._make_stats_repos()
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         with patch(
             "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",
@@ -752,16 +694,12 @@ class TestGetAppInfo:
         data = response.json()["data"]
         assert data["frontend_version"] == "0.18.0"
 
-    async def test_scalar_called_six_times_for_six_tables(
+    async def test_counts_each_of_the_six_repositories_once(
         self, async_client: AsyncClient
     ) -> None:
-        """Test that session.scalar() is called exactly 6 times for COUNT queries."""
-        mock_session = self._make_mock_session_with_counts()
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        """Test that each of the six repositories' count() is called exactly once."""
+        repos = self._make_stats_repos()
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         with patch(
             "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",
@@ -770,21 +708,15 @@ class TestGetAppInfo:
             response = await async_client.get("/api/v1/settings/app-info")
 
         assert response.status_code == 200
-        assert mock_session.scalar.call_count == 6, (
-            f"Expected 6 scalar() calls (one per table), "
-            f"got {mock_session.scalar.call_count}"
-        )
+        for repo in repos:
+            assert repo.count.call_count == 1
 
     async def test_mixed_sync_timestamps_some_null_some_present(
         self, async_client: AsyncClient
     ) -> None:
         """Test response correctly handles mixed null/non-null sync timestamps."""
-        mock_session = self._make_mock_session_with_counts()
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        repos = self._make_stats_repos()
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         last_sync = datetime(2026, 3, 1, 10, 30, 0)
         # Return non-None only for SUBSCRIPTIONS, None for all others
@@ -824,31 +756,23 @@ class TestGetAppInfo:
 
         assert response.status_code == 401
 
-    async def test_gather_returns_correct_counts_for_each_field(
+    async def test_counts_map_to_correct_database_stats_field(
         self, async_client: AsyncClient
     ) -> None:
-        """Verify asyncio.gather returns each COUNT in the correct DatabaseStats field.
+        """Verify each repository's count lands in the correct DatabaseStats field.
 
-        The endpoint issues 6 independent COUNT queries via asyncio.gather in
-        this order: videos, channels, playlists, transcripts, corrections,
-        canonical_tags.  Each field in DatabaseStats must carry the value from
-        the corresponding query, not a neighbour's value.
+        Each field must carry the value from its own repository, not a
+        neighbour's — distinct primes make any field-assignment swap visible.
         """
-        mock_session = AsyncMock(spec=AsyncSession)
-        # Distinct primes so any field-assignment swap is immediately visible.
-        mock_session.scalar.side_effect = [
-            101,  # videos
-            202,  # channels
-            303,  # playlists
-            404,  # transcripts
-            505,  # corrections
-            606,  # canonical_tags
-        ]
-
-        async def mock_get_db_custom() -> AsyncGenerator[AsyncSession, None]:
-            yield mock_session
-
-        app.dependency_overrides[get_db] = mock_get_db_custom
+        repos = self._make_stats_repos(
+            video_count=101,
+            channel_count=202,
+            playlist_count=303,
+            transcript_count=404,
+            correction_count=505,
+            canonical_tag_count=606,
+        )
+        app.dependency_overrides[get_stats_repositories] = lambda: repos
 
         with patch(
             "chronovista.api.services.sync_manager.sync_manager.get_last_successful_sync",

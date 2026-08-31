@@ -155,3 +155,36 @@ class TestRequireAuth:
                 await require_auth()
 
             assert mock_oauth.is_authenticated.call_count == 3
+
+
+class TestGetStatsRepositories:
+    """Tests for the get_stats_repositories dependency (issue #256)."""
+
+    def test_wires_each_field_to_its_repository_type(self) -> None:
+        """Each StatsRepositories field is the correct concrete repository type.
+
+        Guards against a transposition bug in the bundle (e.g. wiring the
+        playlist factory into the channel field), which would silently count the
+        wrong table yet pass every mock-based settings test.
+        """
+        from chronovista.api.deps import StatsRepositories, get_stats_repositories
+        from chronovista.repositories import (
+            CanonicalTagRepository,
+            ChannelRepository,
+            PlaylistRepository,
+            VideoRepository,
+            VideoTranscriptRepository,
+        )
+        from chronovista.repositories.transcript_correction_repository import (
+            TranscriptCorrectionRepository,
+        )
+
+        repos = get_stats_repositories()
+
+        assert isinstance(repos, StatsRepositories)
+        assert isinstance(repos.video, VideoRepository)
+        assert isinstance(repos.channel, ChannelRepository)
+        assert isinstance(repos.playlist, PlaylistRepository)
+        assert isinstance(repos.transcript, VideoTranscriptRepository)
+        assert isinstance(repos.correction, TranscriptCorrectionRepository)
+        assert isinstance(repos.canonical_tag, CanonicalTagRepository)

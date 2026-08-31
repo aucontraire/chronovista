@@ -44,6 +44,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 from chronovista.repositories import (
+    CanonicalTagRepository,
     ChannelRepository,
     ChannelTopicRepository,
     PlaylistRepository,
@@ -58,6 +59,9 @@ from chronovista.repositories import (
 )
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
+)
+from chronovista.repositories.transcript_correction_repository import (
+    TranscriptCorrectionRepository,
 )
 from chronovista.services import YouTubeService
 from chronovista.services.enrichment.enrichment_service import EnrichmentService
@@ -358,6 +362,50 @@ class Container:
         True
         """
         return VideoTranscriptRepository()
+
+    def create_transcript_correction_repository(
+        self,
+    ) -> TranscriptCorrectionRepository:
+        """
+        Create a new TranscriptCorrectionRepository instance.
+
+        Returns a fresh repository instance for transcript correction operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        TranscriptCorrectionRepository
+            A new TranscriptCorrectionRepository instance for transcript
+            correction CRUD operations.
+
+        Examples
+        --------
+        >>> repo = container.create_transcript_correction_repository()
+        >>> isinstance(repo, TranscriptCorrectionRepository)
+        True
+        """
+        return TranscriptCorrectionRepository()
+
+    def create_canonical_tag_repository(self) -> CanonicalTagRepository:
+        """
+        Create a new CanonicalTagRepository instance.
+
+        Returns a fresh repository instance for canonical tag operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        CanonicalTagRepository
+            A new CanonicalTagRepository instance for canonical tag CRUD
+            operations.
+
+        Examples
+        --------
+        >>> repo = container.create_canonical_tag_repository()
+        >>> isinstance(repo, CanonicalTagRepository)
+        True
+        """
+        return CanonicalTagRepository()
 
     def create_user_language_preference_repository(
         self,

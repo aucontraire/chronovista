@@ -1,7 +1,7 @@
 """FastAPI dependencies for API endpoints."""
 
 from collections.abc import AsyncGenerator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,16 @@ if TYPE_CHECKING:
 from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
 from chronovista.config.settings import settings
+from chronovista.repositories import (
+    CanonicalTagRepository,
+    ChannelRepository,
+    PlaylistRepository,
+    VideoRepository,
+    VideoTranscriptRepository,
+)
+from chronovista.repositories.transcript_correction_repository import (
+    TranscriptCorrectionRepository,
+)
 from chronovista.repositories.video_category_repository import VideoCategoryRepository
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
 from chronovista.services.recovery.page_parser import PageParser
@@ -145,6 +155,59 @@ def get_video_category_repository() -> VideoCategoryRepository:
     from chronovista.container import container
 
     return container.create_video_category_repository()
+
+
+class StatsRepositories(NamedTuple):
+    """The repositories whose row counts make up the app-info database stats.
+
+    Bundled so the app-info endpoint injects one dependency instead of six
+    (issue #256); each is a fresh, session-agnostic repository from the DI
+    container. Named access (``repos.video``) keeps the call sites readable.
+
+    Notes
+    -----
+    Always inject this by passing the factory explicitly —
+    ``Depends(get_stats_repositories)`` — never the bare ``Depends()`` idiom:
+    FastAPI would try to treat this NamedTuple's repository-typed fields as
+    request-model fields and crash at startup.
+
+    This bundle is 1:1 with ``DatabaseStats``. For an endpoint needing a
+    different subset of counts, add a second bundle rather than stretching this
+    one to cover an unrelated shape.
+    """
+
+    video: VideoRepository
+    channel: ChannelRepository
+    playlist: PlaylistRepository
+    transcript: VideoTranscriptRepository
+    correction: TranscriptCorrectionRepository
+    canonical_tag: CanonicalTagRepository
+
+
+def get_stats_repositories() -> StatsRepositories:
+    """
+    Dependency bundling the repositories the app-info endpoint counts.
+
+    Wires the container's repository factories into FastAPI's ``Depends()``
+    (issue #256) so the endpoint reads row counts via ``repo.count(session)``
+    instead of building ``select(func.count())`` inline. The repositories are
+    session-agnostic, so fresh per-request instances are cheap.
+
+    Returns
+    -------
+    StatsRepositories
+        The six repositories whose counts populate ``DatabaseStats``.
+    """
+    from chronovista.container import container
+
+    return StatsRepositories(
+        video=container.create_video_repository(),
+        channel=container.create_channel_repository(),
+        playlist=container.create_playlist_repository(),
+        transcript=container.create_video_transcript_repository(),
+        correction=container.create_transcript_correction_repository(),
+        canonical_tag=container.create_canonical_tag_repository(),
+    )
 
 
 def get_recovery_deps() -> tuple[CDXClient, PageParser, RateLimiter]:

@@ -7,11 +7,15 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista import __version__
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    StatsRepositories,
+    get_db,
+    get_stats_repositories,
+    require_auth,
+)
 from chronovista.api.schemas.responses import (
     ERROR_TITLES,
     ApiResponse,
@@ -29,14 +33,6 @@ from chronovista.api.schemas.settings import (
 from chronovista.api.schemas.sync import SyncOperationType
 from chronovista.api.services.sync_manager import sync_manager
 from chronovista.config.settings import settings
-from chronovista.db.models import (
-    CanonicalTag,
-    Channel,
-    Playlist,
-    TranscriptCorrection,
-    Video,
-    VideoTranscript,
-)
 from chronovista.models.enums import LanguageCode
 from chronovista.models.language_names import LANGUAGE_NAMES
 from chronovista.services.image_cache import ImageCacheConfig, ImageCacheService
@@ -190,6 +186,7 @@ async def clear_cache() -> ApiResponse[CachePurgeResponse] | ProblemJSONResponse
     dependencies=[Depends(require_auth)],
 )
 async def get_app_info(
+    repos: StatsRepositories = Depends(get_stats_repositories),
     session: AsyncSession = Depends(get_db),
 ) -> ApiResponse[AppInfoResponse]:
     """Get application version and system information.
@@ -199,6 +196,9 @@ async def get_app_info(
 
     Parameters
     ----------
+    repos : StatsRepositories
+        The repositories whose row counts make up the database stats, injected
+        via the DI container.
     session : AsyncSession
         Database session injected via FastAPI dependency.
 
@@ -207,28 +207,15 @@ async def get_app_info(
     ApiResponse[AppInfoResponse]
         Application info including versions, database stats, and sync timestamps.
     """
-    # Sequential queries — AsyncSession is not safe for concurrent use
+    # Sequential counts — AsyncSession is not safe for concurrent use
     # via asyncio.gather() (causes IllegalStateChangeError).
-    video_count = await session.scalar(select(func.count()).select_from(Video))
-    channel_count = await session.scalar(select(func.count()).select_from(Channel))
-    playlist_count = await session.scalar(select(func.count()).select_from(Playlist))
-    transcript_count = await session.scalar(
-        select(func.count()).select_from(VideoTranscript)
-    )
-    correction_count = await session.scalar(
-        select(func.count()).select_from(TranscriptCorrection)
-    )
-    canonical_tag_count = await session.scalar(
-        select(func.count()).select_from(CanonicalTag)
-    )
-
     database_stats = DatabaseStats(
-        videos=video_count or 0,
-        channels=channel_count or 0,
-        playlists=playlist_count or 0,
-        transcripts=transcript_count or 0,
-        corrections=correction_count or 0,
-        canonical_tags=canonical_tag_count or 0,
+        videos=await repos.video.count(session),
+        channels=await repos.channel.count(session),
+        playlists=await repos.playlist.count(session),
+        transcripts=await repos.transcript.count(session),
+        corrections=await repos.correction.count(session),
+        canonical_tags=await repos.canonical_tag.count(session),
     )
 
     # Gather last successful sync timestamps

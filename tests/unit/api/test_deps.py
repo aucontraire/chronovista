@@ -199,6 +199,12 @@ class TestRepositoryAndServiceDependencies:
 
         assert isinstance(get_video_repository(), VideoRepository)
 
+    def test_get_canonical_tag_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_canonical_tag_repository
+        from chronovista.repositories import CanonicalTagRepository
+
+        assert isinstance(get_canonical_tag_repository(), CanonicalTagRepository)
+
     def test_get_transcript_segment_repository_returns_correct_type(self) -> None:
         from chronovista.api.deps import get_transcript_segment_repository
         from chronovista.repositories import TranscriptSegmentRepository

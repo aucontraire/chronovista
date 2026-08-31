@@ -96,6 +96,61 @@ def _make_video(
     return video
 
 
+class TestCanonicalTagRepositoryFuzzyPool:
+    """Tests for CanonicalTagRepository.get_fuzzy_candidate_pool() (issue #256)."""
+
+    @pytest.fixture
+    def repository(self) -> CanonicalTagRepository:
+        """Create repository instance."""
+        return CanonicalTagRepository()
+
+    @pytest.fixture
+    def mock_session(self) -> MagicMock:
+        """Create mock async session returning an empty pool."""
+        session = MagicMock(spec=AsyncSession)
+        result = MagicMock()
+        scalars = MagicMock()
+        scalars.all.return_value = []
+        result.scalars.return_value = scalars
+        session.execute = AsyncMock(return_value=result)
+        return session
+
+    @staticmethod
+    def _compiled(mock_session: MagicMock) -> str:
+        stmt = mock_session.execute.call_args[0][0]
+        return str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    async def test_pool_filters_active_orders_by_video_count_and_limits(
+        self,
+        repository: CanonicalTagRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """Default pool: active only, ordered by video_count desc, limited, no
+        entity filter."""
+        await repository.get_fuzzy_candidate_pool(
+            mock_session, pool_size=5000, exclude_linked=False
+        )
+        sql = self._compiled(mock_session)
+        assert "status = 'active'" in sql
+        assert "ORDER BY canonical_tags.video_count DESC" in sql
+        assert "LIMIT 5000" in sql
+        # exclude_linked is False, so the entity_id filter must NOT be present.
+        assert "entity_id IS NULL" not in sql
+        mock_session.execute.assert_called_once()
+
+    async def test_pool_exclude_linked_adds_null_entity_filter(
+        self,
+        repository: CanonicalTagRepository,
+        mock_session: MagicMock,
+    ) -> None:
+        """exclude_linked=True restricts the pool to tags with no entity."""
+        await repository.get_fuzzy_candidate_pool(
+            mock_session, pool_size=5000, exclude_linked=True
+        )
+        sql = self._compiled(mock_session)
+        assert "entity_id IS NULL" in sql
+
+
 class TestCanonicalTagRepositorySearch:
     """Tests for CanonicalTagRepository.search()."""
 

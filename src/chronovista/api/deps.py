@@ -214,6 +214,13 @@ def get_stats_repositories() -> StatsRepositories:
     )
 
 
+def get_canonical_tag_repository() -> CanonicalTagRepository:
+    """Dependency providing a CanonicalTagRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_canonical_tag_repository()
+
+
 def get_video_repository() -> VideoRepository:
     """Dependency providing a VideoRepository via the DI container (issue #256)."""
     from chronovista.container import container

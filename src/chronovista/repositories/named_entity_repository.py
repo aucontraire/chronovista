@@ -14,6 +14,7 @@ from sqlalchemy import bindparam, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.models.named_entity import NamedEntityCreate, NamedEntityUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
@@ -39,6 +40,51 @@ class NamedEntityRepository(
             select(NamedEntityDB).where(NamedEntityDB.id == id)
         )
         return result.scalar_one_or_none()
+
+    async def find_by_name_or_alias(
+        self, session: AsyncSession, name: str
+    ) -> tuple[uuid.UUID | None, str | None]:
+        """Look up a named entity by canonical name or alias (issue #256).
+
+        Matches ``name`` case-insensitively against ``canonical_name`` first, then
+        against ``entity_aliases.alias_name``; on an alias hit the entity's
+        canonical name is resolved for display.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        name : str
+            The text to match against canonical_name or alias_name.
+
+        Returns
+        -------
+        tuple[uuid.UUID | None, str | None]
+            ``(entity_id, entity_name)`` if found, otherwise ``(None, None)``.
+        """
+        stmt = (
+            select(NamedEntityDB.id, NamedEntityDB.canonical_name)
+            .where(NamedEntityDB.canonical_name.ilike(name))
+            .limit(1)
+        )
+        row = (await session.execute(stmt)).first()
+        if row is not None:
+            return row.id, row.canonical_name
+
+        alias_stmt = (
+            select(EntityAliasDB.entity_id, EntityAliasDB.alias_name)
+            .where(EntityAliasDB.alias_name.ilike(name))
+            .limit(1)
+        )
+        alias_row = (await session.execute(alias_stmt)).first()
+        if alias_row is not None:
+            entity_stmt = select(NamedEntityDB.canonical_name).where(
+                NamedEntityDB.id == alias_row.entity_id
+            )
+            entity_name_val = (await session.execute(entity_stmt)).scalar_one_or_none()
+            return alias_row.entity_id, entity_name_val
+
+        return None, None
 
     async def exists(self, session: AsyncSession, id: uuid.UUID) -> bool:
         """Check if named entity exists by UUID primary key."""

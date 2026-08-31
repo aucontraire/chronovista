@@ -10,7 +10,6 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
@@ -28,13 +27,11 @@ from chronovista.api.schemas.batch_corrections import (
     DiffErrorPatternResponse,
 )
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
-from chronovista.db.models import EntityAlias as EntityAliasDB
-from chronovista.db.models import NamedEntity as NamedEntityDB
-from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
 from chronovista.models.batch_correction_models import BatchCorrectionResult
 from chronovista.models.correction_actors import ACTOR_USER_BATCH
 from chronovista.models.enums import CorrectionType
+from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
@@ -62,6 +59,7 @@ router = APIRouter(
 _correction_repo = TranscriptCorrectionRepository()
 _segment_repo = TranscriptSegmentRepository()
 _transcript_repo = VideoTranscriptRepository()
+_named_entity_repo = NamedEntityRepository()
 _correction_service = TranscriptCorrectionService(
     correction_repo=_correction_repo,
     segment_repo=_segment_repo,
@@ -489,32 +487,7 @@ async def _find_entity_by_name(
     tuple[uuid.UUID | None, str | None]
         ``(entity_id, entity_name)`` if found, otherwise ``(None, None)``.
     """
-    # Try canonical name first
-    stmt = (
-        select(NamedEntityDB.id, NamedEntityDB.canonical_name)
-        .where(NamedEntityDB.canonical_name.ilike(name))
-        .limit(1)
-    )
-    row = (await session.execute(stmt)).first()
-    if row is not None:
-        return row.id, row.canonical_name
-
-    # Try alias name
-    alias_stmt = (
-        select(EntityAliasDB.entity_id, EntityAliasDB.alias_name)
-        .where(EntityAliasDB.alias_name.ilike(name))
-        .limit(1)
-    )
-    alias_row = (await session.execute(alias_stmt)).first()
-    if alias_row is not None:
-        # Fetch the entity's canonical name
-        entity_stmt = select(NamedEntityDB.canonical_name).where(
-            NamedEntityDB.id == alias_row.entity_id
-        )
-        entity_name_val = (await session.execute(entity_stmt)).scalar_one_or_none()
-        return alias_row.entity_id, entity_name_val
-
-    return None, None
+    return await _named_entity_repo.find_by_name_or_alias(session, name)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -542,43 +515,18 @@ def _whole_word_regex(token: str) -> str:
 async def _remaining_whole_word_matches(session: AsyncSession, error_token: str) -> int:
     r"""Count segments whose effective text still contains ``error_token`` as a whole word.
 
-    Word-boundary, **not** substring: the token does not match inside a larger word, so
-    ``"ACME"`` no longer counts ``"ACMES"``. This is the same boundary rule the Find & Replace
-    search uses (``\bACME\b``), so ``remaining_matches`` now agrees with what a replace would
-    actually change. Case is unchanged (case-sensitive), matching the Find & Replace default.
-
-    The trigram-eligible substring **super-set** on the raw columns is kept as an index
-    prefilter (a whole-word match implies the substring is present, so nothing true is
-    dropped), with the word-boundary regex as the exact recheck on the effective
-    (post-correction) text. The count is capped at ``_REMAINING_MATCH_CAP`` (#212).
+    Thin wrapper over
+    :meth:`TranscriptSegmentRepository.count_whole_word_matches` — it passes the
+    word-boundary regex built by :func:`_whole_word_regex` and the
+    ``_REMAINING_MATCH_CAP`` ceiling (#212). See that repository method for the
+    query and its pg_trgm-index tuning.
     """
-    effective_text = case(
-        (TranscriptSegmentDB.has_correction, TranscriptSegmentDB.corrected_text),
-        else_=TranscriptSegmentDB.text,
+    return await _segment_repo.count_whole_word_matches(
+        session,
+        error_token,
+        _whole_word_regex(error_token),
+        cap=_REMAINING_MATCH_CAP,
     )
-    matching_rows = (
-        select(literal(1))
-        .select_from(TranscriptSegmentDB)
-        .where(
-            # Index-eligible super-set on the RAW columns so PostgreSQL can use the
-            # pg_trgm GIN indexes (idx_segments_text_trgm / idx_segments_corrected_text_trgm).
-            # A CASE expression is opaque to them and forces a parallel seq scan of ~2M
-            # rows — once per token. Same fix as #150.
-            or_(
-                TranscriptSegmentDB.text.contains(error_token),
-                TranscriptSegmentDB.corrected_text.contains(error_token),
-            ),
-            # Exact recheck against the super-set: whole-word (word boundary), not
-            # substring. A segment whose correction removed the token is excluded too,
-            # because the recheck runs on the effective (post-correction) text.
-            effective_text.op("~")(_whole_word_regex(error_token)),
-        )
-        # The ceiling bounds the heap fetch (#212).
-        .limit(_REMAINING_MATCH_CAP)
-        .subquery()
-    )
-    result = await session.execute(select(func.count()).select_from(matching_rows))
-    return int(result.scalar_one())
 
 
 @router.get(

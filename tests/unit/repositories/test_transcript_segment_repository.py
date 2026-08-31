@@ -34,6 +34,42 @@ class TestTranscriptSegmentRepository:
         session = AsyncMock(spec=AsyncSession)
         return session
 
+    async def test_count_whole_word_matches_query_shape(
+        self,
+        repository: TranscriptSegmentRepository,
+        mock_session: AsyncMock,
+    ) -> None:
+        """count_whole_word_matches applies the regex recheck and the cap (#256).
+
+        The endpoint's real-DB regression covers the count value; this pins the
+        query shape at the unit level — the whole-word regex ``~`` recheck and
+        the ``cap`` LIMIT that bounds the heap fetch (#212).
+        """
+        result = MagicMock()
+        result.scalar_one.return_value = 5
+        mock_session.execute.return_value = result
+
+        count = await repository.count_whole_word_matches(
+            mock_session, "ACME", r"\yACME\y", cap=1000
+        )
+
+        assert count == 5
+        mock_session.execute.assert_called_once()
+        sql = str(
+            mock_session.execute.call_args[0][0].compile(
+                compile_kwargs={"literal_binds": True}
+            )
+        )
+        assert "LIMIT 1000" in sql  # cap bounds the heap fetch (#212)
+        assert "~" in sql  # POSIX whole-word regex recheck
+        assert "count(" in sql.lower()
+        # The trigram prefilter MUST hit the RAW columns, not the CASE — a
+        # CASE-wrapped prefilter is opaque to the pg_trgm GIN indexes and forces
+        # a full scan (#150). These bare-column LIKE clauses exist only if the
+        # prefilter is on the raw columns; re-wrapping it in the CASE removes them.
+        assert "transcript_segments.text LIKE" in sql
+        assert "transcript_segments.corrected_text LIKE" in sql
+
     @pytest.fixture
     def sample_segments(self) -> list[TranscriptSegmentDB]:
         """Create sample segments: [0-2.5], [2.5-5.0], [5.0-7.5]."""

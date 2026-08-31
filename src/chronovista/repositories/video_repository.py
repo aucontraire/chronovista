@@ -14,6 +14,7 @@ from sqlalchemy import ColumnElement, and_, asc, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.video import (
@@ -24,6 +25,9 @@ from chronovista.models.video import (
 )
 from chronovista.models.youtube_types import ChannelId, VideoId
 from chronovista.repositories.base import BaseSQLAlchemyRepository
+from chronovista.repositories.transcript_segment_repository import (
+    _escape_like_pattern,
+)
 
 
 class VideoRepository(
@@ -417,6 +421,122 @@ class VideoRepository(
             .where(VideoDB.video_id == video_id)
         )
         return result.scalar_one_or_none()
+
+    async def search_titles(
+        self,
+        session: AsyncSession,
+        *,
+        query_text: str,
+        include_unavailable: bool = False,
+        limit: int = 50,
+    ) -> tuple[list[tuple[VideoDB, ChannelDB | None]], int]:
+        """
+        Full-text (ILIKE) search over video titles (issue #256).
+
+        Case-insensitive substring match against ``title`` (LIKE wildcards in the
+        query are escaped for literal matching). Returns matching videos with
+        their channel (outer-joined), newest first, capped at ``limit``, plus the
+        total match count before the limit.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        query_text : str
+            The raw search phrase (escaped internally).
+        include_unavailable : bool, optional
+            When False (default), only AVAILABLE videos are searched.
+        limit : int, optional
+            Maximum number of results to return; default 50.
+
+        Returns
+        -------
+        tuple[list[tuple[VideoDB, ChannelDB | None]], int]
+            ``(rows, total)`` where each row is ``(video, channel_or_None)``.
+        """
+        escaped = _escape_like_pattern(query_text)
+        conditions: list[ColumnElement[bool]] = []
+        if not include_unavailable:
+            conditions.append(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        conditions.append(VideoDB.title.ilike(f"%{escaped}%"))
+
+        total = (
+            await session.execute(
+                select(func.count()).select_from(
+                    select(VideoDB.video_id).where(*conditions).subquery()
+                )
+            )
+        ).scalar() or 0
+
+        result = await session.execute(
+            select(VideoDB, ChannelDB)
+            .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
+            .where(*conditions)
+            # video_id is a deterministic tiebreak so the capped top-N is stable
+            # when several videos share an upload_date (#256).
+            .order_by(VideoDB.upload_date.desc(), VideoDB.video_id.asc())
+            .limit(limit)
+        )
+        return [(row[0], row[1]) for row in result.all()], total
+
+    async def search_descriptions(
+        self,
+        session: AsyncSession,
+        *,
+        query_text: str,
+        include_unavailable: bool = False,
+        limit: int = 50,
+    ) -> tuple[list[tuple[VideoDB, ChannelDB | None]], int]:
+        """
+        Full-text (ILIKE) search over video descriptions (issue #256).
+
+        Like :meth:`search_titles` but matches ``description`` (excluding videos
+        with a NULL description). LIKE wildcards in the query are escaped.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        query_text : str
+            The raw search phrase (escaped internally).
+        include_unavailable : bool, optional
+            When False (default), only AVAILABLE videos are searched.
+        limit : int, optional
+            Maximum number of results to return; default 50.
+
+        Returns
+        -------
+        tuple[list[tuple[VideoDB, ChannelDB | None]], int]
+            ``(rows, total)`` where each row is ``(video, channel_or_None)``.
+        """
+        escaped = _escape_like_pattern(query_text)
+        conditions: list[ColumnElement[bool]] = [VideoDB.description.isnot(None)]
+        if not include_unavailable:
+            conditions.append(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        conditions.append(VideoDB.description.ilike(f"%{escaped}%"))
+
+        total = (
+            await session.execute(
+                select(func.count()).select_from(
+                    select(VideoDB.video_id).where(*conditions).subquery()
+                )
+            )
+        ).scalar() or 0
+
+        result = await session.execute(
+            select(VideoDB, ChannelDB)
+            .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
+            .where(*conditions)
+            # video_id is a deterministic tiebreak so the capped top-N is stable
+            # when several videos share an upload_date (#256).
+            .order_by(VideoDB.upload_date.desc(), VideoDB.video_id.asc())
+            .limit(limit)
+        )
+        return [(row[0], row[1]) for row in result.all()], total
 
     async def search_videos(
         self, session: AsyncSession, filters: VideoSearchFilters

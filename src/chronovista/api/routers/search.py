@@ -3,9 +3,8 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.elements import ColumnElement
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import get_db, get_video_repository, require_auth
 from chronovista.api.routers.responses import (
     BAD_REQUEST_RESPONSE,
     INTERNAL_ERROR_RESPONSE,
@@ -28,6 +27,7 @@ from chronovista.db.models import VideoTranscript as TranscriptDB
 from chronovista.exceptions import BadRequestError
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.transcript_segment_repository import _escape_like_pattern
+from chronovista.repositories.video_repository import VideoRepository
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -316,6 +316,7 @@ async def search_titles(
     limit: int = Query(
         50, ge=1, le=50, description="Maximum results (1-50, default 50)"
     ),
+    video_repo: VideoRepository = Depends(get_video_repository),
     session: AsyncSession = Depends(get_db),
 ) -> TitleSearchResponse:
     """
@@ -358,49 +359,22 @@ async def search_titles(
             details={"field": "q", "constraint": "no_null_bytes"},
         )
 
-    # Escape special LIKE characters for literal phrase matching
-    escaped_query = _escape_like_pattern(query_text)
-
-    # Build conditions for reuse (count + results)
-    conditions = []
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        conditions.append(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
-    conditions.append(VideoDB.title.ilike(f"%{escaped_query}%"))
-
-    # Get total count
-    count_query = select(func.count()).select_from(
-        select(VideoDB.video_id).where(*conditions).subquery()
+    rows, total_count = await video_repo.search_titles(
+        session,
+        query_text=query_text,
+        include_unavailable=include_unavailable,
+        limit=limit,
     )
-    total_result = await session.execute(count_query)
-    total_count = total_result.scalar() or 0
-
-    # Build results query with channel join, ordering, and limit
-    results_query = (
-        select(
-            VideoDB.video_id,
-            VideoDB.title,
-            ChannelDB.title.label("channel_title"),
-            VideoDB.upload_date,
-            VideoDB.availability_status,
-        )
-        .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
-        .where(*conditions)
-        .order_by(VideoDB.upload_date.desc())
-        .limit(limit)
-    )
-    result = await session.execute(results_query)
-    rows = result.all()
 
     items = [
         TitleSearchResult(
-            video_id=row.video_id,
-            title=row.title,
-            channel_title=row.channel_title,
-            upload_date=row.upload_date,
-            availability_status=row.availability_status,
+            video_id=video.video_id,
+            title=video.title,
+            channel_title=channel.title if channel else None,
+            upload_date=video.upload_date,
+            availability_status=video.availability_status,
         )
-        for row in rows
+        for video, channel in rows
     ]
 
     return TitleSearchResponse(data=items, total_count=total_count)
@@ -482,6 +456,7 @@ async def search_descriptions(
     limit: int = Query(
         50, ge=1, le=50, description="Maximum results (1-50, default 50)"
     ),
+    video_repo: VideoRepository = Depends(get_video_repository),
     session: AsyncSession = Depends(get_db),
 ) -> DescriptionSearchResponse:
     """
@@ -526,51 +501,25 @@ async def search_descriptions(
             details={"field": "q", "constraint": "no_null_bytes"},
         )
 
-    # Escape special LIKE characters for literal phrase matching
-    escaped_query = _escape_like_pattern(query_text)
-
-    # Build conditions for reuse
-    conditions: list[ColumnElement[bool]] = [VideoDB.description.isnot(None)]
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        conditions.append(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
-    conditions.append(VideoDB.description.ilike(f"%{escaped_query}%"))
-
-    # Get total count
-    count_query = select(func.count()).select_from(
-        select(VideoDB.video_id).where(*conditions).subquery()
+    rows, total_count = await video_repo.search_descriptions(
+        session,
+        query_text=query_text,
+        include_unavailable=include_unavailable,
+        limit=limit,
     )
-    total_result = await session.execute(count_query)
-    total_count = total_result.scalar() or 0
-
-    # Build results query with channel join
-    results_query = (
-        select(
-            VideoDB.video_id,
-            VideoDB.title,
-            VideoDB.description,
-            ChannelDB.title.label("channel_title"),
-            VideoDB.upload_date,
-            VideoDB.availability_status,
-        )
-        .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
-        .where(*conditions)
-        .order_by(VideoDB.upload_date.desc())
-        .limit(limit)
-    )
-    result = await session.execute(results_query)
-    rows = result.all()
 
     items = [
         DescriptionSearchResult(
-            video_id=row.video_id,
-            title=row.title,
-            channel_title=row.channel_title,
-            upload_date=row.upload_date,
-            snippet=_generate_snippet(row.description, [query_text]),
-            availability_status=row.availability_status,
+            video_id=video.video_id,
+            title=video.title,
+            channel_title=channel.title if channel else None,
+            upload_date=video.upload_date,
+            # description is non-null here (the repo filters it out); `or ""`
+            # only satisfies the type-checker for the nullable ORM column.
+            snippet=_generate_snippet(video.description or "", [query_text]),
+            availability_status=video.availability_status,
         )
-        for row in rows
+        for video, channel in rows
     ]
 
     return DescriptionSearchResponse(data=items, total_count=total_count)

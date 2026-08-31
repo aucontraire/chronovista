@@ -15,9 +15,9 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
+from chronovista.repositories.base import escape_like_pattern
 from chronovista.repositories.transcript_segment_repository import (
     TranscriptSegmentRepository,
-    _escape_like_pattern,
 )
 
 
@@ -947,7 +947,7 @@ class TestFindCandidateVideoIdsForCrossSegment:
 
 class TestEscapeLikePattern:
     """
-    Unit tests for _escape_like_pattern() helper (T005).
+    Unit tests for escape_like_pattern() helper (T005).
 
     Verifies that SQL LIKE/ILIKE wildcard characters are correctly escaped
     so that user-supplied text is treated as a literal substring rather than
@@ -956,19 +956,19 @@ class TestEscapeLikePattern:
 
     def test_escapes_underscore(self) -> None:
         """Underscore is escaped to backslash-underscore."""
-        assert _escape_like_pattern("_") == r"\_"
+        assert escape_like_pattern("_") == r"\_"
 
     def test_escapes_percent(self) -> None:
         """Percent sign is escaped to backslash-percent."""
-        assert _escape_like_pattern("%") == r"\%"
+        assert escape_like_pattern("%") == r"\%"
 
     def test_escapes_backslash(self) -> None:
         """Backslash is escaped to double-backslash."""
-        assert _escape_like_pattern("\\") == "\\\\"
+        assert escape_like_pattern("\\") == "\\\\"
 
     def test_combination_all_three_special_chars(self) -> None:
         """All three special characters appear correctly escaped in a combined string."""
-        result = _escape_like_pattern("100%_value\\path")
+        result = escape_like_pattern("100%_value\\path")
         assert result == "100\\%\\_value\\\\path"
 
     def test_escape_order_backslash_first(self) -> None:
@@ -982,43 +982,43 @@ class TestEscapeLikePattern:
         Input: ``\\_`` (backslash then underscore)
         Expected output: ``\\\\_`` (escaped backslash then escaped underscore)
         """
-        result = _escape_like_pattern("\\_")
+        result = escape_like_pattern("\\_")
         # backslash → \\, then underscore → \_  ⟹  \\\_ in escaped form
         assert result == "\\\\\\_"
 
     def test_empty_string_returns_empty(self) -> None:
         """Empty string input returns empty string."""
-        assert _escape_like_pattern("") == ""
+        assert escape_like_pattern("") == ""
 
     def test_no_special_chars_unchanged(self) -> None:
         """String with no special characters passes through unchanged."""
         plain = "hello world"
-        assert _escape_like_pattern(plain) == plain
+        assert escape_like_pattern(plain) == plain
 
     def test_multiple_underscores(self) -> None:
         """Multiple consecutive underscores are all escaped."""
-        result = _escape_like_pattern("__init__")
+        result = escape_like_pattern("__init__")
         assert result == r"\_\_init\_\_"
 
     def test_multiple_percent_signs(self) -> None:
         """Multiple percent signs are all escaped."""
-        result = _escape_like_pattern("100% complete 50%")
+        result = escape_like_pattern("100% complete 50%")
         assert result == "100\\% complete 50\\%"
 
     def test_mixed_regular_and_special_chars(self) -> None:
         """Regular characters between special chars are preserved verbatim."""
-        result = _escape_like_pattern("a%b_c\\d")
+        result = escape_like_pattern("a%b_c\\d")
         assert result == "a\\%b\\_c\\\\d"
 
     def test_path_with_backslashes(self) -> None:
         """Windows-style path with backslashes is correctly escaped."""
-        result = _escape_like_pattern("C:\\Users\\test")
+        result = escape_like_pattern("C:\\Users\\test")
         assert result == "C:\\\\Users\\\\test"
 
     def test_returns_str_type(self) -> None:
         """Return type is always str."""
-        assert isinstance(_escape_like_pattern("any input"), str)
-        assert isinstance(_escape_like_pattern(""), str)
+        assert isinstance(escape_like_pattern("any input"), str)
+        assert isinstance(escape_like_pattern(""), str)
 
 
 # ---------------------------------------------------------------------------
@@ -1176,5 +1176,5 @@ class TestFindByTextPatternLiteralEscaping:
         # In regex mode, the pattern is passed directly to the ~ operator
         # The ``%`` should appear un-escaped (no ``\%``) in the raw regex branch
         # We simply verify the query executed without error — the regex branch
-        # does not call _escape_like_pattern
+        # does not call escape_like_pattern
         assert "%" in sql_str  # raw percent present in regex pattern

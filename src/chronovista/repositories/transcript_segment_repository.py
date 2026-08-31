@@ -30,7 +30,10 @@ from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.models.transcript_segment import TranscriptSegmentCreate
 from chronovista.models.youtube_types import VideoId
-from chronovista.repositories.base import BaseSQLAlchemyRepository
+from chronovista.repositories.base import (
+    BaseSQLAlchemyRepository,
+    escape_like_pattern,
+)
 
 
 def translate_python_regex_to_posix(pattern: str) -> str:
@@ -99,22 +102,6 @@ def translate_python_regex_to_posix(pattern: str) -> str:
         i += 1
 
     return "".join(result)
-
-
-def _escape_like_pattern(text: str) -> str:
-    """Escape SQL LIKE/ILIKE wildcard characters for literal matching.
-
-    Parameters
-    ----------
-    text : str
-        The text to escape.
-
-    Returns
-    -------
-    str
-        The escaped text safe for use in LIKE/ILIKE patterns.
-    """
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class TranscriptSegmentRepository(
@@ -591,7 +578,7 @@ class TranscriptSegmentRepository(
             else:
                 text_condition = effective_text.op("~")(sql_pattern)
         else:
-            escaped = _escape_like_pattern(pattern)
+            escaped = escape_like_pattern(pattern)
             like_pattern = f"%{escaped}%"
             if case_insensitive:
                 text_condition = effective_text.ilike(like_pattern)

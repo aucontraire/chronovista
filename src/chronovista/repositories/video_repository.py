@@ -24,9 +24,9 @@ from chronovista.models.video import (
     VideoUpdate,
 )
 from chronovista.models.youtube_types import ChannelId, VideoId
-from chronovista.repositories.base import BaseSQLAlchemyRepository
-from chronovista.repositories.transcript_segment_repository import (
-    _escape_like_pattern,
+from chronovista.repositories.base import (
+    BaseSQLAlchemyRepository,
+    escape_like_pattern,
 )
 
 
@@ -454,7 +454,7 @@ class VideoRepository(
         tuple[list[tuple[VideoDB, ChannelDB | None]], int]
             ``(rows, total)`` where each row is ``(video, channel_or_None)``.
         """
-        escaped = _escape_like_pattern(query_text)
+        escaped = escape_like_pattern(query_text)
         conditions: list[ColumnElement[bool]] = []
         if not include_unavailable:
             conditions.append(
@@ -511,7 +511,7 @@ class VideoRepository(
         tuple[list[tuple[VideoDB, ChannelDB | None]], int]
             ``(rows, total)`` where each row is ``(video, channel_or_None)``.
         """
-        escaped = _escape_like_pattern(query_text)
+        escaped = escape_like_pattern(query_text)
         conditions: list[ColumnElement[bool]] = [VideoDB.description.isnot(None)]
         if not include_unavailable:
             conditions.append(

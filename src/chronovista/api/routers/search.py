@@ -26,7 +26,7 @@ from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as TranscriptDB
 from chronovista.exceptions import BadRequestError
 from chronovista.models.enums import AvailabilityStatus
-from chronovista.repositories.transcript_segment_repository import _escape_like_pattern
+from chronovista.repositories.base import escape_like_pattern
 from chronovista.repositories.video_repository import VideoRepository
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -129,7 +129,7 @@ async def search_segments(
         )
 
     # Escape special LIKE characters for literal phrase matching
-    escaped_query = _escape_like_pattern(query_text)
+    escaped_query = escape_like_pattern(query_text)
 
     # Build base query with joins (including Channel for eager loading)
     query = (

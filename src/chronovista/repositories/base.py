@@ -23,6 +23,25 @@ UpdateSchemaType = TypeVar("UpdateSchemaType")
 IdType = TypeVar("IdType", default=Any)
 
 
+def escape_like_pattern(text: str) -> str:
+    """Escape SQL LIKE/ILIKE wildcard characters for literal matching.
+
+    Shared across repositories that build ILIKE search predicates so a user's
+    ``%`` / ``_`` / ``\\`` is matched literally rather than as a wildcard.
+
+    Parameters
+    ----------
+    text : str
+        The text to escape.
+
+    Returns
+    -------
+    str
+        The escaped text safe for use in LIKE/ILIKE patterns.
+    """
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class BaseRepository(
     ABC, Generic[ModelType, CreateSchemaType, UpdateSchemaType, IdType]
 ):

@@ -1230,6 +1230,7 @@ async def add_exclusion_pattern(
     entity_id: str = Path(..., description="Named entity UUID"),
     body: ExclusionPatternRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
 ) -> dict[str, Any]:
     """Add an exclusion pattern to a named entity.
 
@@ -1263,8 +1264,8 @@ async def add_exclusion_pattern(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    # Look up entity
-    entity = await session.get(NamedEntityDB, parsed_entity_id)
+    # Look up entity (mutated below, so fetch the row, not just existence)
+    entity = await entity_repo.get(session, parsed_entity_id)
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
@@ -1314,6 +1315,7 @@ async def remove_exclusion_pattern(
     entity_id: str = Path(..., description="Named entity UUID"),
     body: ExclusionPatternRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
 ) -> dict[str, Any]:
     """Remove an exclusion pattern from a named entity.
 
@@ -1343,8 +1345,8 @@ async def remove_exclusion_pattern(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    # Look up entity
-    entity = await session.get(NamedEntityDB, parsed_entity_id)
+    # Look up entity (mutated below, so fetch the row, not just existence)
+    entity = await entity_repo.get(session, parsed_entity_id)
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 

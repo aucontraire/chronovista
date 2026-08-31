@@ -1,10 +1,14 @@
 """Search endpoints for transcript segment search."""
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, get_video_repository, require_auth
+from chronovista.api.deps import (
+    get_db,
+    get_transcript_segment_repository,
+    get_video_repository,
+    require_auth,
+)
 from chronovista.api.routers.responses import (
     BAD_REQUEST_RESPONSE,
     INTERNAL_ERROR_RESPONSE,
@@ -20,13 +24,11 @@ from chronovista.api.schemas.search import (
     TitleSearchResponse,
     TitleSearchResult,
 )
-from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import TranscriptSegment as SegmentDB
-from chronovista.db.models import Video as VideoDB
-from chronovista.db.models import VideoTranscript as TranscriptDB
 from chronovista.exceptions import BadRequestError
-from chronovista.models.enums import AvailabilityStatus
-from chronovista.repositories.base import escape_like_pattern
+from chronovista.repositories.transcript_segment_repository import (
+    TranscriptSegmentRepository,
+)
 from chronovista.repositories.video_repository import VideoRepository
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -80,6 +82,9 @@ async def search_segments(
     ),
     limit: int = Query(20, ge=1, le=100, description="Results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    segment_repo: TranscriptSegmentRepository = Depends(
+        get_transcript_segment_repository
+    ),
     session: AsyncSession = Depends(get_db),
 ) -> SearchResponse:
     """
@@ -128,148 +133,46 @@ async def search_segments(
             details={"field": "q", "constraint": "no_null_bytes"},
         )
 
-    # Escape special LIKE characters for literal phrase matching
-    escaped_query = escape_like_pattern(query_text)
-
-    # Build base query with joins (including Channel for eager loading)
-    query = (
-        select(SegmentDB, TranscriptDB, VideoDB, ChannelDB)
-        .join(
-            TranscriptDB,
-            and_(
-                SegmentDB.video_id == TranscriptDB.video_id,
-                SegmentDB.language_code == TranscriptDB.language_code,
-            ),
-        )
-        .join(VideoDB, SegmentDB.video_id == VideoDB.video_id)
-        .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
+    # Available-language facet: every language the phrase matches (no language
+    # filter), so a caller can switch. Computed independently of the selected
+    # language, matching the response contract.
+    available_languages = await segment_repo.get_matching_languages(
+        session,
+        query_text=query_text,
+        video_id=video_id,
+        include_unavailable=include_unavailable,
     )
 
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
-
-    # Apply ILIKE filter for the entire query as a single phrase
-    # Search both original text and corrected text so corrections are findable
-    query = query.where(
-        or_(
-            SegmentDB.text.ilike(f"%{escaped_query}%"),
-            SegmentDB.corrected_text.ilike(f"%{escaped_query}%"),
-        )
+    # Paginated matching segments (with the selected language filter applied to
+    # both the page and the total count).
+    rows, total = await segment_repo.search_segments(
+        session,
+        query_text=query_text,
+        video_id=video_id,
+        language=language,
+        include_unavailable=include_unavailable,
+        skip=offset,
+        limit=limit,
     )
 
-    # Apply optional video filter (affects both available_languages and results)
-    if video_id:
-        query = query.where(SegmentDB.video_id == video_id)
-
-    # Build a FRESH query specifically for extracting available languages
-    # This avoids any potential issues from the complex joined base query
-    # Only query transcript_segments directly to get ACTUAL language codes in results
-    lang_base_query = select(SegmentDB.language_code).join(
-        VideoDB, SegmentDB.video_id == VideoDB.video_id
-    )
-
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        lang_base_query = lang_base_query.where(
-            VideoDB.availability_status == AvailabilityStatus.AVAILABLE
-        )
-
-    # Apply the same text search filter (single phrase, both original and corrected text)
-    lang_base_query = lang_base_query.where(
-        or_(
-            SegmentDB.text.ilike(f"%{escaped_query}%"),
-            SegmentDB.corrected_text.ilike(f"%{escaped_query}%"),
-        )
-    )
-
-    # Apply optional video filter
-    if video_id:
-        lang_base_query = lang_base_query.where(SegmentDB.video_id == video_id)
-
-    # Get distinct languages from matching segments
-    languages_query = lang_base_query.distinct()
-    languages_result = await session.execute(languages_query)
-    available_languages = sorted([lang for (lang,) in languages_result.all()])
-
-    # Apply language filter AFTER computing available_languages
-    if language:
-        # Case-insensitive comparison to handle BCP-47 casing variations
-        # (e.g., "en-US" vs "en-us" vs "EN-US")
-        query = query.where(func.lower(SegmentDB.language_code) == func.lower(language))
-
-    # Get total count from filtered result set
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await session.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply ordering and pagination
-    query = (
-        query.order_by(VideoDB.upload_date.desc(), SegmentDB.start_time.asc())
-        .offset(offset)
-        .limit(limit)
-    )
-
-    result = await session.execute(query)
-    rows = result.all()
-
-    # Batch-fetch adjacent segments for context (eliminates N+1 queries).
-    # Collect the segment IDs from the result set, then use LAG/LEAD window
-    # functions in a single query to get prev/next text for all results.
+    # Batch-fetch adjacent-segment context for the page (eliminates N+1), bounded
+    # to the (video_id, language_code) partitions the results live in.
     segment_ids = [segment.id for segment, _t, _v, _c in rows]
-    context_map: dict[int, tuple[str | None, str | None]] = {}
+    context_map = await segment_repo.get_adjacent_segment_text(
+        session,
+        segment_ids=segment_ids,
+        video_ids=list({s.video_id for s, _t, _v, _c in rows}),
+        language_codes=list({s.language_code for s, _t, _v, _c in rows}),
+    )
 
-    if segment_ids:
-        # Use a CTE with window functions over each (video_id, language_code)
-        # partition to get the previous and next segment text.
-        partition = [SegmentDB.video_id, SegmentDB.language_code]
-        order = SegmentDB.start_time.asc()
-        # corrected_text takes precedence over text (matching _display_text)
-        display_text_col = func.coalesce(SegmentDB.corrected_text, SegmentDB.text)
-
-        context_cte = (
-            select(
-                SegmentDB.id.label("seg_id"),
-                func.lag(display_text_col, 1)
-                .over(partition_by=partition, order_by=order)
-                .label("prev_text"),
-                func.lead(display_text_col, 1)
-                .over(partition_by=partition, order_by=order)
-                .label("next_text"),
-            )
-            .where(
-                # Only compute windows for segments in the same
-                # (video_id, language_code) groups as our results.
-                # This keeps the window computation bounded.
-                and_(
-                    SegmentDB.video_id.in_([s.video_id for s, _t, _v, _c in rows]),
-                    SegmentDB.language_code.in_(
-                        [s.language_code for s, _t, _v, _c in rows]
-                    ),
-                )
-            )
-            .cte("context_cte")
-        )
-
-        context_query = select(
-            context_cte.c.seg_id,
-            context_cte.c.prev_text,
-            context_cte.c.next_text,
-        ).where(context_cte.c.seg_id.in_(segment_ids))
-        context_result = await session.execute(context_query)
-        for seg_id, prev_text, next_text in context_result.all():
-            ctx_before = (
-                prev_text[:200] if prev_text and len(prev_text) > 200 else prev_text
-            )
-            ctx_after = (
-                next_text[:200] if next_text and len(next_text) > 200 else next_text
-            )
-            context_map[seg_id] = (ctx_before, ctx_after)
-
-    # Build response items using the pre-fetched context
+    # Build response items using the pre-fetched context (truncated for display)
     items: list[SearchResultSegment] = []
     for segment, _transcript, video, channel in rows:
-        ctx_before, ctx_after = context_map.get(segment.id, (None, None))
+        prev_text, next_text = context_map.get(segment.id, (None, None))
+        ctx_before = (
+            prev_text[:200] if prev_text and len(prev_text) > 200 else prev_text
+        )
+        ctx_after = next_text[:200] if next_text and len(next_text) > 200 else next_text
         items.append(
             SearchResultSegment(
                 segment_id=segment.id,

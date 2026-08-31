@@ -14,7 +14,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_db,
+    get_video_category_repository,
+    require_auth,
+)
 from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.categories import (
     CategoryDetail,
@@ -36,12 +40,14 @@ from chronovista.db.models import (
 )
 from chronovista.exceptions import NotFoundError
 from chronovista.models.enums import AvailabilityStatus
+from chronovista.repositories.video_category_repository import VideoCategoryRepository
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 
 @router.get("/categories", response_model=CategoryListResponse, responses=LIST_ERRORS)
 async def list_categories(
+    repo: VideoCategoryRepository = Depends(get_video_category_repository),
     session: AsyncSession = Depends(get_db),
     include_unavailable: bool = Query(
         False,
@@ -58,6 +64,8 @@ async def list_categories(
 
     Parameters
     ----------
+    repo : VideoCategoryRepository
+        Video category repository injected via the DI container.
     session : AsyncSession
         Database session from dependency.
     limit : int
@@ -70,54 +78,29 @@ async def list_categories(
     CategoryListResponse
         Paginated list of categories with metadata.
     """
-    # Subquery for video count
-    video_count_conditions = [Video.category_id == VideoCategory.category_id]
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        video_count_conditions.append(
-            Video.availability_status == AvailabilityStatus.AVAILABLE
-        )
-
-    video_count_subq = (
-        select(func.count(Video.video_id))
-        .where(*video_count_conditions)
-        .correlate(VideoCategory)
-        .scalar_subquery()
+    rows = await repo.get_with_video_counts(
+        session,
+        include_unavailable=include_unavailable,
+        limit=limit,
+        offset=offset,
     )
+    # total counts ALL categories, which stays consistent with the rows only
+    # because this list uses the default only_with_videos=False. If a future
+    # change filters the list to categories that have videos, derive total from
+    # the filtered query (count over the same aggregate) — not repo.count() —
+    # or total will over-count the empty categories the rows exclude (#256).
+    total = await repo.count(session)
 
-    # Main query with counts - selecting specific columns for aggregation
-    query = select(
-        VideoCategory.category_id,
-        VideoCategory.name,
-        VideoCategory.assignable,
-        video_count_subq.label("video_count"),
-    )
-
-    # Get total count (before pagination)
-    count_query = select(func.count()).select_from(VideoCategory)
-    total_result = await session.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply ordering (video_count DESC per spec) and pagination
-    query = query.order_by(video_count_subq.desc()).offset(offset).limit(limit)
-
-    # Execute query
-    result = await session.execute(query)
-    rows = result.all()
-
-    # Transform to response items
-    items: list[CategoryListItem] = []
-    for row in rows:
-        items.append(
-            CategoryListItem(
-                category_id=row.category_id,
-                name=row.name,
-                assignable=row.assignable,
-                video_count=row.video_count or 0,
-            )
+    items = [
+        CategoryListItem(
+            category_id=row.category_id,
+            name=row.name,
+            assignable=row.assignable,
+            video_count=row.video_count,
         )
+        for row in rows
+    ]
 
-    # Build pagination
     pagination = PaginationMeta(
         total=total,
         limit=limit,
@@ -302,6 +285,7 @@ async def get_category(
         False,
         description="Include unavailable records in results",
     ),
+    repo: VideoCategoryRepository = Depends(get_video_category_repository),
     session: AsyncSession = Depends(get_db),
 ) -> CategoryDetailResponse:
     """
@@ -314,6 +298,8 @@ async def get_category(
     ----------
     category_id : str
         YouTube category ID (e.g., "10" for Music, "22" for People & Blogs).
+    repo : VideoCategoryRepository
+        Video category repository injected via the DI container.
     session : AsyncSession
         Database session from dependency.
 
@@ -327,47 +313,24 @@ async def get_category(
     NotFoundError
         404 if category not found.
     """
-    # Subquery for video count
-    video_count_conditions = [Video.category_id == VideoCategory.category_id]
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        video_count_conditions.append(
-            Video.availability_status == AvailabilityStatus.AVAILABLE
-        )
-
-    video_count_subq = (
-        select(func.count(Video.video_id))
-        .where(*video_count_conditions)
-        .correlate(VideoCategory)
-        .scalar_subquery()
-    )
-
-    # Query category with counts
-    query = select(
-        VideoCategory.category_id,
-        VideoCategory.name,
-        VideoCategory.assignable,
-        VideoCategory.created_at,
-        video_count_subq.label("video_count"),
-    ).where(VideoCategory.category_id == category_id)
-
-    result = await session.execute(query)
-    row = result.one_or_none()
-
-    if not row:
+    category = await repo.get(session, category_id)
+    if category is None:
         raise NotFoundError(
             resource_type="Category",
             identifier=category_id,
             hint="Verify the category ID or check available categories.",
         )
 
-    # Build response
+    video_count = await repo.get_video_count(
+        session, category_id, include_unavailable=include_unavailable
+    )
+
     detail = CategoryDetail(
-        category_id=row.category_id,
-        name=row.name,
-        assignable=row.assignable,
-        video_count=row.video_count or 0,
-        created_at=row.created_at,
+        category_id=category.category_id,
+        name=category.name,
+        assignable=category.assignable,
+        video_count=video_count,
+        created_at=category.created_at,
     )
 
     return CategoryDetailResponse(data=detail)

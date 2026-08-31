@@ -2469,6 +2469,9 @@ async def add_entity_tag(
     entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
     body: AddEntityTagRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
+    tag_mgmt_service: TagManagementService = Depends(get_tag_management_service),
 ) -> AddEntityTagResponse:
     """Attach a canonical tag to an entity, linking or merging as appropriate.
 
@@ -2514,7 +2517,7 @@ async def add_entity_tag(
     # missing entity and a missing tag with the same ValueError("... not
     # found"), and the mapping below keys on that substring — so resolving here
     # is what keeps a 404 from naming the wrong resource.
-    entity = await session.get(NamedEntityDB, entity_id)
+    entity = await entity_repo.get(session, entity_id)
     if entity is None:
         raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
 
@@ -2522,7 +2525,7 @@ async def add_entity_tag(
     # "this tag is merged" into "this tag does not exist" — a 404 for a row that
     # is present. The caller needs to know the difference, so the status is
     # checked below rather than hidden in the lookup.
-    tag = await _canonical_tag_repo.get_by_normalized_form(
+    tag = await canonical_tag_repo.get_by_normalized_form(
         session, body.normalized_form, status=None
     )
     if tag is None:
@@ -2538,7 +2541,7 @@ async def add_entity_tag(
             details={"status": tag.status},
         )
 
-    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    linked = await canonical_tag_repo.get_linked_tags(session, entity_id)
 
     if len(linked) > 1:
         raise ConflictError(
@@ -2561,7 +2564,7 @@ async def add_entity_tag(
         )
 
     if tag.entity_id is not None:
-        other = await session.get(NamedEntityDB, tag.entity_id)
+        other = await entity_repo.get(session, tag.entity_id)
         raise ConflictError(
             message=(
                 f"Tag '{body.normalized_form}' already represents "
@@ -2577,7 +2580,7 @@ async def add_entity_tag(
 
     if not linked:
         # FR-001: nothing to merge into, so this tag becomes the entity's.
-        result = await _tag_mgmt_service.classify(
+        result = await tag_mgmt_service.classify(
             session,
             body.normalized_form,
             EntityType(entity.entity_type),
@@ -2591,7 +2594,7 @@ async def add_entity_tag(
     else:
         # FR-002/FR-003: the entity's tag is always the target.
         target = linked[0]
-        merge_result = await _tag_mgmt_service.merge(
+        merge_result = await tag_mgmt_service.merge(
             session,
             [body.normalized_form],
             target.normalized_form,
@@ -2605,7 +2608,7 @@ async def add_entity_tag(
 
     await session.commit()
 
-    refreshed = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    refreshed = await canonical_tag_repo.get_linked_tags(session, entity_id)
     entity_video_count = refreshed[0].video_count if refreshed else 0
 
     return AddEntityTagResponse(
@@ -2627,6 +2630,8 @@ async def add_entity_tag(
 async def get_entity_tags(
     entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
 ) -> EntityTagsResponse:
     """Return the entity's linked tag(s), each with the tags merged into it.
 
@@ -2657,15 +2662,15 @@ async def get_entity_tags(
     NotFoundError
         The entity does not exist (404).
     """
-    entity = await session.get(NamedEntityDB, entity_id)
+    entity = await entity_repo.get(session, entity_id)
     if entity is None:
         raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
 
-    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    linked = await canonical_tag_repo.get_linked_tags(session, entity_id)
 
     summaries: list[LinkedTagSummary] = []
     for tag in linked:
-        merged = await _canonical_tag_repo.get_merged_into(session, tag.id)
+        merged = await canonical_tag_repo.get_merged_into(session, tag.id)
         summaries.append(
             LinkedTagSummary(
                 canonical_form=tag.canonical_form,
@@ -2705,6 +2710,9 @@ async def un_merge_entity_tag(
     normalized_form: str = Path(..., description="Normalized form of the merged tag"),
     body: UnMergeRequest = Body(default_factory=UnMergeRequest),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
+    tag_mgmt_service: TagManagementService = Depends(get_tag_management_service),
 ) -> UnMergeResponse:
     """Reverse the merge that folded a tag into the entity's tag (FR-015).
 
@@ -2741,11 +2749,11 @@ async def un_merge_entity_tag(
     ConflictError
         Confirmation is required, or the merge was already reversed (409).
     """
-    entity = await session.get(NamedEntityDB, entity_id)
+    entity = await entity_repo.get(session, entity_id)
     if entity is None:
         raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
 
-    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    linked = await canonical_tag_repo.get_linked_tags(session, entity_id)
     if not linked:
         raise NotFoundError(
             resource_type="CanonicalTag",
@@ -2758,7 +2766,7 @@ async def un_merge_entity_tag(
     candidates = [
         (tag, op_id, count)
         for parent in linked
-        for tag, op_id, count in await _canonical_tag_repo.get_merged_into(
+        for tag, op_id, count in await canonical_tag_repo.get_merged_into(
             session, parent.id
         )
         if tag.normalized_form == normalized_form
@@ -2780,7 +2788,7 @@ async def un_merge_entity_tag(
         )
 
     if source_count > 1 and not body.confirm_multi_source:
-        siblings = await _canonical_tag_repo.get_merged_into(session, linked[0].id)
+        siblings = await canonical_tag_repo.get_merged_into(session, linked[0].id)
         # Exclude the tag being un-merged: the sentence says "N *other* tags",
         # so listing it among them contradicts its own count.
         names = sorted(
@@ -2799,7 +2807,7 @@ async def un_merge_entity_tag(
         )
 
     try:
-        await _tag_mgmt_service.undo(session, operation_id)
+        await tag_mgmt_service.undo(session, operation_id)
     except ValueError as exc:
         # Preconditions are re-checked against current state, not the state at
         # merge time (FR-031) — the service refuses if the operation was
@@ -2808,7 +2816,7 @@ async def un_merge_entity_tag(
 
     await session.commit()
 
-    restored = await _canonical_tag_repo.get_merged_into(session, linked[0].id)
+    restored = await canonical_tag_repo.get_merged_into(session, linked[0].id)
     still_merged = {t.normalized_form for t, _, _ in restored}
     return UnMergeResponse(
         data=UnMergeResult(
@@ -2827,6 +2835,8 @@ async def unlink_entity_tag(
     entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
     normalized_form: str = Path(..., description="Normalized form of the linked tag"),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
 ) -> UnlinkResponse:
     """Clear a tag's entity link, leaving the tag itself intact (FR-018).
 
@@ -2859,11 +2869,11 @@ async def unlink_entity_tag(
     ConflictError
         Tags are merged into it and must be un-merged first (409).
     """
-    entity = await session.get(NamedEntityDB, entity_id)
+    entity = await entity_repo.get(session, entity_id)
     if entity is None:
         raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
 
-    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    linked = await canonical_tag_repo.get_linked_tags(session, entity_id)
     target = next((t for t in linked if t.normalized_form == normalized_form), None)
     if target is None:
         raise NotFoundError(
@@ -2872,7 +2882,7 @@ async def unlink_entity_tag(
             hint="That tag does not represent this entity.",
         )
 
-    merged = await _canonical_tag_repo.get_merged_into(session, target.id)
+    merged = await canonical_tag_repo.get_merged_into(session, target.id)
     if merged:
         raise ConflictError(
             message=(

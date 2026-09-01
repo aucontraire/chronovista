@@ -548,22 +548,22 @@ class VideoRepository(
         self,
         session: AsyncSession,
         *,
-        include_unavailable: bool,
-        channel_id: str | None,
-        uploaded_after: datetime | None,
-        uploaded_before: datetime | None,
-        has_transcript: bool | None,
-        valid_tags: list[str],
-        valid_category: str | None,
-        valid_topics: list[str],
-        canonical_tag_subqueries: list[Select[Any]] | None,
-        liked_only: bool,
-        saved_unwatched: bool,
-        qualification: Subquery | None,
-        excluded_videos: ScalarSelect[str] | None,
         order_clause: ColumnElement[Any],
         offset: int,
         limit: int,
+        include_unavailable: bool = False,
+        channel_id: str | None = None,
+        uploaded_after: datetime | None = None,
+        uploaded_before: datetime | None = None,
+        has_transcript: bool | None = None,
+        valid_tags: list[str] | None = None,
+        valid_category: str | None = None,
+        valid_topics: list[str] | None = None,
+        canonical_tag_subqueries: list[Select[Any]] | None = None,
+        liked_only: bool = False,
+        saved_unwatched: bool = False,
+        qualification: Subquery | None = None,
+        excluded_videos: ScalarSelect[str] | None = None,
     ) -> tuple[int, list[VideoDB]]:
         """List videos matching the classification/entity filters, with count.
 
@@ -592,11 +592,11 @@ class VideoRepository(
             Optional inclusive upload-date bounds.
         has_transcript : bool | None
             When set, require (True) or forbid (False) a transcript.
-        valid_tags : list[str]
+        valid_tags : list[str] | None
             Pre-validated raw tags; OR logic within the set.
         valid_category : str | None
             Pre-validated category id.
-        valid_topics : list[str]
+        valid_topics : list[str] | None
             Pre-validated topic ids; OR logic within the set.
         canonical_tag_subqueries : list[Select[Any]] | None
             Pre-built canonical-tag video-id subqueries; UNIONed (OR logic).

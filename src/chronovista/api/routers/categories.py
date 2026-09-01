@@ -10,13 +10,12 @@ to avoid path matching conflicts.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Path, Query
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import (
     get_db,
     get_video_category_repository,
+    get_video_repository,
     require_auth,
 )
 from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
@@ -35,12 +34,10 @@ from chronovista.api.schemas.videos import (
 )
 from chronovista.db.models import (
     Video,
-    VideoCategory,
-    VideoTopic,
 )
 from chronovista.exceptions import NotFoundError
-from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.video_category_repository import VideoCategoryRepository
+from chronovista.repositories.video_repository import VideoRepository
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -131,6 +128,8 @@ async def get_category_videos(
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
+    category_repo: VideoCategoryRepository = Depends(get_video_category_repository),
+    video_repo: VideoRepository = Depends(get_video_repository),
 ) -> VideoListResponse:
     """
     Get videos in a category.
@@ -160,53 +159,23 @@ async def get_category_videos(
         404 if category not found.
     """
     # Verify category exists
-    cat_result = await session.execute(
-        select(VideoCategory.category_id).where(
-            VideoCategory.category_id == category_id
-        )
-    )
-    if not cat_result.scalar_one_or_none():
+    if not await category_repo.exists(session, category_id):
         raise NotFoundError(
             resource_type="Category",
             identifier=category_id,
             hint="Verify the category ID or check available categories.",
         )
 
-    # Build query for videos in this category
-    query = (
-        select(Video)
-        .where(Video.category_id == category_id)
-        .options(selectinload(Video.transcripts))
-        .options(selectinload(Video.channel))
-        .options(selectinload(Video.category))
-        .options(selectinload(Video.tags))
-        .options(
-            selectinload(Video.video_topics).selectinload(VideoTopic.topic_category)
-        )
+    # Videos in this category via the shared filtered listing (#256). Ordered by
+    # upload date desc; the repository appends a deterministic video_id tiebreak.
+    total, videos = await video_repo.list_videos_filtered(
+        session,
+        valid_category=category_id,
+        include_unavailable=include_unavailable,
+        order_clause=Video.upload_date.desc(),
+        offset=offset,
+        limit=limit,
     )
-
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
-
-    # Get total count (before pagination)
-    count_query = select(func.count(Video.video_id)).where(
-        Video.category_id == category_id
-    )
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        count_query = count_query.where(
-            Video.availability_status == AvailabilityStatus.AVAILABLE
-        )
-    total_result = await session.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply ordering and pagination
-    query = query.order_by(Video.upload_date.desc()).offset(offset).limit(limit)
-
-    # Execute query
-    result = await session.execute(query)
-    videos = result.scalars().all()
 
     # Transform to response items (reusing pattern from topics)
     items: list[VideoListItem] = []

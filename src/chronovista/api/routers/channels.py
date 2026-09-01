@@ -18,15 +18,15 @@ from enum import Enum
 
 from fastapi import APIRouter, Depends, Path, Query
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import (
     get_channel_repository,
     get_db,
     get_entity_mention_repository,
     get_recovery_deps,
+    get_transcript_segment_repository,
+    get_video_repository,
     require_auth,
 )
 from chronovista.api.routers.responses import (
@@ -56,14 +56,10 @@ from chronovista.api.schemas.videos import (
     VideoListItem,
     VideoListResponse,
 )
-from chronovista.db.models import Channel as ChannelDB
+from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import (
-    TranscriptSegment,
-    VideoTopic,
     VideoTranscript,
 )
-from chronovista.db.models import UserVideo as UserVideoDB
-from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import (
     BadRequestError,
     CDXError,
@@ -73,6 +69,10 @@ from chronovista.exceptions import (
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+from chronovista.repositories.transcript_segment_repository import (
+    TranscriptSegmentRepository,
+)
+from chronovista.repositories.video_repository import VideoRepository
 
 logger = logging.getLogger(__name__)
 
@@ -420,6 +420,11 @@ async def get_channel_videos(
         description="Include unavailable records in results",
     ),
     db: AsyncSession = Depends(get_db),
+    channel_repo: ChannelRepository = Depends(get_channel_repository),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    segment_repo: TranscriptSegmentRepository = Depends(
+        get_transcript_segment_repository
+    ),
 ) -> VideoListResponse:
     """
     Get videos belonging to a channel.
@@ -456,78 +461,36 @@ async def get_channel_videos(
     NotFoundError
         If channel with given ID does not exist.
     """
-    # First verify the channel exists
-    channel_result = await db.execute(
-        select(ChannelDB.channel_id).where(ChannelDB.channel_id == channel_id)
-    )
-    if not channel_result.scalar_one_or_none():
+    # Verify the channel exists
+    if not await channel_repo.exists_by_channel_id(db, channel_id):
         raise NotFoundError(
             resource_type="Channel",
             identifier=channel_id,
             hint="Verify the channel ID or run a sync.",
         )
 
-    # Build video query with eager loading
-    query = (
-        select(VideoDB)
-        .where(VideoDB.channel_id == channel_id)
-        .options(selectinload(VideoDB.transcripts))
-        .options(selectinload(VideoDB.channel))
-        .options(selectinload(VideoDB.category))
-        .options(selectinload(VideoDB.tags))
-        .options(
-            selectinload(VideoDB.video_topics).selectinload(VideoTopic.topic_category)
-        )
-    )
-
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
-
-    # Liked-only filter (Feature 027) — EXISTS subquery
-    if liked_only:
-        liked_subquery = (
-            select(UserVideoDB.video_id)
-            .where(UserVideoDB.liked.is_(True))
-            .distinct()
-            .scalar_subquery()
-        )
-        query = query.where(VideoDB.video_id.in_(liked_subquery))
-
-    # Count total before pagination
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply sorting (Feature 027) with deterministic secondary sort (FR-029)
+    # Resolve the sort expression (Feature 027); the repository appends a
+    # deterministic video_id tiebreak (FR-029).
     sort_column = _CHANNEL_VIDEO_SORT_COLUMN_MAP[sort_by]
-    if sort_order == SortOrder.ASC:
-        order_clause = sort_column.asc()
-    else:
-        order_clause = sort_column.desc()
-
-    query = (
-        query.order_by(order_clause, VideoDB.video_id.asc()).offset(offset).limit(limit)
+    order_clause = (
+        sort_column.asc() if sort_order == SortOrder.ASC else sort_column.desc()
     )
 
-    # Execute query
-    result = await db.execute(query)
-    videos = result.scalars().all()
+    # Videos in this channel via the shared filtered listing (#256).
+    total, videos = await video_repo.list_videos_filtered(
+        db,
+        channel_id=channel_id,
+        liked_only=liked_only,
+        include_unavailable=include_unavailable,
+        order_clause=order_clause,
+        offset=offset,
+        limit=limit,
+    )
 
-    # Batch query: find which videos have corrected segments (Feature 035)
-    videos_with_corrections: set[str] = set()
-    video_ids = [v.video_id for v in videos]
-    if video_ids:
-        corrections_query = (
-            select(TranscriptSegment.video_id)
-            .where(
-                TranscriptSegment.video_id.in_(video_ids),
-                TranscriptSegment.has_correction.is_(True),
-            )
-            .distinct()
-        )
-        corrections_result = await db.execute(corrections_query)
-        videos_with_corrections = {row[0] for row in corrections_result.fetchall()}
+    # Which videos on this page have corrected segments (Feature 035)
+    videos_with_corrections = await segment_repo.get_video_ids_with_corrections(
+        db, [v.video_id for v in videos]
+    )
 
     # Transform to response items
     items: list[VideoListItem] = []

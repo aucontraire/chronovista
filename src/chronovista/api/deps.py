@@ -29,6 +29,10 @@ from chronovista.repositories import (
     VideoRepository,
     VideoTranscriptRepository,
 )
+from chronovista.repositories.playlist_membership_repository import (
+    PlaylistMembershipRepository,
+)
+from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
@@ -302,6 +306,20 @@ def get_transcript_segment_repository() -> TranscriptSegmentRepository:
     from chronovista.container import container
 
     return container.create_transcript_segment_repository()
+
+
+def get_topic_category_repository() -> TopicCategoryRepository:
+    """Dependency providing a TopicCategoryRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_topic_category_repository()
+
+
+def get_playlist_membership_repository() -> PlaylistMembershipRepository:
+    """Dependency providing a PlaylistMembershipRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_playlist_membership_repository()
 
 
 def get_transcript_correction_repository() -> TranscriptCorrectionRepository:

@@ -7,6 +7,7 @@ hierarchy management, and analytics support.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import and_, desc, func, select
@@ -55,6 +56,33 @@ class TopicCategoryRepository(
     async def exists_by_topic_id(self, session: AsyncSession, topic_id: str) -> bool:
         """Check if topic category exists by topic ID (alias for exists method)."""
         return await self.exists(session, topic_id)
+
+    async def get_by_topic_ids(
+        self, session: AsyncSession, topic_ids: Iterable[str]
+    ) -> list[TopicCategoryDB]:
+        """Get topic categories for a set of topic IDs in one query.
+
+        Used to bulk-load ancestor topics when assembling a topic's path.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        topic_ids : Iterable[str]
+            Topic IDs to fetch.
+
+        Returns
+        -------
+        list[TopicCategoryDB]
+            Matching topic categories. Empty when ``topic_ids`` is empty.
+        """
+        ids = list(topic_ids)
+        if not ids:
+            return []
+        result = await session.execute(
+            select(TopicCategoryDB).where(TopicCategoryDB.topic_id.in_(ids))
+        )
+        return list(result.scalars().all())
 
     async def create_or_update(
         self, session: AsyncSession, topic_create: TopicCategoryCreate

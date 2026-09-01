@@ -17,7 +17,15 @@ from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from chronovista.api.deps import get_db, get_recovery_deps, require_auth
+from chronovista.api.deps import (
+    get_db,
+    get_playlist_membership_repository,
+    get_recovery_deps,
+    get_topic_category_repository,
+    get_transcript_segment_repository,
+    get_video_repository,
+    require_auth,
+)
 from chronovista.api.query_protection import (
     QUERY_TIMEOUT_SECONDS,
     check_rate_limit,
@@ -76,6 +84,11 @@ from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
 from chronovista.repositories.playlist_repository import saved_forgotten_video_ids
+from chronovista.repositories.topic_category_repository import TopicCategoryRepository
+from chronovista.repositories.transcript_segment_repository import (
+    TranscriptSegmentRepository,
+)
+from chronovista.repositories.video_repository import VideoRepository
 
 logger = logging.getLogger(__name__)
 
@@ -1106,6 +1119,11 @@ async def get_video(
         example="dQw4w9WgXcQ",
     ),
     session: AsyncSession = Depends(get_db),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    segment_repo: TranscriptSegmentRepository = Depends(
+        get_transcript_segment_repository
+    ),
+    topic_repo: TopicCategoryRepository = Depends(get_topic_category_repository),
 ) -> VideoDetailResponse:
     """
     Get video details by ID.
@@ -1131,20 +1149,7 @@ async def get_video(
     """
     # Query video with relationships (including category and topics)
     # Note: No availability_status filter - return all records including unavailable
-    query = (
-        select(VideoDB)
-        .where(VideoDB.video_id == video_id)
-        .options(selectinload(VideoDB.transcripts))
-        .options(selectinload(VideoDB.channel))
-        .options(selectinload(VideoDB.tags))
-        .options(selectinload(VideoDB.category))
-        .options(
-            selectinload(VideoDB.video_topics).selectinload(VideoTopic.topic_category)
-        )
-    )
-
-    result = await session.execute(query)
-    video = result.scalar_one_or_none()
+    video = await video_repo.get_with_relations(session, video_id)
 
     if not video:
         raise NotFoundError(
@@ -1154,16 +1159,7 @@ async def get_video(
         )
 
     # Check if any segments have corrections (Feature 035)
-    corrections_exists_query = (
-        select(TranscriptSegment.id)
-        .where(
-            TranscriptSegment.video_id == video_id,
-            TranscriptSegment.has_correction.is_(True),
-        )
-        .limit(1)
-    )
-    corrections_result = await session.execute(corrections_exists_query)
-    has_corrections = corrections_result.scalar_one_or_none() is not None
+    has_corrections = await segment_repo.video_has_corrections(session, video_id)
 
     # Build response
     transcript_summary = build_transcript_summary(
@@ -1186,11 +1182,7 @@ async def get_video(
 
         # Load parent topics that might not be in video_topics
         if all_topic_ids:
-            parent_query = select(TopicCategory).where(
-                TopicCategory.topic_id.in_(all_topic_ids)
-            )
-            parent_result = await session.execute(parent_query)
-            for tc in parent_result.scalars().all():
+            for tc in await topic_repo.get_by_topic_ids(session, all_topic_ids):
                 topic_cache[tc.topic_id] = tc
 
     topics_list: list[TopicSummary] = []
@@ -1265,6 +1257,10 @@ async def get_video_playlists(
         example="dQw4w9WgXcQ",
     ),
     session: AsyncSession = Depends(get_db),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    membership_repo: PlaylistMembershipRepository = Depends(
+        get_playlist_membership_repository
+    ),
 ) -> VideoPlaylistsResponse:
     """
     Get all playlists containing a specific video.
@@ -1290,11 +1286,7 @@ async def get_video_playlists(
         If video not found (404).
     """
     # Verify video exists (check all records regardless of availability_status)
-    video_query = select(VideoDB).where(VideoDB.video_id == video_id)
-    video_result = await session.execute(video_query)
-    video = video_result.scalar_one_or_none()
-
-    if not video:
+    if not await video_repo.exists_by_video_id(session, video_id):
         raise NotFoundError(
             resource_type="Video",
             identifier=video_id,
@@ -1302,7 +1294,6 @@ async def get_video_playlists(
         )
 
     # Get all playlist memberships for this video
-    membership_repo = PlaylistMembershipRepository()
     memberships = await membership_repo.get_video_playlists(session, video_id)
 
     # Transform to response schema
@@ -1342,6 +1333,11 @@ async def update_alternative_url(
     ),
     request_body: AlternativeUrlRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    segment_repo: TranscriptSegmentRepository = Depends(
+        get_transcript_segment_repository
+    ),
+    topic_repo: TopicCategoryRepository = Depends(get_topic_category_repository),
 ) -> VideoDetailResponse:
     """
     Set or clear an alternative URL for an unavailable video.
@@ -1375,20 +1371,7 @@ async def update_alternative_url(
         If attempting to set alternative URL on an available video (409).
     """
     # Query video without availability filter - we need to check the status
-    query = (
-        select(VideoDB)
-        .where(VideoDB.video_id == video_id)
-        .options(selectinload(VideoDB.transcripts))
-        .options(selectinload(VideoDB.channel))
-        .options(selectinload(VideoDB.tags))
-        .options(selectinload(VideoDB.category))
-        .options(
-            selectinload(VideoDB.video_topics).selectinload(VideoTopic.topic_category)
-        )
-    )
-
-    result = await session.execute(query)
-    video = result.scalar_one_or_none()
+    video = await video_repo.get_with_relations(session, video_id)
 
     if not video:
         raise NotFoundError(
@@ -1439,16 +1422,7 @@ async def update_alternative_url(
     await session.refresh(video)
 
     # Check if any segments have corrections (Feature 035)
-    corrections_exists_query = (
-        select(TranscriptSegment.id)
-        .where(
-            TranscriptSegment.video_id == video_id,
-            TranscriptSegment.has_correction.is_(True),
-        )
-        .limit(1)
-    )
-    corrections_result = await session.execute(corrections_exists_query)
-    has_corrections = corrections_result.scalar_one_or_none() is not None
+    has_corrections = await segment_repo.video_has_corrections(session, video_id)
 
     # Build response (reuse logic from get_video endpoint)
     transcript_summary = build_transcript_summary(
@@ -1470,11 +1444,7 @@ async def update_alternative_url(
 
         # Load parent topics that might not be in video_topics
         if all_topic_ids:
-            parent_query = select(TopicCategory).where(
-                TopicCategory.topic_id.in_(all_topic_ids)
-            )
-            parent_result = await session.execute(parent_query)
-            for tc in parent_result.scalars().all():
+            for tc in await topic_repo.get_by_topic_ids(session, all_topic_ids):
                 topic_cache[tc.topic_id] = tc
 
     topics_list: list[TopicSummary] = []
@@ -1549,6 +1519,7 @@ async def recover_video_endpoint(
         description="Only search snapshots up to this year (2005-2026)",
     ),
     session: AsyncSession = Depends(get_db),
+    video_repo: VideoRepository = Depends(get_video_repository),
 ) -> VideoRecoveryResponse | JSONResponse:
     """
     Recover metadata for an unavailable video using the Wayback Machine.
@@ -1599,9 +1570,7 @@ async def recover_video_endpoint(
         )
 
     # Verify video exists
-    video_query = select(VideoDB).where(VideoDB.video_id == video_id)
-    result = await session.execute(video_query)
-    video = result.scalar_one_or_none()
+    video = await video_repo.get_by_video_id(session, video_id)
 
     if not video:
         raise NotFoundError(

@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Video as VideoDB
+from chronovista.db.models import VideoTopic
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.video import (
     VideoCreate,
@@ -449,6 +450,49 @@ class VideoRepository(
             select(VideoDB)
             .options(selectinload(VideoDB.channel))
             .where(VideoDB.video_id == video_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_with_relations(
+        self, session: AsyncSession, video_id: VideoId
+    ) -> VideoDB | None:
+        """
+        Get a video with every relationship needed by the detail response.
+
+        Eager-loads transcripts, channel, tags, category, and video topics
+        (with each topic's category). No availability filter is applied — all
+        records are returned, including unavailable ones.
+
+        The full selectinload set is load-bearing: callers that read these
+        relationships after a ``session.commit()`` + ``session.refresh()``
+        (e.g. the alternative-url endpoint) rely on refresh replaying the same
+        eager strategy. Narrowing this set would reintroduce an async
+        lazy-load on those paths.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        video_id : str
+            YouTube video identifier
+
+        Returns
+        -------
+        Optional[VideoDB]
+            Video with detail relationships loaded, or None if not found
+        """
+        result = await session.execute(
+            select(VideoDB)
+            .where(VideoDB.video_id == video_id)
+            .options(selectinload(VideoDB.transcripts))
+            .options(selectinload(VideoDB.channel))
+            .options(selectinload(VideoDB.tags))
+            .options(selectinload(VideoDB.category))
+            .options(
+                selectinload(VideoDB.video_topics).selectinload(
+                    VideoTopic.topic_category
+                )
+            )
         )
         return result.scalar_one_or_none()
 

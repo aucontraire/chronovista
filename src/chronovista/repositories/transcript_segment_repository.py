@@ -1164,5 +1164,33 @@ class TranscriptSegmentRepository(
         )
         return {row[0] for row in result.all()}
 
+    async def video_has_corrections(
+        self, session: AsyncSession, video_id: VideoId
+    ) -> bool:
+        """Return whether a single video has any corrected segment.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : VideoId
+            YouTube video identifier.
+
+        Returns
+        -------
+        bool
+            True if at least one segment for the video has ``has_correction``
+            set, False otherwise.
+        """
+        result = await session.execute(
+            select(TranscriptSegmentDB.id)
+            .where(
+                TranscriptSegmentDB.video_id == video_id,
+                TranscriptSegmentDB.has_correction.is_(True),
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
 
 __all__ = ["TranscriptSegmentRepository"]

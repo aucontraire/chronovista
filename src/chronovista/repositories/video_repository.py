@@ -674,6 +674,68 @@ class VideoRepository(
         videos = list(result.scalars().all())
         return total, videos
 
+    async def list_by_topic(
+        self,
+        session: AsyncSession,
+        topic_id: str,
+        *,
+        include_unavailable: bool,
+        offset: int,
+        limit: int,
+    ) -> tuple[int, list[VideoDB]]:
+        """List videos classified with a topic, newest first, with count.
+
+        Joins ``video_topics`` for the given topic, eager-loads the
+        relationships the list response reads (transcripts, channel, tags,
+        category), and derives the total from the same filtered join before
+        pagination. Ordered by upload date descending.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        topic_id : str
+            Topic identifier.
+        include_unavailable : bool
+            When False, restrict to ``availability_status == AVAILABLE``.
+        offset, limit : int
+            Pagination window.
+
+        Returns
+        -------
+        tuple[int, list[VideoDB]]
+            The total matching count and the page of videos.
+        """
+        base_query = (
+            select(VideoDB)
+            .join(VideoTopic, VideoDB.video_id == VideoTopic.video_id)
+            .where(VideoTopic.topic_id == topic_id)
+        )
+        if not include_unavailable:
+            base_query = base_query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+
+        # Derive the count from the same filtered query so it can never drift
+        # from the returned rows as filters change (the video_topics join is
+        # one-row-per-video, so this counts distinct matching videos).
+        count_query = select(func.count()).select_from(base_query.subquery())
+        total_result = await session.execute(count_query)
+        total = total_result.scalar() or 0
+
+        paginated_query = (
+            base_query.options(selectinload(VideoDB.transcripts))
+            .options(selectinload(VideoDB.channel))
+            .options(selectinload(VideoDB.tags))
+            .options(selectinload(VideoDB.category))
+            .order_by(VideoDB.upload_date.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(paginated_query)
+        videos = list(result.scalars().all())
+        return total, videos
+
     async def search_titles(
         self,
         session: AsyncSession,

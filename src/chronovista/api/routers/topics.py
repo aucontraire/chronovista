@@ -14,11 +14,14 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Path, Query
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_db,
+    get_topic_category_repository,
+    get_video_repository,
+    require_auth,
+)
 from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.topics import (
@@ -30,9 +33,9 @@ from chronovista.api.schemas.topics import (
     TopicListResponse,
 )
 from chronovista.api.schemas.videos import VideoListItem, VideoListResponse
-from chronovista.db.models import ChannelTopic, TopicCategory, Video, VideoTopic
 from chronovista.exceptions import NotFoundError
-from chronovista.models.enums import AvailabilityStatus
+from chronovista.repositories.topic_category_repository import TopicCategoryRepository
+from chronovista.repositories.video_repository import VideoRepository
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -42,6 +45,7 @@ async def list_topics(
     session: AsyncSession = Depends(get_db),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    topic_repo: TopicCategoryRepository = Depends(get_topic_category_repository),
 ) -> TopicListResponse:
     """
     List topics with pagination and aggregated counts.
@@ -63,55 +67,18 @@ async def list_topics(
     TopicListResponse
         Paginated list of topics with metadata.
     """
-    # Subquery for video count
-    video_count_subq = (
-        select(func.count(VideoTopic.video_id))
-        .where(VideoTopic.topic_id == TopicCategory.topic_id)
-        .correlate(TopicCategory)
-        .scalar_subquery()
-    )
+    total, rows = await topic_repo.list_with_counts(session, offset=offset, limit=limit)
 
-    # Subquery for channel count
-    channel_count_subq = (
-        select(func.count(ChannelTopic.channel_id))
-        .where(ChannelTopic.topic_id == TopicCategory.topic_id)
-        .correlate(TopicCategory)
-        .scalar_subquery()
-    )
-
-    # Main query with counts - selecting specific columns for aggregation
-    query = select(
-        TopicCategory.topic_id,
-        TopicCategory.category_name.label("name"),
-        video_count_subq.label("video_count"),
-        channel_count_subq.label("channel_count"),
-    )
-
-    # Get total count (before pagination)
-    count_query = select(func.count()).select_from(TopicCategory)
-    total_result = await session.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply ordering (video_count DESC per spec) and pagination
-    query = query.order_by(video_count_subq.desc()).offset(offset).limit(limit)
-
-    # Execute query
-    result = await session.execute(query)
-    rows = result.all()
-
-    # Transform to response items
-    items: list[TopicListItem] = []
-    for row in rows:
-        items.append(
-            TopicListItem(
-                topic_id=row.topic_id,
-                name=row.name,
-                video_count=row.video_count or 0,
-                channel_count=row.channel_count or 0,
-            )
+    items = [
+        TopicListItem(
+            topic_id=topic.topic_id,
+            name=topic.category_name,
+            video_count=video_count,
+            channel_count=channel_count,
         )
+        for topic, video_count, channel_count in rows
+    ]
 
-    # Build pagination
     pagination = PaginationMeta(
         total=total,
         limit=limit,
@@ -136,6 +103,7 @@ async def get_topic_hierarchy(
         False,
         description="Include topics with zero videos",
     ),
+    topic_repo: TopicCategoryRepository = Depends(get_topic_category_repository),
 ) -> TopicHierarchyResponse:
     """
     Get topics with hierarchy information.
@@ -158,43 +126,18 @@ async def get_topic_hierarchy(
     TopicHierarchyResponse
         Flattened topic list with hierarchy information.
     """
-    # Subquery for video count
-    video_count_subq = (
-        select(func.count(VideoTopic.video_id))
-        .where(VideoTopic.topic_id == TopicCategory.topic_id)
-        .correlate(TopicCategory)
-        .scalar_subquery()
+    rows = await topic_repo.list_hierarchy_with_counts(
+        session, min_video_count=min_video_count, include_empty=include_empty
     )
-
-    # Build query with video counts
-    query = select(
-        TopicCategory.topic_id,
-        TopicCategory.category_name.label("name"),
-        TopicCategory.parent_topic_id,
-        video_count_subq.label("video_count"),
-    )
-
-    # Apply filters
-    if not include_empty:
-        query = query.where(video_count_subq > 0)
-    if min_video_count > 0:
-        query = query.where(video_count_subq >= min_video_count)
-
-    # Order by name for consistent output
-    query = query.order_by(TopicCategory.category_name)
-
-    # Execute query
-    result = await session.execute(query)
-    rows = result.all()
 
     # Build topic lookup for parent path computation
     topic_map: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        topic_map[row.topic_id] = {
-            "topic_id": row.topic_id,
-            "name": row.name,
-            "parent_topic_id": row.parent_topic_id,
-            "video_count": row.video_count or 0,
+    for topic, video_count in rows:
+        topic_map[topic.topic_id] = {
+            "topic_id": topic.topic_id,
+            "name": topic.category_name,
+            "parent_topic_id": topic.parent_topic_id,
+            "video_count": video_count,
         }
 
     def compute_depth_path_and_sort_key(
@@ -225,17 +168,17 @@ async def get_topic_hierarchy(
     # Build hierarchy items with computed depth and parent paths
     items: list[TopicHierarchyItem] = []
     sort_keys: dict[str, list[str]] = {}
-    for row in rows:
-        depth, parent_path, sort_key = compute_depth_path_and_sort_key(row.topic_id)
-        sort_keys[row.topic_id] = sort_key
+    for topic, video_count in rows:
+        depth, parent_path, sort_key = compute_depth_path_and_sort_key(topic.topic_id)
+        sort_keys[topic.topic_id] = sort_key
         items.append(
             TopicHierarchyItem(
-                topic_id=row.topic_id,
-                name=row.name,
-                parent_topic_id=row.parent_topic_id,
+                topic_id=topic.topic_id,
+                name=topic.category_name,
+                parent_topic_id=topic.parent_topic_id,
                 parent_path=parent_path,
                 depth=depth,
-                video_count=row.video_count or 0,
+                video_count=video_count,
             )
         )
 
@@ -268,6 +211,8 @@ async def get_topic_videos(
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
+    topic_repo: TopicCategoryRepository = Depends(get_topic_category_repository),
+    video_repo: VideoRepository = Depends(get_video_repository),
 ) -> VideoListResponse:
     """
     Get videos associated with a topic.
@@ -297,52 +242,20 @@ async def get_topic_videos(
         404 if topic not found.
     """
     # Verify topic exists
-    topic_result = await session.execute(
-        select(TopicCategory.topic_id).where(TopicCategory.topic_id == topic_id)
-    )
-    if not topic_result.scalar_one_or_none():
+    if not await topic_repo.exists_by_topic_id(session, topic_id):
         raise NotFoundError(
             resource_type="Topic",
             identifier=topic_id,
             hint="Verify the topic ID or check available topics.",
         )
 
-    # Build query for videos with this topic
-    query = (
-        select(Video)
-        .join(VideoTopic, Video.video_id == VideoTopic.video_id)
-        .where(VideoTopic.topic_id == topic_id)
-        .options(selectinload(Video.transcripts))
-        .options(selectinload(Video.channel))
-        .options(selectinload(Video.tags))
-        .options(selectinload(Video.category))
+    total, videos = await video_repo.list_by_topic(
+        session,
+        topic_id,
+        include_unavailable=include_unavailable,
+        offset=offset,
+        limit=limit,
     )
-
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
-
-    # Get total count (before pagination)
-    count_query = (
-        select(func.count(Video.video_id))
-        .select_from(Video)
-        .join(VideoTopic, Video.video_id == VideoTopic.video_id)
-        .where(VideoTopic.topic_id == topic_id)
-    )
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        count_query = count_query.where(
-            Video.availability_status == AvailabilityStatus.AVAILABLE
-        )
-    total_result = await session.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply ordering and pagination
-    query = query.order_by(Video.upload_date.desc()).offset(offset).limit(limit)
-
-    # Execute query
-    result = await session.execute(query)
-    videos = result.scalars().all()
 
     # Transform to response items (reusing pattern from videos router)
     items: list[VideoListItem] = []
@@ -440,6 +353,8 @@ async def get_topic(
     session: AsyncSession = Depends(get_db),
     limit: int = Query(20, ge=1, le=100, description="Items per page (for /videos)"),
     offset: int = Query(0, ge=0, description="Pagination offset (for /videos)"),
+    topic_repo: TopicCategoryRepository = Depends(get_topic_category_repository),
+    video_repo: VideoRepository = Depends(get_video_repository),
 ) -> TopicDetailResponse | VideoListResponse:
     """
     Get topic details by ID.
@@ -477,60 +392,33 @@ async def get_topic(
             limit=limit,
             offset=offset,
             session=session,
+            topic_repo=topic_repo,
+            video_repo=video_repo,
         )
 
-    # Subquery for video count
-    video_count_subq = (
-        select(func.count(VideoTopic.video_id))
-        .where(VideoTopic.topic_id == TopicCategory.topic_id)
-        .correlate(TopicCategory)
-        .scalar_subquery()
-    )
+    result = await topic_repo.get_with_counts(session, topic_id)
 
-    # Subquery for channel count
-    channel_count_subq = (
-        select(func.count(ChannelTopic.channel_id))
-        .where(ChannelTopic.topic_id == TopicCategory.topic_id)
-        .correlate(TopicCategory)
-        .scalar_subquery()
-    )
-
-    # Query topic with counts
-    query = select(
-        TopicCategory.topic_id,
-        TopicCategory.category_name.label("name"),
-        TopicCategory.parent_topic_id,
-        TopicCategory.topic_type,
-        TopicCategory.wikipedia_url,
-        TopicCategory.normalized_name,
-        TopicCategory.source,
-        TopicCategory.created_at,
-        video_count_subq.label("video_count"),
-        channel_count_subq.label("channel_count"),
-    ).where(TopicCategory.topic_id == topic_id)
-
-    result = await session.execute(query)
-    row = result.one_or_none()
-
-    if not row:
+    if result is None:
         raise NotFoundError(
             resource_type="Topic",
             identifier=topic_id,
             hint="Verify the topic ID or check available topics.",
         )
 
+    topic, video_count, channel_count = result
+
     # Build response
     detail = TopicDetail(
-        topic_id=row.topic_id,
-        name=row.name,
-        video_count=row.video_count or 0,
-        channel_count=row.channel_count or 0,
-        parent_topic_id=row.parent_topic_id,
-        topic_type=row.topic_type,
-        wikipedia_url=row.wikipedia_url,
-        normalized_name=row.normalized_name,
-        source=row.source,
-        created_at=row.created_at,
+        topic_id=topic.topic_id,
+        name=topic.category_name,
+        video_count=video_count,
+        channel_count=channel_count,
+        parent_topic_id=topic.parent_topic_id,
+        topic_type=topic.topic_type,
+        wikipedia_url=topic.wikipedia_url,
+        normalized_name=topic.normalized_name,
+        source=topic.source,
+        created_at=topic.created_at,
     )
 
     return TopicDetailResponse(data=detail)

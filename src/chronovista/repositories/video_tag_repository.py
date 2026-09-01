@@ -87,6 +87,34 @@ class VideoTagRepository(
         )
         return list(result.scalars().all())
 
+    async def get_existing_tags(
+        self, session: AsyncSession, tags: list[str]
+    ) -> set[str]:
+        """Return which of the given tag strings exist in any video's tags.
+
+        Used to validate the ``tag`` filter values on the video list endpoint;
+        unrecognized tags are dropped with a warning by the caller.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        tags : list[str]
+            Candidate tag values.
+
+        Returns
+        -------
+        set[str]
+            The subset of ``tags`` present on at least one video. Empty when
+            ``tags`` is empty.
+        """
+        if not tags:
+            return set()
+        result = await session.execute(
+            select(VideoTagDB.tag).where(VideoTagDB.tag.in_(tags)).distinct()
+        )
+        return {row[0] for row in result.all()}
+
     async def create_or_update(
         self, session: AsyncSession, tag_create: VideoTagCreate
     ) -> VideoTagDB:

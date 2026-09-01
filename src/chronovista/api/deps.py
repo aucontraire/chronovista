@@ -37,6 +37,7 @@ from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
 from chronovista.repositories.video_category_repository import VideoCategoryRepository
+from chronovista.repositories.video_tag_repository import VideoTagRepository
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
 from chronovista.services.recovery.page_parser import PageParser
 
@@ -169,6 +170,13 @@ def get_video_category_repository() -> VideoCategoryRepository:
     from chronovista.container import container
 
     return container.create_video_category_repository()
+
+
+def get_video_tag_repository() -> VideoTagRepository:
+    """Dependency providing a VideoTagRepository via the DI container (#256)."""
+    from chronovista.container import container
+
+    return container.create_video_tag_repository()
 
 
 class StatsRepositories(NamedTuple):

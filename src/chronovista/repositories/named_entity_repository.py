@@ -8,6 +8,7 @@ supporting entity resolution, merge tracking, and confidence scoring.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import bindparam, func, or_, select, update
@@ -93,6 +94,35 @@ class NamedEntityRepository(
             select(NamedEntityDB.id).where(NamedEntityDB.id == id)
         )
         return result.first() is not None
+
+    async def get_existing_ids(
+        self, session: AsyncSession, ids: Sequence[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """Return which of the given entity ids exist, in one query.
+
+        Used to reject unknown entity ids on the video filter before running
+        the intersection (a conjunctive filter must not silently drop a
+        required entity).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        ids : Sequence[uuid.UUID]
+            Candidate entity ids.
+
+        Returns
+        -------
+        set[uuid.UUID]
+            The subset of ``ids`` that exist. Empty when ``ids`` is empty.
+        """
+        id_list = list(ids)
+        if not id_list:
+            return set()
+        result = await session.execute(
+            select(NamedEntityDB.id).where(NamedEntityDB.id.in_(id_list))
+        )
+        return set(result.scalars().all())
 
     async def find_active_by_normalized_and_type(
         self, session: AsyncSession, normalized_name: str, entity_type: str

@@ -13,17 +13,21 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select, union
+from sqlalchemy import ColumnElement, ScalarSelect, Subquery
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from chronovista.api.deps import (
+    get_canonical_tag_repository,
     get_db,
+    get_entity_mention_repository,
+    get_named_entity_repository,
     get_playlist_membership_repository,
     get_recovery_deps,
     get_topic_category_repository,
     get_transcript_segment_repository,
+    get_video_category_repository,
     get_video_repository,
+    get_video_tag_repository,
     require_auth,
 )
 from chronovista.api.query_protection import (
@@ -57,17 +61,9 @@ from chronovista.api.schemas.videos import (
     VideoRecoveryResultData,
 )
 from chronovista.db.models import (
-    NamedEntity as NamedEntityDB,
-)
-from chronovista.db.models import (
     TopicCategory,
-    TranscriptSegment,
-    VideoCategory,
-    VideoTag,
-    VideoTopic,
     VideoTranscript,
 )
-from chronovista.db.models import UserVideo as UserVideoDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import (
     BadRequestError,
@@ -80,15 +76,17 @@ from chronovista.repositories.canonical_tag_repository import (
     CanonicalTagRepository,
 )
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
-from chronovista.repositories.playlist_repository import saved_forgotten_video_ids
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 from chronovista.repositories.transcript_segment_repository import (
     TranscriptSegmentRepository,
 )
+from chronovista.repositories.video_category_repository import VideoCategoryRepository
 from chronovista.repositories.video_repository import VideoRepository
+from chronovista.repositories.video_tag_repository import VideoTagRepository
 
 logger = logging.getLogger(__name__)
 
@@ -334,6 +332,7 @@ def _build_parent_path(
 async def _validate_tags(
     session: AsyncSession,
     tags: list[str],
+    tag_repo: VideoTagRepository,
 ) -> tuple[list[str], list[FilterWarning]]:
     """
     Validate tag filter values exist in the database (FR-042, FR-044, FR-045).
@@ -356,10 +355,7 @@ async def _validate_tags(
     if not tags:
         return [], []
 
-    # Query for tags that exist in the database
-    existing_tags_query = select(VideoTag.tag).where(VideoTag.tag.in_(tags)).distinct()
-    result = await session.execute(existing_tags_query)
-    existing_tags = {row[0] for row in result.fetchall()}
+    existing_tags = await tag_repo.get_existing_tags(session, tags)
 
     valid_tags: list[str] = []
     warnings: list[FilterWarning] = []
@@ -388,6 +384,7 @@ async def _validate_tags(
 async def _validate_category(
     session: AsyncSession,
     category: str | None,
+    category_repo: VideoCategoryRepository,
 ) -> tuple[str | None, list[FilterWarning]]:
     """
     Validate category filter value exists in the database (FR-042, FR-045).
@@ -410,12 +407,7 @@ async def _validate_category(
     if not category:
         return None, []
 
-    # Query for category that exists in the database
-    existing_category_query = select(VideoCategory.category_id).where(
-        VideoCategory.category_id == category
-    )
-    result = await session.execute(existing_category_query)
-    exists = result.scalar_one_or_none() is not None
+    exists = await category_repo.exists(session, category)
 
     if exists:
         return category, []
@@ -438,6 +430,7 @@ async def _validate_category(
 async def _validate_topics(
     session: AsyncSession,
     topic_ids: list[str],
+    topic_repo: TopicCategoryRepository,
 ) -> tuple[list[str], list[FilterWarning]]:
     """
     Validate topic filter values exist in the database (FR-043, FR-045).
@@ -460,14 +453,7 @@ async def _validate_topics(
     if not topic_ids:
         return [], []
 
-    # Query for topics that exist in the database
-    existing_topics_query = (
-        select(TopicCategory.topic_id)
-        .where(TopicCategory.topic_id.in_(topic_ids))
-        .distinct()
-    )
-    result = await session.execute(existing_topics_query)
-    existing_topics = {row[0] for row in result.fetchall()}
+    existing_topics = await topic_repo.get_existing_topic_ids(session, topic_ids)
 
     valid_topics: list[str] = []
     warnings: list[FilterWarning] = []
@@ -598,6 +584,16 @@ async def list_videos(
     ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    tag_repo: VideoTagRepository = Depends(get_video_tag_repository),
+    category_repo: VideoCategoryRepository = Depends(get_video_category_repository),
+    topic_repo: TopicCategoryRepository = Depends(get_topic_category_repository),
+    segment_repo: TranscriptSegmentRepository = Depends(
+        get_transcript_segment_repository
+    ),
+    named_entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
 ) -> VideoListResponse | VideoListResponseWithWarnings | JSONResponse:
     """
     List videos with pagination and filtering.
@@ -733,15 +729,7 @@ async def list_videos(
     # wrong answer confidently. Dropping a disjunct narrows visibly instead.
     all_entity_ids = required_entity_ids + excluded_entity_ids
     if all_entity_ids:
-        known = set(
-            (
-                await session.execute(
-                    select(NamedEntityDB.id).where(NamedEntityDB.id.in_(all_entity_ids))
-                )
-            )
-            .scalars()
-            .all()
-        )
+        known = await named_entity_repo.get_existing_ids(session, all_entity_ids)
         unknown = [e for e in all_entity_ids if e not in known]
         if unknown:
             raise BadRequestError(
@@ -758,23 +746,26 @@ async def list_videos(
     all_warnings: list[FilterWarning] = []
 
     # Validate tags
-    valid_tags, tag_warnings = await _validate_tags(session, tag)
+    valid_tags, tag_warnings = await _validate_tags(session, tag, tag_repo)
     all_warnings.extend(tag_warnings)
 
     # Validate category
-    valid_category, category_warnings = await _validate_category(session, category)
+    valid_category, category_warnings = await _validate_category(
+        session, category, category_repo
+    )
     all_warnings.extend(category_warnings)
 
     # Validate topics
-    valid_topics, topic_warnings = await _validate_topics(session, topic_id)
+    valid_topics, topic_warnings = await _validate_topics(session, topic_id, topic_repo)
     all_warnings.extend(topic_warnings)
 
     # Canonical tag filter: build subqueries (OR logic)
     canonical_tag_subqueries: list[Any] | None = None
     if canonical_tag:
-        ct_repo = CanonicalTagRepository()
-        canonical_tag_subqueries = await ct_repo.build_canonical_tag_video_subqueries(
-            session, canonical_tag
+        canonical_tag_subqueries = (
+            await canonical_tag_repo.build_canonical_tag_video_subqueries(
+                session, canonical_tag
+            )
         )
         if not canonical_tag_subqueries:
             # All requested canonical tags were unrecognized — short-circuit
@@ -790,143 +781,67 @@ async def list_videos(
             )
             return VideoListResponse(data=[], pagination=pagination)
 
-    # Build base query with relationships for classification data
-    query = (
-        select(VideoDB)
-        .options(selectinload(VideoDB.transcripts))
-        .options(selectinload(VideoDB.channel))
-        .options(selectinload(VideoDB.tags))
-        .options(selectinload(VideoDB.category))
-        .options(
-            selectinload(VideoDB.video_topics).selectinload(VideoTopic.topic_category)
-        )
-    )
-
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        query = query.where(VideoDB.availability_status == AvailabilityStatus.AVAILABLE)
-
-    # Apply existing filters
-    if channel_id:
-        query = query.where(VideoDB.channel_id == channel_id)
-
-    if uploaded_after:
-        query = query.where(VideoDB.upload_date >= uploaded_after)
-
-    if uploaded_before:
-        query = query.where(VideoDB.upload_date <= uploaded_before)
-
-    if has_transcript is not None:
-        # Subquery for videos with transcripts
-        transcript_subquery = (
-            select(VideoTranscript.video_id).distinct().scalar_subquery()
-        )
-        if has_transcript:
-            query = query.where(VideoDB.video_id.in_(transcript_subquery))
-        else:
-            query = query.where(VideoDB.video_id.notin_(transcript_subquery))
-
-    # Apply classification filters (Feature 020)
-    # Use validated filter values (invalid values have been logged and excluded)
-
-    # Tag filter (OR logic within tags)
-    if valid_tags:
-        tagged_videos = (
-            select(VideoTag.video_id).where(VideoTag.tag.in_(valid_tags)).distinct()
-        )
-        query = query.where(VideoDB.video_id.in_(tagged_videos))
-
-    # Category filter
-    if valid_category:
-        query = query.where(VideoDB.category_id == valid_category)
-
-    # Topic filter (OR logic within topics)
-    if valid_topics:
-        topic_videos = (
-            select(VideoTopic.video_id)
-            .where(VideoTopic.topic_id.in_(valid_topics))
-            .distinct()
-        )
-        query = query.where(VideoDB.video_id.in_(topic_videos))
-
-    # Canonical tag filter (OR logic — union video sets across canonical tags)
-    if canonical_tag_subqueries:
-        combined = union(*canonical_tag_subqueries)
-        query = query.where(VideoDB.video_id.in_(combined))
-
-    # Liked-only filter (Feature 027) — EXISTS subquery following has_transcript pattern
-    if liked_only:
-        liked_subquery = (
-            select(UserVideoDB.video_id)
-            .where(UserVideoDB.liked.is_(True))
-            .distinct()
-            .scalar_subquery()
-        )
-        query = query.where(VideoDB.video_id.in_(liked_subquery))
-
-    # Saved & Forgotten filter (Feature 061) — imports the SAME derivation the
-    # dashboard headline uses, rather than re-expressing it here, so the two
-    # figures cannot drift (FR-029b). Applied to `query` only: the count is
-    # derived from `query.subquery()` below, unlike playlists.py which rebuilds
-    # its count by hand (research R8).
-    if saved_unwatched:
-        query = query.where(VideoDB.video_id.in_(saved_forgotten_video_ids()))
-
-    # Entity intersection (Feature 062). Both mutate `query`, so the count
-    # derived from `query.subquery()` below inherits them automatically -- the
-    # same guarantee every other filter here already has (FR-033, research R9).
-    # Building a parallel query or a hand-rolled count would produce correct
-    # rows with a wrong total, which no row-inspecting test detects.
-    entity_repo = EntityMentionRepository()
-    qualification = None
+    # Entity intersection (Feature 062). The qualification (required-AND) and
+    # exclusion (excluded-OR) subqueries are built by EntityMentionRepository
+    # and passed into the video query builder, which applies them before
+    # deriving the count -- so the total inherits them like every other filter
+    # (FR-033, research R9). A parallel query or a hand-rolled count would give
+    # correct rows with a wrong total, which no row-inspecting test detects.
+    qualification: Subquery | None = None
     if required_entity_ids:
-        qualification = await entity_repo.build_entity_qualification_subquery(
+        qualification = await mention_repo.build_entity_qualification_subquery(
             session, required_entity_ids, min_evidence
         )
-        query = query.join(qualification, VideoDB.video_id == qualification.c.video_id)
-
+    excluded_videos: ScalarSelect[str] | None = None
     if excluded_entity_ids:
-        excluded_videos = await entity_repo.build_entity_exclusion_subquery(
+        excluded_videos = await mention_repo.build_entity_exclusion_subquery(
             session, excluded_entity_ids, min_evidence
         )
-        query = query.where(VideoDB.video_id.notin_(excluded_videos))
 
-    # T099: Execute query with timeout (FR-036: 10s timeout)
+    # Resolve the primary sort expression (Feature 027); the repository appends
+    # a deterministic video_id tiebreak (FR-029). Relevance orders by the
+    # qualification subquery's mention total, not a VideoDB column, which is why
+    # RELEVANCE is deliberately absent from _VIDEO_SORT_COLUMN_MAP. The guard
+    # earlier guarantees `qualification` exists whenever relevance is active.
+    ascending = sort_order == SortOrder.ASC
+    if effective_sort_by is VideoSortField.RELEVANCE:
+        assert qualification is not None
+        relevance_col = qualification.c.total_mentions
+        order_clause: ColumnElement[Any] = (
+            relevance_col.asc() if ascending else relevance_col.desc()
+        )
+    else:
+        sort_col = _VIDEO_SORT_COLUMN_MAP[effective_sort_by]
+        order_clause = sort_col.asc() if ascending else sort_col.desc()
+
+    # T099: Execute queries with timeout (FR-036: 10s timeout)
     try:
 
         async def execute_queries() -> (
             tuple[int, list[VideoDB], dict[str, TopicCategory], set[str]]
         ):
             """Execute all database queries for video listing."""
-            # Get total count (before pagination)
-            count_query = select(func.count()).select_from(query.subquery())
-            total_result = await session.execute(count_query)
-            total = total_result.scalar() or 0
-
-            # Apply sorting (Feature 027) with deterministic secondary sort (FR-029)
-            # Relevance orders by the joined qualification subquery's mention
-            # total, not a VideoDB column, which is why RELEVANCE is
-            # deliberately absent from _VIDEO_SORT_COLUMN_MAP. The guard
-            # earlier guarantees `qualification` exists whenever it is active.
-            ascending = sort_order == SortOrder.ASC
-            if effective_sort_by is VideoSortField.RELEVANCE:
-                assert qualification is not None
-                relevance_col = qualification.c.total_mentions
-                order_clause = (
-                    relevance_col.asc() if ascending else relevance_col.desc()
-                )
-            else:
-                sort_col = _VIDEO_SORT_COLUMN_MAP[effective_sort_by]
-                order_clause = sort_col.asc() if ascending else sort_col.desc()
-            paginated_query = (
-                query.order_by(order_clause, VideoDB.video_id.asc())
-                .offset(offset)
-                .limit(limit)
+            # The filter/count/sort/paginate all live in the repository so the
+            # count always inherits the same filters as the returned page.
+            total, videos = await video_repo.list_videos_filtered(
+                session,
+                include_unavailable=include_unavailable,
+                channel_id=channel_id,
+                uploaded_after=uploaded_after,
+                uploaded_before=uploaded_before,
+                has_transcript=has_transcript,
+                valid_tags=valid_tags,
+                valid_category=valid_category,
+                valid_topics=valid_topics,
+                canonical_tag_subqueries=canonical_tag_subqueries,
+                liked_only=liked_only,
+                saved_unwatched=saved_unwatched,
+                qualification=qualification,
+                excluded_videos=excluded_videos,
+                order_clause=order_clause,
+                offset=offset,
+                limit=limit,
             )
-
-            # Execute query
-            result = await session.execute(paginated_query)
-            videos = list(result.scalars().all())
 
             # Collect all topic IDs to build parent paths
             all_topic_ids: set[str] = set()
@@ -940,29 +855,13 @@ async def list_videos(
             # Load all relevant topics for path building
             topic_cache: dict[str, TopicCategory] = {}
             if all_topic_ids:
-                topic_query_inner = select(TopicCategory).where(
-                    TopicCategory.topic_id.in_(all_topic_ids)
-                )
-                topic_result = await session.execute(topic_query_inner)
-                for tc in topic_result.scalars().all():
+                for tc in await topic_repo.get_by_topic_ids(session, all_topic_ids):
                     topic_cache[tc.topic_id] = tc
 
-            # Batch query: find which videos have corrected segments (Feature 035)
-            videos_with_corrections: set[str] = set()
-            video_ids = [v.video_id for v in videos]
-            if video_ids:
-                corrections_query = (
-                    select(TranscriptSegment.video_id)
-                    .where(
-                        TranscriptSegment.video_id.in_(video_ids),
-                        TranscriptSegment.has_correction.is_(True),
-                    )
-                    .distinct()
-                )
-                corrections_result = await session.execute(corrections_query)
-                videos_with_corrections = {
-                    row[0] for row in corrections_result.fetchall()
-                }
+            # Which videos on this page have corrected segments (Feature 035)
+            videos_with_corrections = await segment_repo.get_video_ids_with_corrections(
+                session, [v.video_id for v in videos]
+            )
 
             return total, videos, topic_cache, videos_with_corrections
 
@@ -992,7 +891,7 @@ async def list_videos(
     # regression no value-based assertion can detect. Only timing can.
     page_entity_matches: dict[str, list[dict[str, Any]]] = {}
     if required_entity_ids:
-        page_entity_matches = await entity_repo.get_page_entity_matches(
+        page_entity_matches = await mention_repo.get_page_entity_matches(
             session,
             video_ids=[v.video_id for v in videos],
             entity_ids=required_entity_ids,

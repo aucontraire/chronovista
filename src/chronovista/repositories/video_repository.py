@@ -10,13 +10,26 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, asc, desc, func, or_, select
+from sqlalchemy import (
+    ColumnElement,
+    ScalarSelect,
+    Select,
+    Subquery,
+    and_,
+    asc,
+    desc,
+    func,
+    or_,
+    select,
+    union,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import Channel as ChannelDB
+from chronovista.db.models import UserVideo as UserVideoDB
 from chronovista.db.models import Video as VideoDB
-from chronovista.db.models import VideoTopic
+from chronovista.db.models import VideoTag, VideoTopic, VideoTranscript
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.video import (
     VideoCreate,
@@ -29,6 +42,7 @@ from chronovista.repositories.base import (
     BaseSQLAlchemyRepository,
     escape_like_pattern,
 )
+from chronovista.repositories.playlist_repository import saved_forgotten_video_ids
 
 
 class VideoRepository(
@@ -495,6 +509,170 @@ class VideoRepository(
             )
         )
         return result.scalar_one_or_none()
+
+    async def list_videos_filtered(
+        self,
+        session: AsyncSession,
+        *,
+        include_unavailable: bool,
+        channel_id: str | None,
+        uploaded_after: datetime | None,
+        uploaded_before: datetime | None,
+        has_transcript: bool | None,
+        valid_tags: list[str],
+        valid_category: str | None,
+        valid_topics: list[str],
+        canonical_tag_subqueries: list[Select[Any]] | None,
+        liked_only: bool,
+        saved_unwatched: bool,
+        qualification: Subquery | None,
+        excluded_videos: ScalarSelect[str] | None,
+        order_clause: ColumnElement[Any],
+        offset: int,
+        limit: int,
+    ) -> tuple[int, list[VideoDB]]:
+        """List videos matching the classification/entity filters, with count.
+
+        Builds one filtered ``select(VideoDB)`` (eager-loading the relationships
+        the list response reads), derives the total from that same query's
+        subquery so the count always inherits every filter, then applies the
+        ordering and pagination and returns the page.
+
+        The entity qualification / exclusion / canonical-tag subqueries are
+        built by their own repositories and passed in, so this method composes
+        them without reaching across repository boundaries. ``order_clause`` is
+        the resolved primary sort expression (the caller owns the API-level
+        sort-field mapping, including the relevance case that references the
+        qualification subquery); a deterministic ``video_id`` tiebreak is always
+        appended.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        include_unavailable : bool
+            When False, restrict to ``availability_status == AVAILABLE``.
+        channel_id : str | None
+            Optional channel filter.
+        uploaded_after, uploaded_before : datetime | None
+            Optional inclusive upload-date bounds.
+        has_transcript : bool | None
+            When set, require (True) or forbid (False) a transcript.
+        valid_tags : list[str]
+            Pre-validated raw tags; OR logic within the set.
+        valid_category : str | None
+            Pre-validated category id.
+        valid_topics : list[str]
+            Pre-validated topic ids; OR logic within the set.
+        canonical_tag_subqueries : list[Select[Any]] | None
+            Pre-built canonical-tag video-id subqueries; UNIONed (OR logic).
+        liked_only : bool
+            Restrict to liked videos.
+        saved_unwatched : bool
+            Restrict to the saved-but-never-watched set.
+        qualification : Subquery | None
+            Entity intersection (required-AND) subquery to inner-join on, or None.
+        excluded_videos : ScalarSelect[str] | None
+            Excluded-entity video-id set to remove (OR logic), or None.
+        order_clause : ColumnElement[Any]
+            Resolved primary sort expression (asc/desc already applied).
+        offset, limit : int
+            Pagination window.
+
+        Returns
+        -------
+        tuple[int, list[VideoDB]]
+            The total matching count (before pagination) and the page of videos.
+        """
+        query = (
+            select(VideoDB)
+            .options(selectinload(VideoDB.transcripts))
+            .options(selectinload(VideoDB.channel))
+            .options(selectinload(VideoDB.tags))
+            .options(selectinload(VideoDB.category))
+            .options(
+                selectinload(VideoDB.video_topics).selectinload(
+                    VideoTopic.topic_category
+                )
+            )
+        )
+
+        if not include_unavailable:
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+
+        if channel_id:
+            query = query.where(VideoDB.channel_id == channel_id)
+
+        if uploaded_after:
+            query = query.where(VideoDB.upload_date >= uploaded_after)
+
+        if uploaded_before:
+            query = query.where(VideoDB.upload_date <= uploaded_before)
+
+        if has_transcript is not None:
+            transcript_subquery = (
+                select(VideoTranscript.video_id).distinct().scalar_subquery()
+            )
+            if has_transcript:
+                query = query.where(VideoDB.video_id.in_(transcript_subquery))
+            else:
+                query = query.where(VideoDB.video_id.notin_(transcript_subquery))
+
+        if valid_tags:
+            tagged_videos = (
+                select(VideoTag.video_id).where(VideoTag.tag.in_(valid_tags)).distinct()
+            )
+            query = query.where(VideoDB.video_id.in_(tagged_videos))
+
+        if valid_category:
+            query = query.where(VideoDB.category_id == valid_category)
+
+        if valid_topics:
+            topic_videos = (
+                select(VideoTopic.video_id)
+                .where(VideoTopic.topic_id.in_(valid_topics))
+                .distinct()
+            )
+            query = query.where(VideoDB.video_id.in_(topic_videos))
+
+        if canonical_tag_subqueries:
+            combined = union(*canonical_tag_subqueries)
+            query = query.where(VideoDB.video_id.in_(combined))
+
+        if liked_only:
+            liked_subquery = (
+                select(UserVideoDB.video_id)
+                .where(UserVideoDB.liked.is_(True))
+                .distinct()
+                .scalar_subquery()
+            )
+            query = query.where(VideoDB.video_id.in_(liked_subquery))
+
+        if saved_unwatched:
+            query = query.where(VideoDB.video_id.in_(saved_forgotten_video_ids()))
+
+        if qualification is not None:
+            query = query.join(
+                qualification, VideoDB.video_id == qualification.c.video_id
+            )
+
+        if excluded_videos is not None:
+            query = query.where(VideoDB.video_id.notin_(excluded_videos))
+
+        count_query = select(func.count()).select_from(query.subquery())
+        total_result = await session.execute(count_query)
+        total = total_result.scalar() or 0
+
+        paginated_query = (
+            query.order_by(order_clause, VideoDB.video_id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(paginated_query)
+        videos = list(result.scalars().all())
+        return total, videos
 
     async def search_titles(
         self,

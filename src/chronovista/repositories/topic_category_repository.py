@@ -84,6 +84,37 @@ class TopicCategoryRepository(
         )
         return list(result.scalars().all())
 
+    async def get_existing_topic_ids(
+        self, session: AsyncSession, topic_ids: Iterable[str]
+    ) -> set[str]:
+        """Return which of the given topic IDs exist, in one query.
+
+        Used to validate the ``topic_id`` filter values on the video list
+        endpoint; unrecognized ids are dropped with a warning by the caller.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        topic_ids : Iterable[str]
+            Candidate topic IDs.
+
+        Returns
+        -------
+        set[str]
+            The subset of ``topic_ids`` that exist. Empty when ``topic_ids``
+            is empty.
+        """
+        ids = list(topic_ids)
+        if not ids:
+            return set()
+        result = await session.execute(
+            select(TopicCategoryDB.topic_id)
+            .where(TopicCategoryDB.topic_id.in_(ids))
+            .distinct()
+        )
+        return {row[0] for row in result.all()}
+
     async def create_or_update(
         self, session: AsyncSession, topic_create: TopicCategoryCreate
     ) -> TopicCategoryDB:

@@ -1,8 +1,10 @@
 """Unit tests for POST /api/v1/entities/{entity_id}/aliases endpoint.
 
-Tests the create_entity_alias endpoint in isolation by mocking the database
-session and module-level singletons (_alias_repo and _normalizer).  Each test
-class is self-contained and does not require a live database.
+Tests the create_entity_alias endpoint in isolation by injecting a mock
+EntityAliasRepository via the ``get_entity_alias_repository`` dependency
+override (#256), mocking the database session, and patching the router's one
+remaining module-level singleton (_normalizer).  Each test class is
+self-contained and does not require a live database.
 
 Coverage targets
 ----------------
@@ -28,11 +30,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import chronovista.api.routers.entity_mentions as _em_module
 from chronovista.api.deps import (
     get_db,
     get_entity_alias_repository,
-    get_named_entity_repository,
     require_auth,
 )
 from chronovista.api.main import app
@@ -236,16 +236,11 @@ async def _build_client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, 
 
     app.dependency_overrides[get_db] = mock_get_db
     app.dependency_overrides[require_auth] = mock_require_auth
-    # create_entity_alias now takes its repos via Depends (#256), so patching
-    # the module-level _entity_repo/_alias_repo no longer reaches it. Route the
-    # dependencies to those module attributes — evaluated per-request, so a
-    # test's patch(..._alias_repo) flows through.
-    app.dependency_overrides[get_named_entity_repository] = (
-        lambda: _em_module._entity_repo
-    )
-    app.dependency_overrides[get_entity_alias_repository] = (
-        lambda: _em_module._alias_repo
-    )
+    # create_entity_alias takes its repos via Depends (#256). Each test sets the
+    # get_entity_alias_repository override it needs before entering this client;
+    # get_named_entity_repository, left unset, resolves to a real stateless repo
+    # over the injected mock session (matching pre-#256 behavior). _build_client
+    # only wires get_db + require_auth and never clears overrides on entry.
 
     try:
         transport = ASGITransport(app=app)
@@ -274,15 +269,12 @@ class TestCreateEntityAliasHappyPath:
         alias_row = _make_alias_db_row(alias_name="Dijkstra", alias_type="name_variant")
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = "dijkstra"
                 mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
@@ -306,15 +298,12 @@ class TestCreateEntityAliasHappyPath:
         )
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = "the technoking"
                 mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
@@ -343,15 +332,12 @@ class TestCreateEntityAliasHappyPath:
         alias_row = _make_alias_db_row(alias_name="EM", alias_type="name_variant")
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = "em"
                 mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
@@ -377,15 +363,12 @@ class TestCreateEntityAliasHappyPath:
         alias_row = _make_alias_db_row(alias_name="SpaceX CEO", alias_type="nickname")
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = "spacex ceo"
                 mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
@@ -408,15 +391,12 @@ class TestCreateEntityAliasHappyPath:
         alias_row = _make_alias_db_row()
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = "dijkstra"
                 mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
@@ -666,15 +646,12 @@ class TestCreateEntityAliasConflict:
         mock_session = AsyncMock(spec=AsyncSession)
         mock_session.execute = AsyncMock(return_value=entity_result)
 
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = None
                 mock_repo.create = AsyncMock()
 
@@ -778,15 +755,12 @@ class TestCreateEntityAliasValidation:
         )
         mock_session = _make_session_entity_found(entity_row, alias_row)
 
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = "a" * 500
                 mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)
@@ -888,15 +862,12 @@ class TestCreateEntityAliasAllowedTypes:
         mock_session = _make_session_entity_found(entity_row, alias_row)
         status_code: int = 0
 
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = "dijkstra"
                 mock_repo.get_by_entity_and_normalized = AsyncMock(return_value=None)
                 mock_repo.create = AsyncMock(return_value=alias_row)

@@ -97,14 +97,7 @@ from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
-from chronovista.repositories.entity_operation_log_repository import (
-    EntityOperationLogRepository,
-)
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
-from chronovista.repositories.tag_alias_repository import TagAliasRepository
-from chronovista.repositories.tag_operation_log_repository import (
-    TagOperationLogRepository,
-)
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.entity_curation_service import (
     EntityCurationService,
@@ -150,27 +143,17 @@ def _schedule_enrichment(
     task.add_done_callback(_enrichment_tasks.discard)
 
 
-# Module-level repository / service instantiation (singleton pattern)
-_mention_repo = EntityMentionRepository()
-
 # Ceiling for the appears-with panel (FR-023a). The default of 12 fills a
 # column without scrolling; this bound exists so "reveal more" cannot walk the
 # list to an unbounded size on a hub entity with hundreds of partners.
 MAX_COOCCURRING_LIMIT = 50
-_alias_repo = EntityAliasRepository()
-_entity_repo = NamedEntityRepository()
+
+# The tag normalizer is the one remaining module-level singleton: a stateless,
+# I/O-free service still used by create_entity / create_entity_alias / the
+# duplicate check. Every repository/service that touches the database is now
+# injected per-request via Depends (#256); the former repo/service singletons
+# were removed once all endpoints were migrated.
 _normalizer = TagNormalizationService()
-_tag_mgmt_service = TagManagementService(
-    canonical_tag_repo=CanonicalTagRepository(),
-    tag_alias_repo=TagAliasRepository(),
-    named_entity_repo=NamedEntityRepository(),
-    entity_alias_repo=EntityAliasRepository(),
-    operation_log_repo=TagOperationLogRepository(),
-)
-_entity_curation_service = EntityCurationService(
-    named_entity_repo=NamedEntityRepository(),
-    operation_log_repo=EntityOperationLogRepository(),
-)
 
 logger = logging.getLogger(__name__)
 
@@ -2444,9 +2427,6 @@ async def get_scan_job(
 # ═══════════════════════════════════════════════════════════════════════════
 # POST /entities/{entity_id}/tags — Attach a canonical tag (Feature 064)
 # ═══════════════════════════════════════════════════════════════════════════
-
-
-_canonical_tag_repo = CanonicalTagRepository()
 
 
 @router.post(

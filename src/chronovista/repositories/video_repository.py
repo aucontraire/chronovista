@@ -770,6 +770,63 @@ class VideoRepository(
         videos = list(result.scalars().all())
         return total, videos
 
+    async def list_by_tag(
+        self,
+        session: AsyncSession,
+        tag: str,
+        *,
+        include_unavailable: bool,
+        offset: int,
+        limit: int,
+    ) -> tuple[int, list[VideoDB]]:
+        """List videos carrying a raw tag, newest first, with count.
+
+        Joins ``video_tags`` for the exact tag and eager-loads the
+        relationships the tag-videos response reads (transcripts, channel).
+        The total is derived from the same filtered join before pagination, so
+        it can never drift from the returned rows. Ordered by upload date
+        descending.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        tag : str
+            Exact tag string.
+        include_unavailable : bool
+            When False, restrict to ``availability_status == AVAILABLE``.
+        offset, limit : int
+            Pagination window.
+
+        Returns
+        -------
+        tuple[int, list[VideoDB]]
+            The total matching count and the page of videos.
+        """
+        base_query = (
+            select(VideoDB)
+            .join(VideoTag, VideoDB.video_id == VideoTag.video_id)
+            .where(VideoTag.tag == tag)
+        )
+        if not include_unavailable:
+            base_query = base_query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+
+        count_query = select(func.count()).select_from(base_query.subquery())
+        total = (await session.execute(count_query)).scalar() or 0
+
+        paginated_query = (
+            base_query.options(selectinload(VideoDB.transcripts))
+            .options(selectinload(VideoDB.channel))
+            .order_by(VideoDB.upload_date.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(paginated_query)
+        videos = list(result.scalars().all())
+        return total, videos
+
     async def search_titles(
         self,
         session: AsyncSession,

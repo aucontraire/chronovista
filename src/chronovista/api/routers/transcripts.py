@@ -10,6 +10,8 @@ from chronovista.api.deps import (
     get_db,
     get_transcript_correction_repository,
     get_transcript_segment_repository,
+    get_transcript_service,
+    get_user_language_preference_repository,
     get_video_repository,
     get_video_transcript_repository,
     require_auth,
@@ -83,10 +85,9 @@ _VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
 # In-flight download guard: tracks video_ids currently being downloaded
 _downloads_in_progress: set[str] = set()
 
-# Module-level service/repository singletons
-_transcript_service = TranscriptService()
-_transcript_repo = VideoTranscriptRepository()
-_pref_repo = UserLanguagePreferenceRepository()
+# The preference filter is a stateless, I/O-free helper — the one remaining
+# module-level singleton. The TranscriptService and the DB repositories are now
+# injected per-request via Depends (#256).
 _pref_filter = PreferenceAwareTranscriptFilter()
 
 
@@ -385,6 +386,13 @@ async def download_transcript(
     ),
     session: AsyncSession = Depends(get_db),
     user_id: str = Depends(require_local_identity),
+    transcript_repo: VideoTranscriptRepository = Depends(
+        get_video_transcript_repository
+    ),
+    pref_repo: UserLanguagePreferenceRepository = Depends(
+        get_user_language_preference_repository
+    ),
+    transcript_service: TranscriptService = Depends(get_transcript_service),
 ) -> (
     ApiResponse[TranscriptDownloadResponse]
     | ApiResponse[MultiTranscriptDownloadResponse]
@@ -445,7 +453,7 @@ async def download_transcript(
     _downloads_in_progress.add(video_id)
     try:
         # 3. Get existing transcripts for this video
-        existing_transcripts = await _transcript_repo.get_video_transcripts(
+        existing_transcripts = await transcript_repo.get_video_transcripts(
             session, video_id
         )
         existing_lang_codes = {t.language_code.lower() for t in existing_transcripts}
@@ -467,10 +475,12 @@ async def download_transcript(
                 video_id=video_id,
                 language=language,
                 session=session,
+                transcript_repo=transcript_repo,
+                transcript_service=transcript_service,
             )
 
         # --- Check for user preferences ---
-        user_prefs = await _pref_repo.get_user_preferences(session, user_id)
+        user_prefs = await pref_repo.get_user_preferences(session, user_id)
 
         # --- Path C: No preferences → preserve existing default behavior (FR-013) ---
         if not user_prefs:
@@ -485,6 +495,8 @@ async def download_transcript(
                 video_id=video_id,
                 language=None,
                 session=session,
+                transcript_repo=transcript_repo,
+                transcript_service=transcript_service,
             )
 
         # --- Path B: Preference-aware multi-language download (FR-011, FR-012) ---
@@ -513,6 +525,8 @@ async def download_transcript(
                 video_id=video_id,
                 language=None,
                 session=session,
+                transcript_repo=transcript_repo,
+                transcript_service=transcript_service,
             )
 
         # Filter out already-downloaded languages
@@ -545,7 +559,7 @@ async def download_transcript(
         failed: list[str] = []
 
         try:
-            batch_results = await _transcript_service.get_transcripts_for_languages(
+            batch_results = await transcript_service.get_transcripts_for_languages(
                 video_id=video_id,
                 language_codes=remaining_languages,
             )
@@ -599,7 +613,7 @@ async def download_transcript(
                     caption_name=enhanced_transcript.caption_name,
                 )
 
-                db_transcript = await _transcript_repo.create_or_update(
+                db_transcript = await transcript_repo.create_or_update(
                     session,
                     transcript_create,
                     raw_transcript_data=(
@@ -683,6 +697,8 @@ async def _download_single_language(
     video_id: str,
     language: str | None,
     session: AsyncSession,
+    transcript_repo: VideoTranscriptRepository,
+    transcript_service: TranscriptService,
 ) -> ApiResponse[TranscriptDownloadResponse]:
     """Download a single language transcript and return the standard response.
 
@@ -697,6 +713,10 @@ async def _download_single_language(
         BCP-47 language code, or None for default (English).
     session : AsyncSession
         Database session.
+    transcript_repo : VideoTranscriptRepository
+        Repository used to persist the downloaded transcript.
+    transcript_service : TranscriptService
+        Service used to fetch the transcript from YouTube.
 
     Returns
     -------
@@ -708,7 +728,7 @@ async def _download_single_language(
         language_codes = [language]
 
     try:
-        enhanced_transcript = await _transcript_service.get_transcript(
+        enhanced_transcript = await transcript_service.get_transcript(
             video_id=video_id,
             language_codes=language_codes,
         )
@@ -779,7 +799,7 @@ async def _download_single_language(
         caption_name=enhanced_transcript.caption_name,
     )
 
-    db_transcript = await _transcript_repo.create_or_update(
+    db_transcript = await transcript_repo.create_or_update(
         session,
         transcript_create,
         raw_transcript_data=(

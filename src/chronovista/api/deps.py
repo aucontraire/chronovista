@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from chronovista.services.transcript_correction_service import (
         TranscriptCorrectionService,
     )
+    from chronovista.services.transcript_service import TranscriptService
 
 from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
@@ -35,6 +36,9 @@ from chronovista.repositories.playlist_membership_repository import (
 from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
+)
+from chronovista.repositories.user_language_preference_repository import (
+    UserLanguagePreferenceRepository,
 )
 from chronovista.repositories.video_category_repository import VideoCategoryRepository
 from chronovista.repositories.video_tag_repository import VideoTagRepository
@@ -321,6 +325,25 @@ def get_video_transcript_repository() -> VideoTranscriptRepository:
     from chronovista.container import container
 
     return container.create_video_transcript_repository()
+
+
+def get_user_language_preference_repository() -> UserLanguagePreferenceRepository:
+    """Dependency providing a UserLanguagePreferenceRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_user_language_preference_repository()
+
+
+def get_transcript_service() -> "TranscriptService":
+    """Dependency providing the shared TranscriptService via the container (#256).
+
+    Replaces the transcripts router's module-level _transcript_service singleton.
+    The container caches this service (``@cached_property``), so this returns the
+    same instance across requests, preserving the prior singleton semantics.
+    """
+    from chronovista.container import container
+
+    return container.transcript_service
 
 
 def get_topic_category_repository() -> TopicCategoryRepository:

@@ -20,7 +20,8 @@ Pattern mirrors test_transcript_corrections_api.py:
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -30,6 +31,8 @@ from httpx import AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.api.deps import get_transcript_service
+from chronovista.api.main import app
 from chronovista.db.models import (
     Channel as ChannelDB,
 )
@@ -308,6 +311,21 @@ def _mock_auth(mock_oauth: MagicMock) -> None:
     mock_oauth.is_authenticated.return_value = True
 
 
+@contextmanager
+def _override_transcript_service(mock: MagicMock) -> Iterator[None]:
+    """Install ``mock`` as the ``get_transcript_service`` dependency override.
+
+    Replaces the former ``patch(...transcripts._transcript_service)`` approach
+    after #256 injected the service via FastAPI ``Depends``. The override is
+    removed on exit so it does not leak into other tests.
+    """
+    app.dependency_overrides[get_transcript_service] = lambda: mock
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(get_transcript_service, None)
+
+
 # ===========================================================================
 # Test class 1 — Input validation (no DB seeding required)
 # ===========================================================================
@@ -364,11 +382,10 @@ class TestDownloadInputValidation:
         the DB the service will be called (or mocked) and may return 404.
         This test only confirms format validation succeeds (not a 422).
         """
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             from chronovista.services.transcript_service import TranscriptNotFoundError
@@ -400,11 +417,10 @@ class TestDownloadHappyPath:
         video_id = seed_video_without_transcript["video_id"]
         mock_transcript = _make_enhanced_transcript(video_id=video_id, snippet_count=3)
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -432,11 +448,10 @@ class TestDownloadHappyPath:
         video_id = seed_video_without_transcript["video_id"]
         mock_transcript = _make_enhanced_transcript(video_id=video_id, snippet_count=4)
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -471,11 +486,10 @@ class TestDownloadHappyPath:
             video_id=video_id, snippet_count=expected_segments
         )
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -509,11 +523,10 @@ class TestDownloadHappyPath:
             video_id=video_id, snippet_count=expected_count
         )
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -543,11 +556,10 @@ class TestDownloadHappyPath:
             captured_kwargs.update(kwargs)
             return mock_transcript
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = capture_get_transcript
@@ -573,11 +585,10 @@ class TestDownloadHappyPath:
             captured_kwargs.update(kwargs)
             return mock_transcript
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = capture_get_transcript
@@ -598,11 +609,10 @@ class TestDownloadHappyPath:
             video_id=video_id, snippet_count=3, is_cc=True
         )
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -622,11 +632,10 @@ class TestDownloadHappyPath:
         video_id = seed_video_without_transcript["video_id"]
         mock_transcript = _make_enhanced_transcript(video_id=video_id, snippet_count=2)
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -712,11 +721,10 @@ class TestDownloadConflict:
         """
         video_id = seed_video_with_existing_transcript["video_id"]
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock()
@@ -744,11 +752,10 @@ class TestDownloadServiceErrors:
 
         video_id = seed_video_without_transcript["video_id"]
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(
@@ -772,11 +779,10 @@ class TestDownloadServiceErrors:
 
         video_id = seed_video_without_transcript["video_id"]
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(
@@ -796,11 +802,10 @@ class TestDownloadServiceErrors:
 
         video_id = seed_video_without_transcript["video_id"]
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(
@@ -853,11 +858,10 @@ class TestDownloadInFlightGuard:
         video_id = seed_video_without_transcript["video_id"]
         mock_transcript = _make_enhanced_transcript(video_id=video_id, snippet_count=2)
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -878,11 +882,10 @@ class TestDownloadInFlightGuard:
 
         video_id = seed_video_without_transcript["video_id"]
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(
@@ -915,11 +918,10 @@ class TestDownloadDatabaseState:
             video_id=video_id, language_code="en", snippet_count=3
         )
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -946,11 +948,10 @@ class TestDownloadDatabaseState:
         video_id = seed_video_without_transcript["video_id"]
         mock_transcript = _make_enhanced_transcript(video_id=video_id, snippet_count=3)
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -984,11 +985,10 @@ class TestDownloadDatabaseState:
         video_id = seed_video_without_transcript["video_id"]
         mock_transcript = _make_enhanced_transcript(video_id=video_id, snippet_count=4)
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -1019,11 +1019,10 @@ class TestDownloadDatabaseState:
         video_id = seed_video_without_transcript["video_id"]
         mock_transcript = _make_enhanced_transcript(video_id=video_id, snippet_count=3)
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(return_value=mock_transcript)
@@ -1058,11 +1057,10 @@ class TestDownloadDatabaseState:
 
         video_id = seed_video_without_transcript["video_id"]
 
+        mock_svc = MagicMock()
         with (
             patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
-            patch(
-                "chronovista.api.routers.transcripts._transcript_service"
-            ) as mock_svc,
+            _override_transcript_service(mock_svc),
         ):
             _mock_auth(mock_oauth)
             mock_svc.get_transcript = AsyncMock(

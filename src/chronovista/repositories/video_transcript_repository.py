@@ -208,6 +208,76 @@ class VideoTranscriptRepository(
         )
         return list(result.scalars().all())
 
+    async def list_transcripts_by_recency(
+        self, session: AsyncSession, video_id: VideoId
+    ) -> list[VideoTranscriptDB]:
+        """Get a video's transcripts ordered CC-first, then most recently downloaded.
+
+        This is the ordering the transcript-languages API endpoint presents
+        (distinct from :meth:`get_video_transcripts`, which ranks by confidence
+        and type for quality selection).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            YouTube video identifier.
+
+        Returns
+        -------
+        list[VideoTranscriptDB]
+            Transcripts ordered by ``is_cc`` desc, then ``downloaded_at`` desc.
+        """
+        result = await session.execute(
+            select(VideoTranscriptDB)
+            .where(VideoTranscriptDB.video_id == video_id)
+            .order_by(
+                VideoTranscriptDB.is_cc.desc(),
+                VideoTranscriptDB.downloaded_at.desc(),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def get_display_transcript(
+        self,
+        session: AsyncSession,
+        video_id: VideoId,
+        language: str | None = None,
+    ) -> VideoTranscriptDB | None:
+        """Get the transcript to display for a video.
+
+        With ``language`` set, returns the case-insensitive match for that code.
+        Without it, returns the best default (CC-first, then most recently
+        downloaded). Returns the first match — never raises on duplicates.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            YouTube video identifier.
+        language : str | None
+            BCP-47 language code (case-insensitive), or None for the default.
+
+        Returns
+        -------
+        VideoTranscriptDB | None
+            The selected transcript, or None if the video has none.
+        """
+        query = select(VideoTranscriptDB).where(VideoTranscriptDB.video_id == video_id)
+        if language:
+            query = query.where(
+                func.lower(VideoTranscriptDB.language_code) == language.lower()
+            )
+        else:
+            query = query.order_by(
+                VideoTranscriptDB.is_cc.desc(),
+                VideoTranscriptDB.downloaded_at.desc(),
+            )
+        result = await session.execute(query)
+        return result.scalars().first()
+
     async def get_transcripts_by_language(
         self, session: AsyncSession, language_code: str, limit: int | None = None
     ) -> list[VideoTranscriptDB]:

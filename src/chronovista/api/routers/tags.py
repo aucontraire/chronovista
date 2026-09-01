@@ -16,11 +16,14 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_db,
+    get_video_repository,
+    get_video_tag_repository,
+    require_auth,
+)
 from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.api.schemas.tags import (
@@ -30,9 +33,9 @@ from chronovista.api.schemas.tags import (
     TagListResponse,
 )
 from chronovista.api.schemas.videos import VideoListItem, VideoListResponse
-from chronovista.db.models import Video, VideoTag
 from chronovista.exceptions import NotFoundError
-from chronovista.models.enums import AvailabilityStatus
+from chronovista.repositories.video_repository import VideoRepository
+from chronovista.repositories.video_tag_repository import VideoTagRepository
 from chronovista.utils.fuzzy import find_similar
 
 logger = logging.getLogger(__name__)
@@ -140,6 +143,7 @@ async def list_tags(
     ),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    tag_repo: VideoTagRepository = Depends(get_video_tag_repository),
 ) -> TagListResponse | JSONResponse:
     """
     List tags with pagination and video counts.
@@ -195,51 +199,18 @@ async def list_tags(
                 headers={"Retry-After": str(retry_after)},
             )
 
-    # Query unique tags with counts
-    query = (
-        select(
-            VideoTag.tag,
-            func.count(VideoTag.video_id).label("video_count"),
-        )
-        .join(Video, VideoTag.video_id == Video.video_id)
-        .group_by(VideoTag.tag)
+    # Tags with video counts (availability-filtered, optional autocomplete
+    # prefix), ordered by count desc; total is the distinct-tag count.
+    total, rows = await tag_repo.list_tags_with_counts(
+        session,
+        include_unavailable=include_unavailable,
+        query=q,
+        offset=offset,
+        limit=limit,
     )
-
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
-
-    # Apply autocomplete filter if q parameter is provided
-    if q is not None:
-        # Use ILIKE for case-insensitive prefix matching
-        query = query.where(VideoTag.tag.ilike(f"{q}%"))
-
-    # Total count of unique tags (with optional filter)
-    count_base = (
-        select(func.count(func.distinct(VideoTag.tag)))
-        .select_from(VideoTag)
-        .join(Video, VideoTag.video_id == Video.video_id)
-    )
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        count_base = count_base.where(
-            Video.availability_status == AvailabilityStatus.AVAILABLE
-        )
-    if q is not None:
-        count_base = count_base.where(VideoTag.tag.ilike(f"{q}%"))
-    total_result = await session.execute(count_base)
-    total = total_result.scalar() or 0
-
-    # Apply ordering and pagination
-    query = (
-        query.order_by(func.count(VideoTag.video_id).desc()).offset(offset).limit(limit)
-    )
-
-    result = await session.execute(query)
-    rows = result.all()
 
     items: list[TagListItem] = [
-        TagListItem(tag=row.tag, video_count=row.video_count) for row in rows
+        TagListItem(tag=tag, video_count=video_count) for tag, video_count in rows
     ]
 
     pagination = PaginationMeta(
@@ -263,20 +234,14 @@ async def list_tags(
             # 2. Similar length AND contain the query substring
             prefix = q[:2].lower() if len(q) >= 2 else q.lower()
 
-            candidate_tags_query = (
-                select(VideoTag.tag)
-                .where(func.length(VideoTag.tag) >= min_len)
-                .where(func.length(VideoTag.tag) <= max_len)
-                .where(
-                    # Match tags starting with similar prefix OR containing query
-                    (func.lower(VideoTag.tag).like(f"{prefix}%"))
-                    | (func.lower(VideoTag.tag).like(f"%{q.lower()}%"))
-                )
-                .distinct()
-                .limit(500)
+            candidate_tags = await tag_repo.find_fuzzy_candidates(
+                session,
+                prefix=prefix,
+                substring=q.lower(),
+                min_len=min_len,
+                max_len=max_len,
+                limit=500,
             )
-            candidate_result = await session.execute(candidate_tags_query)
-            candidate_tags = [row[0] for row in candidate_result.all()]
 
             logger.debug(
                 "[tags] Fuzzy search for '%s': %d candidates (prefix='%s', len %d-%d)",
@@ -328,6 +293,8 @@ async def get_tag_videos(
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
+    tag_repo: VideoTagRepository = Depends(get_video_tag_repository),
+    video_repo: VideoRepository = Depends(get_video_repository),
 ) -> VideoListResponse:
     """
     Get videos with a specific tag.
@@ -356,61 +323,23 @@ async def get_tag_videos(
     NotFoundError
         404 if tag not found.
     """
-    # Verify tag exists (check if any videos have this tag)
-    tag_query = (
-        select(VideoTag.tag)
-        .join(Video, VideoTag.video_id == Video.video_id)
-        .where(VideoTag.tag == tag)
-        .limit(1)
-    )
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        tag_query = tag_query.where(
-            Video.availability_status == AvailabilityStatus.AVAILABLE
-        )
-
-    tag_result = await session.execute(tag_query)
-    if not tag_result.scalar_one_or_none():
+    # Verify tag exists (any matching video under the availability filter)
+    if not await tag_repo.tag_exists(
+        session, tag, include_unavailable=include_unavailable
+    ):
         raise NotFoundError(
             resource_type="Tag",
             identifier=tag,
             hint="Verify the tag name or check available tags.",
         )
 
-    # Query videos with this tag
-    query = (
-        select(Video)
-        .join(VideoTag, Video.video_id == VideoTag.video_id)
-        .where(VideoTag.tag == tag)
-        .options(selectinload(Video.transcripts))
-        .options(selectinload(Video.channel))
+    total, videos = await video_repo.list_by_tag(
+        session,
+        tag,
+        include_unavailable=include_unavailable,
+        offset=offset,
+        limit=limit,
     )
-
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
-
-    # Total count
-    count_query = (
-        select(func.count(Video.video_id))
-        .select_from(Video)
-        .join(VideoTag, Video.video_id == VideoTag.video_id)
-        .where(VideoTag.tag == tag)
-    )
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        count_query = count_query.where(
-            Video.availability_status == AvailabilityStatus.AVAILABLE
-        )
-
-    total_result = await session.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply ordering and pagination
-    query = query.order_by(Video.upload_date.desc()).offset(offset).limit(limit)
-
-    result = await session.execute(query)
-    videos = result.scalars().all()
 
     # Transform to response (reuse pattern from topics router)
     items: list[VideoListItem] = []
@@ -480,6 +409,7 @@ async def get_tag(
         description="Include unavailable records in results",
     ),
     session: AsyncSession = Depends(get_db),
+    tag_repo: VideoTagRepository = Depends(get_video_tag_repository),
 ) -> TagDetailResponse:
     """
     Get tag details by name.
@@ -504,31 +434,18 @@ async def get_tag(
     NotFoundError
         404 if tag not found.
     """
-    # Query tag with video count
-    query = (
-        select(
-            VideoTag.tag,
-            func.count(VideoTag.video_id).label("video_count"),
-        )
-        .join(Video, VideoTag.video_id == Video.video_id)
-        .where(VideoTag.tag == tag)
-        .group_by(VideoTag.tag)
+    result = await tag_repo.get_tag_with_count(
+        session, tag, include_unavailable=include_unavailable
     )
 
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        query = query.where(Video.availability_status == AvailabilityStatus.AVAILABLE)
-
-    result = await session.execute(query)
-    row = result.one_or_none()
-
-    if not row:
+    if result is None:
         raise NotFoundError(
             resource_type="Tag",
             identifier=tag,
             hint="Verify the tag name or check available tags.",
         )
 
-    detail = TagDetail(tag=row.tag, video_count=row.video_count)
+    tag_name, video_count = result
+    detail = TagDetail(tag=tag_name, video_count=video_count)
 
     return TagDetailResponse(data=detail)

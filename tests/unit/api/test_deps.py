@@ -284,3 +284,43 @@ class TestBatchAndEntityDependencies:
         assert isinstance(service._correction_repo, TranscriptCorrectionRepository)
         assert isinstance(service._segment_repo, TranscriptSegmentRepository)
         assert isinstance(service._correction_service, TranscriptCorrectionService)
+
+
+class TestChannelAndEntityMentionDependencies:
+    """Tests for the channel/entity-mention dependencies added for issue #256."""
+
+    def test_get_channel_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_channel_repository
+        from chronovista.repositories import ChannelRepository
+
+        assert isinstance(get_channel_repository(), ChannelRepository)
+
+    def test_get_entity_mention_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_entity_mention_repository
+        from chronovista.repositories import EntityMentionRepository
+
+        assert isinstance(get_entity_mention_repository(), EntityMentionRepository)
+
+    def test_get_playlist_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_playlist_repository
+        from chronovista.repositories import PlaylistRepository
+
+        assert isinstance(get_playlist_repository(), PlaylistRepository)
+
+    def test_get_user_video_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_user_video_repository
+        from chronovista.repositories import UserVideoRepository
+
+        assert isinstance(get_user_video_repository(), UserVideoRepository)
+
+    def test_get_entity_alias_repository_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_entity_alias_repository
+        from chronovista.repositories import EntityAliasRepository
+
+        assert isinstance(get_entity_alias_repository(), EntityAliasRepository)
+
+    def test_get_entity_curation_service_returns_correct_type(self) -> None:
+        from chronovista.api.deps import get_entity_curation_service
+        from chronovista.services.entity_curation_service import EntityCurationService
+
+        assert isinstance(get_entity_curation_service(), EntityCurationService)

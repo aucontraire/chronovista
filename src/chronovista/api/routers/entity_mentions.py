@@ -16,11 +16,19 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Body, Depends, Path, Query, Request, Response
 from fastapi.responses import JSONResponse
-from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_canonical_tag_repository,
+    get_db,
+    get_entity_alias_repository,
+    get_entity_curation_service,
+    get_entity_mention_repository,
+    get_named_entity_repository,
+    get_tag_management_service,
+    get_video_repository,
+    require_auth,
+)
 from chronovista.api.query_protection import (
     check_rate_limit,
     get_client_id,
@@ -65,10 +73,6 @@ from chronovista.api.schemas.entity_mentions import (
 )
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.config.database import db_manager
-from chronovista.db.models import CanonicalTag as CanonicalTagDB
-from chronovista.db.models import EntityAlias as EntityAliasDB
-from chronovista.db.models import NamedEntity as NamedEntityDB
-from chronovista.db.models import Video as VideoDB
 from chronovista.exceptions import (
     APIValidationError,
     BadRequestError,
@@ -93,14 +97,8 @@ from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
-from chronovista.repositories.entity_operation_log_repository import (
-    EntityOperationLogRepository,
-)
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
-from chronovista.repositories.tag_alias_repository import TagAliasRepository
-from chronovista.repositories.tag_operation_log_repository import (
-    TagOperationLogRepository,
-)
+from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.entity_curation_service import (
     EntityCurationService,
     EntityNameCollisionError,
@@ -145,27 +143,17 @@ def _schedule_enrichment(
     task.add_done_callback(_enrichment_tasks.discard)
 
 
-# Module-level repository / service instantiation (singleton pattern)
-_mention_repo = EntityMentionRepository()
-
 # Ceiling for the appears-with panel (FR-023a). The default of 12 fills a
 # column without scrolling; this bound exists so "reveal more" cannot walk the
 # list to an unbounded size on a hub entity with hundreds of partners.
 MAX_COOCCURRING_LIMIT = 50
-_alias_repo = EntityAliasRepository()
-_entity_repo = NamedEntityRepository()
+
+# The tag normalizer is the one remaining module-level singleton: a stateless,
+# I/O-free service still used by create_entity / create_entity_alias / the
+# duplicate check. Every repository/service that touches the database is now
+# injected per-request via Depends (#256); the former repo/service singletons
+# were removed once all endpoints were migrated.
 _normalizer = TagNormalizationService()
-_tag_mgmt_service = TagManagementService(
-    canonical_tag_repo=CanonicalTagRepository(),
-    tag_alias_repo=TagAliasRepository(),
-    named_entity_repo=NamedEntityRepository(),
-    entity_alias_repo=EntityAliasRepository(),
-    operation_log_repo=TagOperationLogRepository(),
-)
-_entity_curation_service = EntityCurationService(
-    named_entity_repo=NamedEntityRepository(),
-    operation_log_repo=EntityOperationLogRepository(),
-)
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +215,8 @@ async def list_entities(
         ),
     ),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """List named entities with optional filters, search, and sorting.
 
@@ -271,72 +261,25 @@ async def list_entities(
     # Default to "active" to preserve backwards-compatible behaviour.
     effective_status = status if status is not None else "active"
 
-    # Base query: filter by status
-    base = select(NamedEntityDB).where(NamedEntityDB.status == effective_status)
-    count_base = select(func.count(NamedEntityDB.id)).where(
-        NamedEntityDB.status == effective_status
+    # Parse the comma-separated alias-type exclusion list (request concern).
+    excluded_types = (
+        [t.strip() for t in exclude_alias_types.split(",") if t.strip()]
+        if exclude_alias_types
+        else None
     )
 
-    # Apply filters
-    if type is not None:
-        base = base.where(NamedEntityDB.entity_type == type)
-        count_base = count_base.where(NamedEntityDB.entity_type == type)
-
-    if has_mentions is True:
-        base = base.where(NamedEntityDB.mention_count > 0)
-        count_base = count_base.where(NamedEntityDB.mention_count > 0)
-    elif has_mentions is False:
-        base = base.where(NamedEntityDB.mention_count == 0)
-        count_base = count_base.where(NamedEntityDB.mention_count == 0)
-
-    if search:
-        if search_aliases:
-            # Build the list of excluded alias types from the comma-separated param.
-            excluded_types: list[str] = (
-                [t.strip() for t in exclude_alias_types.split(",") if t.strip()]
-                if exclude_alias_types
-                else []
-            )
-
-            # Sub-select: entity IDs that have a matching alias (not excluded).
-            alias_select = select(EntityAliasDB.entity_id).where(
-                EntityAliasDB.alias_name.ilike(f"%{search}%")
-            )
-            if excluded_types:
-                alias_select = alias_select.where(
-                    EntityAliasDB.alias_type.notin_(excluded_types)
-                )
-            alias_scalar_subq = alias_select.scalar_subquery()
-
-            # Match on canonical_name OR matching alias.
-            name_filter = NamedEntityDB.canonical_name.ilike(f"%{search}%")
-            alias_filter = NamedEntityDB.id.in_(alias_scalar_subq)
-            combined_filter = or_(name_filter, alias_filter)
-            base = base.where(combined_filter)
-            count_base = count_base.where(combined_filter)
-        else:
-            base = base.where(NamedEntityDB.canonical_name.ilike(f"%{search}%"))
-            count_base = count_base.where(
-                NamedEntityDB.canonical_name.ilike(f"%{search}%")
-            )
-
-    # Total count
-    total = (await session.execute(count_base)).scalar() or 0
-
-    # Sorting
-    if sort == "mentions":
-        base = base.order_by(
-            NamedEntityDB.mention_count.desc(),
-            NamedEntityDB.canonical_name.asc(),
-        )
-    else:
-        base = base.order_by(NamedEntityDB.canonical_name.asc())
-
-    # Pagination
-    base = base.offset(offset).limit(limit)
-
-    result = await session.execute(base)
-    entities = list(result.scalars().all())
+    entities, total = await entity_repo.list_filtered(
+        session,
+        status=effective_status,
+        entity_type=type,
+        has_mentions=has_mentions,
+        search=search,
+        search_aliases=search_aliases,
+        exclude_alias_types=excluded_types,
+        sort=sort,
+        skip=offset,
+        limit=limit,
+    )
 
     # video_count is the combined association count (mentions ∪ tag ∪ manual),
     # computed once for the whole page by the shared resolver so the list and the
@@ -344,7 +287,7 @@ async def list_entities(
     # (Feature 066, FR-001/FR-002). Previously this read the denormalised
     # mention-only column, which showed 0 for a tag-only entity that the detail
     # reported in full. Batched — one set of queries for the page, not per row.
-    counts = await _mention_repo.get_association_counts(
+    counts = await mention_repo.get_association_counts(
         session, [e.id for e in entities]
     )
 
@@ -385,6 +328,7 @@ async def search_entities(
     ),
     limit: int = Query(default=10, ge=1, le=20, description="Max results"),
     session: AsyncSession = Depends(get_db),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """Search named entities by name or alias for autocomplete.
 
@@ -409,7 +353,7 @@ async def search_entities(
     dict
         List of entity search results wrapped in a ``data`` envelope.
     """
-    results = await _mention_repo.search_entities(
+    results = await mention_repo.search_entities(
         session, query=q, video_id=video_id, limit=limit
     )
     return {"data": [EntitySearchResult(**r) for r in results]}
@@ -427,6 +371,8 @@ async def get_video_entities(
         default=None, description="BCP-47 language code filter"
     ),
     session: AsyncSession = Depends(get_db),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> VideoEntitiesResponse:
     """Get all named entities mentioned in a video with mention counts.
 
@@ -454,15 +400,13 @@ async def get_video_entities(
         If the video does not exist in the database (404).
     """
     # Check video existence
-    video_query = select(VideoDB.video_id).where(VideoDB.video_id == video_id)
-    video_result = await session.execute(video_query)
-    if not video_result.scalar_one_or_none():
+    if not await video_repo.exists_by_video_id(session, video_id):
         raise NotFoundError(resource_type="Video", identifier=video_id)
 
     # Fetch entity associations from the shared resolver — entities linked
     # through ANY source (tag-only and manual included), matching the entity
     # detail's membership by construction (US2 / FR-005 / FR-006).
-    summaries = await _mention_repo.get_video_entity_associations(
+    summaries = await mention_repo.get_video_entity_associations(
         session, video_id=video_id, language_code=language_code
     )
 
@@ -485,6 +429,7 @@ async def check_duplicate_entity(
         ..., description="Entity type (person, organization, place, etc.)"
     ),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
 ) -> DuplicateCheckResponse | JSONResponse:
     """Check whether an entity with the same normalized name and type already exists.
 
@@ -533,13 +478,9 @@ async def check_duplicate_entity(
         return DuplicateCheckResponse(is_duplicate=False, existing_entity=None)
 
     # Query for an active entity with the same normalized name and type
-    query = select(NamedEntityDB).where(
-        NamedEntityDB.canonical_name_normalized == normalized_name,
-        NamedEntityDB.entity_type == type,
-        NamedEntityDB.status == "active",
+    entity = await entity_repo.find_active_by_normalized_and_type(
+        session, normalized_name, type
     )
-    result = await session.execute(query)
-    entity = result.scalar_one_or_none()
 
     if entity is not None:
         return DuplicateCheckResponse(
@@ -662,6 +603,8 @@ def _build_enrichment(
 async def get_entity_detail(
     entity_id: str = Path(..., description="Named entity UUID"),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """Get detail for a single named entity.
 
@@ -687,13 +630,7 @@ async def get_entity_detail(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    entity_query = (
-        select(NamedEntityDB)
-        .where(NamedEntityDB.id == parsed_entity_id)
-        .options(selectinload(NamedEntityDB.aliases))
-    )
-    entity_result = await session.execute(entity_query)
-    entity = entity_result.scalar_one_or_none()
+    entity = await entity_repo.get_with_aliases(session, parsed_entity_id)
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
@@ -719,7 +656,7 @@ async def get_entity_detail(
     # (Feature 066, FR-001/FR-002/FR-004). Supersedes the single-purpose
     # get_combined_video_count.
     association = (
-        await _mention_repo.get_association_counts(session, [parsed_entity_id])
+        await mention_repo.get_association_counts(session, [parsed_entity_id])
     )[parsed_entity_id]
 
     return {
@@ -768,6 +705,8 @@ async def get_cooccurring_entities(
         ),
     ),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> CooccurringEntitiesResponse:
     """Get the entities most often appearing alongside this one.
 
@@ -802,17 +741,14 @@ async def get_cooccurring_entities(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    entity_exists = await session.execute(
-        select(NamedEntityDB.id).where(NamedEntityDB.id == parsed_entity_id)
-    )
-    if not entity_exists.scalar_one_or_none():
+    if not await entity_repo.exists(session, parsed_entity_id):
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
     # MAX_COOCCURRING_LIMIT bounds the result SIZE, not the query cost: the
     # scan is over the entity's whole co-occurrence set before the limit
     # applies. Measured at 923 ms on the most connected entity.
     partners = await run_with_timeout(
-        _mention_repo.get_cooccurring_entities(
+        mention_repo.get_cooccurring_entities(
             session,
             entity_id=parsed_entity_id,
             limit=limit,
@@ -909,6 +845,8 @@ async def get_entity_videos(
     limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> EntityVideoResponse:
     """Get a paginated list of videos where a named entity is mentioned.
 
@@ -949,9 +887,7 @@ async def get_entity_videos(
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     # Check entity existence
-    entity_query = select(NamedEntityDB.id).where(NamedEntityDB.id == parsed_entity_id)
-    entity_result = await session.execute(entity_query)
-    if not entity_result.scalar_one_or_none():
+    if not await entity_repo.exists(session, parsed_entity_id):
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
     # Normalise the multi-select provenance filter (raises on invalid values,
@@ -963,7 +899,7 @@ async def get_entity_videos(
     # in Python after the query — cost scales with the entity's whole video
     # population, not with the requested page.
     results, total = await run_with_timeout(
-        _mention_repo.get_entity_video_list(
+        mention_repo.get_entity_video_list(
             session,
             entity_id=parsed_entity_id,
             language_code=language_code,
@@ -1012,6 +948,8 @@ async def create_entity_alias(
     entity_id: str = Path(..., description="Named entity UUID"),
     body: CreateEntityAliasRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    alias_repo: EntityAliasRepository = Depends(get_entity_alias_repository),
 ) -> dict[str, Any]:
     """Create a new alias for a named entity.
 
@@ -1046,11 +984,8 @@ async def create_entity_alias(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    # Look up entity
-    entity_query = select(NamedEntityDB).where(NamedEntityDB.id == parsed_entity_id)
-    entity_result = await session.execute(entity_query)
-    entity = entity_result.scalar_one_or_none()
-    if entity is None:
+    # Verify the entity exists
+    if not await entity_repo.exists(session, parsed_entity_id):
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
     # Normalize alias name
@@ -1062,12 +997,9 @@ async def create_entity_alias(
         )
 
     # Check for duplicate (same entity + same normalized name)
-    dup_query = select(EntityAliasDB).where(
-        EntityAliasDB.entity_id == parsed_entity_id,
-        EntityAliasDB.alias_name_normalized == normalized_alias,
+    existing_alias = await alias_repo.get_by_entity_and_normalized(
+        session, parsed_entity_id, normalized_alias
     )
-    dup_result = await session.execute(dup_query)
-    existing_alias = dup_result.scalar_one_or_none()
     if existing_alias is not None:
         raise ConflictError(
             message=(
@@ -1091,7 +1023,7 @@ async def create_entity_alias(
         alias_type=EntityAliasType(body.alias_type),
         occurrence_count=0,
     )
-    db_alias = await _alias_repo.create(session, obj_in=alias_create)
+    db_alias = await alias_repo.create(session, obj_in=alias_create)
     await session.commit()
     await session.refresh(db_alias)
 
@@ -1121,6 +1053,8 @@ async def update_entity_alias(
     alias_id: uuid.UUID = Path(..., description="Alias UUID"),
     body: UpdateEntityAliasRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    alias_repo: EntityAliasRepository = Depends(get_entity_alias_repository),
 ) -> dict[str, Any]:
     """Set whether an alias matches case-sensitively.
 
@@ -1151,11 +1085,10 @@ async def update_entity_alias(
     NotFoundError
         If the entity does not exist, or the alias does not exist on it (404).
     """
-    entity = await session.get(NamedEntityDB, entity_id)
-    if entity is None:
+    if not await entity_repo.exists(session, entity_id):
         raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
 
-    alias = await session.get(EntityAliasDB, alias_id)
+    alias = await alias_repo.get(session, alias_id)
     # The entity_id check is what makes the path meaningful: without it, an
     # alias could be updated through any entity's URL, and a 404 for a
     # mismatched pair would instead silently succeed.
@@ -1192,6 +1125,9 @@ async def get_phonetic_matches(
     entity_id: uuid.UUID,
     threshold: float = Query(default=0.5, ge=0.0, le=1.0),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
+    video_repo: VideoRepository = Depends(get_video_repository),
 ) -> ApiResponse[list[PhoneticMatchResponse]]:
     """Find suspected phonetic ASR variants for a named entity.
 
@@ -1219,12 +1155,11 @@ async def get_phonetic_matches(
         If the entity does not exist in the database (404).
     """
     # Verify entity exists
-    entity = await session.get(NamedEntityDB, entity_id)
-    if entity is None:
+    if not await entity_repo.exists(session, entity_id):
         raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
 
     # Run phonetic matcher
-    matcher = PhoneticMatcher(entity_mention_repo=EntityMentionRepository())
+    matcher = PhoneticMatcher(entity_mention_repo=mention_repo)
     matches = await run_with_timeout(
         matcher.match_entity(
             entity_id=entity_id,
@@ -1237,14 +1172,7 @@ async def get_phonetic_matches(
 
     # Video title enrichment
     video_ids = list({m.video_id for m in matches})
-    if video_ids:
-        stmt = select(VideoDB.video_id, VideoDB.title).where(
-            VideoDB.video_id.in_(video_ids)
-        )
-        rows = (await session.execute(stmt)).all()
-        title_map = {r.video_id: r.title for r in rows}
-    else:
-        title_map = {}
+    title_map = await video_repo.get_titles_by_ids(session, video_ids)
 
     results = [
         PhoneticMatchResponse(
@@ -1276,6 +1204,7 @@ async def add_exclusion_pattern(
     entity_id: str = Path(..., description="Named entity UUID"),
     body: ExclusionPatternRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
 ) -> dict[str, Any]:
     """Add an exclusion pattern to a named entity.
 
@@ -1309,8 +1238,8 @@ async def add_exclusion_pattern(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    # Look up entity
-    entity = await session.get(NamedEntityDB, parsed_entity_id)
+    # Look up entity (mutated below, so fetch the row, not just existence)
+    entity = await entity_repo.get(session, parsed_entity_id)
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
@@ -1360,6 +1289,7 @@ async def remove_exclusion_pattern(
     entity_id: str = Path(..., description="Named entity UUID"),
     body: ExclusionPatternRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
 ) -> dict[str, Any]:
     """Remove an exclusion pattern from a named entity.
 
@@ -1389,8 +1319,8 @@ async def remove_exclusion_pattern(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    # Look up entity
-    entity = await session.get(NamedEntityDB, parsed_entity_id)
+    # Look up entity (mutated below, so fetch the row, not just existence)
+    entity = await entity_repo.get(session, parsed_entity_id)
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
@@ -1430,6 +1360,7 @@ async def create_manual_association(
     video_id: str = Path(..., description="YouTube video ID"),
     entity_id: str = Path(..., description="Named entity UUID"),
     session: AsyncSession = Depends(get_db),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """Create a manual association between a named entity and a video.
 
@@ -1467,7 +1398,7 @@ async def create_manual_association(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    mention = await _mention_repo.create_manual_association(
+    mention = await mention_repo.create_manual_association(
         session, video_id=video_id, entity_id=parsed_entity_id
     )
     await session.commit()
@@ -1500,6 +1431,7 @@ async def delete_manual_association(
     video_id: str = Path(..., description="YouTube video ID"),
     entity_id: str = Path(..., description="Named entity UUID"),
     session: AsyncSession = Depends(get_db),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> Response:
     """Remove a manual association between a named entity and a video.
 
@@ -1527,7 +1459,7 @@ async def delete_manual_association(
     except ValueError as exc:
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
-    await _mention_repo.delete_manual_association(
+    await mention_repo.delete_manual_association(
         session, video_id=video_id, entity_id=parsed_entity_id
     )
     await session.commit()
@@ -1548,6 +1480,9 @@ async def classify_tag(
     body: ClassifyTagRequest = Body(...),
     session: AsyncSession = Depends(get_db),
     enrichment_service: EntityEnrichmentService = Depends(get_enrichment_service),
+    tag_mgmt_service: TagManagementService = Depends(get_tag_management_service),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
 ) -> dict[str, Any]:
     """Classify an existing canonical tag to create or link a named entity.
 
@@ -1588,7 +1523,7 @@ async def classify_tag(
     # supplies the entity_type when the caller omitted it.
     effective_entity_type = body.entity_type
     if body.link_entity_id is not None:
-        target_entity = await session.get(NamedEntityDB, body.link_entity_id)
+        target_entity = await entity_repo.get(session, body.link_entity_id)
         if target_entity is None:
             raise NotFoundError(
                 resource_type="NamedEntity",
@@ -1643,7 +1578,7 @@ async def classify_tag(
         ).model_dump()
 
     try:
-        result = await _tag_mgmt_service.classify(
+        result = await tag_mgmt_service.classify(
             session,
             body.normalized_form,
             entity_type_enum,
@@ -1664,16 +1599,16 @@ async def classify_tag(
             ) from exc
 
         if "already classified" in error_msg.lower():
-            # Look up the canonical tag to get existing entity details
-            tag_query = select(CanonicalTagDB).where(
-                CanonicalTagDB.normalized_form == body.normalized_form,
+            # Look up the canonical tag to get existing entity details (any
+            # status — the tag may be inactive, so status=None mirrors the
+            # original unfiltered query).
+            tag = await canonical_tag_repo.get_by_normalized_form(
+                session, body.normalized_form, status=None
             )
-            tag_result = await session.execute(tag_query)
-            tag = tag_result.scalar_one_or_none()
 
             existing_entity_data: dict[str, Any] | None = None
             if tag is not None and tag.entity_id is not None:
-                entity = await session.get(NamedEntityDB, tag.entity_id)
+                entity = await entity_repo.get(session, tag.entity_id)
                 if entity is not None:
                     existing_entity_data = {
                         "entity_id": str(entity.id),
@@ -1714,11 +1649,9 @@ async def classify_tag(
         ) from exc
 
     # After successful classification, look up the canonical tag to get entity_id
-    tag_query = select(CanonicalTagDB).where(
-        CanonicalTagDB.normalized_form == body.normalized_form,
+    tag = await canonical_tag_repo.get_by_normalized_form(
+        session, body.normalized_form, status=None
     )
-    tag_result = await session.execute(tag_query)
-    tag = tag_result.scalar_one_or_none()
 
     entity_id_str: str | None = None
     canonical_name = result.canonical_form
@@ -1727,7 +1660,7 @@ async def classify_tag(
     # The entity the tag now resolves to — the newly created one OR a linked existing one.
     resolved_entity_id: uuid.UUID | None = None
     if tag is not None and tag.entity_id is not None:
-        entity = await session.get(NamedEntityDB, tag.entity_id)
+        entity = await entity_repo.get(session, tag.entity_id)
         if entity is not None:
             entity_id_str = str(entity.id)
             canonical_name = entity.canonical_name
@@ -1774,6 +1707,8 @@ async def create_entity(
     body: CreateEntityRequest = Body(...),
     session: AsyncSession = Depends(get_db),
     enrichment_service: EntityEnrichmentService = Depends(get_enrichment_service),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    alias_repo: EntityAliasRepository = Depends(get_entity_alias_repository),
 ) -> dict[str, Any]:
     """Create a standalone named entity with optional aliases.
 
@@ -1826,13 +1761,9 @@ async def create_entity(
     canonical_name = body.name.strip()
 
     # 4. Check for duplicate (same normalized name + type + active status)
-    dup_query = select(NamedEntityDB).where(
-        NamedEntityDB.canonical_name_normalized == normalized_name,
-        NamedEntityDB.entity_type == entity_type_enum.value,
-        NamedEntityDB.status == "active",
+    existing = await entity_repo.find_active_by_normalized_and_type(
+        session, normalized_name, entity_type_enum.value
     )
-    dup_result = await session.execute(dup_query)
-    existing = dup_result.scalar_one_or_none()
     if existing is not None:
         raise ConflictError(
             message=(
@@ -1871,7 +1802,7 @@ async def create_entity(
         confidence=1.0,
         external_ids=external_ids,
     )
-    db_entity = await _entity_repo.create(session, obj_in=entity_create)
+    db_entity = await entity_repo.create(session, obj_in=entity_create)
 
     # 6. Create canonical name as first alias
     canonical_alias = EntityAliasCreate(
@@ -1881,7 +1812,7 @@ async def create_entity(
         alias_type=EntityAliasType.NAME_VARIANT,
         occurrence_count=0,
     )
-    await _alias_repo.create(session, obj_in=canonical_alias)
+    await alias_repo.create(session, obj_in=canonical_alias)
 
     # 7. Create additional aliases, skipping normalized duplicates
     seen_normalized: set[str] = {normalized_name}
@@ -1897,7 +1828,7 @@ async def create_entity(
             alias_type=EntityAliasType.NAME_VARIANT,
             occurrence_count=0,
         )
-        await _alias_repo.create(session, obj_in=alias_create)
+        await alias_repo.create(session, obj_in=alias_create)
 
     # 8. Commit and return 201
     await session.commit()
@@ -1935,6 +1866,9 @@ async def update_entity(
     entity_id: str = Path(..., description="Named entity UUID"),
     body: UpdateEntityRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    curation_service: EntityCurationService = Depends(get_entity_curation_service),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """Edit a named entity's display name, description, and/or type.
 
@@ -1975,7 +1909,7 @@ async def update_entity(
         raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     try:
-        updated = await _entity_curation_service.update_entity(
+        updated = await curation_service.update_entity(
             session,
             parsed_entity_id,
             canonical_name=body.canonical_name,
@@ -1995,7 +1929,12 @@ async def update_entity(
         raise ConflictError(message=str(exc), details={"entity_id": entity_id}) from exc
 
     await session.commit()
-    return await get_entity_detail(str(updated.id), session)
+    return await get_entity_detail(
+        str(updated.id),
+        session,
+        entity_repo=entity_repo,
+        mention_repo=mention_repo,
+    )
 
 
 @router.post(
@@ -2006,6 +1945,9 @@ async def update_entity(
 async def undo_entity_operation(
     operation_id: uuid.UUID = Path(..., description="Entity operation ID to undo"),
     session: AsyncSession = Depends(get_db),
+    curation_service: EntityCurationService = Depends(get_entity_curation_service),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
 ) -> dict[str, Any]:
     """Undo an entity name/description edit, restoring the previous values.
 
@@ -2034,7 +1976,7 @@ async def undo_entity_operation(
         Already rolled back, or restoring would collide — 409.
     """
     try:
-        restored = await _entity_curation_service.undo_operation(
+        restored = await curation_service.undo_operation(
             session,
             operation_id,
             actor=ACTOR_USER_LOCAL,
@@ -2057,7 +1999,12 @@ async def undo_entity_operation(
         ) from exc
 
     await session.commit()
-    return await get_entity_detail(str(restored.id), session)
+    return await get_entity_detail(
+        str(restored.id),
+        session,
+        entity_repo=entity_repo,
+        mention_repo=mention_repo,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2319,6 +2266,7 @@ async def scan_entity(
     entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
     request: ScanRequest = Body(default_factory=ScanRequest),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
 ) -> ScanJobResponse:
     """Launch an asynchronous entity mention scan for a single entity.
 
@@ -2343,7 +2291,7 @@ async def scan_entity(
         The created scan job (status ``"running"``) wrapped in ``data``.
     """
     # 1. Validate entity exists
-    entity = await session.get(NamedEntityDB, entity_id)
+    entity = await entity_repo.get(session, entity_id)
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
 
@@ -2394,6 +2342,7 @@ async def scan_video_entities(
     video_id: str = Path(..., description="YouTube video ID"),
     request: ScanRequest = Body(default_factory=ScanRequest),
     session: AsyncSession = Depends(get_db),
+    video_repo: VideoRepository = Depends(get_video_repository),
 ) -> ScanJobResponse:
     """Launch an asynchronous entity mention scan for a single video.
 
@@ -2424,8 +2373,7 @@ async def scan_video_entities(
         If a scan is already in progress for this video (409).
     """
     # 1. Validate video exists
-    video = await session.get(VideoDB, video_id)
-    if video is None:
+    if not await video_repo.exists_by_video_id(session, video_id):
         raise NotFoundError(resource_type="Video", identifier=video_id)
 
     # 2. Concurrency guard
@@ -2481,9 +2429,6 @@ async def get_scan_job(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-_canonical_tag_repo = CanonicalTagRepository()
-
-
 @router.post(
     "/entities/{entity_id}/tags",
     status_code=201,
@@ -2494,6 +2439,9 @@ async def add_entity_tag(
     entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
     body: AddEntityTagRequest = Body(...),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
+    tag_mgmt_service: TagManagementService = Depends(get_tag_management_service),
 ) -> AddEntityTagResponse:
     """Attach a canonical tag to an entity, linking or merging as appropriate.
 
@@ -2539,7 +2487,7 @@ async def add_entity_tag(
     # missing entity and a missing tag with the same ValueError("... not
     # found"), and the mapping below keys on that substring — so resolving here
     # is what keeps a 404 from naming the wrong resource.
-    entity = await session.get(NamedEntityDB, entity_id)
+    entity = await entity_repo.get(session, entity_id)
     if entity is None:
         raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
 
@@ -2547,7 +2495,7 @@ async def add_entity_tag(
     # "this tag is merged" into "this tag does not exist" — a 404 for a row that
     # is present. The caller needs to know the difference, so the status is
     # checked below rather than hidden in the lookup.
-    tag = await _canonical_tag_repo.get_by_normalized_form(
+    tag = await canonical_tag_repo.get_by_normalized_form(
         session, body.normalized_form, status=None
     )
     if tag is None:
@@ -2563,7 +2511,7 @@ async def add_entity_tag(
             details={"status": tag.status},
         )
 
-    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    linked = await canonical_tag_repo.get_linked_tags(session, entity_id)
 
     if len(linked) > 1:
         raise ConflictError(
@@ -2586,7 +2534,7 @@ async def add_entity_tag(
         )
 
     if tag.entity_id is not None:
-        other = await session.get(NamedEntityDB, tag.entity_id)
+        other = await entity_repo.get(session, tag.entity_id)
         raise ConflictError(
             message=(
                 f"Tag '{body.normalized_form}' already represents "
@@ -2602,7 +2550,7 @@ async def add_entity_tag(
 
     if not linked:
         # FR-001: nothing to merge into, so this tag becomes the entity's.
-        result = await _tag_mgmt_service.classify(
+        result = await tag_mgmt_service.classify(
             session,
             body.normalized_form,
             EntityType(entity.entity_type),
@@ -2616,7 +2564,7 @@ async def add_entity_tag(
     else:
         # FR-002/FR-003: the entity's tag is always the target.
         target = linked[0]
-        merge_result = await _tag_mgmt_service.merge(
+        merge_result = await tag_mgmt_service.merge(
             session,
             [body.normalized_form],
             target.normalized_form,
@@ -2630,7 +2578,7 @@ async def add_entity_tag(
 
     await session.commit()
 
-    refreshed = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    refreshed = await canonical_tag_repo.get_linked_tags(session, entity_id)
     entity_video_count = refreshed[0].video_count if refreshed else 0
 
     return AddEntityTagResponse(
@@ -2652,6 +2600,8 @@ async def add_entity_tag(
 async def get_entity_tags(
     entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
 ) -> EntityTagsResponse:
     """Return the entity's linked tag(s), each with the tags merged into it.
 
@@ -2682,15 +2632,15 @@ async def get_entity_tags(
     NotFoundError
         The entity does not exist (404).
     """
-    entity = await session.get(NamedEntityDB, entity_id)
+    entity = await entity_repo.get(session, entity_id)
     if entity is None:
         raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
 
-    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    linked = await canonical_tag_repo.get_linked_tags(session, entity_id)
 
     summaries: list[LinkedTagSummary] = []
     for tag in linked:
-        merged = await _canonical_tag_repo.get_merged_into(session, tag.id)
+        merged = await canonical_tag_repo.get_merged_into(session, tag.id)
         summaries.append(
             LinkedTagSummary(
                 canonical_form=tag.canonical_form,
@@ -2730,6 +2680,9 @@ async def un_merge_entity_tag(
     normalized_form: str = Path(..., description="Normalized form of the merged tag"),
     body: UnMergeRequest = Body(default_factory=UnMergeRequest),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
+    tag_mgmt_service: TagManagementService = Depends(get_tag_management_service),
 ) -> UnMergeResponse:
     """Reverse the merge that folded a tag into the entity's tag (FR-015).
 
@@ -2766,11 +2719,11 @@ async def un_merge_entity_tag(
     ConflictError
         Confirmation is required, or the merge was already reversed (409).
     """
-    entity = await session.get(NamedEntityDB, entity_id)
+    entity = await entity_repo.get(session, entity_id)
     if entity is None:
         raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
 
-    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    linked = await canonical_tag_repo.get_linked_tags(session, entity_id)
     if not linked:
         raise NotFoundError(
             resource_type="CanonicalTag",
@@ -2783,7 +2736,7 @@ async def un_merge_entity_tag(
     candidates = [
         (tag, op_id, count)
         for parent in linked
-        for tag, op_id, count in await _canonical_tag_repo.get_merged_into(
+        for tag, op_id, count in await canonical_tag_repo.get_merged_into(
             session, parent.id
         )
         if tag.normalized_form == normalized_form
@@ -2805,7 +2758,7 @@ async def un_merge_entity_tag(
         )
 
     if source_count > 1 and not body.confirm_multi_source:
-        siblings = await _canonical_tag_repo.get_merged_into(session, linked[0].id)
+        siblings = await canonical_tag_repo.get_merged_into(session, linked[0].id)
         # Exclude the tag being un-merged: the sentence says "N *other* tags",
         # so listing it among them contradicts its own count.
         names = sorted(
@@ -2824,7 +2777,7 @@ async def un_merge_entity_tag(
         )
 
     try:
-        await _tag_mgmt_service.undo(session, operation_id)
+        await tag_mgmt_service.undo(session, operation_id)
     except ValueError as exc:
         # Preconditions are re-checked against current state, not the state at
         # merge time (FR-031) — the service refuses if the operation was
@@ -2833,7 +2786,7 @@ async def un_merge_entity_tag(
 
     await session.commit()
 
-    restored = await _canonical_tag_repo.get_merged_into(session, linked[0].id)
+    restored = await canonical_tag_repo.get_merged_into(session, linked[0].id)
     still_merged = {t.normalized_form for t, _, _ in restored}
     return UnMergeResponse(
         data=UnMergeResult(
@@ -2852,6 +2805,8 @@ async def unlink_entity_tag(
     entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
     normalized_form: str = Path(..., description="Normalized form of the linked tag"),
     session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
 ) -> UnlinkResponse:
     """Clear a tag's entity link, leaving the tag itself intact (FR-018).
 
@@ -2884,11 +2839,11 @@ async def unlink_entity_tag(
     ConflictError
         Tags are merged into it and must be un-merged first (409).
     """
-    entity = await session.get(NamedEntityDB, entity_id)
+    entity = await entity_repo.get(session, entity_id)
     if entity is None:
         raise NotFoundError(resource_type="NamedEntity", identifier=str(entity_id))
 
-    linked = await _canonical_tag_repo.get_linked_tags(session, entity_id)
+    linked = await canonical_tag_repo.get_linked_tags(session, entity_id)
     target = next((t for t in linked if t.normalized_form == normalized_form), None)
     if target is None:
         raise NotFoundError(
@@ -2897,7 +2852,7 @@ async def unlink_entity_tag(
             hint="That tag does not represent this entity.",
         )
 
-    merged = await _canonical_tag_repo.get_merged_into(session, target.id)
+    merged = await canonical_tag_repo.get_merged_into(session, target.id)
     if merged:
         raise ConflictError(
             message=(

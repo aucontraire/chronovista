@@ -26,6 +26,8 @@ from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
     ChannelTopicRepository,
+    EntityAliasRepository,
+    EntityMentionRepository,
     NamedEntityRepository,
     PlaylistRepository,
     TopicCategoryRepository,
@@ -134,6 +136,28 @@ class TestRepositoryFactories:
         c = Container()
         repo = c.create_named_entity_repository()
         assert isinstance(repo, NamedEntityRepository)
+
+    def test_create_entity_mention_repository(self) -> None:
+        """Verify entity mention repository factory returns correct type."""
+        c = Container()
+        repo = c.create_entity_mention_repository()
+        assert isinstance(repo, EntityMentionRepository)
+
+    def test_create_entity_alias_repository(self) -> None:
+        """Verify entity alias repository factory returns correct type."""
+        c = Container()
+        repo = c.create_entity_alias_repository()
+        assert isinstance(repo, EntityAliasRepository)
+
+    def test_create_entity_operation_log_repository(self) -> None:
+        """Verify entity operation log repository factory returns correct type."""
+        from chronovista.repositories.entity_operation_log_repository import (
+            EntityOperationLogRepository,
+        )
+
+        c = Container()
+        repo = c.create_entity_operation_log_repository()
+        assert isinstance(repo, EntityOperationLogRepository)
 
 
 # =============================================================================

@@ -47,6 +47,8 @@ from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
     ChannelTopicRepository,
+    EntityAliasRepository,
+    EntityMentionRepository,
     NamedEntityRepository,
     PlaylistRepository,
     TopicCategoryRepository,
@@ -58,6 +60,9 @@ from chronovista.repositories import (
     VideoTagRepository,
     VideoTopicRepository,
     VideoTranscriptRepository,
+)
+from chronovista.repositories.entity_operation_log_repository import (
+    EntityOperationLogRepository,
 )
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
@@ -409,6 +414,27 @@ class Container:
         """
         return TranscriptSegmentRepository()
 
+    def create_entity_mention_repository(self) -> EntityMentionRepository:
+        """
+        Create a new EntityMentionRepository instance.
+
+        Returns a fresh repository instance for entity mention operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        EntityMentionRepository
+            A new EntityMentionRepository instance for entity mention
+            operations.
+
+        Examples
+        --------
+        >>> repo = container.create_entity_mention_repository()
+        >>> isinstance(repo, EntityMentionRepository)
+        True
+        """
+        return EntityMentionRepository()
+
     def create_named_entity_repository(self) -> NamedEntityRepository:
         """
         Create a new NamedEntityRepository instance.
@@ -429,6 +455,48 @@ class Container:
         True
         """
         return NamedEntityRepository()
+
+    def create_entity_alias_repository(self) -> EntityAliasRepository:
+        """
+        Create a new EntityAliasRepository instance.
+
+        Returns a fresh repository instance for entity alias operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        EntityAliasRepository
+            A new EntityAliasRepository instance for entity alias CRUD
+            operations.
+
+        Examples
+        --------
+        >>> repo = container.create_entity_alias_repository()
+        >>> isinstance(repo, EntityAliasRepository)
+        True
+        """
+        return EntityAliasRepository()
+
+    def create_entity_operation_log_repository(self) -> EntityOperationLogRepository:
+        """
+        Create a new EntityOperationLogRepository instance.
+
+        Returns a fresh repository instance for the entity-curation audit log.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        EntityOperationLogRepository
+            A new EntityOperationLogRepository instance for entity operation
+            log CRUD operations.
+
+        Examples
+        --------
+        >>> repo = container.create_entity_operation_log_repository()
+        >>> isinstance(repo, EntityOperationLogRepository)
+        True
+        """
+        return EntityOperationLogRepository()
 
     def create_canonical_tag_repository(self) -> CanonicalTagRepository:
         """

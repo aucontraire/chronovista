@@ -57,7 +57,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_db,
+    get_entity_alias_repository,
+    get_named_entity_repository,
+    get_tag_management_service,
+    require_auth,
+)
 from chronovista.api.main import app
 from chronovista.services.tag_management import ClassifyResult
 
@@ -196,18 +202,17 @@ def _make_named_entity_row(
 def _make_session_success(tag_row: MagicMock, entity_row: MagicMock) -> AsyncMock:
     """Build a mock AsyncSession for the happy path.
 
-    The endpoint makes these DB calls after a successful classify():
-    1. session.execute(SELECT CanonicalTagDB WHERE normalized_form == ...)
-       → tag_row
-    2. session.get(NamedEntityDB, tag.entity_id) → entity_row
-    3. session.commit()
+    After a successful classify(), the endpoint now runs two selects through the
+    injected repos (#256): canonical_tag_repo.get_by_normalized_form, then
+    entity_repo.get — both via ``session.execute(...).scalar_one_or_none()``. The
+    mock returns the tag result first, the entity result second.
 
     Parameters
     ----------
     tag_row : MagicMock
-        The CanonicalTagDB mock row returned by execute.
+        The CanonicalTagDB mock row returned by the first execute.
     entity_row : MagicMock
-        The NamedEntityDB mock row returned by session.get.
+        The NamedEntityDB mock row returned by the second execute.
 
     Returns
     -------
@@ -216,13 +221,12 @@ def _make_session_success(tag_row: MagicMock, entity_row: MagicMock) -> AsyncMoc
     """
     mock_session = AsyncMock(spec=AsyncSession)
 
-    # execute() → scalar_one_or_none() → tag_row
     tag_result = MagicMock()
     tag_result.scalar_one_or_none.return_value = tag_row
-    mock_session.execute = AsyncMock(return_value=tag_result)
-
-    # session.get() → entity_row
-    mock_session.get = AsyncMock(return_value=entity_row)
+    entity_result = MagicMock()
+    entity_result.scalar_one_or_none.return_value = entity_row
+    # 1) canonical tag lookup, 2) entity lookup (both session.execute now)
+    mock_session.execute = AsyncMock(side_effect=[tag_result, entity_result])
 
     mock_session.commit = AsyncMock()
     return mock_session
@@ -255,16 +259,17 @@ def _make_session_conflict_with_existing_entity(
     """Build a mock session for the 'already classified' conflict branch.
 
     When the service raises ValueError("already classified ...") the endpoint
-    performs two extra DB queries to fetch existing entity details:
-    1. SELECT CanonicalTagDB WHERE normalized_form == ...
-    2. session.get(NamedEntityDB, tag.entity_id)
+    performs two extra lookups through the injected repos (#256), both via
+    ``session.execute(...).scalar_one_or_none()``:
+    1. canonical_tag_repo.get_by_normalized_form → the tag
+    2. entity_repo.get(tag.entity_id) → the entity that claims it
 
     Parameters
     ----------
     tag_row : MagicMock
-        The CanonicalTagDB mock row returned by execute.
+        The CanonicalTagDB mock row returned by the first execute.
     entity_row : MagicMock
-        The NamedEntityDB mock row returned by session.get.
+        The NamedEntityDB mock row returned by the second execute.
 
     Returns
     -------
@@ -275,8 +280,10 @@ def _make_session_conflict_with_existing_entity(
 
     tag_result = MagicMock()
     tag_result.scalar_one_or_none.return_value = tag_row
-    mock_session.execute = AsyncMock(return_value=tag_result)
-    mock_session.get = AsyncMock(return_value=entity_row)
+    entity_result = MagicMock()
+    entity_result.scalar_one_or_none.return_value = entity_row
+    # 1) canonical tag lookup, 2) entity lookup (both session.execute now)
+    mock_session.execute = AsyncMock(side_effect=[tag_result, entity_result])
     mock_session.commit = AsyncMock()
     return mock_session
 
@@ -308,6 +315,12 @@ async def _build_client(mock_session: AsyncMock) -> AsyncGenerator[AsyncClient, 
 
     app.dependency_overrides[get_db] = mock_get_db
     app.dependency_overrides[require_auth] = mock_require_auth
+    # create_entity / classify_tag take their repos + services via Depends
+    # (#256). Each test sets the specific dependency overrides it needs (with
+    # mock repos/services) before entering this client; deps a test leaves
+    # unset resolve to real stateless repos over the injected mock session,
+    # matching the pre-#256 behavior. _build_client only wires get_db +
+    # require_auth and never clears overrides on entry.
 
     try:
         transport = ASGITransport(app=app)
@@ -338,18 +351,17 @@ class TestClassifyTagHappyPath:
         classify_result = _make_classify_result()
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(return_value=classify_result)
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(return_value=classify_result)
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": _VALID_ENTITY_TYPE,
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": _VALID_ENTITY_TYPE,
+                },
+            )
 
         assert response.status_code == 201, response.text
 
@@ -375,18 +387,17 @@ class TestClassifyTagHappyPath:
         )
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(return_value=classify_result)
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(return_value=classify_result)
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                },
+            )
 
         assert response.status_code == 201, response.text
         body = response.json()
@@ -424,18 +435,17 @@ class TestClassifyTagHappyPath:
         )
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(return_value=classify_result)
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(return_value=classify_result)
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                },
+            )
 
         body = response.json()
         assert body["entity_id"] == str(entity_id)
@@ -462,19 +472,18 @@ class TestClassifyTagHappyPath:
         classify_result = _make_classify_result()
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(return_value=classify_result)
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(return_value=classify_result)
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                        "description": description_text,
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                    "description": description_text,
+                },
+            )
 
         assert response.status_code == 201, response.text
         body = response.json()
@@ -494,18 +503,17 @@ class TestClassifyTagHappyPath:
         classify_result = _make_classify_result(entity_created=False)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(return_value=classify_result)
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(return_value=classify_result)
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                },
+            )
 
         assert response.status_code == 201, response.text
         body = response.json()
@@ -527,31 +535,29 @@ class TestClassifyTagHappyPath:
         classify_result = _make_classify_result()
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(return_value=classify_result)
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(return_value=classify_result)
 
-                await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": "tesla motors",
-                        "entity_type": "organization",
-                        "description": "Electric vehicle manufacturer",
-                    },
-                )
+            await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": "tesla motors",
+                    "entity_type": "organization",
+                    "description": "Electric vehicle manufacturer",
+                },
+            )
 
-                mock_svc.classify.assert_called_once()
-                call_args: Any = mock_svc.classify.call_args
-                # Verify positional args: session, normalized_form, entity_type_enum
-                assert call_args.args[1] == "tesla motors"
-                assert call_args.args[2] == EntityType.ORGANIZATION
-                # Verify keyword args
-                assert (
-                    call_args.kwargs.get("description")
-                    == "Electric vehicle manufacturer"
-                )
-                assert call_args.kwargs.get("auto_case") is True
+            mock_svc.classify.assert_called_once()
+            call_args: Any = mock_svc.classify.call_args
+            # Verify positional args: session, normalized_form, entity_type_enum
+            assert call_args.args[1] == "tesla motors"
+            assert call_args.args[2] == EntityType.ORGANIZATION
+            # Verify keyword args
+            assert (
+                call_args.kwargs.get("description") == "Electric vehicle manufacturer"
+            )
+            assert call_args.kwargs.get("auto_case") is True
 
     async def test_alias_count_is_zero_when_no_aliases_created(self) -> None:
         """alias_count == 0 in the response when entity_alias_count is 0.
@@ -566,18 +572,17 @@ class TestClassifyTagHappyPath:
         classify_result = _make_classify_result(entity_alias_count=0)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(return_value=classify_result)
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(return_value=classify_result)
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                },
+            )
 
         body = response.json()
         assert body["alias_count"] == 0
@@ -601,20 +606,19 @@ class TestClassifyTagNotFound:
         mock_session = _make_session_tag_not_found()
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(
-                    side_effect=ValueError("Tag 'unknown-tag' not found")
-                )
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(
+                side_effect=ValueError("Tag 'unknown-tag' not found")
+            )
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": "unknown-tag",
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": "unknown-tag",
+                    "entity_type": "person",
+                },
+            )
 
         assert response.status_code == 404, response.text
 
@@ -623,20 +627,19 @@ class TestClassifyTagNotFound:
         mock_session = _make_session_tag_not_found()
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(
-                    side_effect=ValueError("Tag 'x' not found in database")
-                )
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(
+                side_effect=ValueError("Tag 'x' not found in database")
+            )
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": "x",
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": "x",
+                    "entity_type": "person",
+                },
+            )
 
         assert response.status_code == 404
         body = response.json()
@@ -654,22 +657,21 @@ class TestClassifyTagNotFound:
         mock_session = _make_session_tag_not_found()
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(
-                    side_effect=ValueError(
-                        "Tag 'deprecated-tag' has status 'deprecated' and cannot be classified"
-                    )
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(
+                side_effect=ValueError(
+                    "Tag 'deprecated-tag' has status 'deprecated' and cannot be classified"
                 )
+            )
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": "deprecated-tag",
-                        "entity_type": "organization",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": "deprecated-tag",
+                    "entity_type": "organization",
+                },
+            )
 
         assert response.status_code == 404, response.text
 
@@ -694,22 +696,21 @@ class TestClassifyTagConflict:
         mock_session = _make_session_conflict_with_existing_entity(tag_row, entity_row)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(
-                    side_effect=ValueError(
-                        "Tag 'edsger dijkstra' is already classified as person"
-                    )
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(
+                side_effect=ValueError(
+                    "Tag 'edsger dijkstra' is already classified as person"
                 )
+            )
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                },
+            )
 
         assert response.status_code == 409, response.text
 
@@ -721,20 +722,19 @@ class TestClassifyTagConflict:
         mock_session = _make_session_conflict_with_existing_entity(tag_row, entity_row)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(
-                    side_effect=ValueError("Tag is already classified as an entity")
-                )
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(
+                side_effect=ValueError("Tag is already classified as an entity")
+            )
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                },
+            )
 
         assert response.status_code == 409
         body = response.json()
@@ -762,30 +762,31 @@ class TestClassifyTagConflict:
         mock_session = _make_session_conflict_with_existing_entity(tag_row, entity_row)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(
-                    side_effect=ValueError(
-                        "Tag 'edsger dijkstra' is already classified as person"
-                    )
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(
+                side_effect=ValueError(
+                    "Tag 'edsger dijkstra' is already classified as person"
                 )
+            )
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                },
+            )
 
         assert response.status_code == 409
         body = response.json()
         # The ConflictError details should carry existing entity information.
         # RFC-7807 responses in this project include an "errors" or "details" key.
         assert "status" in body or "type" in body
-
-    async def test_already_classified_no_tag_row_still_returns_409(self) -> None:
+        # The rewritten conflict message names the claiming entity, which only
+        # resolves if the entity lookup (entity_repo.get) returned the entity —
+        # not the tag. This is what guards the post-conflict entity resolution.
+        assert "Edsger Dijkstra" in response.text
         """409 returned even when the post-conflict tag lookup returns None.
 
         Edge case: the service reports "already classified" but the subsequent
@@ -795,22 +796,21 @@ class TestClassifyTagConflict:
         mock_session = _make_session_tag_not_found()
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(
-                    side_effect=ValueError(
-                        "Tag is already classified — use force=True to override"
-                    )
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(
+                side_effect=ValueError(
+                    "Tag is already classified — use force=True to override"
                 )
+            )
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                },
+            )
 
         assert response.status_code == 409, response.text
 
@@ -833,22 +833,21 @@ class TestClassifyTagBadRequest:
         mock_session = _make_session_tag_not_found()
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(
-                    side_effect=ValueError(
-                        "Some unexpected validation error from the service layer"
-                    )
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(
+                side_effect=ValueError(
+                    "Some unexpected validation error from the service layer"
                 )
+            )
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                },
+            )
 
         assert response.status_code == 400, response.text
 
@@ -857,20 +856,19 @@ class TestClassifyTagBadRequest:
         mock_session = _make_session_tag_not_found()
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(
-                    side_effect=ValueError("Cannot process this request")
-                )
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(
+                side_effect=ValueError("Cannot process this request")
+            )
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": "person",
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": "person",
+                },
+            )
 
         assert response.status_code == 400
         body = response.json()
@@ -989,18 +987,17 @@ class TestClassifyTagValidation:
         classify_result = _make_classify_result(normalized_form=boundary_form)
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(return_value=classify_result)
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(return_value=classify_result)
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": boundary_form,
-                        "entity_type": _VALID_ENTITY_TYPE,
-                    },
-                )
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": boundary_form,
+                    "entity_type": _VALID_ENTITY_TYPE,
+                },
+            )
 
         assert response.status_code == 201, response.text
 
@@ -1094,19 +1091,18 @@ class TestClassifyTagAllowedEntityTypes:
         status_code: int = 0
 
         async for client in _build_client(mock_session):
-            with patch(
-                "chronovista.api.routers.entity_mentions._tag_mgmt_service"
-            ) as mock_svc:
-                mock_svc.classify = AsyncMock(return_value=classify_result)
+            mock_svc = MagicMock()
+            app.dependency_overrides[get_tag_management_service] = lambda: mock_svc
+            mock_svc.classify = AsyncMock(return_value=classify_result)
 
-                response = await client.post(
-                    _CLASSIFY_ENDPOINT,
-                    json={
-                        "normalized_form": _VALID_NORMALIZED_FORM,
-                        "entity_type": entity_type,
-                    },
-                )
-                status_code = response.status_code
+            response = await client.post(
+                _CLASSIFY_ENDPOINT,
+                json={
+                    "normalized_form": _VALID_NORMALIZED_FORM,
+                    "entity_type": entity_type,
+                },
+            )
+            status_code = response.status_code
 
         return status_code
 
@@ -1555,11 +1551,13 @@ class TestCheckDuplicateEndpoint:
 #
 # Mocking strategy
 # ----------------
-# - ``_entity_repo.create`` is patched at the module level via ``unittest.mock.patch``
-#   on ``chronovista.api.routers.entity_mentions._entity_repo``.
-# - ``_alias_repo.create`` is similarly patched.
-# - ``_normalizer.normalize`` is patched for tests that require controlled
-#   normalization output; for 422 tests it returns None/empty.
+# - The NamedEntityRepository and EntityAliasRepository are injected via
+#   ``get_named_entity_repository`` / ``get_entity_alias_repository`` dependency
+#   overrides (#256), each pointed at a MagicMock whose ``create`` is an
+#   AsyncMock.
+# - ``_normalizer.normalize`` is still patched (it remains the one module-level
+#   singleton in the router) for tests that require controlled normalization
+#   output; for 422 tests it returns None/empty.
 # - The DB session's ``execute`` is an AsyncMock that returns a MagicMock with
 #   ``scalar_one_or_none()`` returning either a NamedEntityDB mock (409) or None (pass).
 # - session.commit and session.refresh are AsyncMock no-ops.
@@ -1694,23 +1692,22 @@ class TestCreateEntityEndpoint:
         )
         mock_session = _make_session_no_duplicate(db_entity)
 
+        mock_entity_repo = MagicMock()
+        mock_alias_repo = MagicMock()
+        app.dependency_overrides[get_named_entity_repository] = lambda: mock_entity_repo
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_alias_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._entity_repo"
-                ) as mock_entity_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_alias_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 # normalize() maps every alias to a distinct lowercase form
                 mock_normalizer.normalize.side_effect = (
                     lambda text: text.strip().lower()
                 )
 
+                mock_entity_repo.find_active_by_normalized_and_type = AsyncMock(
+                    return_value=None
+                )
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())
 
@@ -1749,19 +1746,18 @@ class TestCreateEntityEndpoint:
         )
         mock_session = _make_session_no_duplicate(db_entity)
 
+        mock_entity_repo = MagicMock()
+        mock_alias_repo = MagicMock()
+        app.dependency_overrides[get_named_entity_repository] = lambda: mock_entity_repo
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_alias_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._entity_repo"
-                ) as mock_entity_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_alias_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = "radia perlman"
+                mock_entity_repo.find_active_by_normalized_and_type = AsyncMock(
+                    return_value=None
+                )
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())
 
@@ -1898,23 +1894,22 @@ class TestCreateEntityEndpoint:
         )
         mock_session = _make_session_no_duplicate(db_entity)
 
+        mock_entity_repo = MagicMock()
+        mock_alias_repo = MagicMock()
+        app.dependency_overrides[get_named_entity_repository] = lambda: mock_entity_repo
+        app.dependency_overrides[get_entity_alias_repository] = lambda: mock_alias_repo
         async for client in _build_client(mock_session):
-            with (
-                patch(
-                    "chronovista.api.routers.entity_mentions._entity_repo"
-                ) as mock_entity_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._alias_repo"
-                ) as mock_alias_repo,
-                patch(
-                    "chronovista.api.routers.entity_mentions._normalizer"
-                ) as mock_normalizer,
-            ):
+            with patch(
+                "chronovista.api.routers.entity_mentions._normalizer"
+            ) as mock_normalizer:
                 # "alan turing" -> "alan turing" (canonical)
                 # "Ed Turing"     -> "ed turing" (unique alias)
                 # "ed turing"     -> "ed turing" (DUPLICATE -> skipped)
                 mock_normalizer.normalize.side_effect = (
                     lambda text: text.strip().lower()
+                )
+                mock_entity_repo.find_active_by_normalized_and_type = AsyncMock(
+                    return_value=None
                 )
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())

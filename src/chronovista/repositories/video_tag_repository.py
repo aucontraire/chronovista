@@ -13,7 +13,9 @@ from sqlalchemy import and_, delete, desc, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TagAlias as TagAliasDB
+from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTag as VideoTagDB
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.video_tag import (
     VideoTagCreate,
     VideoTagSearchFilters,
@@ -86,6 +88,214 @@ class VideoTagRepository(
             .order_by(VideoTagDB.created_at.desc())
         )
         return list(result.scalars().all())
+
+    async def get_existing_tags(
+        self, session: AsyncSession, tags: list[str]
+    ) -> set[str]:
+        """Return which of the given tag strings exist in any video's tags.
+
+        Used to validate the ``tag`` filter values on the video list endpoint;
+        unrecognized tags are dropped with a warning by the caller.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        tags : list[str]
+            Candidate tag values.
+
+        Returns
+        -------
+        set[str]
+            The subset of ``tags`` present on at least one video. Empty when
+            ``tags`` is empty.
+        """
+        if not tags:
+            return set()
+        result = await session.execute(
+            select(VideoTagDB.tag).where(VideoTagDB.tag.in_(tags)).distinct()
+        )
+        return {row[0] for row in result.all()}
+
+    async def list_tags_with_counts(
+        self,
+        session: AsyncSession,
+        *,
+        include_unavailable: bool,
+        query: str | None,
+        offset: int,
+        limit: int,
+    ) -> tuple[int, list[tuple[str, int]]]:
+        """List tags with their video counts, ordered by count descending.
+
+        Aggregates the ``video_tags`` junction joined to ``videos``. When
+        ``include_unavailable`` is False, only available videos count. An
+        optional ``query`` restricts to tags with a case-insensitive prefix
+        match (autocomplete). The total is the distinct-tag count under the same
+        filters.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        include_unavailable : bool
+            When False, restrict to ``availability_status == AVAILABLE`` videos.
+        query : str | None
+            Case-insensitive tag prefix filter, or None.
+        offset, limit : int
+            Pagination window.
+
+        Returns
+        -------
+        tuple[int, list[tuple[str, int]]]
+            The distinct-tag total and the page of ``(tag, video_count)`` rows.
+        """
+        base = select(
+            VideoTagDB.tag,
+            func.count(VideoTagDB.video_id).label("video_count"),
+        ).join(VideoDB, VideoTagDB.video_id == VideoDB.video_id)
+        count_base = (
+            select(func.count(func.distinct(VideoTagDB.tag)))
+            .select_from(VideoTagDB)
+            .join(VideoDB, VideoTagDB.video_id == VideoDB.video_id)
+        )
+        if not include_unavailable:
+            base = base.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+            count_base = count_base.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        if query is not None:
+            base = base.where(VideoTagDB.tag.ilike(f"{query}%"))
+            count_base = count_base.where(VideoTagDB.tag.ilike(f"{query}%"))
+
+        total = (await session.execute(count_base)).scalar() or 0
+
+        paginated = (
+            base.group_by(VideoTagDB.tag)
+            .order_by(func.count(VideoTagDB.video_id).desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        rows = (await session.execute(paginated)).all()
+        return total, [(row.tag, row.video_count) for row in rows]
+
+    async def find_fuzzy_candidates(
+        self,
+        session: AsyncSession,
+        *,
+        prefix: str,
+        substring: str,
+        min_len: int,
+        max_len: int,
+        limit: int,
+    ) -> list[str]:
+        """Return distinct candidate tags for fuzzy (typo-tolerant) suggestions.
+
+        Narrows to tags of similar length that either share the given prefix or
+        contain the substring (both matched case-insensitively), so a Levenshtein
+        pass in the caller has a small candidate set to score.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        prefix : str
+            Lowercased leading fragment to prefix-match.
+        substring : str
+            Lowercased fragment to substring-match.
+        min_len, max_len : int
+            Inclusive tag-length bounds.
+        limit : int
+            Maximum candidates to return.
+
+        Returns
+        -------
+        list[str]
+            Distinct candidate tag strings.
+        """
+        result = await session.execute(
+            select(VideoTagDB.tag)
+            .where(func.length(VideoTagDB.tag) >= min_len)
+            .where(func.length(VideoTagDB.tag) <= max_len)
+            .where(
+                func.lower(VideoTagDB.tag).like(f"{prefix}%")
+                | func.lower(VideoTagDB.tag).like(f"%{substring}%")
+            )
+            .distinct()
+            .limit(limit)
+        )
+        return [row[0] for row in result.all()]
+
+    async def tag_exists(
+        self, session: AsyncSession, tag: str, *, include_unavailable: bool
+    ) -> bool:
+        """Check whether a tag is present on at least one (visible) video.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        tag : str
+            Exact tag string.
+        include_unavailable : bool
+            When False, only available videos count toward existence.
+
+        Returns
+        -------
+        bool
+            True if the tag exists under the filter.
+        """
+        query = (
+            select(VideoTagDB.tag)
+            .join(VideoDB, VideoTagDB.video_id == VideoDB.video_id)
+            .where(VideoTagDB.tag == tag)
+            .limit(1)
+        )
+        if not include_unavailable:
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        result = await session.execute(query)
+        return result.scalar_one_or_none() is not None
+
+    async def get_tag_with_count(
+        self, session: AsyncSession, tag: str, *, include_unavailable: bool
+    ) -> tuple[str, int] | None:
+        """Get one tag with its video count, or None if absent.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        tag : str
+            Exact tag string.
+        include_unavailable : bool
+            When False, only available videos count.
+
+        Returns
+        -------
+        tuple[str, int] | None
+            ``(tag, video_count)`` or None when the tag has no matching videos.
+        """
+        query = (
+            select(
+                VideoTagDB.tag,
+                func.count(VideoTagDB.video_id).label("video_count"),
+            )
+            .join(VideoDB, VideoTagDB.video_id == VideoDB.video_id)
+            .where(VideoTagDB.tag == tag)
+            .group_by(VideoTagDB.tag)
+        )
+        if not include_unavailable:
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        row = (await session.execute(query)).one_or_none()
+        if row is None:
+            return None
+        return row.tag, row.video_count
 
     async def create_or_update(
         self, session: AsyncSession, tag_create: VideoTagCreate

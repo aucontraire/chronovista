@@ -2,13 +2,21 @@
 
 import logging
 import re
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, Path, Query
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_db, require_auth, require_local_identity
+from chronovista.api.deps import (
+    get_db,
+    get_transcript_correction_repository,
+    get_transcript_segment_repository,
+    get_transcript_service,
+    get_user_language_preference_repository,
+    get_video_repository,
+    get_video_transcript_repository,
+    require_auth,
+    require_local_identity,
+)
 from chronovista.api.routers.responses import (
     CONFLICT_RESPONSE,
     GET_ITEM_ERRORS,
@@ -31,17 +39,12 @@ from chronovista.api.schemas.transcripts import (
     TranscriptResponse,
     TranscriptSegment,
 )
-from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
-from chronovista.db.models import TranscriptSegment as SegmentDB
-from chronovista.db.models import Video as VideoDB
-from chronovista.db.models import VideoTranscript as TranscriptDB
 from chronovista.exceptions import (
     APIValidationError,
     ConflictError,
     NotFoundError,
     RateLimitError,
 )
-from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.language_names import (
     get_language_name as _canonical_language_name,
 )
@@ -49,9 +52,16 @@ from chronovista.models.user_language_preference import (
     UserLanguagePreference as UserLanguagePreferenceDomain,
 )
 from chronovista.models.video_transcript import VideoTranscriptCreate
+from chronovista.repositories.transcript_correction_repository import (
+    TranscriptCorrectionRepository,
+)
+from chronovista.repositories.transcript_segment_repository import (
+    TranscriptSegmentRepository,
+)
 from chronovista.repositories.user_language_preference_repository import (
     UserLanguagePreferenceRepository,
 )
+from chronovista.repositories.video_repository import VideoRepository
 from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
@@ -75,10 +85,9 @@ _VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
 # In-flight download guard: tracks video_ids currently being downloaded
 _downloads_in_progress: set[str] = set()
 
-# Module-level service/repository singletons
-_transcript_service = TranscriptService()
-_transcript_repo = VideoTranscriptRepository()
-_pref_repo = UserLanguagePreferenceRepository()
+# The preference filter is a stateless, I/O-free helper — the one remaining
+# module-level singleton. The TranscriptService and the DB repositories are now
+# injected per-request via Depends (#256).
 _pref_filter = PreferenceAwareTranscriptFilter()
 
 
@@ -114,6 +123,10 @@ async def get_transcript_languages(
         description="Include unavailable records in results",
     ),
     session: AsyncSession = Depends(get_db),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    transcript_repo: VideoTranscriptRepository = Depends(
+        get_video_transcript_repository
+    ),
 ) -> TranscriptLanguagesResponse:
     """
     Get available transcript languages for a video.
@@ -135,29 +148,18 @@ async def get_transcript_languages(
     NotFoundError
         If video not found (404).
     """
-    # Check video exists
-    video_query = select(VideoDB).where(VideoDB.video_id == video_id)
-    # Apply availability filter unless include_unavailable is True
-    if not include_unavailable:
-        video_query = video_query.where(
-            VideoDB.availability_status == AvailabilityStatus.AVAILABLE
-        )
-
-    video_result = await session.execute(video_query)
-    if not video_result.scalar_one_or_none():
+    # Check video exists (honoring the availability filter)
+    if not await video_repo.exists_visible(
+        session, video_id, include_unavailable=include_unavailable
+    ):
         raise NotFoundError(
             resource_type="Video",
             identifier=video_id,
             hint="Verify the video ID or run: chronovista sync videos",
         )
 
-    # Get transcripts
-    result = await session.execute(
-        select(TranscriptDB)
-        .where(TranscriptDB.video_id == video_id)
-        .order_by(TranscriptDB.is_cc.desc(), TranscriptDB.downloaded_at.desc())
-    )
-    transcripts = result.scalars().all()
+    # Get transcripts (CC-first, then most recently downloaded)
+    transcripts = await transcript_repo.list_transcripts_by_recency(session, video_id)
 
     languages = [
         TranscriptLanguage(
@@ -188,6 +190,9 @@ async def get_transcript(
         None, description="Language code (default: first available)"
     ),
     session: AsyncSession = Depends(get_db),
+    transcript_repo: VideoTranscriptRepository = Depends(
+        get_video_transcript_repository
+    ),
 ) -> TranscriptResponse:
     """
     Get full transcript for a video.
@@ -211,20 +216,11 @@ async def get_transcript(
     NotFoundError
         If transcript not found (404).
     """
-    # Build query
-    query = select(TranscriptDB).where(TranscriptDB.video_id == video_id)
-
-    if language:
-        # Case-insensitive match for BCP-47 language codes (RFC 5646)
-        query = query.where(func.lower(TranscriptDB.language_code) == language.lower())
-    else:
-        # Default selection: prefer manual/CC, then by download date
-        query = query.order_by(
-            TranscriptDB.is_cc.desc(), TranscriptDB.downloaded_at.desc()
-        )
-
-    result = await session.execute(query)
-    transcript = result.scalars().first()
+    # Default selection prefers manual/CC then by download date; an explicit
+    # language is matched case-insensitively (RFC 5646).
+    transcript = await transcript_repo.get_display_transcript(
+        session, video_id, language
+    )
 
     if not transcript:
         if language:
@@ -270,6 +266,15 @@ async def get_transcript_segments(
     limit: int = Query(50, ge=1, le=200, description="Items per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     session: AsyncSession = Depends(get_db),
+    transcript_repo: VideoTranscriptRepository = Depends(
+        get_video_transcript_repository
+    ),
+    segment_repo: TranscriptSegmentRepository = Depends(
+        get_transcript_segment_repository
+    ),
+    correction_repo: TranscriptCorrectionRepository = Depends(
+        get_transcript_correction_repository
+    ),
 ) -> SegmentListResponse:
     """
     Get paginated transcript segments for a video.
@@ -298,14 +303,7 @@ async def get_transcript_segments(
     """
     # First, determine the language code to use
     if not language:
-        # Get default transcript
-        transcript_query = (
-            select(TranscriptDB)
-            .where(TranscriptDB.video_id == video_id)
-            .order_by(TranscriptDB.is_cc.desc(), TranscriptDB.downloaded_at.desc())
-        )
-        result = await session.execute(transcript_query)
-        transcript = result.scalars().first()
+        transcript = await transcript_repo.get_display_transcript(session, video_id)
         if not transcript:
             return SegmentListResponse(
                 data=[],
@@ -315,51 +313,22 @@ async def get_transcript_segments(
             )
         language = transcript.language_code
 
-    # Build segments query - case-insensitive language match (RFC 5646)
-    query = (
-        select(SegmentDB)
-        .where(SegmentDB.video_id == video_id)
-        .where(func.lower(SegmentDB.language_code) == language.lower())
+    # Fetch the page of segments (case-insensitive language, time-window filters)
+    total, segments = await segment_repo.list_segments_page(
+        session,
+        video_id,
+        language,
+        start_time=start_time,
+        end_time=end_time,
+        offset=offset,
+        limit=limit,
     )
 
-    # Apply time filters
-    if start_time is not None:
-        query = query.where(SegmentDB.start_time >= start_time)
-    if end_time is not None:
-        query = query.where(SegmentDB.end_time <= end_time)
-
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await session.execute(count_query)
-    total = total_result.scalar() or 0
-
-    # Apply pagination and ordering
-    query = query.order_by(SegmentDB.start_time.asc()).offset(offset).limit(limit)
-
-    segment_result = await session.execute(query)
-    segments: list[SegmentDB] = list(segment_result.scalars().all())
-
-    # Derive correction metadata for all segments in a single query
+    # Derive correction metadata for all segments in a single grouped query
     segment_ids = [seg.id for seg in segments]
-    correction_meta: dict[int, tuple[datetime | None, int]] = {}
-    if segment_ids:
-        meta_query = (
-            select(
-                TranscriptCorrectionDB.segment_id,
-                func.max(TranscriptCorrectionDB.corrected_at).label(
-                    "latest_corrected_at"
-                ),
-                func.count().label("correction_count"),
-            )
-            .where(TranscriptCorrectionDB.segment_id.in_(segment_ids))
-            .group_by(TranscriptCorrectionDB.segment_id)
-        )
-        meta_result = await session.execute(meta_query)
-        for row in meta_result.all():
-            correction_meta[row.segment_id] = (
-                row.latest_corrected_at,
-                row.correction_count,
-            )
+    correction_meta = await correction_repo.get_correction_metadata(
+        session, segment_ids
+    )
 
     items = [
         TranscriptSegment(
@@ -417,6 +386,13 @@ async def download_transcript(
     ),
     session: AsyncSession = Depends(get_db),
     user_id: str = Depends(require_local_identity),
+    transcript_repo: VideoTranscriptRepository = Depends(
+        get_video_transcript_repository
+    ),
+    pref_repo: UserLanguagePreferenceRepository = Depends(
+        get_user_language_preference_repository
+    ),
+    transcript_service: TranscriptService = Depends(get_transcript_service),
 ) -> (
     ApiResponse[TranscriptDownloadResponse]
     | ApiResponse[MultiTranscriptDownloadResponse]
@@ -477,7 +453,7 @@ async def download_transcript(
     _downloads_in_progress.add(video_id)
     try:
         # 3. Get existing transcripts for this video
-        existing_transcripts = await _transcript_repo.get_video_transcripts(
+        existing_transcripts = await transcript_repo.get_video_transcripts(
             session, video_id
         )
         existing_lang_codes = {t.language_code.lower() for t in existing_transcripts}
@@ -499,10 +475,12 @@ async def download_transcript(
                 video_id=video_id,
                 language=language,
                 session=session,
+                transcript_repo=transcript_repo,
+                transcript_service=transcript_service,
             )
 
         # --- Check for user preferences ---
-        user_prefs = await _pref_repo.get_user_preferences(session, user_id)
+        user_prefs = await pref_repo.get_user_preferences(session, user_id)
 
         # --- Path C: No preferences → preserve existing default behavior (FR-013) ---
         if not user_prefs:
@@ -517,6 +495,8 @@ async def download_transcript(
                 video_id=video_id,
                 language=None,
                 session=session,
+                transcript_repo=transcript_repo,
+                transcript_service=transcript_service,
             )
 
         # --- Path B: Preference-aware multi-language download (FR-011, FR-012) ---
@@ -545,6 +525,8 @@ async def download_transcript(
                 video_id=video_id,
                 language=None,
                 session=session,
+                transcript_repo=transcript_repo,
+                transcript_service=transcript_service,
             )
 
         # Filter out already-downloaded languages
@@ -577,7 +559,7 @@ async def download_transcript(
         failed: list[str] = []
 
         try:
-            batch_results = await _transcript_service.get_transcripts_for_languages(
+            batch_results = await transcript_service.get_transcripts_for_languages(
                 video_id=video_id,
                 language_codes=remaining_languages,
             )
@@ -631,7 +613,7 @@ async def download_transcript(
                     caption_name=enhanced_transcript.caption_name,
                 )
 
-                db_transcript = await _transcript_repo.create_or_update(
+                db_transcript = await transcript_repo.create_or_update(
                     session,
                     transcript_create,
                     raw_transcript_data=(
@@ -715,6 +697,8 @@ async def _download_single_language(
     video_id: str,
     language: str | None,
     session: AsyncSession,
+    transcript_repo: VideoTranscriptRepository,
+    transcript_service: TranscriptService,
 ) -> ApiResponse[TranscriptDownloadResponse]:
     """Download a single language transcript and return the standard response.
 
@@ -729,6 +713,10 @@ async def _download_single_language(
         BCP-47 language code, or None for default (English).
     session : AsyncSession
         Database session.
+    transcript_repo : VideoTranscriptRepository
+        Repository used to persist the downloaded transcript.
+    transcript_service : TranscriptService
+        Service used to fetch the transcript from YouTube.
 
     Returns
     -------
@@ -740,7 +728,7 @@ async def _download_single_language(
         language_codes = [language]
 
     try:
-        enhanced_transcript = await _transcript_service.get_transcript(
+        enhanced_transcript = await transcript_service.get_transcript(
             video_id=video_id,
             language_codes=language_codes,
         )
@@ -811,7 +799,7 @@ async def _download_single_language(
         caption_name=enhanced_transcript.caption_name,
     )
 
-    db_transcript = await _transcript_repo.create_or_update(
+    db_transcript = await transcript_repo.create_or_update(
         session,
         transcript_create,
         raw_transcript_data=(

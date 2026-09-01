@@ -6,9 +6,10 @@ endpoint have ``mention_count: 0``, ``mentions: []``, and
 
 Mock strategy
 -------------
-The ``_mention_repo.get_entity_video_list`` is patched at the module level to
-return controlled results.  The ``get_db`` and ``require_auth`` FastAPI
-dependencies are overridden to inject a mock session and bypass auth.
+The EntityMentionRepository is injected via the
+``get_entity_mention_repository`` dependency override (#256), pointed at a mock
+whose ``get_entity_video_list`` returns controlled results.  ``get_db`` and
+``require_auth`` are overridden to inject a mock session and bypass auth.
 
 References
 ----------
@@ -21,13 +22,17 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid_utils import uuid7
 
-from chronovista.api.deps import get_db, require_auth
+from chronovista.api.deps import (
+    get_db,
+    get_entity_mention_repository,
+    require_auth,
+)
 from chronovista.api.main import app
 from chronovista.models.entity_association import (
     AssociationCount,
@@ -75,6 +80,11 @@ async def _build_client(
 
     app.dependency_overrides[get_db] = mock_get_db
     app.dependency_overrides[require_auth] = mock_require_auth
+    # The migrated read endpoints (#256) take EntityMentionRepository via
+    # Depends. Each test sets its own get_entity_mention_repository override
+    # (with a mock repo) before entering this client; _build_client only wires
+    # get_db + require_auth and never clears overrides on entry, so those
+    # per-test overrides flow through.
 
     try:
         transport = ASGITransport(app=app)
@@ -148,14 +158,13 @@ class TestEntityVideoEndpointTagSourcedVideos:
 
         mock_session = _make_entity_exists_session(entity_id)
 
-        with patch(
-            "chronovista.api.routers.entity_mentions._mention_repo"
-        ) as mock_repo:
-            mock_repo.get_entity_video_list = AsyncMock(return_value=([tag_video], 1))
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_mention_repository] = lambda: mock_repo
+        mock_repo.get_entity_video_list = AsyncMock(return_value=([tag_video], 1))
 
-            async for client in _build_client(mock_session):
-                url = _ENDPOINT_TEMPLATE.format(entity_id=str(entity_id))
-                response = await client.get(url)
+        async for client in _build_client(mock_session):
+            url = _ENDPOINT_TEMPLATE.format(entity_id=str(entity_id))
+            response = await client.get(url)
 
         assert response.status_code == 200
         body = response.json()
@@ -211,16 +220,15 @@ class TestEntityVideoEndpointTagSourcedVideos:
 
         mock_session = _make_entity_exists_session(entity_id)
 
-        with patch(
-            "chronovista.api.routers.entity_mentions._mention_repo"
-        ) as mock_repo:
-            mock_repo.get_entity_video_list = AsyncMock(
-                return_value=([transcript_video, tag_video], 2)
-            )
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_mention_repository] = lambda: mock_repo
+        mock_repo.get_entity_video_list = AsyncMock(
+            return_value=([transcript_video, tag_video], 2)
+        )
 
-            async for client in _build_client(mock_session):
-                url = _ENDPOINT_TEMPLATE.format(entity_id=str(entity_id))
-                response = await client.get(url)
+        async for client in _build_client(mock_session):
+            url = _ENDPOINT_TEMPLATE.format(entity_id=str(entity_id))
+            response = await client.get(url)
 
         assert response.status_code == 200
         body = response.json()
@@ -270,16 +278,13 @@ class TestEntityVideoEndpointTagSourcedVideos:
 
         mock_session = _make_entity_exists_session(entity_id)
 
-        with patch(
-            "chronovista.api.routers.entity_mentions._mention_repo"
-        ) as mock_repo:
-            mock_repo.get_entity_video_list = AsyncMock(
-                return_value=([overlap_video], 1)
-            )
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_mention_repository] = lambda: mock_repo
+        mock_repo.get_entity_video_list = AsyncMock(return_value=([overlap_video], 1))
 
-            async for client in _build_client(mock_session):
-                url = _ENDPOINT_TEMPLATE.format(entity_id=str(entity_id))
-                response = await client.get(url)
+        async for client in _build_client(mock_session):
+            url = _ENDPOINT_TEMPLATE.format(entity_id=str(entity_id))
+            response = await client.get(url)
 
         assert response.status_code == 200
         body = response.json()
@@ -336,25 +341,24 @@ class TestEntityDetailCombinedVideoCount:
         mock_session.execute = AsyncMock(return_value=entity_result)
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "chronovista.api.routers.entity_mentions._mention_repo"
-        ) as mock_repo:
-            # The resolver returns a combined total of 6 (across all sources)
-            mock_repo.get_association_counts = AsyncMock(
-                return_value={
-                    entity_id: AssociationCount(
-                        total=6,
-                        by_source=AssociationSourceBreakdown(
-                            manual=0, transcript=2, title=0, description=0, tag=4
-                        ),
-                    )
-                }
-            )
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_mention_repository] = lambda: mock_repo
+        # The resolver returns a combined total of 6 (across all sources)
+        mock_repo.get_association_counts = AsyncMock(
+            return_value={
+                entity_id: AssociationCount(
+                    total=6,
+                    by_source=AssociationSourceBreakdown(
+                        manual=0, transcript=2, title=0, description=0, tag=4
+                    ),
+                )
+            }
+        )
 
-            async for client in _build_client(mock_session):
-                # Fetch entity detail
-                detail_url = f"/api/v1/entities/{entity_id}"
-                detail_response = await client.get(detail_url)
+        async for client in _build_client(mock_session):
+            # Fetch entity detail
+            detail_url = f"/api/v1/entities/{entity_id}"
+            detail_response = await client.get(detail_url)
 
         assert detail_response.status_code == 200
         detail_body = detail_response.json()
@@ -389,23 +393,22 @@ class TestEntityDetailCombinedVideoCount:
         mock_session.execute = AsyncMock(return_value=entity_result)
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "chronovista.api.routers.entity_mentions._mention_repo"
-        ) as mock_repo:
-            mock_repo.get_association_counts = AsyncMock(
-                return_value={
-                    entity_id: AssociationCount(
-                        total=0,
-                        by_source=AssociationSourceBreakdown(
-                            manual=0, transcript=0, title=0, description=0, tag=0
-                        ),
-                    )
-                }
-            )
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_mention_repository] = lambda: mock_repo
+        mock_repo.get_association_counts = AsyncMock(
+            return_value={
+                entity_id: AssociationCount(
+                    total=0,
+                    by_source=AssociationSourceBreakdown(
+                        manual=0, transcript=0, title=0, description=0, tag=0
+                    ),
+                )
+            }
+        )
 
-            async for client in _build_client(mock_session):
-                detail_url = f"/api/v1/entities/{entity_id}"
-                detail_response = await client.get(detail_url)
+        async for client in _build_client(mock_session):
+            detail_url = f"/api/v1/entities/{entity_id}"
+            detail_response = await client.get(detail_url)
 
         assert detail_response.status_code == 200
         detail_body = detail_response.json()
@@ -473,21 +476,20 @@ class TestEntityListCombinedVideoCount:
         mock_session.execute = AsyncMock(side_effect=[count_result, list_result])
         mock_session.commit = AsyncMock()
 
-        with patch(
-            "chronovista.api.routers.entity_mentions._mention_repo"
-        ) as mock_repo:
-            mock_repo.get_association_counts = AsyncMock(
-                return_value={
-                    entity_id: AssociationCount(
-                        total=8,
-                        by_source=AssociationSourceBreakdown(
-                            manual=0, transcript=5, title=1, description=0, tag=2
-                        ),
-                    )
-                }
-            )
-            async for client in _build_client(mock_session):
-                response = await client.get("/api/v1/entities")
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_mention_repository] = lambda: mock_repo
+        mock_repo.get_association_counts = AsyncMock(
+            return_value={
+                entity_id: AssociationCount(
+                    total=8,
+                    by_source=AssociationSourceBreakdown(
+                        manual=0, transcript=5, title=1, description=0, tag=2
+                    ),
+                )
+            }
+        )
+        async for client in _build_client(mock_session):
+            response = await client.get("/api/v1/entities")
 
         assert response.status_code == 200
         body = response.json()
@@ -553,14 +555,13 @@ class TestEntityListCombinedVideoCount:
                 ),
             )
 
-        with patch(
-            "chronovista.api.routers.entity_mentions._mention_repo"
-        ) as mock_repo:
-            mock_repo.get_association_counts = AsyncMock(
-                return_value={entity_id_1: _zero(3), entity_id_2: _zero(10)}
-            )
-            async for client in _build_client(mock_session):
-                response = await client.get("/api/v1/entities?sort=mentions")
+        mock_repo = MagicMock()
+        app.dependency_overrides[get_entity_mention_repository] = lambda: mock_repo
+        mock_repo.get_association_counts = AsyncMock(
+            return_value={entity_id_1: _zero(3), entity_id_2: _zero(10)}
+        )
+        async for client in _build_client(mock_session):
+            response = await client.get("/api/v1/entities?sort=mentions")
 
         assert response.status_code == 200
         body = response.json()

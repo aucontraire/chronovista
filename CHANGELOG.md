@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.75.0] - 2026-08-31
+
+### Changed
+- **Internal: completed the #256 migration of the remaining API routers off inline SQL onto the repository layer and FastAPI dependency injection.** The `channels`, `playlists`, `entity_mentions`, `videos`, `topics`, `transcripts`, and `tags` routers — together with the previously deferred category- and channel-videos listings — no longer construct `select(...)` queries inline or hold module-level repository/service singletons; each endpoint's data access now lives in a repository method and is provided through `Depends`. There is **no user-facing or API change** — request parameters, response shapes, and status codes are byte-for-byte identical, and every migrated endpoint was checked for behavioral parity against real data (totals, ordering, and fields) before being committed. The videos list query was consolidated into a single reusable `VideoRepository.list_videos_filtered`, which the category- and channel-videos listings now share instead of re-implementing.
+- **Category video pagination is now deterministic.** `GET /categories/{category_id}/videos` gained a stable `video_id` tiebreak (matching the channel- and main-videos listings), so pages no longer shift among videos that share an upload date. Result membership and totals are unchanged.
+
+### Fixed
+- **Listing a knowledge-graph topic's videos now respects `include_unavailable`.** `GET /topics/{topic_id}/videos` for slash-containing topic IDs (e.g. `/m/...`) is served through the catch-all detail route, which forwarded the request internally without passing `include_unavailable` — so the flag's `False` default arrived as an unresolved sentinel and the availability filter was silently skipped, returning unavailable videos regardless of the flag. The flag is now forwarded explicitly, so slash-containing topics behave the same as plain-tag topics and honor the query parameter.
+
 ## [0.74.5] - 2026-08-30
 
 ### Changed

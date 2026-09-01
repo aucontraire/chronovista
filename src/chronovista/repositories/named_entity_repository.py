@@ -8,11 +8,13 @@ supporting entity resolution, merge tracking, and confidence scoring.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import bindparam, select, update
+from sqlalchemy import bindparam, func, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
@@ -92,6 +94,194 @@ class NamedEntityRepository(
             select(NamedEntityDB.id).where(NamedEntityDB.id == id)
         )
         return result.first() is not None
+
+    async def get_existing_ids(
+        self, session: AsyncSession, ids: Sequence[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """Return which of the given entity ids exist, in one query.
+
+        Used to reject unknown entity ids on the video filter before running
+        the intersection (a conjunctive filter must not silently drop a
+        required entity).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        ids : Sequence[uuid.UUID]
+            Candidate entity ids.
+
+        Returns
+        -------
+        set[uuid.UUID]
+            The subset of ``ids`` that exist. Empty when ``ids`` is empty.
+        """
+        id_list = list(ids)
+        if not id_list:
+            return set()
+        result = await session.execute(
+            select(NamedEntityDB.id).where(NamedEntityDB.id.in_(id_list))
+        )
+        return set(result.scalars().all())
+
+    async def find_active_by_normalized_and_type(
+        self, session: AsyncSession, normalized_name: str, entity_type: str
+    ) -> NamedEntityDB | None:
+        """Return the active entity with this normalized name + type (#256).
+
+        The duplicate check for standalone entity creation. The
+        ``uq_named_entity_canonical`` unique constraint on
+        ``(canonical_name_normalized, entity_type)`` guarantees at most one row
+        exists for the pair regardless of status, so filtering to ``active``
+        yields zero or one — ``scalar_one_or_none`` is safe.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        normalized_name : str
+            The normalized canonical name to match.
+        entity_type : str
+            The entity type value (e.g. ``"person"``).
+
+        Returns
+        -------
+        NamedEntityDB | None
+            The active matching entity, or ``None`` if none exists.
+        """
+        result = await session.execute(
+            select(NamedEntityDB).where(
+                NamedEntityDB.canonical_name_normalized == normalized_name,
+                NamedEntityDB.entity_type == entity_type,
+                NamedEntityDB.status == "active",
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_with_aliases(
+        self, session: AsyncSession, id: uuid.UUID
+    ) -> NamedEntityDB | None:
+        """Get a named entity with its aliases eager-loaded (#256).
+
+        Used by the detail endpoint, which renders the entity's aliases; the
+        ``selectinload`` avoids a lazy load when the router iterates them.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        id : uuid.UUID
+            The entity's UUID primary key.
+
+        Returns
+        -------
+        NamedEntityDB | None
+            The entity with ``.aliases`` populated, or ``None`` if absent.
+        """
+        result = await session.execute(
+            select(NamedEntityDB)
+            .where(NamedEntityDB.id == id)
+            .options(selectinload(NamedEntityDB.aliases))
+        )
+        return result.scalar_one_or_none()
+
+    async def list_filtered(
+        self,
+        session: AsyncSession,
+        *,
+        status: str = "active",
+        entity_type: str | None = None,
+        has_mentions: bool | None = None,
+        search: str | None = None,
+        search_aliases: bool = False,
+        exclude_alias_types: list[str] | None = None,
+        sort: str | None = None,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[NamedEntityDB], int]:
+        """List named entities with status/type/mention/search filters (#256).
+
+        Mirrors the entity-list endpoint's query. ``search`` is a case-
+        insensitive substring on ``canonical_name``; when ``search_aliases`` is
+        set it also matches ``entity_aliases.alias_name`` (minus any
+        ``exclude_alias_types``) via a scalar sub-select. The count is taken over
+        the filtered-but-unpaginated set so totals reflect every filter.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        status : str
+            Entity status to filter by (default ``"active"``).
+        entity_type : str | None
+            Restrict to a single entity type.
+        has_mentions : bool | None
+            ``True`` → ``mention_count > 0``; ``False`` → ``== 0``.
+        search : str | None
+            Substring to match on ``canonical_name`` (and aliases when
+            ``search_aliases``).
+        search_aliases : bool
+            Also match on ``entity_aliases.alias_name``.
+        exclude_alias_types : list[str] | None
+            Alias types to exclude from the alias match. Empty/``None`` excludes
+            nothing.
+        sort : str | None
+            ``"mentions"`` → mention_count desc then name asc; else name asc.
+        skip : int
+            Pagination offset.
+        limit : int
+            Page size.
+
+        Returns
+        -------
+        tuple[list[NamedEntityDB], int]
+            The page of entities and the total matching count.
+        """
+        base = select(NamedEntityDB).where(NamedEntityDB.status == status)
+
+        if entity_type is not None:
+            base = base.where(NamedEntityDB.entity_type == entity_type)
+
+        if has_mentions is True:
+            base = base.where(NamedEntityDB.mention_count > 0)
+        elif has_mentions is False:
+            base = base.where(NamedEntityDB.mention_count == 0)
+
+        if search:
+            if search_aliases:
+                alias_select = select(EntityAliasDB.entity_id).where(
+                    EntityAliasDB.alias_name.ilike(f"%{search}%")
+                )
+                if exclude_alias_types:
+                    alias_select = alias_select.where(
+                        EntityAliasDB.alias_type.notin_(exclude_alias_types)
+                    )
+                base = base.where(
+                    or_(
+                        NamedEntityDB.canonical_name.ilike(f"%{search}%"),
+                        NamedEntityDB.id.in_(alias_select.scalar_subquery()),
+                    )
+                )
+            else:
+                base = base.where(NamedEntityDB.canonical_name.ilike(f"%{search}%"))
+
+        # Count over the filtered-but-unsorted/unpaginated set. Derived from the
+        # same `base`, so a future filter cannot drift the count from the page.
+        total = (
+            await session.execute(select(func.count()).select_from(base.subquery()))
+        ).scalar() or 0
+
+        if sort == "mentions":
+            base = base.order_by(
+                NamedEntityDB.mention_count.desc(),
+                NamedEntityDB.canonical_name.asc(),
+            )
+        else:
+            base = base.order_by(NamedEntityDB.canonical_name.asc())
+
+        base = base.offset(skip).limit(limit)
+        result = await session.execute(base)
+        return list(result.scalars().all()), total
 
     async def replace_enrichment(
         self,

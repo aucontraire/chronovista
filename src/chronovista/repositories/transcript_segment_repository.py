@@ -26,11 +26,17 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
+from chronovista.db.models import VideoTranscript as TranscriptDB
+from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.transcript_segment import TranscriptSegmentCreate
 from chronovista.models.youtube_types import VideoId
-from chronovista.repositories.base import BaseSQLAlchemyRepository
+from chronovista.repositories.base import (
+    BaseSQLAlchemyRepository,
+    escape_like_pattern,
+)
 
 
 def translate_python_regex_to_posix(pattern: str) -> str:
@@ -99,22 +105,6 @@ def translate_python_regex_to_posix(pattern: str) -> str:
         i += 1
 
     return "".join(result)
-
-
-def _escape_like_pattern(text: str) -> str:
-    """Escape SQL LIKE/ILIKE wildcard characters for literal matching.
-
-    Parameters
-    ----------
-    text : str
-        The text to escape.
-
-    Returns
-    -------
-    str
-        The escaped text safe for use in LIKE/ILIKE patterns.
-    """
-    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class TranscriptSegmentRepository(
@@ -591,7 +581,7 @@ class TranscriptSegmentRepository(
             else:
                 text_condition = effective_text.op("~")(sql_pattern)
         else:
-            escaped = _escape_like_pattern(pattern)
+            escaped = escape_like_pattern(pattern)
             like_pattern = f"%{escaped}%"
             if case_insensitive:
                 text_condition = effective_text.ilike(like_pattern)
@@ -907,6 +897,359 @@ class TranscriptSegmentRepository(
 
         result = await session.execute(stmt)
         return result.scalars().all()
+
+    async def search_segments(
+        self,
+        session: AsyncSession,
+        *,
+        query_text: str,
+        video_id: str | None = None,
+        language: str | None = None,
+        include_unavailable: bool = False,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[
+        list[tuple[TranscriptSegmentDB, TranscriptDB, VideoDB, ChannelDB | None]],
+        int,
+    ]:
+        """Search transcript segments by literal text, with paginated results.
+
+        Case-insensitive substring (ILIKE) match against both the original
+        ``text`` and the ``corrected_text`` so corrections are findable. The
+        query is escaped for literal matching. Joins the transcript (for the
+        language row), the video (for title / upload date / availability), and
+        left-joins the channel (for display title — ``None`` when absent).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        query_text : str
+            The already-validated search phrase (escaped internally).
+        video_id : str, optional
+            Restrict to a single video.
+        language : str, optional
+            Restrict to a single language code (case-insensitive comparison for
+            BCP-47 casing variations). Applied to the results and the count, but
+            NOT to :meth:`get_matching_languages` — the facet reflects every
+            language the phrase matches so a caller can switch.
+        include_unavailable : bool, optional
+            Include segments of unavailable videos (default False).
+        skip : int, optional
+            Pagination offset (default 0).
+        limit : int, optional
+            Page size (default 20).
+
+        Returns
+        -------
+        tuple[list[tuple[TranscriptSegmentDB, TranscriptDB, VideoDB, ChannelDB | None]], int]
+            The page of ``(segment, transcript, video, channel)`` rows and the
+            total matching count (before pagination).
+
+        Notes
+        -----
+        Ordered by ``upload_date DESC, start_time ASC, id ASC``. The trailing
+        ``id`` tiebreak makes the page boundary deterministic — without it,
+        segments sharing an ``(upload_date, start_time)`` could be silently
+        repeated or skipped across pages of this paginated endpoint.
+        """
+        escaped = escape_like_pattern(query_text)
+        text_match = or_(
+            TranscriptSegmentDB.text.ilike(f"%{escaped}%"),
+            TranscriptSegmentDB.corrected_text.ilike(f"%{escaped}%"),
+        )
+
+        query = (
+            select(TranscriptSegmentDB, TranscriptDB, VideoDB, ChannelDB)
+            .join(
+                TranscriptDB,
+                and_(
+                    TranscriptSegmentDB.video_id == TranscriptDB.video_id,
+                    TranscriptSegmentDB.language_code == TranscriptDB.language_code,
+                ),
+            )
+            .join(VideoDB, TranscriptSegmentDB.video_id == VideoDB.video_id)
+            .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
+        )
+
+        if not include_unavailable:
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+
+        query = query.where(text_match)
+
+        if video_id:
+            query = query.where(TranscriptSegmentDB.video_id == video_id)
+
+        if language:
+            query = query.where(
+                func.lower(TranscriptSegmentDB.language_code) == func.lower(language)
+            )
+
+        count_query = select(func.count()).select_from(query.subquery())
+        total = (await session.execute(count_query)).scalar() or 0
+
+        query = (
+            query.order_by(
+                VideoDB.upload_date.desc(),
+                TranscriptSegmentDB.start_time.asc(),
+                TranscriptSegmentDB.id.asc(),
+            )
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await session.execute(query)
+        rows: list[
+            tuple[TranscriptSegmentDB, TranscriptDB, VideoDB, ChannelDB | None]
+        ] = [(row[0], row[1], row[2], row[3]) for row in result.all()]
+        return rows, total
+
+    async def get_matching_languages(
+        self,
+        session: AsyncSession,
+        *,
+        query_text: str,
+        video_id: str | None = None,
+        include_unavailable: bool = False,
+    ) -> list[str]:
+        """Return the distinct language codes whose segments match the phrase.
+
+        The text / availability / video filters mirror :meth:`search_segments`,
+        but the ``language`` filter is intentionally omitted so the result is
+        the full set of languages a caller could switch to for the same phrase.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        query_text : str
+            The already-validated search phrase (escaped internally).
+        video_id : str, optional
+            Restrict to a single video.
+        include_unavailable : bool, optional
+            Include segments of unavailable videos (default False).
+
+        Returns
+        -------
+        list[str]
+            Distinct matching language codes, sorted ascending.
+        """
+        escaped = escape_like_pattern(query_text)
+        query = select(TranscriptSegmentDB.language_code).join(
+            VideoDB, TranscriptSegmentDB.video_id == VideoDB.video_id
+        )
+
+        if not include_unavailable:
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+
+        query = query.where(
+            or_(
+                TranscriptSegmentDB.text.ilike(f"%{escaped}%"),
+                TranscriptSegmentDB.corrected_text.ilike(f"%{escaped}%"),
+            )
+        )
+
+        if video_id:
+            query = query.where(TranscriptSegmentDB.video_id == video_id)
+
+        result = await session.execute(query.distinct())
+        return sorted(lang for (lang,) in result.all())
+
+    async def get_adjacent_segment_text(
+        self,
+        session: AsyncSession,
+        *,
+        segment_ids: list[int],
+        video_ids: list[str],
+        language_codes: list[str],
+    ) -> dict[int, tuple[str | None, str | None]]:
+        """Return the previous / next segment text for each given segment.
+
+        Batch-fetches adjacent-segment context for a page of search results in a
+        single query, eliminating the per-result N+1. ``LAG``/``LEAD`` window
+        functions run over each ``(video_id, language_code)`` partition ordered
+        by ``start_time``; the window computation is bounded to the supplied
+        ``video_ids`` / ``language_codes`` (the partitions the results live in).
+        Adjacent text uses ``corrected_text`` when present, else ``text``.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        segment_ids : list[int]
+            The result segment ids to return context for.
+        video_ids : list[str]
+            Distinct video ids of the result set (bounds the window scan).
+        language_codes : list[str]
+            Distinct language codes of the result set (bounds the window scan).
+
+        Returns
+        -------
+        dict[int, tuple[str | None, str | None]]
+            Maps each in-scope segment id to ``(previous_text, next_text)``;
+            either side is ``None`` at a partition boundary. Empty when
+            ``segment_ids`` is empty.
+        """
+        if not segment_ids:
+            return {}
+
+        partition = [TranscriptSegmentDB.video_id, TranscriptSegmentDB.language_code]
+        order = TranscriptSegmentDB.start_time.asc()
+        display_text = func.coalesce(
+            TranscriptSegmentDB.corrected_text, TranscriptSegmentDB.text
+        )
+
+        context_cte = (
+            select(
+                TranscriptSegmentDB.id.label("seg_id"),
+                func.lag(display_text, 1)
+                .over(partition_by=partition, order_by=order)
+                .label("prev_text"),
+                func.lead(display_text, 1)
+                .over(partition_by=partition, order_by=order)
+                .label("next_text"),
+            )
+            .where(
+                and_(
+                    TranscriptSegmentDB.video_id.in_(video_ids),
+                    TranscriptSegmentDB.language_code.in_(language_codes),
+                )
+            )
+            .cte("context_cte")
+        )
+
+        context_query = select(
+            context_cte.c.seg_id,
+            context_cte.c.prev_text,
+            context_cte.c.next_text,
+        ).where(context_cte.c.seg_id.in_(segment_ids))
+        result = await session.execute(context_query)
+        return {
+            seg_id: (prev_text, next_text)
+            for seg_id, prev_text, next_text in result.all()
+        }
+
+    async def get_video_ids_with_corrections(
+        self, session: AsyncSession, video_ids: list[str]
+    ) -> set[str]:
+        """Return which of the given video ids have a corrected segment.
+
+        A single batched lookup for a page of results (avoids an N+1 over rows).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_ids : list[str]
+            Candidate video ids (typically one page of results).
+
+        Returns
+        -------
+        set[str]
+            The subset of ``video_ids`` that have at least one segment with
+            ``has_correction`` set. Empty when ``video_ids`` is empty.
+        """
+        if not video_ids:
+            return set()
+        result = await session.execute(
+            select(TranscriptSegmentDB.video_id)
+            .where(
+                TranscriptSegmentDB.video_id.in_(video_ids),
+                TranscriptSegmentDB.has_correction.is_(True),
+            )
+            .distinct()
+        )
+        return {row[0] for row in result.all()}
+
+    async def video_has_corrections(
+        self, session: AsyncSession, video_id: VideoId
+    ) -> bool:
+        """Return whether a single video has any corrected segment.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : VideoId
+            YouTube video identifier.
+
+        Returns
+        -------
+        bool
+            True if at least one segment for the video has ``has_correction``
+            set, False otherwise.
+        """
+        result = await session.execute(
+            select(TranscriptSegmentDB.id)
+            .where(
+                TranscriptSegmentDB.video_id == video_id,
+                TranscriptSegmentDB.has_correction.is_(True),
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def list_segments_page(
+        self,
+        session: AsyncSession,
+        video_id: str,
+        language: str,
+        *,
+        start_time: float | None,
+        end_time: float | None,
+        offset: int,
+        limit: int,
+    ) -> tuple[int, list[TranscriptSegmentDB]]:
+        """List a page of segments for a video+language, with total count.
+
+        Matches the language case-insensitively (RFC 5646), applies optional
+        time-window filters, derives the total from the same filtered query, and
+        returns the page ordered by ``start_time`` ascending.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            YouTube video identifier.
+        language : str
+            BCP-47 language code (matched case-insensitively).
+        start_time : float | None
+            When set, keep segments with ``start_time >= start_time``.
+        end_time : float | None
+            When set, keep segments with ``end_time <= end_time``.
+        offset, limit : int
+            Pagination window.
+
+        Returns
+        -------
+        tuple[int, list[TranscriptSegmentDB]]
+            The total matching count and the page of segments.
+        """
+        base_query = (
+            select(TranscriptSegmentDB)
+            .where(TranscriptSegmentDB.video_id == video_id)
+            .where(func.lower(TranscriptSegmentDB.language_code) == language.lower())
+        )
+        if start_time is not None:
+            base_query = base_query.where(TranscriptSegmentDB.start_time >= start_time)
+        if end_time is not None:
+            base_query = base_query.where(TranscriptSegmentDB.end_time <= end_time)
+
+        count_query = select(func.count()).select_from(base_query.subquery())
+        total = (await session.execute(count_query)).scalar() or 0
+
+        paginated_query = (
+            base_query.order_by(TranscriptSegmentDB.start_time.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(paginated_query)
+        segments = list(result.scalars().all())
+        return total, segments
 
 
 __all__ = ["TranscriptSegmentRepository"]

@@ -845,5 +845,47 @@ class TranscriptCorrectionRepository(
         versions = result.scalars().all()
         return max(versions) if versions else 0
 
+    async def get_correction_metadata(
+        self, session: AsyncSession, segment_ids: list[int]
+    ) -> dict[int, tuple[datetime.datetime | None, int]]:
+        """Return per-segment correction metadata for a set of segments.
+
+        One grouped query for a page of segments (avoids an N+1 over rows):
+        for each segment id, the latest ``corrected_at`` and the correction
+        count.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        segment_ids : list[int]
+            Segment primary keys (typically one page of results).
+
+        Returns
+        -------
+        dict[int, tuple[datetime.datetime | None, int]]
+            Maps ``segment_id`` -> ``(latest_corrected_at, correction_count)``
+            for segments that have at least one correction. Empty when
+            ``segment_ids`` is empty.
+        """
+        if not segment_ids:
+            return {}
+        stmt = (
+            select(
+                TranscriptCorrectionDB.segment_id,
+                func.max(TranscriptCorrectionDB.corrected_at).label(
+                    "latest_corrected_at"
+                ),
+                func.count().label("correction_count"),
+            )
+            .where(TranscriptCorrectionDB.segment_id.in_(segment_ids))
+            .group_by(TranscriptCorrectionDB.segment_id)
+        )
+        result = await session.execute(stmt)
+        return {
+            row.segment_id: (row.latest_corrected_at, row.correction_count)
+            for row in result.all()
+        }
+
 
 __all__ = ["TranscriptCorrectionRepository"]

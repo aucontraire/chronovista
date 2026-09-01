@@ -7,11 +7,13 @@ hierarchy management, and analytics support.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
-from sqlalchemy import and_, desc, func, select
+from sqlalchemy import ScalarSelect, and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import ChannelTopic, VideoTopic
 from chronovista.db.models import TopicCategory as TopicCategoryDB
 from chronovista.models.topic_category import (
     TopicCategoryCreate,
@@ -55,6 +57,198 @@ class TopicCategoryRepository(
     async def exists_by_topic_id(self, session: AsyncSession, topic_id: str) -> bool:
         """Check if topic category exists by topic ID (alias for exists method)."""
         return await self.exists(session, topic_id)
+
+    async def get_by_topic_ids(
+        self, session: AsyncSession, topic_ids: Iterable[str]
+    ) -> list[TopicCategoryDB]:
+        """Get topic categories for a set of topic IDs in one query.
+
+        Used to bulk-load ancestor topics when assembling a topic's path.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        topic_ids : Iterable[str]
+            Topic IDs to fetch.
+
+        Returns
+        -------
+        list[TopicCategoryDB]
+            Matching topic categories. Empty when ``topic_ids`` is empty.
+        """
+        ids = list(topic_ids)
+        if not ids:
+            return []
+        result = await session.execute(
+            select(TopicCategoryDB).where(TopicCategoryDB.topic_id.in_(ids))
+        )
+        return list(result.scalars().all())
+
+    async def get_existing_topic_ids(
+        self, session: AsyncSession, topic_ids: Iterable[str]
+    ) -> set[str]:
+        """Return which of the given topic IDs exist, in one query.
+
+        Used to validate the ``topic_id`` filter values on the video list
+        endpoint; unrecognized ids are dropped with a warning by the caller.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        topic_ids : Iterable[str]
+            Candidate topic IDs.
+
+        Returns
+        -------
+        set[str]
+            The subset of ``topic_ids`` that exist. Empty when ``topic_ids``
+            is empty.
+        """
+        ids = list(topic_ids)
+        if not ids:
+            return set()
+        result = await session.execute(
+            select(TopicCategoryDB.topic_id)
+            .where(TopicCategoryDB.topic_id.in_(ids))
+            .distinct()
+        )
+        return {row[0] for row in result.all()}
+
+    @staticmethod
+    def _video_count_subq() -> ScalarSelect[int]:
+        """Per-topic video-count correlated scalar subquery.
+
+        A correlated subquery (not a LEFT JOIN + GROUP BY) because each topic
+        needs two INDEPENDENT aggregates — videos and channels — and joining
+        both dimensions in one query would fan out the counts. TopicCategory is
+        a small taxonomy table, so per-row subquery execution is cheap here.
+        """
+        return (
+            select(func.count(VideoTopic.video_id))
+            .where(VideoTopic.topic_id == TopicCategoryDB.topic_id)
+            .correlate(TopicCategoryDB)
+            .scalar_subquery()
+        )
+
+    @staticmethod
+    def _channel_count_subq() -> ScalarSelect[int]:
+        """Per-topic channel-count correlated scalar subquery.
+
+        See :meth:`_video_count_subq` for why this is a correlated subquery.
+        """
+        return (
+            select(func.count(ChannelTopic.channel_id))
+            .where(ChannelTopic.topic_id == TopicCategoryDB.topic_id)
+            .correlate(TopicCategoryDB)
+            .scalar_subquery()
+        )
+
+    async def list_with_counts(
+        self, session: AsyncSession, *, offset: int, limit: int
+    ) -> tuple[int, list[tuple[TopicCategoryDB, int, int]]]:
+        """List topics with per-topic video and channel counts.
+
+        Ordered by video count descending. Returns ``(total, rows)`` where each
+        row is ``(topic, video_count, channel_count)`` and ``total`` is the full
+        topic count before pagination.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        offset, limit : int
+            Pagination window.
+
+        Returns
+        -------
+        tuple[int, list[tuple[TopicCategoryDB, int, int]]]
+            The total topic count and the paginated rows.
+        """
+        video_count_subq = self._video_count_subq()
+        channel_count_subq = self._channel_count_subq()
+
+        total_result = await session.execute(
+            select(func.count()).select_from(TopicCategoryDB)
+        )
+        total = total_result.scalar() or 0
+
+        query = (
+            select(
+                TopicCategoryDB,
+                video_count_subq.label("video_count"),
+                channel_count_subq.label("channel_count"),
+            )
+            .order_by(video_count_subq.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(query)
+        rows = [(row[0], row[1] or 0, row[2] or 0) for row in result.all()]
+        return total, rows
+
+    async def get_with_counts(
+        self, session: AsyncSession, topic_id: str
+    ) -> tuple[TopicCategoryDB, int, int] | None:
+        """Get one topic with its video and channel counts.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        topic_id : str
+            Topic identifier.
+
+        Returns
+        -------
+        tuple[TopicCategoryDB, int, int] | None
+            ``(topic, video_count, channel_count)`` or None if not found.
+        """
+        query = select(
+            TopicCategoryDB,
+            self._video_count_subq().label("video_count"),
+            self._channel_count_subq().label("channel_count"),
+        ).where(TopicCategoryDB.topic_id == topic_id)
+        row = (await session.execute(query)).one_or_none()
+        if row is None:
+            return None
+        return row[0], row[1] or 0, row[2] or 0
+
+    async def list_hierarchy_with_counts(
+        self,
+        session: AsyncSession,
+        *,
+        min_video_count: int,
+        include_empty: bool,
+    ) -> list[tuple[TopicCategoryDB, int]]:
+        """List topics with video counts for hierarchy building.
+
+        Ordered by topic name (the caller computes depth/paths in Python).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        min_video_count : int
+            Minimum video count to include a topic (0 disables the floor).
+        include_empty : bool
+            When False, topics with zero videos are excluded.
+
+        Returns
+        -------
+        list[tuple[TopicCategoryDB, int]]
+            ``(topic, video_count)`` rows ordered by ``category_name``.
+        """
+        video_count_subq = self._video_count_subq()
+        query = select(TopicCategoryDB, video_count_subq.label("video_count"))
+        if not include_empty:
+            query = query.where(video_count_subq > 0)
+        if min_video_count > 0:
+            query = query.where(video_count_subq >= min_video_count)
+        query = query.order_by(TopicCategoryDB.category_name)
+        result = await session.execute(query)
+        return [(row[0], row[1] or 0) for row in result.all()]
 
     async def create_or_update(
         self, session: AsyncSession, topic_create: TopicCategoryCreate

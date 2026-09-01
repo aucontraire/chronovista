@@ -8,10 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from chronovista.services.batch_correction_service import BatchCorrectionService
+    from chronovista.services.entity_curation_service import EntityCurationService
     from chronovista.services.tag_management import TagManagementService
     from chronovista.services.transcript_correction_service import (
         TranscriptCorrectionService,
     )
+    from chronovista.services.transcript_service import TranscriptService
 
 from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
@@ -19,16 +21,27 @@ from chronovista.config.settings import settings
 from chronovista.repositories import (
     CanonicalTagRepository,
     ChannelRepository,
+    EntityAliasRepository,
+    EntityMentionRepository,
     NamedEntityRepository,
     PlaylistRepository,
     TranscriptSegmentRepository,
+    UserVideoRepository,
     VideoRepository,
     VideoTranscriptRepository,
 )
+from chronovista.repositories.playlist_membership_repository import (
+    PlaylistMembershipRepository,
+)
+from chronovista.repositories.topic_category_repository import TopicCategoryRepository
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
+from chronovista.repositories.user_language_preference_repository import (
+    UserLanguagePreferenceRepository,
+)
 from chronovista.repositories.video_category_repository import VideoCategoryRepository
+from chronovista.repositories.video_tag_repository import VideoTagRepository
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
 from chronovista.services.recovery.page_parser import PageParser
 
@@ -163,6 +176,13 @@ def get_video_category_repository() -> VideoCategoryRepository:
     return container.create_video_category_repository()
 
 
+def get_video_tag_repository() -> VideoTagRepository:
+    """Dependency providing a VideoTagRepository via the DI container (#256)."""
+    from chronovista.container import container
+
+    return container.create_video_tag_repository()
+
+
 class StatsRepositories(NamedTuple):
     """The repositories whose row counts make up the app-info database stats.
 
@@ -230,6 +250,27 @@ def get_video_repository() -> VideoRepository:
     return container.create_video_repository()
 
 
+def get_channel_repository() -> ChannelRepository:
+    """Dependency providing a ChannelRepository via the DI container (#256)."""
+    from chronovista.container import container
+
+    return container.create_channel_repository()
+
+
+def get_entity_mention_repository() -> EntityMentionRepository:
+    """Dependency providing an EntityMentionRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_entity_mention_repository()
+
+
+def get_entity_alias_repository() -> EntityAliasRepository:
+    """Dependency providing an EntityAliasRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_entity_alias_repository()
+
+
 def get_named_entity_repository() -> NamedEntityRepository:
     """Dependency providing a NamedEntityRepository via the container (#256)."""
     from chronovista.container import container
@@ -279,11 +320,65 @@ def get_transcript_segment_repository() -> TranscriptSegmentRepository:
     return container.create_transcript_segment_repository()
 
 
+def get_video_transcript_repository() -> VideoTranscriptRepository:
+    """Dependency providing a VideoTranscriptRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_video_transcript_repository()
+
+
+def get_user_language_preference_repository() -> UserLanguagePreferenceRepository:
+    """Dependency providing a UserLanguagePreferenceRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_user_language_preference_repository()
+
+
+def get_transcript_service() -> "TranscriptService":
+    """Dependency providing the shared TranscriptService via the container (#256).
+
+    Replaces the transcripts router's module-level _transcript_service singleton.
+    The container caches this service (``@cached_property``), so this returns the
+    same instance across requests, preserving the prior singleton semantics.
+    """
+    from chronovista.container import container
+
+    return container.transcript_service
+
+
+def get_topic_category_repository() -> TopicCategoryRepository:
+    """Dependency providing a TopicCategoryRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_topic_category_repository()
+
+
+def get_playlist_membership_repository() -> PlaylistMembershipRepository:
+    """Dependency providing a PlaylistMembershipRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_playlist_membership_repository()
+
+
 def get_transcript_correction_repository() -> TranscriptCorrectionRepository:
     """Dependency providing a TranscriptCorrectionRepository via the container (#256)."""
     from chronovista.container import container
 
     return container.create_transcript_correction_repository()
+
+
+def get_playlist_repository() -> PlaylistRepository:
+    """Dependency providing a PlaylistRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_playlist_repository()
+
+
+def get_user_video_repository() -> UserVideoRepository:
+    """Dependency providing a UserVideoRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_user_video_repository()
 
 
 def get_transcript_correction_service() -> "TranscriptCorrectionService":
@@ -308,6 +403,29 @@ def get_transcript_correction_service() -> "TranscriptCorrectionService":
         correction_repo=container.create_transcript_correction_repository(),
         segment_repo=container.create_transcript_segment_repository(),
         transcript_repo=container.create_video_transcript_repository(),
+    )
+
+
+def get_entity_curation_service() -> "EntityCurationService":
+    """
+    Dependency providing an EntityCurationService via the DI container (#256).
+
+    Replaces the router's module-level _entity_curation_service singleton with a
+    per-request, container-wired instance. The service is stateless (it holds
+    only its two repositories plus a normalizer it constructs), so per-request
+    construction is cheap.
+
+    Returns
+    -------
+    EntityCurationService
+        A service wired with the named-entity and entity-operation-log repos.
+    """
+    from chronovista.container import container
+    from chronovista.services.entity_curation_service import EntityCurationService
+
+    return EntityCurationService(
+        named_entity_repo=container.create_named_entity_repository(),
+        operation_log_repo=container.create_entity_operation_log_repository(),
     )
 
 

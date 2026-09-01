@@ -44,3 +44,38 @@ class EntityAliasRepository(
             select(EntityAliasDB.id).where(EntityAliasDB.id == id)
         )
         return result.first() is not None
+
+    async def get_by_entity_and_normalized(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+        alias_name_normalized: str,
+    ) -> EntityAliasDB | None:
+        """Return an entity's alias whose normalized name matches (#256).
+
+        The duplicate check for alias creation: accents and case are folded into
+        ``alias_name_normalized``, so two variants that normalize to the same
+        string are treated as the same alias.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        entity_id : uuid.UUID
+            The entity that would own the alias.
+        alias_name_normalized : str
+            The normalized alias name to match.
+
+        Returns
+        -------
+        EntityAliasDB | None
+            The existing alias, or ``None`` if the entity has no alias with that
+            normalized name.
+        """
+        result = await session.execute(
+            select(EntityAliasDB).where(
+                EntityAliasDB.entity_id == entity_id,
+                EntityAliasDB.alias_name_normalized == alias_name_normalized,
+            )
+        )
+        return result.scalar_one_or_none()

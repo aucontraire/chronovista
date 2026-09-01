@@ -10,11 +10,26 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, asc, desc, func, or_, select
+from sqlalchemy import (
+    ColumnElement,
+    ScalarSelect,
+    Select,
+    Subquery,
+    and_,
+    asc,
+    desc,
+    func,
+    or_,
+    select,
+    union,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from chronovista.db.models import Channel as ChannelDB
+from chronovista.db.models import UserVideo as UserVideoDB
 from chronovista.db.models import Video as VideoDB
+from chronovista.db.models import VideoTag, VideoTopic, VideoTranscript
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.video import (
     VideoCreate,
@@ -23,7 +38,11 @@ from chronovista.models.video import (
     VideoUpdate,
 )
 from chronovista.models.youtube_types import ChannelId, VideoId
-from chronovista.repositories.base import BaseSQLAlchemyRepository
+from chronovista.repositories.base import (
+    BaseSQLAlchemyRepository,
+    escape_like_pattern,
+)
+from chronovista.repositories.playlist_repository import saved_forgotten_video_ids
 
 
 class VideoRepository(
@@ -165,6 +184,70 @@ class VideoRepository(
             select(VideoDB.video_id).where(VideoDB.video_id == video_id)
         )
         return result.first() is not None
+
+    async def exists_visible(
+        self,
+        session: AsyncSession,
+        video_id: VideoId,
+        *,
+        include_unavailable: bool,
+    ) -> bool:
+        """Check whether a video exists, honoring the availability filter.
+
+        When ``include_unavailable`` is False, an unavailable video is treated
+        as not present (the transcript-languages endpoint 404s on it).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            YouTube video identifier.
+        include_unavailable : bool
+            When False, restrict existence to ``availability_status == AVAILABLE``.
+
+        Returns
+        -------
+        bool
+            True if a matching video exists under the filter.
+        """
+        query = select(VideoDB.video_id).where(VideoDB.video_id == video_id)
+        if not include_unavailable:
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        result = await session.execute(query)
+        return result.first() is not None
+
+    async def get_titles_by_ids(
+        self, session: AsyncSession, video_ids: list[str]
+    ) -> dict[str, str]:
+        """Return a ``{video_id: title}`` map for the given ids (#256).
+
+        A single batched title lookup for result enrichment (avoids an N+1). Ids
+        with no matching video are simply absent from the map; an empty input
+        returns an empty map without a query.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_ids : list[str]
+            The video ids to fetch titles for.
+
+        Returns
+        -------
+        dict[str, str]
+            Maps each present video id to its title.
+        """
+        if not video_ids:
+            return {}
+        result = await session.execute(
+            select(VideoDB.video_id, VideoDB.title).where(
+                VideoDB.video_id.in_(video_ids)
+            )
+        )
+        return {row[0]: row[1] for row in result.all()}
 
     async def get_multi(
         self, session: AsyncSession, *, skip: int = 0, limit: int = 100
@@ -417,6 +500,448 @@ class VideoRepository(
             .where(VideoDB.video_id == video_id)
         )
         return result.scalar_one_or_none()
+
+    async def get_with_relations(
+        self, session: AsyncSession, video_id: VideoId
+    ) -> VideoDB | None:
+        """
+        Get a video with every relationship needed by the detail response.
+
+        Eager-loads transcripts, channel, tags, category, and video topics
+        (with each topic's category). No availability filter is applied — all
+        records are returned, including unavailable ones.
+
+        The full selectinload set is load-bearing: callers that read these
+        relationships after a ``session.commit()`` + ``session.refresh()``
+        (e.g. the alternative-url endpoint) rely on refresh replaying the same
+        eager strategy. Narrowing this set would reintroduce an async
+        lazy-load on those paths.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        video_id : str
+            YouTube video identifier
+
+        Returns
+        -------
+        Optional[VideoDB]
+            Video with detail relationships loaded, or None if not found
+        """
+        result = await session.execute(
+            select(VideoDB)
+            .where(VideoDB.video_id == video_id)
+            .options(selectinload(VideoDB.transcripts))
+            .options(selectinload(VideoDB.channel))
+            .options(selectinload(VideoDB.tags))
+            .options(selectinload(VideoDB.category))
+            .options(
+                selectinload(VideoDB.video_topics).selectinload(
+                    VideoTopic.topic_category
+                )
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def list_videos_filtered(
+        self,
+        session: AsyncSession,
+        *,
+        order_clause: ColumnElement[Any],
+        offset: int,
+        limit: int,
+        include_unavailable: bool = False,
+        channel_id: str | None = None,
+        uploaded_after: datetime | None = None,
+        uploaded_before: datetime | None = None,
+        has_transcript: bool | None = None,
+        valid_tags: list[str] | None = None,
+        valid_category: str | None = None,
+        valid_topics: list[str] | None = None,
+        canonical_tag_subqueries: list[Select[Any]] | None = None,
+        liked_only: bool = False,
+        saved_unwatched: bool = False,
+        qualification: Subquery | None = None,
+        excluded_videos: ScalarSelect[str] | None = None,
+    ) -> tuple[int, list[VideoDB]]:
+        """List videos matching the classification/entity filters, with count.
+
+        Builds one filtered ``select(VideoDB)`` (eager-loading the relationships
+        the list response reads), derives the total from that same query's
+        subquery so the count always inherits every filter, then applies the
+        ordering and pagination and returns the page.
+
+        The entity qualification / exclusion / canonical-tag subqueries are
+        built by their own repositories and passed in, so this method composes
+        them without reaching across repository boundaries. ``order_clause`` is
+        the resolved primary sort expression (the caller owns the API-level
+        sort-field mapping, including the relevance case that references the
+        qualification subquery); a deterministic ``video_id`` tiebreak is always
+        appended.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        include_unavailable : bool
+            When False, restrict to ``availability_status == AVAILABLE``.
+        channel_id : str | None
+            Optional channel filter.
+        uploaded_after, uploaded_before : datetime | None
+            Optional inclusive upload-date bounds.
+        has_transcript : bool | None
+            When set, require (True) or forbid (False) a transcript.
+        valid_tags : list[str] | None
+            Pre-validated raw tags; OR logic within the set.
+        valid_category : str | None
+            Pre-validated category id.
+        valid_topics : list[str] | None
+            Pre-validated topic ids; OR logic within the set.
+        canonical_tag_subqueries : list[Select[Any]] | None
+            Pre-built canonical-tag video-id subqueries; UNIONed (OR logic).
+        liked_only : bool
+            Restrict to liked videos.
+        saved_unwatched : bool
+            Restrict to the saved-but-never-watched set.
+        qualification : Subquery | None
+            Entity intersection (required-AND) subquery to inner-join on, or None.
+        excluded_videos : ScalarSelect[str] | None
+            Excluded-entity video-id set to remove (OR logic), or None.
+        order_clause : ColumnElement[Any]
+            Resolved primary sort expression (asc/desc already applied).
+        offset, limit : int
+            Pagination window.
+
+        Returns
+        -------
+        tuple[int, list[VideoDB]]
+            The total matching count (before pagination) and the page of videos.
+        """
+        query = (
+            select(VideoDB)
+            .options(selectinload(VideoDB.transcripts))
+            .options(selectinload(VideoDB.channel))
+            .options(selectinload(VideoDB.tags))
+            .options(selectinload(VideoDB.category))
+            .options(
+                selectinload(VideoDB.video_topics).selectinload(
+                    VideoTopic.topic_category
+                )
+            )
+        )
+
+        if not include_unavailable:
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+
+        if channel_id:
+            query = query.where(VideoDB.channel_id == channel_id)
+
+        if uploaded_after:
+            query = query.where(VideoDB.upload_date >= uploaded_after)
+
+        if uploaded_before:
+            query = query.where(VideoDB.upload_date <= uploaded_before)
+
+        if has_transcript is not None:
+            transcript_subquery = (
+                select(VideoTranscript.video_id).distinct().scalar_subquery()
+            )
+            if has_transcript:
+                query = query.where(VideoDB.video_id.in_(transcript_subquery))
+            else:
+                query = query.where(VideoDB.video_id.notin_(transcript_subquery))
+
+        if valid_tags:
+            tagged_videos = (
+                select(VideoTag.video_id).where(VideoTag.tag.in_(valid_tags)).distinct()
+            )
+            query = query.where(VideoDB.video_id.in_(tagged_videos))
+
+        if valid_category:
+            query = query.where(VideoDB.category_id == valid_category)
+
+        if valid_topics:
+            topic_videos = (
+                select(VideoTopic.video_id)
+                .where(VideoTopic.topic_id.in_(valid_topics))
+                .distinct()
+            )
+            query = query.where(VideoDB.video_id.in_(topic_videos))
+
+        if canonical_tag_subqueries:
+            combined = union(*canonical_tag_subqueries)
+            query = query.where(VideoDB.video_id.in_(combined))
+
+        if liked_only:
+            liked_subquery = (
+                select(UserVideoDB.video_id)
+                .where(UserVideoDB.liked.is_(True))
+                .distinct()
+                .scalar_subquery()
+            )
+            query = query.where(VideoDB.video_id.in_(liked_subquery))
+
+        if saved_unwatched:
+            query = query.where(VideoDB.video_id.in_(saved_forgotten_video_ids()))
+
+        if qualification is not None:
+            query = query.join(
+                qualification, VideoDB.video_id == qualification.c.video_id
+            )
+
+        if excluded_videos is not None:
+            query = query.where(VideoDB.video_id.notin_(excluded_videos))
+
+        count_query = select(func.count()).select_from(query.subquery())
+        total_result = await session.execute(count_query)
+        total = total_result.scalar() or 0
+
+        paginated_query = (
+            query.order_by(order_clause, VideoDB.video_id.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(paginated_query)
+        videos = list(result.scalars().all())
+        return total, videos
+
+    async def list_by_topic(
+        self,
+        session: AsyncSession,
+        topic_id: str,
+        *,
+        include_unavailable: bool,
+        offset: int,
+        limit: int,
+    ) -> tuple[int, list[VideoDB]]:
+        """List videos classified with a topic, newest first, with count.
+
+        Joins ``video_topics`` for the given topic, eager-loads the
+        relationships the list response reads (transcripts, channel, tags,
+        category), and derives the total from the same filtered join before
+        pagination. Ordered by upload date descending.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        topic_id : str
+            Topic identifier.
+        include_unavailable : bool
+            When False, restrict to ``availability_status == AVAILABLE``.
+        offset, limit : int
+            Pagination window.
+
+        Returns
+        -------
+        tuple[int, list[VideoDB]]
+            The total matching count and the page of videos.
+        """
+        base_query = (
+            select(VideoDB)
+            .join(VideoTopic, VideoDB.video_id == VideoTopic.video_id)
+            .where(VideoTopic.topic_id == topic_id)
+        )
+        if not include_unavailable:
+            base_query = base_query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+
+        # Derive the count from the same filtered query so it can never drift
+        # from the returned rows as filters change (the video_topics join is
+        # one-row-per-video, so this counts distinct matching videos).
+        count_query = select(func.count()).select_from(base_query.subquery())
+        total_result = await session.execute(count_query)
+        total = total_result.scalar() or 0
+
+        paginated_query = (
+            base_query.options(selectinload(VideoDB.transcripts))
+            .options(selectinload(VideoDB.channel))
+            .options(selectinload(VideoDB.tags))
+            .options(selectinload(VideoDB.category))
+            .order_by(VideoDB.upload_date.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(paginated_query)
+        videos = list(result.scalars().all())
+        return total, videos
+
+    async def list_by_tag(
+        self,
+        session: AsyncSession,
+        tag: str,
+        *,
+        include_unavailable: bool,
+        offset: int,
+        limit: int,
+    ) -> tuple[int, list[VideoDB]]:
+        """List videos carrying a raw tag, newest first, with count.
+
+        Joins ``video_tags`` for the exact tag and eager-loads the
+        relationships the tag-videos response reads (transcripts, channel).
+        The total is derived from the same filtered join before pagination, so
+        it can never drift from the returned rows. Ordered by upload date
+        descending.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        tag : str
+            Exact tag string.
+        include_unavailable : bool
+            When False, restrict to ``availability_status == AVAILABLE``.
+        offset, limit : int
+            Pagination window.
+
+        Returns
+        -------
+        tuple[int, list[VideoDB]]
+            The total matching count and the page of videos.
+        """
+        base_query = (
+            select(VideoDB)
+            .join(VideoTag, VideoDB.video_id == VideoTag.video_id)
+            .where(VideoTag.tag == tag)
+        )
+        if not include_unavailable:
+            base_query = base_query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+
+        count_query = select(func.count()).select_from(base_query.subquery())
+        total = (await session.execute(count_query)).scalar() or 0
+
+        paginated_query = (
+            base_query.options(selectinload(VideoDB.transcripts))
+            .options(selectinload(VideoDB.channel))
+            .order_by(VideoDB.upload_date.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(paginated_query)
+        videos = list(result.scalars().all())
+        return total, videos
+
+    async def search_titles(
+        self,
+        session: AsyncSession,
+        *,
+        query_text: str,
+        include_unavailable: bool = False,
+        limit: int = 50,
+    ) -> tuple[list[tuple[VideoDB, ChannelDB | None]], int]:
+        """
+        Full-text (ILIKE) search over video titles (issue #256).
+
+        Case-insensitive substring match against ``title`` (LIKE wildcards in the
+        query are escaped for literal matching). Returns matching videos with
+        their channel (outer-joined), newest first, capped at ``limit``, plus the
+        total match count before the limit.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        query_text : str
+            The raw search phrase (escaped internally).
+        include_unavailable : bool, optional
+            When False (default), only AVAILABLE videos are searched.
+        limit : int, optional
+            Maximum number of results to return; default 50.
+
+        Returns
+        -------
+        tuple[list[tuple[VideoDB, ChannelDB | None]], int]
+            ``(rows, total)`` where each row is ``(video, channel_or_None)``.
+        """
+        escaped = escape_like_pattern(query_text)
+        conditions: list[ColumnElement[bool]] = []
+        if not include_unavailable:
+            conditions.append(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        conditions.append(VideoDB.title.ilike(f"%{escaped}%"))
+
+        total = (
+            await session.execute(
+                select(func.count()).select_from(
+                    select(VideoDB.video_id).where(*conditions).subquery()
+                )
+            )
+        ).scalar() or 0
+
+        result = await session.execute(
+            select(VideoDB, ChannelDB)
+            .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
+            .where(*conditions)
+            # video_id is a deterministic tiebreak so the capped top-N is stable
+            # when several videos share an upload_date (#256).
+            .order_by(VideoDB.upload_date.desc(), VideoDB.video_id.asc())
+            .limit(limit)
+        )
+        return [(row[0], row[1]) for row in result.all()], total
+
+    async def search_descriptions(
+        self,
+        session: AsyncSession,
+        *,
+        query_text: str,
+        include_unavailable: bool = False,
+        limit: int = 50,
+    ) -> tuple[list[tuple[VideoDB, ChannelDB | None]], int]:
+        """
+        Full-text (ILIKE) search over video descriptions (issue #256).
+
+        Like :meth:`search_titles` but matches ``description`` (excluding videos
+        with a NULL description). LIKE wildcards in the query are escaped.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The database session.
+        query_text : str
+            The raw search phrase (escaped internally).
+        include_unavailable : bool, optional
+            When False (default), only AVAILABLE videos are searched.
+        limit : int, optional
+            Maximum number of results to return; default 50.
+
+        Returns
+        -------
+        tuple[list[tuple[VideoDB, ChannelDB | None]], int]
+            ``(rows, total)`` where each row is ``(video, channel_or_None)``.
+        """
+        escaped = escape_like_pattern(query_text)
+        conditions: list[ColumnElement[bool]] = [VideoDB.description.isnot(None)]
+        if not include_unavailable:
+            conditions.append(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        conditions.append(VideoDB.description.ilike(f"%{escaped}%"))
+
+        total = (
+            await session.execute(
+                select(func.count()).select_from(
+                    select(VideoDB.video_id).where(*conditions).subquery()
+                )
+            )
+        ).scalar() or 0
+
+        result = await session.execute(
+            select(VideoDB, ChannelDB)
+            .outerjoin(ChannelDB, VideoDB.channel_id == ChannelDB.channel_id)
+            .where(*conditions)
+            # video_id is a deterministic tiebreak so the capped top-N is stable
+            # when several videos share an upload_date (#256).
+            .order_by(VideoDB.upload_date.desc(), VideoDB.video_id.asc())
+            .limit(limit)
+        )
+        return [(row[0], row[1]) for row in result.all()], total
 
     async def search_videos(
         self, session: AsyncSession, filters: VideoSearchFilters

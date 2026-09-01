@@ -224,6 +224,8 @@ async def get_topic_videos(
     ----------
     topic_id : str
         Topic ID (knowledge graph format like /m/xxx or alphanumeric).
+    include_unavailable : bool
+        Include unavailable videos (default False).
     limit : int
         Items per page (1-100, default 20).
     offset : int
@@ -351,6 +353,10 @@ async def get_topic(
         examples=["/m/019_rr", "gaming", "/m/098wr/videos"],
     ),
     session: AsyncSession = Depends(get_db),
+    include_unavailable: bool = Query(
+        False,
+        description="Include unavailable records in results (for /videos)",
+    ),
     limit: int = Query(20, ge=1, le=100, description="Items per page (for /videos)"),
     offset: int = Query(0, ge=0, description="Pagination offset (for /videos)"),
     topic_repo: TopicCategoryRepository = Depends(get_topic_category_repository),
@@ -368,6 +374,8 @@ async def get_topic(
         Topic ID (knowledge graph format like /m/xxx or alphanumeric).
     session : AsyncSession
         Database session from dependency.
+    include_unavailable : bool
+        Include unavailable videos (used when path ends with /videos).
     limit : int
         Items per page (used when path ends with /videos).
     offset : int
@@ -384,11 +392,15 @@ async def get_topic(
         404 if topic not found.
     """
     # Handle /videos suffix - forward to videos logic for slash-containing topic IDs
-    # This happens because :path greedily matches /m/098wr/videos as topic_id
+    # This happens because :path greedily matches /m/098wr/videos as topic_id.
+    # include_unavailable must be forwarded explicitly: this is a plain function
+    # call, so get_topic_videos' own Query(False) default would arrive as an
+    # unresolved sentinel (truthy) and silently disable the availability filter.
     if topic_id.endswith("/videos"):
         actual_topic_id = topic_id[:-7]  # Remove "/videos" suffix
         return await get_topic_videos(
             topic_id=actual_topic_id,
+            include_unavailable=include_unavailable,
             limit=limit,
             offset=offset,
             session=session,

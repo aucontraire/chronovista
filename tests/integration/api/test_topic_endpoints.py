@@ -19,6 +19,7 @@ from chronovista.db.models import (
     Video,
     VideoTopic,
 )
+from chronovista.models.enums import AvailabilityStatus
 
 
 class TestListTopics:
@@ -439,6 +440,103 @@ class TestTopicVideos:
             data = response.json()
             # RFC 7807 format: code is at top level
             assert data["code"] == "NOT_FOUND"
+
+    async def test_forwarding_path_honors_include_unavailable(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory,
+    ) -> None:
+        """A slash-containing topic ID reaches /videos through the get_topic
+        :path forward, which must honor include_unavailable.
+
+        Regression: the forward previously did not pass include_unavailable, so
+        get_topic_videos' own ``Query(False)`` default arrived as a truthy
+        sentinel and the availability filter was silently skipped — leaking
+        unavailable videos into the default response for every ``/m/...`` topic.
+        """
+        topic_id = "m/regtest_unavail"
+        async with integration_session_factory() as session:
+            await session.execute(delete(VideoTopic))
+            await session.execute(delete(Video))
+            await session.execute(delete(Channel))
+            await session.execute(
+                delete(TopicCategory).where(TopicCategory.topic_id == topic_id)
+            )
+            await session.commit()
+
+            session.add(
+                TopicCategory(
+                    topic_id=topic_id,
+                    category_name="Forward Regression Topic",
+                    topic_type="youtube",
+                    source="seeded",
+                )
+            )
+            channel = Channel(
+                channel_id="UC" + "F" * 22,
+                title="Forward Regression Channel",
+                is_subscribed=False,
+            )
+            session.add(channel)
+            await session.flush()
+
+            available = Video(
+                video_id="vid_avail_0",
+                channel_id=channel.channel_id,
+                title="Available Video",
+                upload_date=datetime.now(UTC),
+                duration=100,
+                availability_status=AvailabilityStatus.AVAILABLE.value,
+            )
+            deleted = Video(
+                video_id="vid_del_000",
+                channel_id=channel.channel_id,
+                title="Deleted Video",
+                upload_date=datetime.now(UTC),
+                duration=100,
+                availability_status=AvailabilityStatus.DELETED.value,
+            )
+            session.add_all([available, deleted])
+            await session.flush()
+            session.add_all(
+                [
+                    VideoTopic(video_id=available.video_id, topic_id=topic_id),
+                    VideoTopic(video_id=deleted.video_id, topic_id=topic_id),
+                ]
+            )
+            await session.commit()
+
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+
+                # Default: the forwarding path must EXCLUDE the unavailable video.
+                resp = await async_client.get(f"/api/v1/topics/{topic_id}/videos")
+                assert resp.status_code == 200, resp.text
+                body = resp.json()
+                assert {item["video_id"] for item in body["data"]} == {"vid_avail_0"}
+                assert body["pagination"]["total"] == 1
+
+                # include_unavailable=true must INCLUDE it.
+                resp2 = await async_client.get(
+                    f"/api/v1/topics/{topic_id}/videos?include_unavailable=true"
+                )
+                assert resp2.status_code == 200, resp2.text
+                body2 = resp2.json()
+                assert {item["video_id"] for item in body2["data"]} == {
+                    "vid_avail_0",
+                    "vid_del_000",
+                }
+                assert body2["pagination"]["total"] == 2
+        finally:
+            async with integration_session_factory() as session:
+                await session.execute(delete(VideoTopic))
+                await session.execute(delete(Video))
+                await session.execute(delete(Channel))
+                await session.execute(
+                    delete(TopicCategory).where(TopicCategory.topic_id == topic_id)
+                )
+                await session.commit()
 
     async def test_get_topic_videos_returns_paginated_response(
         self,

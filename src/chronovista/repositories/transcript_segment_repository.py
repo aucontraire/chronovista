@@ -1192,5 +1192,64 @@ class TranscriptSegmentRepository(
         )
         return result.scalar_one_or_none() is not None
 
+    async def list_segments_page(
+        self,
+        session: AsyncSession,
+        video_id: str,
+        language: str,
+        *,
+        start_time: float | None,
+        end_time: float | None,
+        offset: int,
+        limit: int,
+    ) -> tuple[int, list[TranscriptSegmentDB]]:
+        """List a page of segments for a video+language, with total count.
+
+        Matches the language case-insensitively (RFC 5646), applies optional
+        time-window filters, derives the total from the same filtered query, and
+        returns the page ordered by ``start_time`` ascending.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            YouTube video identifier.
+        language : str
+            BCP-47 language code (matched case-insensitively).
+        start_time : float | None
+            When set, keep segments with ``start_time >= start_time``.
+        end_time : float | None
+            When set, keep segments with ``end_time <= end_time``.
+        offset, limit : int
+            Pagination window.
+
+        Returns
+        -------
+        tuple[int, list[TranscriptSegmentDB]]
+            The total matching count and the page of segments.
+        """
+        base_query = (
+            select(TranscriptSegmentDB)
+            .where(TranscriptSegmentDB.video_id == video_id)
+            .where(func.lower(TranscriptSegmentDB.language_code) == language.lower())
+        )
+        if start_time is not None:
+            base_query = base_query.where(TranscriptSegmentDB.start_time >= start_time)
+        if end_time is not None:
+            base_query = base_query.where(TranscriptSegmentDB.end_time <= end_time)
+
+        count_query = select(func.count()).select_from(base_query.subquery())
+        total = (await session.execute(count_query)).scalar() or 0
+
+        paginated_query = (
+            base_query.order_by(TranscriptSegmentDB.start_time.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await session.execute(paginated_query)
+        segments = list(result.scalars().all())
+        return total, segments
+
 
 __all__ = ["TranscriptSegmentRepository"]

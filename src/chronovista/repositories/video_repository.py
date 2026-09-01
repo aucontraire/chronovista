@@ -185,6 +185,40 @@ class VideoRepository(
         )
         return result.first() is not None
 
+    async def exists_visible(
+        self,
+        session: AsyncSession,
+        video_id: VideoId,
+        *,
+        include_unavailable: bool,
+    ) -> bool:
+        """Check whether a video exists, honoring the availability filter.
+
+        When ``include_unavailable`` is False, an unavailable video is treated
+        as not present (the transcript-languages endpoint 404s on it).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        video_id : str
+            YouTube video identifier.
+        include_unavailable : bool
+            When False, restrict existence to ``availability_status == AVAILABLE``.
+
+        Returns
+        -------
+        bool
+            True if a matching video exists under the filter.
+        """
+        query = select(VideoDB.video_id).where(VideoDB.video_id == video_id)
+        if not include_unavailable:
+            query = query.where(
+                VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            )
+        result = await session.execute(query)
+        return result.first() is not None
+
     async def get_titles_by_ids(
         self, session: AsyncSession, video_ids: list[str]
     ) -> dict[str, str]:

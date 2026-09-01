@@ -316,6 +316,13 @@ def get_transcript_segment_repository() -> TranscriptSegmentRepository:
     return container.create_transcript_segment_repository()
 
 
+def get_video_transcript_repository() -> VideoTranscriptRepository:
+    """Dependency providing a VideoTranscriptRepository via the container (#256)."""
+    from chronovista.container import container
+
+    return container.create_video_transcript_repository()
+
+
 def get_topic_category_repository() -> TopicCategoryRepository:
     """Dependency providing a TopicCategoryRepository via the container (#256)."""
     from chronovista.container import container

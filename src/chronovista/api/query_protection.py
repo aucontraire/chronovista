@@ -37,6 +37,7 @@ from typing import Any, TypeVar
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.config.settings import settings
 from chronovista.exceptions import QueryTimeoutError
 
 logger = logging.getLogger(__name__)
@@ -67,10 +68,12 @@ If the client timeout changes, this must move with it."""
 def get_client_id(request: Request) -> str:
     """Identify the caller for rate-limiting purposes.
 
-    Prefers ``X-Forwarded-For`` so a proxied deployment distinguishes callers.
-    On a local install every request resolves to the same loopback address,
-    which is why blanket limiting is inappropriate here — see the module
-    docstring.
+    Uses the client's direct socket address. ``X-Forwarded-For`` is honored ONLY
+    when ``settings.trust_forwarded_headers`` is enabled (the app sits behind a
+    trusted reverse proxy). By default it is ignored: on a direct/localhost
+    deployment any client could set the header to forge its rate-limit bucket
+    (#253). This is the single client-identity helper for every router and the
+    request-logging middleware.
 
     Parameters
     ----------
@@ -82,9 +85,10 @@ def get_client_id(request: Request) -> str:
     str
         Client identifier, or ``"unknown"`` when none can be determined.
     """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    if settings.trust_forwarded_headers:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
 

@@ -1374,6 +1374,15 @@ class TestRateLimiting:
         """Clear all in-memory rate-limit counters before each test."""
         _request_counts.clear()
 
+    @pytest.fixture(autouse=True)
+    def _trust_forwarded_headers(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """These tests distinguish clients via X-Forwarded-For, which is only
+        honored when the app sits behind a trusted proxy (#253). Enable it here."""
+        monkeypatch.setattr(
+            "chronovista.api.query_protection.settings.trust_forwarded_headers",
+            True,
+        )
+
     async def test_requests_within_limit_succeed(
         self,
         async_client: AsyncClient,

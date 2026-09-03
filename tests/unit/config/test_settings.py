@@ -18,7 +18,6 @@ def test_settings_defaults():
         youtube_api_key="test_key",
         youtube_client_id="test_id",
         youtube_client_secret="test_secret",
-        secret_key="test_secret",
         debug=False,  # Override environment setting for test
         log_level="INFO",  # Override environment setting for test
     )
@@ -37,7 +36,6 @@ def test_settings_path_validation():
         youtube_api_key="test_key",
         youtube_client_id="test_id",
         youtube_client_secret="test_secret",
-        secret_key="test_secret",
         data_dir=Path("./test_data"),
     )
 
@@ -52,7 +50,6 @@ def test_settings_path_string_conversion():
         "youtube_api_key": "test_key",
         "youtube_client_id": "test_id",
         "youtube_client_secret": "test_secret",
-        "secret_key": "test_secret",
         "data_dir": "./test_data",
     }
     settings = Settings.model_validate(data)
@@ -67,7 +64,6 @@ def test_settings_database_detection():
         youtube_api_key="test_key",
         youtube_client_id="test_id",
         youtube_client_secret="test_secret",
-        secret_key="test_secret",
         database_url="postgresql://user:pass@localhost/db",
     )
 
@@ -78,7 +74,6 @@ def test_settings_database_detection():
         youtube_api_key="test_key",
         youtube_client_id="test_id",
         youtube_client_secret="test_secret",
-        secret_key="test_secret",
         database_url="mysql://user:pass@localhost/db",
     )
 
@@ -93,7 +88,6 @@ def test_settings_oauth_scopes_parsing():
         "youtube_api_key": "test_key",
         "youtube_client_id": "test_id",
         "youtube_client_secret": "test_secret",
-        "secret_key": "test_secret",
         "oauth_scopes": "scope1,scope2,scope3",
     }
     settings = Settings.model_validate(data)
@@ -107,7 +101,6 @@ def test_settings_oauth_scopes_list():
         youtube_api_key="test_key",
         youtube_client_id="test_id",
         youtube_client_secret="test_secret",
-        secret_key="test_secret",
         oauth_scopes=["scope1", "scope2", "scope3"],
     )
 
@@ -121,6 +114,5 @@ def test_settings_log_level_validation():
             youtube_api_key="test_key",
             youtube_client_id="test_id",
             youtube_client_secret="test_secret",
-            secret_key="test_secret",
             log_level="INVALID",
         )

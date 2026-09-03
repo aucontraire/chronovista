@@ -15,6 +15,7 @@ import os
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import httpx
@@ -27,6 +28,20 @@ from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import Video as VideoDB
 
 logger = logging.getLogger(__name__)
+
+# #253 (SSRF guard): the image proxy must only ever fetch from YouTube's image
+# CDNs. Without this, a redirect — or a poisoned stored thumbnail_url — could
+# steer the server-side fetch to an arbitrary host. Matched by suffix so regional
+# subdomains (yt3.ggpht.com, i9.ytimg.com, …) are covered, while lookalikes like
+# "evil.ytimg.com.attacker.com" are not. Fetches also disable redirect-following
+# (below), since these CDNs serve thumbnails directly.
+_ALLOWED_IMAGE_HOST_SUFFIXES = (".ytimg.com", ".ggpht.com", ".googleusercontent.com")
+
+
+def _is_allowed_image_host(url: str) -> bool:
+    """True only if *url*'s host is a YouTube image CDN (#253 SSRF guard)."""
+    host = urlparse(url).hostname
+    return host is not None and host.endswith(_ALLOWED_IMAGE_HOST_SUFFIXES)
 
 
 def iter_cached_files(
@@ -365,10 +380,14 @@ class ImageCacheService:
         tuple[bool, str | None]
             ``(True, None)`` on success, or ``(False, reason)`` on failure.
         """
+        if not _is_allowed_image_host(url):
+            logger.warning("Refusing to fetch image from disallowed host: %s", url)
+            return False, "disallowed_host"
+
         async with self._semaphore:
             try:
                 async with httpx.AsyncClient(
-                    follow_redirects=True,
+                    follow_redirects=False,
                     timeout=timeout,
                 ) as client:
                     response = await client.get(url)
@@ -380,6 +399,16 @@ class ImageCacheService:
                 return False, f"http_error: {exc}"
 
         status_code = response.status_code
+
+        # Redirects are deliberately NOT followed (follow_redirects=False above):
+        # a 3xx from an allowlisted CDN could point its Location at an arbitrary
+        # host and reopen the SSRF the allowlist closes. Reject explicitly — do
+        # NOT add redirect-following here without re-deriving why it's unsafe (#253).
+        if 300 <= status_code < 400:
+            logger.warning(
+                "Refusing to follow redirect (%d) fetching image %s", status_code, url
+            )
+            return False, f"redirect_not_followed_{status_code}"
 
         # 404 / 410 → create .missing marker (FR-006)
         if status_code in (404, 410):

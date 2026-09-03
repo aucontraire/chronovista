@@ -19,6 +19,7 @@ from chronovista.api.middleware import (
     RequestIdMiddleware,
     get_request_id,
 )
+from chronovista.api.query_protection import get_client_id
 from chronovista.api.routers import (
     batch_corrections,
     canonical_tags,
@@ -162,17 +163,8 @@ def _is_sensitive_path(path: str) -> bool:
 
 
 def _get_client_ip(request: Request) -> str:
-    """Extract client IP from request, handling proxied requests."""
-    # Check for forwarded headers (common with reverse proxies)
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        # Take the first IP in the chain (original client)
-        return forwarded_for.split(",")[0].strip()
-
-    # Fall back to direct client host
-    if request.client:
-        return request.client.host
-    return "unknown"
+    """Client IP via the shared, trusted-proxy-aware helper (#253)."""
+    return get_client_id(request)
 
 
 @app.middleware("http")

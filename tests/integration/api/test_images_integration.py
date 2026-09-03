@@ -404,7 +404,7 @@ class TestChannelImageIntegration:
         # Mock database query for thumbnail_url
         mock_db_session = AsyncMock()
         mock_result = MagicMock()
-        mock_result.first.return_value = ("https://example.com/thumbnail.jpg",)
+        mock_result.first.return_value = ("https://yt3.ggpht.com/thumbnail.jpg",)
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
         # Mock successful HTTP fetch
@@ -481,7 +481,7 @@ class TestChannelImageIntegration:
         # Mock database query
         mock_db_session = AsyncMock()
         mock_result = MagicMock()
-        mock_result.first.return_value = ("https://example.com/thumb.jpg",)
+        mock_result.first.return_value = ("https://yt3.ggpht.com/thumb.jpg",)
         mock_db_session.execute = AsyncMock(return_value=mock_result)
 
         # Mock HTTP response

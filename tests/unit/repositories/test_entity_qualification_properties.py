@@ -19,7 +19,7 @@ import asyncio
 import uuid
 from typing import Any, cast
 
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,6 +63,10 @@ def _compiled(entity_ids: list[uuid.UUID], scope: EvidenceScope) -> str:
     ).replace("\n", " ")
 
 
+# deadline disabled: each example runs the real async subquery build + SQL
+# compile, which exceeds Hypothesis's 200ms default under CI/load (flaky, not a
+# perf regression). The property is what matters, not per-example latency.
+@settings(deadline=None)
 @given(
     ids=st.lists(st.sampled_from(_POOL), min_size=1, max_size=20),
     scope=st.sampled_from(list(EvidenceScope)),
@@ -80,6 +84,7 @@ def test_bar_is_set_from_distinct_ids_only(
     assert f"= {len(set(ids))}" in sql
 
 
+@settings(deadline=None)
 @given(ids=st.lists(st.sampled_from(_POOL), min_size=1, max_size=20))
 def test_repetition_does_not_change_the_query(ids: list[uuid.UUID]) -> None:
     """A list and its deduplicated form produce identical SQL.
@@ -91,6 +96,7 @@ def test_repetition_does_not_change_the_query(ids: list[uuid.UUID]) -> None:
     assert _compiled(ids, EvidenceScope.ANY) == _compiled(deduped, EvidenceScope.ANY)
 
 
+@settings(deadline=None)
 @given(ids=st.lists(st.sampled_from(_POOL), min_size=1, max_size=20))
 def test_qualification_counts_distinct_entities_not_rows(
     ids: list[uuid.UUID],
@@ -106,6 +112,7 @@ def test_qualification_counts_distinct_entities_not_rows(
     assert "count(distinct" in sql
 
 
+@settings(deadline=None)
 @given(ids=st.lists(st.sampled_from(_POOL), min_size=1, max_size=20))
 def test_transcript_scope_constrains_by_source_only_under_transcript(
     ids: list[uuid.UUID],
@@ -128,6 +135,7 @@ def test_transcript_scope_constrains_by_source_only_under_transcript(
     assert "mention_source in" not in any_sql
 
 
+@settings(deadline=None)
 @given(ids=st.lists(st.sampled_from(_POOL), min_size=1, max_size=20))
 def test_qualification_never_joins_transcript_segments(
     ids: list[uuid.UUID],

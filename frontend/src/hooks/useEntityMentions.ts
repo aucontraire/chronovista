@@ -305,6 +305,8 @@ export function useEntities(
       params.type ?? null,
       params.has_mentions ?? null,
       params.search ?? null,
+      params.search_aliases ?? null,
+      params.exclude_alias_types ?? null,
       params.sort ?? null,
       limit,
     ],

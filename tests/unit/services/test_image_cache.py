@@ -23,6 +23,7 @@ from chronovista.services.image_cache import (
     _VIDEO_PLACEHOLDER_SVG,
     ImageCacheConfig,
     ImageCacheService,
+    _is_allowed_image_host,
 )
 from tests.factories.channel_factory import ChannelTestData
 
@@ -243,7 +244,7 @@ class TestFetchPipeline:
             mock_client_cls.return_value = mock_client
 
             success, reason = await service._fetch_and_cache(
-                url="https://example.com/image.jpg",
+                url="https://i.ytimg.com/image.jpg",
                 cache_path=cache_path,
                 timeout=2.0,
             )
@@ -274,7 +275,7 @@ class TestFetchPipeline:
             mock_client_cls.return_value = mock_client
 
             success, reason = await service._fetch_and_cache(
-                url="https://example.com/page.html",
+                url="https://i.ytimg.com/page.html",
                 cache_path=cache_path,
                 timeout=2.0,
             )
@@ -307,7 +308,7 @@ class TestFetchPipeline:
             mock_client_cls.return_value = mock_client
 
             success, reason = await service._fetch_and_cache(
-                url="https://example.com/small.jpg",
+                url="https://i.ytimg.com/small.jpg",
                 cache_path=cache_path,
                 timeout=2.0,
             )
@@ -340,7 +341,7 @@ class TestFetchPipeline:
             mock_client_cls.return_value = mock_client
 
             success, reason = await service._fetch_and_cache(
-                url="https://example.com/huge.jpg",
+                url="https://i.ytimg.com/huge.jpg",
                 cache_path=cache_path,
                 timeout=2.0,
             )
@@ -388,7 +389,7 @@ class TestFetchPipeline:
             # Start 5 concurrent fetches
             tasks = [
                 service._fetch_and_cache(
-                    url=f"https://example.com/image{i}.jpg",
+                    url=f"https://i.ytimg.com/image{i}.jpg",
                     cache_path=tmp_path / f"image{i}.jpg",
                     timeout=2.0,
                 )
@@ -430,7 +431,7 @@ class TestCacheStateManagement:
             mock_client_cls.return_value = mock_client
 
             success, reason = await service._fetch_and_cache(
-                url="https://example.com/missing.jpg",
+                url="https://i.ytimg.com/missing.jpg",
                 cache_path=cache_path,
                 timeout=2.0,
             )
@@ -460,7 +461,7 @@ class TestCacheStateManagement:
             mock_client_cls.return_value = mock_client
 
             success, reason = await service._fetch_and_cache(
-                url="https://example.com/gone.jpg",
+                url="https://i.ytimg.com/gone.jpg",
                 cache_path=cache_path,
                 timeout=2.0,
             )
@@ -490,7 +491,7 @@ class TestCacheStateManagement:
             mock_client_cls.return_value = mock_client
 
             success, reason = await service._fetch_and_cache(
-                url="https://example.com/rate_limited.jpg",
+                url="https://i.ytimg.com/rate_limited.jpg",
                 cache_path=cache_path,
                 timeout=2.0,
             )
@@ -520,7 +521,7 @@ class TestCacheStateManagement:
             mock_client_cls.return_value = mock_client
 
             success, reason = await service._fetch_and_cache(
-                url="https://example.com/server_error.jpg",
+                url="https://i.ytimg.com/server_error.jpg",
                 cache_path=cache_path,
                 timeout=2.0,
             )
@@ -615,7 +616,7 @@ class TestGetChannelImage:
         """Test cache MISS path fetches and returns with X-Cache: MISS."""
         service = ImageCacheService(config=image_cache_config)
         channel_id = ChannelTestData.VALID_CHANNEL_IDS[1]
-        thumbnail_url = "https://example.com/thumbnail.jpg"
+        thumbnail_url = "https://i.ytimg.com/thumbnail.jpg"
 
         # Mock DB query to return thumbnail URL
         mock_result = MagicMock()
@@ -656,7 +657,7 @@ class TestGetChannelImage:
         """Test PLACEHOLDER path when fetch fails."""
         service = ImageCacheService(config=image_cache_config)
         channel_id = ChannelTestData.VALID_CHANNEL_IDS[2]
-        thumbnail_url = "https://example.com/thumbnail.jpg"
+        thumbnail_url = "https://i.ytimg.com/thumbnail.jpg"
 
         # Mock DB query
         mock_result = MagicMock()
@@ -1103,3 +1104,78 @@ class TestCacheInvalidation:
         # Third invalidation (still no-op)
         await service.invalidate_channel(channel_id)
         assert not cache_path.exists()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# #253: image-proxy SSRF host allowlist
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestImageHostAllowlist:
+    """The proxy may only fetch from YouTube image CDNs (#253 SSRF guard)."""
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://i.ytimg.com/vi/abc/hqdefault.jpg",
+            "https://i9.ytimg.com/vi/abc/mqdefault.jpg",
+            "https://yt3.ggpht.com/a/default.jpg",
+            "https://lh3.googleusercontent.com/x.jpg",
+        ],
+    )
+    def test_allows_youtube_cdn_hosts(self, url: str) -> None:
+        assert _is_allowed_image_host(url) is True
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.com/x.jpg",
+            "http://127.0.0.1/x.jpg",
+            "http://169.254.169.254/latest/meta-data/",  # cloud metadata SSRF
+            "https://evil.ytimg.com.attacker.com/x.jpg",  # suffix lookalike
+            "https://notytimg.com/x.jpg",
+            "https://ytimg.com/x.jpg",  # bare apex, no subdomain
+            "file:///etc/passwd",
+            "not-a-url",
+        ],
+    )
+    def test_rejects_other_hosts(self, url: str) -> None:
+        assert _is_allowed_image_host(url) is False
+
+    async def test_fetch_rejects_disallowed_host_without_request(
+        self, image_cache_config: ImageCacheConfig, tmp_path: Path
+    ) -> None:
+        """A disallowed host short-circuits — no HTTP request is made."""
+        service = ImageCacheService(config=image_cache_config)
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            success, reason = await service._fetch_and_cache(
+                url="https://example.com/evil.jpg",
+                cache_path=tmp_path / "x.jpg",
+                timeout=2.0,
+            )
+        assert success is False
+        assert reason == "disallowed_host"
+        mock_client_cls.assert_not_called()
+
+    async def test_fetch_does_not_follow_redirect(
+        self, image_cache_config: ImageCacheConfig, tmp_path: Path
+    ) -> None:
+        """An allowlisted host returning a 3xx is rejected, not chased (#253)."""
+        service = ImageCacheService(config=image_cache_config)
+        mock_response = Mock()
+        mock_response.status_code = 302
+        mock_response.headers = {"location": "http://169.254.169.254/"}
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+            success, reason = await service._fetch_and_cache(
+                url="https://i.ytimg.com/vi/abc/hqdefault.jpg",
+                cache_path=tmp_path / "x.jpg",
+                timeout=2.0,
+            )
+        assert success is False
+        assert reason == "redirect_not_followed_302"
+        assert not (tmp_path / "x.jpg").exists()

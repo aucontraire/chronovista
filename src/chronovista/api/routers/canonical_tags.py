@@ -26,6 +26,7 @@ from chronovista.api.deps import (
     get_tag_management_service,
     require_auth,
 )
+from chronovista.api.query_protection import get_client_id
 from chronovista.api.routers.responses import GET_ITEM_ERRORS, LIST_ERRORS
 from chronovista.api.schemas.canonical_tags import (
     CanonicalTagDetail,
@@ -77,25 +78,8 @@ _request_counts: dict[str, list[float]] = defaultdict(list)
 
 
 def _get_client_id(request: Request) -> str:
-    """
-    Get client identifier from request.
-
-    Uses X-Forwarded-For header for proxied requests, falls back to client host.
-
-    Parameters
-    ----------
-    request : Request
-        FastAPI request object.
-
-    Returns
-    -------
-    str
-        Client identifier (IP address or "unknown").
-    """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    """Client identifier via the shared, trusted-proxy-aware helper (#253)."""
+    return get_client_id(request)
 
 
 def _check_rate_limit(

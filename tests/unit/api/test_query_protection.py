@@ -34,7 +34,25 @@ def _request(*, forwarded: str | None = None, host: str | None = "127.0.0.1"):  
 
 
 class TestGetClientId:
-    def test_prefers_the_forwarded_header(self) -> None:
+    def test_ignores_forwarded_header_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # #253: X-Forwarded-For is spoofable, so it is ignored unless a trusted
+        # proxy is configured; the direct peer address wins by default.
+        monkeypatch.setattr(
+            "chronovista.api.query_protection.settings.trust_forwarded_headers",
+            False,
+        )
+        assert get_client_id(_request(forwarded="203.0.113.7, 10.0.0.1")) == "127.0.0.1"
+
+    def test_honors_forwarded_header_when_trusted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # When the app sits behind a trusted reverse proxy, the first hop is used.
+        monkeypatch.setattr(
+            "chronovista.api.query_protection.settings.trust_forwarded_headers",
+            True,
+        )
         assert (
             get_client_id(_request(forwarded="203.0.113.7, 10.0.0.1")) == "203.0.113.7"
         )

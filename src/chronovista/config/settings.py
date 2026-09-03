@@ -83,7 +83,10 @@ class Settings(BaseSettings):
     max_export_size: str = Field(default="100MB")
 
     # Security
-    secret_key: str = Field(default="dev-secret-key")
+    # Only honor X-Forwarded-For for client identity / rate-limit buckets when a
+    # trusted reverse proxy sets it. Default off: on a direct (localhost) deploy a
+    # client could otherwise forge the header to spoof its bucket (#253).
+    trust_forwarded_headers: bool = Field(default=False)
     session_timeout: int = Field(default=3600)
     token_refresh_threshold: int = Field(default=300)
 

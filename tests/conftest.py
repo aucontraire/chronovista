@@ -29,7 +29,6 @@ def mock_settings():
         youtube_api_key="test_api_key",
         youtube_client_id="test_client_id",
         youtube_client_secret="test_client_secret",
-        secret_key="test_secret_key",
         database_url="sqlite+aiosqlite:///:memory:",
     )
 

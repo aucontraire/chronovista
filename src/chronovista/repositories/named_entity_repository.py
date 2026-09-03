@@ -20,6 +20,7 @@ from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.models.named_entity import NamedEntityCreate, NamedEntityUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
+from chronovista.repositories.entity_mention_repository import _folded
 
 
 class NamedEntityRepository(
@@ -201,9 +202,10 @@ class NamedEntityRepository(
     ) -> tuple[list[NamedEntityDB], int]:
         """List named entities with status/type/mention/search filters (#256).
 
-        Mirrors the entity-list endpoint's query. ``search`` is a case-
-        insensitive substring on ``canonical_name``; when ``search_aliases`` is
-        set it also matches ``entity_aliases.alias_name`` (minus any
+        Mirrors the entity-list endpoint's query. ``search`` is a case- AND
+        accent-insensitive substring on ``canonical_name`` (folded via the shared
+        ``lower(unaccent(...))`` expression — Feature 072); when ``search_aliases``
+        is set it also matches ``entity_aliases.alias_name`` (minus any
         ``exclude_alias_types``) via a scalar sub-select. The count is taken over
         the filtered-but-unpaginated set so totals reflect every filter.
 
@@ -248,9 +250,18 @@ class NamedEntityRepository(
             base = base.where(NamedEntityDB.mention_count == 0)
 
         if search:
+            # Feature 072: fold BOTH the matched columns and the query pattern with
+            # the same lower(unaccent(...)) fold, so accent variants and case never
+            # split a search — symmetrically, in both directions (FR-001/FR-002).
+            # The columns use the shared `_folded` helper; the pattern uses the
+            # identical expression inline because `_folded` takes a column, not a
+            # bare string (FR-003 — one fold definition, applied both sides). `.like`
+            # (not `.ilike`) since both sides are already lowercased. Wildcard chars
+            # in `search` are intentionally left unescaped (pre-existing; out of scope).
+            folded_pattern = func.lower(func.unaccent(f"%{search}%"))
             if search_aliases:
                 alias_select = select(EntityAliasDB.entity_id).where(
-                    EntityAliasDB.alias_name.ilike(f"%{search}%")
+                    _folded(EntityAliasDB.alias_name).like(folded_pattern)
                 )
                 if exclude_alias_types:
                     alias_select = alias_select.where(
@@ -258,12 +269,14 @@ class NamedEntityRepository(
                     )
                 base = base.where(
                     or_(
-                        NamedEntityDB.canonical_name.ilike(f"%{search}%"),
+                        _folded(NamedEntityDB.canonical_name).like(folded_pattern),
                         NamedEntityDB.id.in_(alias_select.scalar_subquery()),
                     )
                 )
             else:
-                base = base.where(NamedEntityDB.canonical_name.ilike(f"%{search}%"))
+                base = base.where(
+                    _folded(NamedEntityDB.canonical_name).like(folded_pattern)
+                )
 
         # Count over the filtered-but-unsorted/unpaginated set. Derived from the
         # same `base`, so a future filter cannot drift the count from the page.

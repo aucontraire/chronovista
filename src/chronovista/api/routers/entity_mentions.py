@@ -191,7 +191,9 @@ async def list_entities(
     has_mentions: bool | None = Query(
         default=None, description="Filter by mention presence"
     ),
-    search: str | None = Query(default=None, description="Search by name"),
+    search: str | None = Query(
+        default=None, description="Search by name (case- and accent-insensitive)"
+    ),
     sort: str | None = Query(
         default=None, description="Sort field: name (default), mentions"
     ),
@@ -203,8 +205,9 @@ async def list_entities(
     search_aliases: bool = Query(
         default=False,
         description=(
-            "When true, also search entity_aliases.alias_name (ILIKE) in addition to "
-            "canonical_name. Only aliases of active entities are searched."
+            "When true, also match entity_aliases.alias_name (case- and "
+            "accent-insensitive) in addition to canonical_name. Only active "
+            "entities are surfaced through the alias path."
         ),
     ),
     exclude_alias_types: str | None = Query(
@@ -228,8 +231,8 @@ async def list_entities(
         If True, only entities with mention_count > 0.
         If False, only entities with mention_count = 0.
     search : str | None
-        Case-insensitive substring search on canonical_name (and alias_name
-        when search_aliases=true).
+        Case- and accent-insensitive substring search on canonical_name (and
+        alias_name when search_aliases=true).
     sort : str | None
         Sort order: "name" (alphabetical, default) or "mentions" (desc).
     limit : int
@@ -241,10 +244,11 @@ async def list_entities(
         returned (preserves backwards-compatible behaviour for callers that
         do not pass the parameter).
     search_aliases : bool
-        When True, JOIN entity_aliases and match on alias_name ILIKE as well
-        as canonical_name ILIKE. Excluded alias types (see exclude_alias_types)
-        are filtered out before the match is attempted. Only entities whose
-        status is 'active' are surfaced through the alias join path.
+        When True, also match ``entity_aliases.alias_name`` (case- and
+        accent-insensitive, via a non-correlated sub-select) in addition to
+        ``canonical_name``. Excluded alias types (see exclude_alias_types) are
+        filtered out before the match is attempted. Only active entities are
+        surfaced through the alias path.
     exclude_alias_types : str | None
         Comma-separated list of alias_type values to exclude when
         search_aliases=True. For example, ``asr_error`` prevents ASR-error

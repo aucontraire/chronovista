@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-09-02
+
+### Added
+- **Entity search on the `/entities` page is now accent-insensitive and alias-inclusive.** A name searched with or without accents returns the same entities in both directions (e.g. `Renée` and `Renee`), and typing an entity's alias now surfaces that entity — while transcript-error (`asr_error`) aliases stay excluded so garbled auto-caption text can't surface an entity. Matching reuses the existing `lower(unaccent(...))` fold already used for accent-insensitive entity membership, so search and membership agree on what counts as the same name. Read-only: no schema change, no migration, and no change to the response shape. (Accent-insensitivity for transcript search, and a "matched via alias" indicator, are tracked as follow-ups.)
+
 ## [0.75.0] - 2026-08-31
 
 ### Changed

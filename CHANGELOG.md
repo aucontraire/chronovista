@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.76.1] - 2026-09-03
+
+### Security
+- **Hardening pass (#253).** Single-user localhost app, so live exploitability was low, but each was a real weakness:
+  - **Image proxy** now fetches only from YouTube image CDNs (host allowlist) and no longer follows redirects, closing a server-side request forgery (SSRF) vector where a redirect or a poisoned stored thumbnail URL could steer the fetch to an arbitrary host.
+  - **Rate-limiter / client identity** no longer trusts the client-supplied `X-Forwarded-For` header by default (new `trust_forwarded_headers` setting, off unless the app runs behind a trusted proxy), so a client can no longer forge its rate-limit bucket. The four duplicate client-IP helpers were consolidated into one.
+  - Removed the unused `secret_key` setting (which carried an insecure default).
+  - Removed inline database credentials from `alembic.ini` / `alembic-dev.ini` (the runtime URL already comes from the app config).
+- OAuth token **encryption at rest** was split to #286 (the token file already uses owner-only `0o600` permissions).
+
 ## [0.76.0] - 2026-09-02
 
 ### Added

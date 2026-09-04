@@ -601,7 +601,7 @@ class LockAcquisitionError(ChronovistaError):
     ----------
     message : str
         Human-readable error message.
-    lock_holder_pid : int | None
+    pid : int | None
         The PID of the process holding the lock, if available.
 
     Examples
@@ -609,14 +609,14 @@ class LockAcquisitionError(ChronovistaError):
     >>> try:
     ...     await enrichment_service.acquire_lock()
     ... except LockAcquisitionError as e:
-    ...     print(f"Lock held by PID: {e.lock_holder_pid}")
+    ...     print(f"Lock held by PID: {e.pid}")
     ...     raise typer.Exit(4)
     """
 
     def __init__(
         self,
         message: str = "Failed to acquire enrichment lock",
-        lock_holder_pid: int | None = None,
+        pid: int | None = None,
     ) -> None:
         """
         Initialize LockAcquisitionError.
@@ -625,11 +625,17 @@ class LockAcquisitionError(ChronovistaError):
         ----------
         message : str, optional
             Human-readable error message (default: "Failed to acquire enrichment lock").
-        lock_holder_pid : int | None, optional
+        pid : int | None, optional
             The PID of the process holding the lock (default: None).
         """
-        self.lock_holder_pid: int | None = lock_holder_pid
+        self.pid: int | None = pid
         super().__init__(message)
+
+    def __str__(self) -> str:
+        """Return the message, with the lock-holder PID appended when known."""
+        if self.pid is not None:
+            return f"{self.message} (PID: {self.pid})"
+        return self.message
 
 
 class ValidationError(ChronovistaError):

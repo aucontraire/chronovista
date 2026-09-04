@@ -19,12 +19,12 @@ layer and handle bulk operations efficiently.
 
 from __future__ import annotations
 
+from chronovista.exceptions import LockAcquisitionError
 from chronovista.services.enrichment.enrichment_service import (
     EXIT_CODE_LOCK_FAILED,
     EnrichmentLock,
     EnrichmentService,
     EnrichmentStatus,
-    LockAcquisitionError,
     LockInfo,
     PriorityTierEstimate,
 )

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.76.2] - 2026-09-03
+
+### Changed
+- **Consolidated the duplicated `LockAcquisitionError` (#205).** The enrichment service defined its own `LockAcquisitionError` that shadowed the one in `exceptions.py`. The two are now a single `ChronovistaError`-based class (its `lock_holder_pid` argument renamed to `pid`), so `except` clauses catch the same type regardless of which module they imported it from.
+
+### Removed
+- **Dead transcript-search code (part of #255).** Removed a dead duplicate `TranscriptSearchFilters` model — an unused second definition in `models/transcript_source.py` that no code imported — and the orphaned `VideoTranscriptRepository.search_transcripts()` method it paired with (no production callers; it built an unbounded, unpaginated result set). The live `TranscriptSearchFilters` in `models/video_transcript.py` is unchanged and still exported. The remaining #255 items (a same-named-but-divergent `RecoveryResult`, three distinct local `OutputFormat` enums, and split frontend test directories) are re-scoped on the issue — they are renames/moves, not duplicate removal.
+
 ## [0.76.1] - 2026-09-03
 
 ### Security

@@ -20,7 +20,6 @@ from ..db.models import TranscriptSegment as TranscriptSegmentDB
 from ..db.models import VideoTranscript as VideoTranscriptDB
 from ..models.enums import DownloadReason, LanguageCode, TrackKind, TranscriptType
 from ..models.video_transcript import (
-    TranscriptSearchFilters,
     VideoTranscriptCreate,
     VideoTranscriptUpdate,
     VideoTranscriptWithQuality,
@@ -346,106 +345,6 @@ class VideoTranscriptRepository(
                 VideoTranscriptDB.confidence_score.desc().nulls_last(),
             )
         )
-        return list(result.scalars().all())
-
-    async def search_transcripts(
-        self, session: AsyncSession, filters: TranscriptSearchFilters
-    ) -> list[VideoTranscriptDB]:
-        """
-        Search transcripts with advanced filtering.
-
-        Parameters
-        ----------
-        session : AsyncSession
-            Database session
-        filters : TranscriptSearchFilters
-            Search filters to apply
-
-        Returns
-        -------
-        List[VideoTranscriptDB]
-            List of matching transcripts
-        """
-        query = select(VideoTranscriptDB)
-        conditions: list[Any] = []
-
-        # Video ID filters
-        if filters.video_ids:
-            conditions.append(VideoTranscriptDB.video_id.in_(filters.video_ids))
-
-        # Language filters
-        if filters.language_codes:
-            normalized_langs = [lang.lower() for lang in filters.language_codes]
-            conditions.append(VideoTranscriptDB.language_code.in_(normalized_langs))
-
-        # Type filters
-        if filters.transcript_types:
-            # Handle both enum objects and string values
-            type_values = []
-            for t in filters.transcript_types:
-                if hasattr(t, "value"):
-                    type_values.append(t.value)
-                else:
-                    type_values.append(str(t))
-            conditions.append(VideoTranscriptDB.transcript_type.in_(type_values))
-
-        # Download reason filters
-        if filters.download_reasons:
-            # Handle both enum objects and string values
-            reason_values = []
-            for r in filters.download_reasons:
-                if hasattr(r, "value"):
-                    reason_values.append(r.value)
-                else:
-                    reason_values.append(str(r))
-            conditions.append(VideoTranscriptDB.download_reason.in_(reason_values))
-
-        # Track kind filters
-        if filters.track_kinds:
-            # Handle both enum objects and string values
-            kind_values = []
-            for k in filters.track_kinds:
-                if hasattr(k, "value"):
-                    kind_values.append(k.value)
-                else:
-                    kind_values.append(str(k))
-            conditions.append(VideoTranscriptDB.track_kind.in_(kind_values))
-
-        # Quality filters
-        if filters.min_confidence is not None:
-            conditions.append(
-                VideoTranscriptDB.confidence_score >= filters.min_confidence
-            )
-
-        if filters.is_cc_only:
-            conditions.append(VideoTranscriptDB.is_cc.is_(True))
-
-        if filters.is_manual_only:
-            conditions.append(VideoTranscriptDB.is_auto_synced.is_(False))
-
-        # Date filters
-        if filters.downloaded_after:
-            conditions.append(
-                VideoTranscriptDB.downloaded_at >= filters.downloaded_after
-            )
-
-        if filters.downloaded_before:
-            conditions.append(
-                VideoTranscriptDB.downloaded_at <= filters.downloaded_before
-            )
-
-        # Apply all conditions
-        if conditions:
-            query = query.where(and_(*conditions))
-
-        # Default ordering by quality and recency
-        query = query.order_by(
-            VideoTranscriptDB.is_cc.desc(),
-            VideoTranscriptDB.confidence_score.desc().nulls_last(),
-            VideoTranscriptDB.downloaded_at.desc(),
-        )
-
-        result = await session.execute(query)
         return list(result.scalars().all())
 
     async def get_available_languages(

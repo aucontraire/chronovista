@@ -288,26 +288,3 @@ class TranscriptComparison(BaseModel):
     model_config = ConfigDict(
         validate_assignment=True,
     )
-
-
-class TranscriptSearchFilters(BaseModel):
-    """Filters for searching transcript data."""
-
-    video_ids: list[VideoId] | None = Field(None, description="Filter by video IDs")
-    language_codes: list[LanguageCode | str] | None = Field(
-        None, description="Filter by languages (enum or string for regional variants)"
-    )
-    sources: list[TranscriptSource] | None = Field(
-        None, description="Filter by sources"
-    )
-    is_generated_only: bool | None = Field(
-        None, description="Filter by generation type"
-    )
-    min_duration: float | None = Field(None, ge=0.0, description="Minimum duration")
-    text_search: str | None = Field(None, description="Search in transcript text")
-    retrieved_after: datetime | None = Field(None, description="Retrieved after date")
-    retrieved_before: datetime | None = Field(None, description="Retrieved before date")
-
-    model_config = ConfigDict(
-        validate_assignment=True,
-    )

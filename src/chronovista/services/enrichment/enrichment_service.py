@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chronovista.exceptions import (
     AuthenticationError,
     GracefulShutdownException,
+    LockAcquisitionError,
     NetworkError,
     PrerequisiteError,
     QuotaExceededException,
@@ -310,52 +311,6 @@ def estimate_quota_cost(video_count: int, batch_size: int = BATCH_SIZE) -> int:
     if video_count <= 0:
         return 0
     return (video_count + batch_size - 1) // batch_size  # Ceiling division
-
-
-class LockAcquisitionError(Exception):
-    """
-    Exception raised when enrichment lock cannot be acquired.
-
-    This exception is raised when another enrichment process is already running
-    and the lock cannot be acquired. It includes the PID of the process holding
-    the lock (if available) for diagnostic purposes.
-
-    Attributes
-    ----------
-    pid : int | None
-        The process ID of the lock holder (for file-based locks).
-    message : str
-        Human-readable error message.
-
-    Examples
-    --------
-    >>> try:
-    ...     await lock.acquire(session)
-    ... except LockAcquisitionError as e:
-    ...     print(f"Lock held by PID: {e.pid}")
-    ...     print(e.message)
-    """
-
-    def __init__(self, message: str, pid: int | None = None) -> None:
-        """
-        Initialize LockAcquisitionError.
-
-        Parameters
-        ----------
-        message : str
-            Human-readable error message.
-        pid : int | None, optional
-            The process ID of the lock holder (default None).
-        """
-        self.message = message
-        self.pid = pid
-        super().__init__(message)
-
-    def __str__(self) -> str:
-        """Return string representation with PID info if available."""
-        if self.pid is not None:
-            return f"{self.message} (PID: {self.pid})"
-        return self.message
 
 
 class LockInfo(BaseModel):

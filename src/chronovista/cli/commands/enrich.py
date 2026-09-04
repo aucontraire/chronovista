@@ -27,6 +27,7 @@ from chronovista.exceptions import (
     EXIT_CODE_QUOTA_EXCEEDED,
     AuthenticationError,
     GracefulShutdownException,
+    LockAcquisitionError,
     NetworkError,
     PrerequisiteError,
     QuotaExceededException,
@@ -38,7 +39,6 @@ from chronovista.services.enrichment.enrichment_service import (
     EXIT_CODE_NO_CREDENTIALS,
     ChannelEnrichmentResult,
     EnrichmentStatus,
-    LockAcquisitionError,
     estimate_quota_cost,
 )
 from chronovista.services.enrichment.shutdown_handler import get_shutdown_handler

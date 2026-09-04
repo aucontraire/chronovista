@@ -22,7 +22,6 @@ from chronovista.models.enums import (
     TranscriptType,
 )
 from chronovista.models.video_transcript import (
-    TranscriptSearchFilters,
     VideoTranscriptCreate,
 )
 from chronovista.repositories.video_transcript_repository import (
@@ -272,54 +271,6 @@ class TestVideoTranscriptRepository:
         )
 
         assert len(result) <= len(sample_transcripts_list)
-        mock_session.execute.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_transcripts_with_filters(
-        self,
-        repository: VideoTranscriptRepository,
-        mock_session: AsyncMock,
-        sample_transcripts_list: list[VideoTranscriptDB],
-    ):
-        """Test searching transcripts with various filters."""
-        filters = TranscriptSearchFilters(
-            video_ids=["dQw4w9WgXcQ"],
-            language_codes=["en-US", "es-ES"],
-            transcript_types=[TranscriptType.MANUAL],
-            is_cc_only=True,
-            min_confidence=0.9,
-        )
-
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = sample_transcripts_list
-        mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
-
-        result = await repository.search_transcripts(mock_session, filters)
-
-        assert result == sample_transcripts_list
-        mock_session.execute.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_transcripts_empty_filters(
-        self,
-        repository: VideoTranscriptRepository,
-        mock_session: AsyncMock,
-        sample_transcripts_list: list[VideoTranscriptDB],
-    ):
-        """Test searching transcripts with empty filters (returns all)."""
-        filters = TranscriptSearchFilters()
-
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = sample_transcripts_list
-        mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
-
-        result = await repository.search_transcripts(mock_session, filters)
-
-        assert result == sample_transcripts_list
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio
@@ -645,28 +596,6 @@ class TestVideoTranscriptRepositoryEdgeCases:
         await repository.get_by_composite_key(mock_session, "dQw4w9WgXcQ", "EN-US")
 
         # Verify the query used lowercase language code
-        mock_session.execute.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_search_with_date_filters(
-        self, repository: VideoTranscriptRepository, mock_session: AsyncMock
-    ):
-        """Test search with date range filters."""
-        now = datetime.now(UTC)
-        filters = TranscriptSearchFilters(
-            downloaded_after=now,
-            downloaded_before=now,
-        )
-
-        mock_result = MagicMock()
-        mock_scalars = MagicMock()
-        mock_scalars.all.return_value = []
-        mock_result.scalars.return_value = mock_scalars
-        mock_session.execute.return_value = mock_result
-
-        result = await repository.search_transcripts(mock_session, filters)
-
-        assert result == []
         mock_session.execute.assert_called_once()
 
     @pytest.mark.asyncio

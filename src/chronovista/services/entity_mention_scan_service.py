@@ -519,6 +519,7 @@ class EntityMentionScanService:
         full_rescan: bool = False,
         new_entities_only: bool = False,
         entity_ids: list[uuid.UUID] | None = None,
+        limit: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> ScanResult:
         """Scan video titles and/or descriptions for entity mentions.
@@ -548,6 +549,9 @@ class EntityMentionScanService:
             types before re-scanning (per FR-010).
         entity_ids : list[uuid.UUID] | None
             Restrict scanning to these specific entity IDs.
+        limit : int | None
+            In dry-run mode, stop scanning once this many preview matches have
+            been collected (mirrors :meth:`scan`). Ignored in live mode.
         progress_callback : Callable[[int, int], None] | None
             Called after each batch with ``(items_scanned, mentions_found)``.
 
@@ -706,6 +710,17 @@ class EntityMentionScanService:
                     progress_callback(result.segments_scanned, result.mentions_found)
 
                 last_video_id = batch_rows[-1].video_id
+
+                # If dry-run and we have reached the limit, stop early
+                if (
+                    dry_run
+                    and limit is not None
+                    and result.dry_run_matches is not None
+                    and len(result.dry_run_matches) >= limit
+                ):
+                    # Trim to limit
+                    result.dry_run_matches = result.dry_run_matches[:limit]
+                    break
 
             result.unique_entities = len(matched_entity_ids)
             result.unique_videos = len(matched_video_ids)

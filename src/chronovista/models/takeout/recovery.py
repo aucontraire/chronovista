@@ -142,7 +142,7 @@ class ChannelRecoveryAction(BaseModel):
     source_date: datetime = Field(..., description="Date of source takeout")
 
 
-class RecoveryResult(BaseModel):
+class TakeoutRecoveryResult(BaseModel):
     """
     Result of a recovery operation.
 

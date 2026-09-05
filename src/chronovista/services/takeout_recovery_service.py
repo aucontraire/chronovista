@@ -18,7 +18,7 @@ from ..models.takeout import (
     RecoveredChannelMetadata,
     RecoveredVideoMetadata,
     RecoveryOptions,
-    RecoveryResult,
+    TakeoutRecoveryResult,
     VideoRecoveryAction,
     is_placeholder_channel_name,
 )
@@ -63,7 +63,7 @@ class TakeoutRecoveryService:
         session: AsyncSession,
         takeout_base_path: Path,
         options: RecoveryOptions | None = None,
-    ) -> RecoveryResult:
+    ) -> TakeoutRecoveryResult:
         """
         Recover metadata from historical takeout directories.
 
@@ -80,11 +80,11 @@ class TakeoutRecoveryService:
 
         Returns
         -------
-        RecoveryResult
+        TakeoutRecoveryResult
             Result of the recovery operation
         """
         options = options or RecoveryOptions()
-        result = RecoveryResult(dry_run=options.dry_run)
+        result = TakeoutRecoveryResult(dry_run=options.dry_run)
 
         logger.info(
             f"Starting recovery from historical takeouts in {takeout_base_path}"
@@ -158,7 +158,7 @@ class TakeoutRecoveryService:
         self,
         session: AsyncSession,
         video_metadata: dict[str, RecoveredVideoMetadata],
-        result: RecoveryResult,
+        result: TakeoutRecoveryResult,
         options: RecoveryOptions,
     ) -> None:
         """
@@ -174,7 +174,7 @@ class TakeoutRecoveryService:
             Database session
         video_metadata : Dict[str, RecoveredVideoMetadata]
             Map of video_id to recovered metadata
-        result : RecoveryResult
+        result : TakeoutRecoveryResult
             Result object to update
         options : RecoveryOptions
             Recovery options
@@ -319,7 +319,7 @@ class TakeoutRecoveryService:
         self,
         session: AsyncSession,
         channel_metadata: dict[str, RecoveredChannelMetadata],
-        result: RecoveryResult,
+        result: TakeoutRecoveryResult,
         options: RecoveryOptions,
     ) -> None:
         """
@@ -331,7 +331,7 @@ class TakeoutRecoveryService:
             Database session
         channel_metadata : Dict[str, RecoveredChannelMetadata]
             Map of channel_id to recovered metadata
-        result : RecoveryResult
+        result : TakeoutRecoveryResult
             Result object to update
         options : RecoveryOptions
             Recovery options
@@ -415,7 +415,7 @@ class TakeoutRecoveryService:
         self,
         session: AsyncSession,
         takeout_base_path: Path,
-    ) -> RecoveryResult:
+    ) -> TakeoutRecoveryResult:
         """
         Preview what would be recovered without making changes.
 
@@ -430,7 +430,7 @@ class TakeoutRecoveryService:
 
         Returns
         -------
-        RecoveryResult
+        TakeoutRecoveryResult
             Preview of what would be recovered
         """
         options = RecoveryOptions(dry_run=True, verbose=True)

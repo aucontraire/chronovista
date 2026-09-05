@@ -3,7 +3,7 @@ Tests for Recovery Models.
 
 Unit tests for Pydantic models in src/chronovista/models/takeout/recovery.py
 Covers HistoricalTakeout, RecoveredVideoMetadata, RecoveredChannelMetadata,
-RecoveryCandidate, VideoRecoveryAction, ChannelRecoveryAction, RecoveryResult,
+RecoveryCandidate, VideoRecoveryAction, ChannelRecoveryAction, TakeoutRecoveryResult,
 RecoveryOptions, and helper functions.
 """
 
@@ -20,7 +20,7 @@ from chronovista.models.takeout.recovery import (
     RecoveredVideoMetadata,
     RecoveryCandidate,
     RecoveryOptions,
-    RecoveryResult,
+    TakeoutRecoveryResult,
     VideoRecoveryAction,
     extract_video_id_from_placeholder,
     is_placeholder_channel_name,
@@ -214,11 +214,11 @@ class TestChannelRecoveryAction:
 
 
 class TestRecoveryResult:
-    """Tests for RecoveryResult model."""
+    """Tests for TakeoutRecoveryResult model."""
 
     def test_create_empty_result(self) -> None:
         """Test creating an empty recovery result."""
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         assert result.videos_recovered == 0
         assert result.videos_still_missing == 0
         assert result.channels_created == 0
@@ -231,19 +231,19 @@ class TestRecoveryResult:
 
     def test_create_dry_run_result(self) -> None:
         """Test creating a dry run result."""
-        result = RecoveryResult(dry_run=True)
+        result = TakeoutRecoveryResult(dry_run=True)
         assert result.dry_run is True
 
     def test_mark_complete(self) -> None:
         """Test marking a result as complete."""
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         assert result.completed_at is None
         result.mark_complete()
         assert result.completed_at is not None
 
     def test_add_error(self) -> None:
         """Test adding errors to result."""
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         result.add_error("First error")
         result.add_error("Second error")
         assert len(result.errors) == 2
@@ -263,7 +263,7 @@ class TestRecoveryResult:
             channel_name="Test Channel",
             source_date=datetime.now(UTC),
         )
-        result = RecoveryResult(
+        result = TakeoutRecoveryResult(
             videos_recovered=1,
             channels_created=1,
             video_actions=[video_action],

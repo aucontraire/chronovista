@@ -15,7 +15,7 @@ from .recovery import (
     RecoveredVideoMetadata,
     RecoveryCandidate,
     RecoveryOptions,
-    RecoveryResult,
+    TakeoutRecoveryResult,
     VideoRecoveryAction,
     extract_video_id_from_placeholder,
     is_placeholder_channel_name,
@@ -59,7 +59,7 @@ __all__ = [
     "RecoveryCandidate",
     "VideoRecoveryAction",
     "ChannelRecoveryAction",
-    "RecoveryResult",
+    "TakeoutRecoveryResult",
     "RecoveryOptions",
     # Recovery utilities
     "VIDEO_PLACEHOLDER_PREFIX",

@@ -328,6 +328,44 @@ class TestScanMetadataTitle:
         assert preview["start_time"] is None
         assert preview["matched_text"] == "Ada Lovelace"
 
+    async def test_dry_run_stops_at_limit(self) -> None:
+        """dry_run + limit stops scanning once `limit` previews are collected (#290).
+
+        Regression guard: the metadata path previously ignored `limit` and
+        scanned every video in full. With three matching videos across three
+        batches and ``limit=2``, only two videos should be scanned before the
+        early-exit, and the preview list is trimmed to the limit.
+        """
+        entity_id = _make_uuid()
+        entity = _make_entity_row(entity_id=entity_id, canonical_name="Ada Lovelace")
+        batches = [
+            [
+                _make_video_row(
+                    video_id=vid, title="Ada Lovelace Special", description=None
+                )
+            ]
+            for vid in ("vid00000001", "vid00000002", "vid00000003")
+        ]
+
+        factory = _make_session_factory(
+            entities=[entity],
+            aliases=[],
+            video_batches=batches,
+        )
+
+        service = EntityMentionScanService(factory)
+
+        result = await service.scan_metadata(
+            sources=["title"],
+            entity_ids=[entity_id],
+            dry_run=True,
+            limit=2,
+        )
+
+        assert result.dry_run_matches is not None
+        assert len(result.dry_run_matches) == 2  # trimmed to limit
+        assert result.segments_scanned == 2  # third batch never fetched (early-exit)
+
     async def test_title_scan_full_rescan_deletes_before_scan(self) -> None:
         """Title scanning with full_rescan=True calls delete_by_scope with
         mention_source='title' before scanning.

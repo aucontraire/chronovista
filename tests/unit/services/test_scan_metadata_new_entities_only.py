@@ -165,7 +165,10 @@ class TestScanAndScanMetadataAgree:
 
         ``progress_callback`` and the source/segment-specific parameters are
         excluded: they are genuinely per-method. Everything that narrows *which
-        entities* are scanned must exist on both.
+        entities* are scanned must exist on both. ``limit`` is also required on
+        both: it caps a dry-run preview, and its absence from ``scan_metadata``
+        is exactly what made ``--dry-run --limit`` scan every video in full
+        (#290).
         """
         import inspect
 
@@ -178,6 +181,7 @@ class TestScanAndScanMetadataAgree:
             "full_rescan",
             "new_entities_only",
             "entity_ids",
+            "limit",
         }
         scan_params = set(inspect.signature(EntityMentionScanService.scan).parameters)
         meta_params = set(

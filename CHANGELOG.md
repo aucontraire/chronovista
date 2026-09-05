@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.76.4] - 2026-09-05
+
+### Fixed
+- **`entities scan --dry-run --limit` now bounds the title/description scan too (#290).** The `--limit` dry-run preview cap was honored only by the transcript path; the metadata path (`scan_metadata`, used for `--sources title,description`) had no `limit` parameter and no early-exit, so a dry-run scanned every video's title/description in full. `scan_metadata` now accepts `limit` and stops once that many preview matches are collected (mirroring the transcript scan), and the CLI passes `--limit` through to it. A parity test now guards `limit` (with the other shared filters) against drifting between the two scan methods again.
+
 ## [0.76.3] - 2026-09-05
 
 ### Changed

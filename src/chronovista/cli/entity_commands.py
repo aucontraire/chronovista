@@ -1243,6 +1243,7 @@ def scan_entities(
                         full_rescan=full,
                         new_entities_only=effective_new_entities_only,
                         entity_ids=effective_entity_ids,
+                        limit=limit,
                     )
 
             result = _merge_scan_results(transcript_result, metadata_result)

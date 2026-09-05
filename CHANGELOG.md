@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.76.3] - 2026-09-05
+
+### Changed
+- **Disambiguated the duplicated `RecoveryResult` (part of #255).** Two different concepts shared the name: a takeout batch summary (`videos_recovered`, `videos_still_missing`) and a single-attempt recovery outcome (`video_id`, `success`). The takeout batch-summary type is renamed to `TakeoutRecoveryResult` (matching `TakeoutRecoveryService`); the `services/recovery` `RecoveryResult` is unchanged. Pure rename, no behavior change.
+
 ## [0.76.2] - 2026-09-03
 
 ### Changed

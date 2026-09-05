@@ -2771,10 +2771,10 @@ def _display_recovery_results(result: Any, verbose: bool) -> None:
     """Display recovery operation results."""
     from ...models.takeout import (
         ChannelRecoveryAction,
-        RecoveryResult,
+        TakeoutRecoveryResult,
     )
 
-    if not isinstance(result, RecoveryResult):
+    if not isinstance(result, TakeoutRecoveryResult):
         console.print("[red]Invalid result type[/red]")
         return
 

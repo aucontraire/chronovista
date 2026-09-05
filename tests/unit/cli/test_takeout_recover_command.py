@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 from chronovista.cli.main import app
 from chronovista.models.takeout.recovery import (
     ChannelRecoveryAction,
-    RecoveryResult,
+    TakeoutRecoveryResult,
     VideoRecoveryAction,
 )
 
@@ -25,7 +25,7 @@ class TestTakeoutRecoverCommand:
     """Tests for the 'chronovista takeout recover' command."""
 
     @pytest.fixture
-    def mock_recovery_result(self) -> RecoveryResult:
+    def mock_recovery_result(self) -> TakeoutRecoveryResult:
         """Create a mock recovery result."""
         video_action = VideoRecoveryAction(
             video_id="dQw4w9WgXcQ",
@@ -40,7 +40,7 @@ class TestTakeoutRecoverCommand:
             source_date=datetime(2024, 1, 15, tzinfo=UTC),
         )
 
-        result = RecoveryResult(
+        result = TakeoutRecoveryResult(
             videos_recovered=5,
             videos_still_missing=10,
             channels_created=2,
@@ -86,7 +86,7 @@ class TestTakeoutRecoverCommand:
     def test_recover_dry_run(
         self,
         mock_discover: MagicMock,
-        mock_recovery_result: RecoveryResult,
+        mock_recovery_result: TakeoutRecoveryResult,
     ) -> None:
         """Test recover command with --dry-run flag."""
         # Mock that no takeouts are found (simpler test)
@@ -106,7 +106,7 @@ class TestTakeoutRecoverCommand:
     def test_recover_verbose_mode(
         self,
         mock_discover: MagicMock,
-        mock_recovery_result: RecoveryResult,
+        mock_recovery_result: TakeoutRecoveryResult,
     ) -> None:
         """Test recover command with --verbose flag."""
         mock_discover.return_value = []
@@ -158,7 +158,7 @@ class TestTakeoutRecoverCommand:
     def test_recover_shows_no_takeouts_message(
         self,
         mock_discover: MagicMock,
-        mock_recovery_result: RecoveryResult,
+        mock_recovery_result: TakeoutRecoveryResult,
     ) -> None:
         """Test that recover command shows appropriate message when no takeouts found."""
         mock_discover.return_value = []

@@ -20,7 +20,7 @@ from chronovista.models.takeout.recovery import (
     RecoveredChannelMetadata,
     RecoveredVideoMetadata,
     RecoveryOptions,
-    RecoveryResult,
+    TakeoutRecoveryResult,
 )
 from chronovista.services.takeout_recovery_service import TakeoutRecoveryService
 
@@ -261,7 +261,7 @@ class TestRecoverVideos:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_videos(mock_session, video_metadata, result, options)
@@ -313,7 +313,7 @@ class TestRecoverVideos:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         await service._recover_videos(
             mock_session, video_metadata, result, RecoveryOptions()
         )
@@ -359,7 +359,7 @@ class TestRecoverVideos:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         await service._recover_videos(
             mock_session, video_metadata, result, RecoveryOptions()
         )
@@ -393,7 +393,7 @@ class TestRecoverVideos:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_videos(mock_session, video_metadata, result, options)
@@ -437,7 +437,7 @@ class TestRecoverVideos:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_videos(mock_session, video_metadata, result, options)
@@ -485,7 +485,7 @@ class TestRecoverVideos:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_videos(mock_session, video_metadata, result, options)
@@ -530,7 +530,7 @@ class TestRecoverVideos:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_videos(mock_session, video_metadata, result, options)
@@ -556,7 +556,7 @@ class TestRecoverVideos:
             channel_repository=MagicMock(),
         )
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         # Empty metadata - no recovery data available
@@ -591,7 +591,7 @@ class TestRecoverVideos:
             )
         }
 
-        result = RecoveryResult(dry_run=True)
+        result = TakeoutRecoveryResult(dry_run=True)
         options = RecoveryOptions(dry_run=True)
 
         await service._recover_videos(mock_session, video_metadata, result, options)
@@ -633,7 +633,7 @@ class TestRecoverChannels:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_channels(mock_session, channel_metadata, result, options)
@@ -667,7 +667,7 @@ class TestRecoverChannels:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_channels(mock_session, channel_metadata, result, options)
@@ -702,7 +702,7 @@ class TestRecoverChannels:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_channels(mock_session, channel_metadata, result, options)
@@ -733,7 +733,7 @@ class TestRecoverChannels:
             )
         }
 
-        result = RecoveryResult(dry_run=True)
+        result = TakeoutRecoveryResult(dry_run=True)
         options = RecoveryOptions(dry_run=True)
 
         await service._recover_channels(mock_session, channel_metadata, result, options)
@@ -756,7 +756,7 @@ class TestGetRecoveryPreview:
             "recover_from_historical_takeouts",
             new_callable=AsyncMock,
         ) as mock_recover:
-            mock_recover.return_value = RecoveryResult(dry_run=True)
+            mock_recover.return_value = TakeoutRecoveryResult(dry_run=True)
 
             result = await service.get_recovery_preview(mock_session, Path("/takeouts"))
 
@@ -888,7 +888,7 @@ class TestRecoveryNeverSetsDeletedFlag:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_videos(mock_session, video_metadata, result, options)
@@ -946,7 +946,7 @@ class TestRecoveryNeverSetsDeletedFlag:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_videos(mock_session, video_metadata, result, options)
@@ -995,7 +995,7 @@ class TestRecoveryNeverSetsDeletedFlag:
             )
         }
 
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_channels(mock_session, channel_metadata, result, options)
@@ -1042,7 +1042,7 @@ class TestRecoveryNeverSetsDeletedFlag:
             )
         }
 
-        result = RecoveryResult(dry_run=True)
+        result = TakeoutRecoveryResult(dry_run=True)
         options = RecoveryOptions(dry_run=True)
 
         await service._recover_videos(mock_session, video_metadata, result, options)
@@ -1075,7 +1075,7 @@ class TestRecoveryNeverSetsDeletedFlag:
         )
 
         # Empty metadata - no recovery data for this video
-        result = RecoveryResult()
+        result = TakeoutRecoveryResult()
         options = RecoveryOptions()
 
         await service._recover_videos(mock_session, {}, result, options)

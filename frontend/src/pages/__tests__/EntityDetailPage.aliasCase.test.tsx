@@ -183,7 +183,7 @@ describe("EntityDetailPage — alias case-sensitivity toggle (#177)", () => {
       expect(updateEntityAlias).toHaveBeenCalledWith(
         "entity-uuid-001",
         ALIAS_ID,
-        true
+        { case_sensitive: true }
       );
     });
   });

@@ -351,9 +351,17 @@ export async function createEntityAlias(
   return res.data;
 }
 
-/** Request body for PATCH /api/v1/entities/{entity_id}/aliases/{alias_id} */
+/**
+ * Request body for PATCH /api/v1/entities/{entity_id}/aliases/{alias_id}.
+ *
+ * PATCH semantics — at least one field is required (an empty body is a 422).
+ * Renaming (`alias_name`) or re-typing (`alias_type`) can be sent together
+ * with `case_sensitive`, or on their own.
+ */
 export interface UpdateEntityAliasRequest {
-  case_sensitive: boolean;
+  alias_name?: string;
+  alias_type?: string;
+  case_sensitive?: boolean;
 }
 
 /** Response envelope for PATCH /api/v1/entities/{entity_id}/aliases/{alias_id} */
@@ -362,31 +370,77 @@ export interface UpdateEntityAliasResponse {
 }
 
 /**
- * Sets whether an alias matches case-sensitively.
+ * Updates an alias's name, type, and/or case-sensitivity.
  *
- * The change does not retroactively alter existing mentions — matching rules
- * are applied when a scan runs, so callers must follow this with a full
- * rescan of the entity for it to take effect.
+ * A change to `alias_name` or `case_sensitive` does not retroactively alter
+ * existing mentions — matching rules are applied when a scan runs, so callers
+ * must follow either of those with a full rescan of the entity for it to take
+ * effect. A rename re-normalizes the alias, so it can collide with another of
+ * the entity's own aliases (accents/case folded).
  *
  * @param entityId - UUID of the named entity that owns the alias
  * @param aliasId - UUID of the alias to update
- * @param caseSensitive - New matching behaviour
+ * @param body - Partial update — at least one of alias_name/alias_type/case_sensitive
  * @returns The updated EntityAliasSummary
  * @throws ApiError with status 404 if the entity or alias is not found, or if
- *   the alias does not belong to that entity
+ *   the alias does not belong to that entity; 409 if a rename collides with
+ *   another of the entity's aliases; 422 if the body is empty
  */
 export async function updateEntityAlias(
   entityId: string,
   aliasId: string,
-  caseSensitive: boolean
+  body: UpdateEntityAliasRequest
 ): Promise<EntityAliasSummary> {
-  const body: UpdateEntityAliasRequest = { case_sensitive: caseSensitive };
   const res = await apiFetch<UpdateEntityAliasResponse>(
     `/entities/${entityId}/aliases/${aliasId}`,
     {
       method: "PATCH",
       body: JSON.stringify(body),
     }
+  );
+  return res.data;
+}
+
+/**
+ * The deleted alias, plus how many of the entity's auto-detected mentions
+ * were retracted along with it.
+ */
+export interface DeletedEntityAlias extends EntityAliasSummary {
+  /**
+   * Count of auto-detected (`rule_match`) mentions of this alias that were
+   * removed. Manually-added and correction-derived mentions are never
+   * counted here — they're preserved even when their text matches.
+   */
+  removed_mention_count: number;
+}
+
+/** Response envelope for DELETE /api/v1/entities/{entity_id}/aliases/{alias_id} */
+export interface DeleteEntityAliasResponse {
+  data: DeletedEntityAlias;
+}
+
+/**
+ * Deletes an alias from a named entity.
+ *
+ * Also retracts the entity's auto-detected (`rule_match`) mentions of that
+ * alias and recomputes its mention/video counts — this is an association-
+ * level change, not just a list refresh. Mentions added manually, or that
+ * came from a transcript correction, are preserved even if their text
+ * matches.
+ *
+ * @param entityId - UUID of the named entity that owns the alias
+ * @param aliasId - UUID of the alias to delete
+ * @returns The deleted EntityAliasSummary plus `removed_mention_count`
+ * @throws ApiError with status 404 if the entity or alias is not found, or if
+ *   the alias does not belong to that entity
+ */
+export async function deleteEntityAlias(
+  entityId: string,
+  aliasId: string
+): Promise<DeletedEntityAlias> {
+  const res = await apiFetch<DeleteEntityAliasResponse>(
+    `/entities/${entityId}/aliases/${aliasId}`,
+    { method: "DELETE" }
   );
   return res.data;
 }

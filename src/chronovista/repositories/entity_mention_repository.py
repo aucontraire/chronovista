@@ -265,6 +265,54 @@ class EntityMentionRepository(
         result = await session.execute(stmt)
         return int(result.rowcount)
 
+    async def delete_rule_match_mentions_for_alias(
+        self,
+        session: AsyncSession,
+        *,
+        entity_id: uuid.UUID,
+        alias_id: uuid.UUID,
+        alias_name: str,
+    ) -> int:
+        """Delete an entity's auto-detected mentions of a specific alias (#289).
+
+        When an alias is removed, its associations must not linger as an
+        illusion. Mentions are matched to the alias by the SAME case/accent fold
+        that attributes mentions to aliases for ``occurrence_count``
+        (``_folded(mention_text) == _folded(alias_name)``), scoped to this
+        entity. Only ``rule_match`` (auto-detected) mentions are removed —
+        hand-made (``manual``) and correction-derived (``user_correction``)
+        mentions are preserved, matching how a full rescan already handles them.
+
+        A mention is deleted only if **no other surviving alias of the entity
+        still covers it**. The fold ``lower(unaccent(...))`` is coarser than the
+        stored ``alias_name_normalized`` (which keeps tilde/cedilla), so two
+        aliases like ``pena`` and ``peña`` can coexist yet fold to the same
+        value; without this guard, deleting one would strip the other's
+        still-covered mentions. The ``NOT EXISTS`` over the entity's other
+        aliases keeps those mentions (an exact per-alias link is the #298
+        follow-up).
+
+        Returns the number of mentions deleted.
+        """
+        other_alias_covers = (
+            select(EntityAliasDB.id)
+            .where(
+                EntityAliasDB.entity_id == entity_id,
+                EntityAliasDB.id != alias_id,
+                _folded(EntityAliasDB.alias_name)
+                == _folded(EntityMentionDB.mention_text),
+            )
+            .exists()
+        )
+        stmt = delete(EntityMentionDB).where(
+            EntityMentionDB.entity_id == entity_id,
+            EntityMentionDB.detection_method == "rule_match",
+            _folded(EntityMentionDB.mention_text) == _folded(literal(alias_name)),
+            ~other_alias_covers,
+        )
+        result = await session.execute(stmt)
+        return int(result.rowcount)
+
     async def delete_by_correction_ids(
         self,
         session: AsyncSession,

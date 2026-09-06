@@ -309,18 +309,43 @@ class EntityAliasSummary(BaseModel):
     )
 
 
-class UpdateEntityAliasRequest(BaseModel):
-    """PATCH body for a single alias.
+# Allowed alias types for user-facing creation/editing (asr_error is system-only).
+_ALLOWED_ALIAS_TYPES = Literal[
+    "name_variant",
+    "abbreviation",
+    "nickname",
+    "translated_name",
+    "former_name",
+]
 
-    Only ``case_sensitive`` is settable. Renaming an alias would change what
-    it matches and orphan the mentions it produced, so it is deliberately not
-    offered here.
+
+class UpdateEntityAliasRequest(BaseModel):
+    """PATCH body for a single alias — all fields optional (#289).
+
+    Any subset of ``alias_name``, ``alias_type``, and ``case_sensitive`` may be
+    sent; at least one is required. Renaming re-normalizes the alias and is
+    re-checked against the entity's other aliases for a normalized-duplicate
+    collision. Existing mentions are keyed to the entity, not the alias, so an
+    edit never orphans them; matching-rule changes take effect on the next scan.
     """
 
     model_config = ConfigDict(strict=True)
 
-    case_sensitive: bool = Field(
-        ...,
+    alias_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=500,
+        description="New alias text (re-normalized and re-checked for duplicates)",
+    )
+    alias_type: _ALLOWED_ALIAS_TYPES | None = Field(
+        default=None,
+        description=(
+            "New alias type (name_variant, abbreviation, nickname, "
+            "translated_name, former_name)"
+        ),
+    )
+    case_sensitive: bool | None = Field(
+        default=None,
         description=(
             "Match only the exact casing stored in alias_name. Intended for "
             "an alias that is also an ordinary word, where casing separates "
@@ -330,15 +355,18 @@ class UpdateEntityAliasRequest(BaseModel):
         ),
     )
 
-
-# Allowed alias types for user-facing creation (asr_error is system-only).
-_ALLOWED_ALIAS_TYPES = Literal[
-    "name_variant",
-    "abbreviation",
-    "nickname",
-    "translated_name",
-    "former_name",
-]
+    @model_validator(mode="after")
+    def _at_least_one_field(self) -> UpdateEntityAliasRequest:
+        """Reject an empty PATCH — a no-op body is a client error, not a 200."""
+        if (
+            self.alias_name is None
+            and self.alias_type is None
+            and self.case_sensitive is None
+        ):
+            raise ValueError(
+                "Provide at least one of alias_name, alias_type, case_sensitive."
+            )
+        return self
 
 
 class PhoneticMatchResponse(BaseModel):

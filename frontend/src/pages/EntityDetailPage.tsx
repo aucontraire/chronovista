@@ -1546,12 +1546,17 @@ export function EntityDetailPage() {
         <EntityTagSection entityId={entityId} entityName={entity.canonical_name} />
       )}
 
-      {/* Enrichment section (Feature 067, US2) */}
-      <EntityEnrichmentSection
-        {...(entity.enrichment !== undefined
-          ? { enrichment: entity.enrichment }
-          : {})}
-      />
+      {/* Enrichment section (Feature 067, US2; "Change link" — Feature 073, US1) */}
+      {entityId && (
+        <EntityEnrichmentSection
+          entityId={entityId}
+          entityType={entity.entity_type}
+          canonicalName={entity.canonical_name}
+          {...(entity.enrichment !== undefined
+            ? { enrichment: entity.enrichment }
+            : {})}
+        />
+      )}
 
       {/* Exclusion Patterns section */}
       {entityId && (

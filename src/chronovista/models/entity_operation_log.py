@@ -13,7 +13,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-ALLOWED_ENTITY_OPERATION_TYPES = {"update"}
+ALLOWED_ENTITY_OPERATION_TYPES = {"update", "reground", "refetch"}
 
 
 class EntityEditSnapshot(BaseModel):
@@ -36,7 +36,9 @@ class EntityEditSnapshot(BaseModel):
         default=None, description="Entity type at this point"
     )
 
-    model_config = ConfigDict(validate_assignment=True)
+    # extra="forbid" so this snapshot is distinguishable from GroundingSnapshot
+    # in the rollback_data smart union (their field sets are disjoint).
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
 
 
 class EntityEditRollback(BaseModel):
@@ -58,6 +60,43 @@ class EntityEditRollback(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
 
+class GroundingSnapshot(BaseModel):
+    """Snapshot of an entity's grounding at one point in a re-ground/refetch.
+
+    The field set is disjoint from EntityEditSnapshot (and both forbid extra
+    fields) so the two rollback shapes are unambiguously distinguishable in the
+    ``rollback_data`` smart union.
+    """
+
+    wikidata_id: str | None = Field(
+        default=None, description="Wikidata QID at this point"
+    )
+    dbpedia_id: str | None = Field(
+        default=None, description="DBpedia IRI at this point"
+    )
+    description: str | None = Field(
+        default=None, description="Entity description at this point"
+    )
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+
+class GroundingRollback(BaseModel):
+    """Typed rollback payload for a grounding change (reground/refetch).
+
+    Stored as JSONB in ``entity_operation_logs.rollback_data``.
+    """
+
+    before: GroundingSnapshot = Field(..., description="Grounding prior to the change")
+    after: GroundingSnapshot = Field(..., description="Grounding after the change")
+    changed_fields: list[str] = Field(
+        default_factory=list,
+        description="Which of {wikidata, dbpedia, description, properties} changed",
+    )
+
+    model_config = ConfigDict(validate_assignment=True)
+
+
 class EntityOperationLogBase(BaseModel):
     """Base model for entity operation log data."""
 
@@ -65,10 +104,10 @@ class EntityOperationLogBase(BaseModel):
     operation_type: str = Field(
         default="update",
         max_length=30,
-        description="Type of operation (currently only 'update')",
+        description="Type of operation ('update', 'reground', or 'refetch')",
     )
-    rollback_data: EntityEditRollback = Field(
-        ..., description="Typed before/after snapshot for undo"
+    rollback_data: EntityEditRollback | GroundingRollback = Field(
+        ..., description="Typed before/after snapshot for undo (edit or grounding)"
     )
     performed_by: str = Field(
         default="system",

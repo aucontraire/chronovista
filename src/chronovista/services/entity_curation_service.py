@@ -21,10 +21,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import NamedEntity as NamedEntityDB
+from chronovista.models.entity_enrichment import ExternalIdentifier
 from chronovista.models.entity_operation_log import (
     EntityEditRollback,
     EntityEditSnapshot,
     EntityOperationLogCreate,
+    GroundingRollback,
+    GroundingSnapshot,
 )
 from chronovista.models.enums import EntityType
 from chronovista.models.named_entity import NamedEntityUpdate
@@ -37,6 +40,21 @@ from chronovista.services.tag_normalization import TagNormalizationService
 logger = logging.getLogger(__name__)
 
 _MAX_NAME_LENGTH = 500
+
+
+def _extract_external_id(external_ids: dict[str, Any], source: str) -> str | None:
+    """Return the identifier value for ``source`` from an ``external_ids`` map.
+
+    Tolerates both the structured object shape (``{"id": ...}``) and the legacy
+    bare-string shape, matching the viewer-side grounding renderer.
+    """
+    value = external_ids.get(source) if isinstance(external_ids, dict) else None
+    if isinstance(value, dict):
+        got = value.get("id")
+        return got if isinstance(got, str) else None
+    if isinstance(value, str):
+        return value
+    return None
 
 
 class EntityCurationError(Exception):
@@ -276,6 +294,156 @@ class EntityCurationService:
             actor,
         )
         return updated
+
+    async def reground_entity(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+        *,
+        qid: str,
+        description: str | None = None,
+        source: str = "wikidata",
+        actor: str,
+    ) -> NamedEntityDB:
+        """Re-link an existing entity to a knowledge-base match (#292, US1).
+
+        Full-replaces ``external_ids`` with a single verified ``source`` link and
+        CLEARS ``properties`` in one write, so none of the previous link's facts
+        survive and the old secondary (DBpedia) link is dropped (FR-002, FR-003,
+        FR-012 — the background fetch re-fills facts and re-resolves DBpedia).
+        Applies the curator-confirmed ``description`` when provided (FR-011),
+        records a ``reground`` audit row, and returns the entity. The caller
+        commits and schedules the background enrichment. Name, aliases, and
+        mentions are never touched (FR-006).
+
+        Raises
+        ------
+        EntityNotFoundError
+            The entity does not exist (maps to HTTP 404).
+        """
+        entity = await self._entity_repo.get(session, entity_id)
+        if entity is None:
+            raise EntityNotFoundError(
+                f"Entity '{entity_id}' not found.", entity_id=entity_id
+            )
+
+        before = GroundingSnapshot(
+            wikidata_id=_extract_external_id(entity.external_ids, "wikidata"),
+            dbpedia_id=_extract_external_id(entity.external_ids, "dbpedia"),
+            description=entity.description,
+        )
+
+        new_external_ids: dict[str, Any] = {
+            source: ExternalIdentifier(
+                id=qid, verified=True, status="verified"
+            ).model_dump()
+        }
+        # Full-replace: set the new verified link, clear facts, drop the old
+        # DBpedia link. No stale-facts window (FR-012); the background fetch
+        # re-fills properties and re-resolves DBpedia.
+        await self._entity_repo.replace_enrichment(
+            session, entity_id, properties={}, external_ids=new_external_ids
+        )
+
+        changed_fields = ["wikidata", "properties"]
+        if before.dbpedia_id is not None:
+            changed_fields.append("dbpedia")
+
+        new_description = entity.description
+        if description is not None and description != entity.description:
+            await self._entity_repo.update(
+                session,
+                db_obj=entity,
+                obj_in=NamedEntityUpdate.model_validate({"description": description}),
+            )
+            new_description = description
+            changed_fields.append("description")
+
+        after = GroundingSnapshot(
+            wikidata_id=qid,
+            dbpedia_id=None,  # re-resolved by the background enrichment
+            description=new_description,
+        )
+        log_create = EntityOperationLogCreate(
+            entity_id=entity_id,
+            operation_type="reground",
+            rollback_data=GroundingRollback(
+                before=before, after=after, changed_fields=changed_fields
+            ),
+            performed_by=actor,
+        )
+        await self._operation_log_repo.create(session, obj_in=log_create)
+        logger.info(
+            "Entity re-grounded: entity=%s, qid=%s, fields=%s, actor=%s",
+            entity_id,
+            qid,
+            changed_fields,
+            actor,
+        )
+        return entity
+
+    async def refresh_grounding(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+        *,
+        source: str = "wikidata",
+        actor: str,
+    ) -> tuple[NamedEntityDB, str]:
+        """Refresh an already-linked entity's facts from its current link (#292, US2).
+
+        Re-fetches facts for the entity's EXISTING ``source`` link without
+        changing the link or the description (FR-004, FR-006, FR-011). The
+        current facts are left in place synchronously — the background fetch the
+        caller schedules fully replaces ``properties`` on success (FR-004), and
+        on failure the prior facts stay visible rather than blanking (FR-007,
+        FR-009). Records a ``refetch`` audit row and returns the entity together
+        with its current ``qid`` so the caller can schedule that fetch.
+
+        Raises
+        ------
+        EntityNotFoundError
+            The entity does not exist (maps to HTTP 404).
+        InvalidEntityEditError
+            The entity has no current ``source`` link to refresh (maps to HTTP
+            400) — there is nothing to re-fetch from.
+        """
+        entity = await self._entity_repo.get(session, entity_id)
+        if entity is None:
+            raise EntityNotFoundError(
+                f"Entity '{entity_id}' not found.", entity_id=entity_id
+            )
+
+        current_qid = _extract_external_id(entity.external_ids, source)
+        if current_qid is None:
+            raise InvalidEntityEditError(
+                "Entity has no current Wikidata link to refresh."
+            )
+
+        # Facts are refreshed by the background fetch, not synchronously — the
+        # link and description are unchanged, so before/after link + description
+        # match; only the fact set is (re)fetched.
+        snapshot = GroundingSnapshot(
+            wikidata_id=current_qid,
+            dbpedia_id=_extract_external_id(entity.external_ids, "dbpedia"),
+            description=entity.description,
+        )
+        log_create = EntityOperationLogCreate(
+            entity_id=entity_id,
+            operation_type="refetch",
+            rollback_data=GroundingRollback(
+                before=snapshot, after=snapshot, changed_fields=["properties"]
+            ),
+            performed_by=actor,
+        )
+        await self._operation_log_repo.create(session, obj_in=log_create)
+        logger.info(
+            "Entity grounding refreshed: entity=%s, qid=%s, actor=%s",
+            entity_id,
+            current_qid,
+            actor,
+        )
+        return entity, current_qid
 
     async def undo_operation(
         self,

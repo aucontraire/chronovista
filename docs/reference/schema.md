@@ -620,7 +620,7 @@ Audit log for named-entity curation edits (name/description) — Feature 057.
 
 **Constraints:**
 
-- CHECK `chk_entity_operation_type_valid`: `operation_type IN ('update')`
+- CHECK `chk_entity_operation_type_valid`: `operation_type IN ('update', 'reground', 'refetch')`
 
 **Indexes:**
 

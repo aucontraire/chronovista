@@ -52,6 +52,7 @@ from chronovista.api.schemas.entity_mentions import (
     EntityVideoResult,
     ExclusionPatternRequest,
     ExistingEntityInfo,
+    GroundingRequest,
     LinkedTagSummary,
     ManualAssociationResponse,
     MentionPreview,
@@ -1935,6 +1936,78 @@ async def update_entity(
     await session.commit()
     return await get_entity_detail(
         str(updated.id),
+        session,
+        entity_repo=entity_repo,
+        mention_repo=mention_repo,
+    )
+
+
+@router.post(
+    "/entities/{entity_id}/grounding",
+    status_code=200,
+    summary="Re-ground (re-link) or refresh an entity's Wikidata data",
+)
+async def reground_entity(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    body: GroundingRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+    curation_service: EntityCurationService = Depends(get_entity_curation_service),
+    enrichment_service: EntityEnrichmentService = Depends(get_enrichment_service),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
+) -> dict[str, Any]:
+    """Re-link or refresh an entity's Wikidata grounding (#292).
+
+    With ``approved_identifier`` present this RE-LINKS (US1): sets the verified
+    link, applies the confirmed description, clears the old facts (no stale-facts
+    window, FR-012), and schedules the background fetch that re-fills facts and
+    re-resolves the DBpedia link.
+
+    With ``approved_identifier`` omitted this REFRESHES (US2): re-fetches facts
+    for the entity's CURRENT link without changing the link or description; the
+    current facts stay visible until the background fetch replaces them (FR-004,
+    FR-007, FR-009). A refresh on an entity with no current link is a 400.
+
+    Both paths write one grounding audit row and return the updated entity detail.
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    if body.approved_identifier is None:
+        # Refresh (US2): re-fetch facts for the entity's existing link.
+        try:
+            _, qid = await curation_service.refresh_grounding(
+                session,
+                parsed_entity_id,
+                actor=ACTOR_USER_LOCAL,
+            )
+        except EntityNotFoundError as exc:
+            raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+        except InvalidEntityEditError as exc:
+            raise BadRequestError(
+                message=str(exc), details={"entity_id": entity_id}
+            ) from exc
+    else:
+        # Re-link (US1): set/replace the verified link + confirmed description.
+        qid = body.approved_identifier.id
+        try:
+            await curation_service.reground_entity(
+                session,
+                parsed_entity_id,
+                qid=qid,
+                description=body.description,
+                source=body.approved_identifier.source,
+                actor=ACTOR_USER_LOCAL,
+            )
+        except EntityNotFoundError as exc:
+            raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    await session.commit()
+    _schedule_enrichment(enrichment_service, parsed_entity_id, qid)
+    return await get_entity_detail(
+        entity_id,
         session,
         entity_repo=entity_repo,
         mention_repo=mention_repo,

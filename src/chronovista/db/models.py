@@ -1394,7 +1394,7 @@ class EntityOperationLog(Base):
     # Table constraints and indexes
     __table_args__ = (
         CheckConstraint(
-            "operation_type IN ('update')",
+            "operation_type IN ('update', 'reground', 'refetch')",
             name="chk_entity_operation_type_valid",
         ),
         Index("idx_entity_operation_logs_entity_id", "entity_id"),

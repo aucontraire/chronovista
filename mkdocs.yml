@@ -156,6 +156,7 @@ nav:
       - REST API guide: api/index.md
       - Error responses (RFC 7807): api/error-responses.md
       - RFC 7807 migration: api/rfc7807-migration.md
+      - Entity grounding endpoint: api/entity-grounding.md
       - Configuration: getting-started/configuration.md
       - Glossary: glossary.md
   - Explanation:
@@ -166,6 +167,7 @@ nav:
       - Recovery provenance: architecture/recovery-provenance.md
       - API integration: architecture/api-integration.md
       - Frontend architecture: architecture/frontend-architecture.md
+      - Post-creation re-grounding: architecture/entity-reground.md
   - Contributing:
       - Overview: development/index.md
       - Setup: development/setup.md

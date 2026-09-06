@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-09-05
+
+### Added
+- **Post-creation Wikidata re-grounding and refresh for entities (#292).** An entity's knowledge-base link is no longer fixed at creation time. The entity detail page's Enrichment section gains two actions over a new `POST /api/v1/entities/{id}/grounding` endpoint: **Change link** re-links the entity to a chosen Wikidata match (reusing the create-time candidate picker, with an editable pre-filled description), and **Refresh** re-fetches facts for the entity's current link. A re-link clears the old facts and DBpedia link in the same write so the previous subject's facts are never shown against the new link (no stale-facts window); a refresh leaves the current facts visible until the background fetch replaces them. Both actions run the fact fetch in the background — so a knowledge-base outage never fails the operation (the link and description still commit) — never change the entity's name, aliases, mentions, or tag associations, and write a distinct audit row (`reground` or `refetch`) capturing the before/after link, description, and actor.
+
 ## [0.76.4] - 2026-09-05
 
 ### Fixed

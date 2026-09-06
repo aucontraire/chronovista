@@ -447,6 +447,45 @@ export async function updateEntity(
   return res.data;
 }
 
+// ---------------------------------------------------------------------------
+// Entity re-grounding types (for POST /api/v1/entities/{entity_id}/grounding)
+// Feature 073, US1 — post-creation Wikidata re-linking.
+// ---------------------------------------------------------------------------
+
+/**
+ * Request body for POST /api/v1/entities/{entity_id}/grounding.
+ *
+ * US1 (re-link, implemented here): `approved_identifier` present — replaces
+ * the entity's external identifier with the given Wikidata match, optionally
+ * updating `description` alongside it.
+ */
+export interface GroundingRequest {
+  approved_identifier?: ApprovedIdentifier | null;
+  description?: string | null;
+}
+
+/**
+ * Re-links (or refreshes) a named entity's external-knowledge-base grounding.
+ *
+ * @param entityId - UUID of the named entity
+ * @param body - The new approved identifier and/or description
+ * @returns The updated EntityDetail, in the same shape as `fetchEntityDetail`
+ * @throws ApiError with status 404 if the entity is not found, 422 if the body is invalid
+ */
+export async function regroundEntity(
+  entityId: string,
+  body: GroundingRequest
+): Promise<EntityDetail> {
+  const res = await apiFetch<{ data: EntityDetail }>(
+    `/entities/${entityId}/grounding`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    }
+  );
+  return res.data;
+}
+
 /**
  * Fetches a paginated list of videos in which a given entity is mentioned,
  * including up to 5 mention previews per video.

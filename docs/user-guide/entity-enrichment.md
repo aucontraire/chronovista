@@ -47,6 +47,52 @@ be grounded later. Grounding never blocks creation.
 
 ---
 
+## Re-link or refresh an entity after creation
+
+Grounding is not only a create-time decision. On an entity's detail page, the **Enrichment**
+section offers two actions so you can correct a wrong link or pull fresh facts without
+re-creating the entity.
+
+### Change link
+
+Use this when an entity is linked to the wrong subject (a namesake, a work named after a
+person) or was created ungrounded.
+
+1. On the entity page, open **Change link** in the Enrichment section.
+2. The same **Wikidata match picker** appears as on create — it searches, ranks candidates,
+   and shows the type-match check, statement count, sitelinks, and stub warning.
+3. Select the correct candidate. The description field **pre-fills from the match** and stays
+   editable; if the match has no description the field is **empty** (it never silently keeps
+   the old one). Edit or clear it as you like.
+4. Confirm. The link, description, facts, and secondary DBpedia link update **together**.
+
+The previous match's facts are **never shown against the new link**: on confirm the old facts
+are cleared and the new ones are fetched in the background, so the page shows the new link
+with its facts, or with facts still pending — never a stale mix. The old DBpedia link is
+dropped and re-resolved for the new subject.
+
+### Refresh
+
+Use this when an entity is correctly linked but its facts are missing (an earlier fetch
+failed) or stale (the source has since changed).
+
+1. **Refresh** appears in the Enrichment section only when the entity already has a Wikidata
+   link — there is nothing to refresh otherwise.
+2. Click it. The facts are re-fetched from the entity's **current** link. The link and the
+   description are left untouched.
+
+A refresh **fully replaces** the fact set (facts removed upstream disappear), and repeated
+refreshes converge to the same result. The facts you already have stay visible until the new
+ones arrive, so if the knowledge base is briefly unreachable you keep what you had rather than
+seeing the entity go blank.
+
+Both actions are recorded in the entity's operation history with the previous link, the new
+link, and which of {link, description, facts} changed — so a re-ground is traceable and
+reversible in review. Neither action ever changes the entity's name, aliases, detected
+mentions, or tag associations.
+
+---
+
 ## Load the captured enrichment
 
 The rich **Properties** come from the resolution pipeline, which exports what it found to a
@@ -84,9 +130,10 @@ this fetch, so grounding stays instant.
 
 If that background fetch cannot reach the knowledge base, the entity simply stays grounded with its
 identifier and no properties (no error is shown); the batch resolution pipeline fills them on its
-next run. The batch pipeline (landed by `load-enrichment`) also remains the source of record for
-**existing** entities — the on-approval fetch only runs at create time, for the entity being
-grounded.
+next run. The batch pipeline (landed by `load-enrichment`) remains the source of record for bulk
+enrichment. The same background fetch also runs when you **re-link** or **refresh** an entity
+after creation (see above), so a single corrected entity fills its facts without waiting for
+the next batch run.
 
 For how the enrichment is stored, see
 [Data model](../architecture/data-model.md).

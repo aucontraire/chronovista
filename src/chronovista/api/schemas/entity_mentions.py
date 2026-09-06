@@ -930,6 +930,28 @@ class AddEntityTagResponse(BaseModel):
     data: AddEntityTagResult
 
 
+class GroundingRequest(BaseModel):
+    """Request body for re-grounding or refreshing an existing entity (Feature 073, #292).
+
+    ``approved_identifier`` present → RE-LINK: set/replace the entity's Wikidata
+    link, apply the confirmed ``description``, re-fetch facts, re-resolve DBpedia.
+    ``approved_identifier`` omitted → REFRESH: re-fetch facts for the entity's
+    current link; ``description`` is ignored.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    approved_identifier: ApprovedIdentifier | None = Field(
+        default=None,
+        description="Target match to link (re-link); omit to refresh the current link",
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=5000,
+        description="Curator-confirmed description (re-link only; ignored on refresh)",
+    )
+
+
 class UpdateEntityRequest(BaseModel):
     """Request body for editing an entity's name and/or description.
 

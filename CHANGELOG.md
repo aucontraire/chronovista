@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-09-06
+
+### Added
+- **Delete and edit for entity aliases (#289).** Previously an alias could only be created — removing a mistaken one meant raw SQL, and "editing" meant delete + re-create. Now:
+  - **API**: `DELETE /api/v1/entities/{entity_id}/aliases/{alias_id}` removes an alias, and the existing `PATCH` is extended to edit `alias_name` and `alias_type` (not just `case_sensitive`). A rename is re-normalized and re-checked against the entity's other aliases (409 on a normalized-duplicate collision); an empty PATCH body is a 422.
+  - **CLI**: `chronovista entities remove-alias` (by alias text or `--alias-id`) and `chronovista entities edit-alias` (`--new-name`, `--new-type`, `--case-sensitive`/`--no-case-sensitive`).
+  - **Frontend**: each alias row on the entity detail page gains an inline **Edit** control (name + type) and a **Delete** confirmation that surfaces how many mentions the alias has matched.
+  - Deleting an alias also removes its **auto-detected** (`rule_match`) mentions, so the associations don't linger with no rule behind them; mentions added by hand or derived from transcript corrections are preserved, and the entity's mention/video counts are recomputed. (A recorded alias→mention provenance link and an undoable delete are tracked in #298.)
+
 ## [0.77.0] - 2026-09-05
 
 ### Added

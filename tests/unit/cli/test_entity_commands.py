@@ -457,3 +457,77 @@ class TestScanAuditFlag:
 
         assert result.exit_code == 0
         assert "--audit" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# TestAliasCrudCliGuards (#289)
+# ---------------------------------------------------------------------------
+
+
+async def _one_session():  # type: ignore[no-untyped-def]
+    """Async generator yielding a stub session (never used by the guards)."""
+    yield MagicMock()
+
+
+class TestAliasCrudCliGuards:
+    """Argument-validation guards for `remove-alias` / `edit-alias` (#289).
+
+    The DB behaviour (delete, rename, collision) is covered by the API
+    integration tests, which share the same repository and normalizer. Here we
+    exercise only the CLI-specific guards, which reject bad invocations before
+    any real work.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    def test_edit_alias_with_no_change_fields_errors(self, runner: CliRunner) -> None:
+        # Pre-DB guard: no --new-name/--new-type/--case-sensitive → nothing to do.
+        result = runner.invoke(
+            entity_app, ["edit-alias", "Some Entity", "--alias", "x"]
+        )
+        assert result.exit_code == 1
+        assert "Nothing to Change" in result.stdout
+
+    def test_edit_alias_rejects_invalid_type(self, runner: CliRunner) -> None:
+        result = runner.invoke(
+            entity_app,
+            ["edit-alias", "Some Entity", "--alias", "x", "--new-type", "bogus"],
+        )
+        assert result.exit_code == 1
+        assert "Invalid Type" in result.stdout
+
+    @patch("chronovista.cli.entity_commands.db_manager")
+    def test_remove_alias_requires_exactly_one_selector_neither(
+        self, mock_db_manager: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_db_manager.get_session.side_effect = lambda *a, **k: _one_session()
+        result = runner.invoke(entity_app, ["remove-alias", "Some Entity"])
+        assert result.exit_code == 1
+        assert "exactly one of --alias or --alias-id" in result.stdout
+
+    @patch("chronovista.cli.entity_commands.db_manager")
+    def test_remove_alias_requires_exactly_one_selector_both(
+        self, mock_db_manager: MagicMock, runner: CliRunner
+    ) -> None:
+        mock_db_manager.get_session.side_effect = lambda *a, **k: _one_session()
+        result = runner.invoke(
+            entity_app,
+            ["remove-alias", "Some Entity", "--alias", "x", "--alias-id", "abc"],
+        )
+        assert result.exit_code == 1
+        assert "exactly one of --alias or --alias-id" in result.stdout
+
+    @patch("chronovista.cli.entity_commands.db_manager")
+    def test_edit_alias_requires_exactly_one_selector(
+        self, mock_db_manager: MagicMock, runner: CliRunner
+    ) -> None:
+        # A valid change field so we pass the no-change guard and reach the
+        # selector guard inside the session loop.
+        mock_db_manager.get_session.side_effect = lambda *a, **k: _one_session()
+        result = runner.invoke(
+            entity_app, ["edit-alias", "Some Entity", "--new-name", "Y"]
+        )
+        assert result.exit_code == 1
+        assert "exactly one of --alias or --alias-id" in result.stdout

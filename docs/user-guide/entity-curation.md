@@ -70,11 +70,37 @@ capitalisation from proper nouns often enough that in a real library, one entity
 had 36 lowercase occurrences of which only 3 were genuinely the ordinary word —
 turning on Match case there would have lost far more than it saved.
 
-### Removing the alias — when it earns nothing
+### Removing or editing the alias — when it earns nothing
 
 If nearly every match is wrong and the subject is reliably named some other way,
-delete the alias. Check first how many mentions use it: if the short form is how
-people actually refer to the subject, removing it discards most of your coverage.
+**delete** the alias. Each alias row on the entity detail page has a **Delete**
+control that confirms first and shows how many mentions the alias has matched —
+check that count, because if the short form is how people actually refer to the
+subject, removing it discards most of your coverage. From the CLI:
+
+```bash
+chronovista entities remove-alias "<entity name>" --alias "<alias text>"
+# ...or by id:
+chronovista entities remove-alias "<entity name>" --alias-id <alias-uuid>
+```
+
+Deleting an alias also removes its **auto-detected** mentions, so the
+associations don't linger as a phantom after the rule that created them is gone.
+Mentions you added **by hand** and those derived from your **transcript
+corrections** are kept — those are deliberate, not alias output. The delete
+confirmation shows how many auto-detected associations will be removed.
+
+If the alias is only mistyped or mis-categorised, **edit** it instead of deleting
+and re-adding. The alias row has an edit control for its text and type, and the
+CLI mirrors it:
+
+```bash
+chronovista entities edit-alias "<entity name>" --alias "<current text>" \
+  --new-name "<corrected text>" --new-type nickname
+```
+
+A rename is re-normalized and re-checked against the entity's other aliases, so
+it cannot create a duplicate.
 
 ## Step 3 — rebuild
 

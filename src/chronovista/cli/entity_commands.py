@@ -355,6 +355,293 @@ def add_alias(
     asyncio.run(_run())
 
 
+async def _resolve_entity_and_alias(
+    session: AsyncSession,
+    normalizer: TagNormalizationService,
+    alias_repo: EntityAliasRepository,
+    *,
+    entity_name: str,
+    alias: str | None,
+    alias_id: str | None,
+) -> tuple[NamedEntityDB, EntityAliasDB]:
+    """Resolve the (entity, alias) pair for remove/edit, or exit with an error.
+
+    Exactly one of ``alias`` (text, matched case/accent-insensitively) or
+    ``alias_id`` (UUID) selects the alias; the alias must belong to the named
+    entity. Raises ``typer.Exit`` after printing a panel on any failure.
+    """
+    if (alias is None) == (alias_id is None):
+        console.print(
+            Panel(
+                "[red]Provide exactly one of --alias or --alias-id.[/red]",
+                title="Invalid Options",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=1)
+
+    normalized_entity = normalizer.normalize(entity_name)
+    if normalized_entity is None:
+        console.print(
+            Panel(
+                "[red]Entity name normalizes to empty string.[/red]",
+                title="Invalid Name",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=1)
+
+    entity = (
+        await session.execute(
+            select(NamedEntityDB).where(
+                NamedEntityDB.canonical_name_normalized == normalized_entity,
+            )
+        )
+    ).scalar_one_or_none()
+    if entity is None:
+        console.print(
+            Panel(
+                f"[red]No entity found with name '{entity_name}'.[/red]",
+                title="Entity Not Found",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=1)
+
+    if alias_id is not None:
+        try:
+            parsed = uuid.UUID(alias_id)
+        except ValueError as exc:
+            console.print(
+                Panel(
+                    f"[red]'{alias_id}' is not a valid alias UUID.[/red]",
+                    title="Invalid Alias ID",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1) from exc
+        found = await alias_repo.get(session, parsed)
+        # Ownership guard: the alias must belong to the named entity.
+        if found is None or found.entity_id != entity.id:
+            console.print(
+                Panel(
+                    f"[red]No alias '{alias_id}' on '{entity.canonical_name}'.[/red]",
+                    title="Alias Not Found",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
+        return entity, found
+
+    normalized_alias = normalizer.normalize(alias or "")
+    if normalized_alias is None:
+        console.print(
+            Panel(
+                "[red]Alias text normalizes to empty string.[/red]",
+                title="Invalid Alias",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=1)
+    found = await alias_repo.get_by_entity_and_normalized(
+        session, entity.id, normalized_alias
+    )
+    if found is None:
+        console.print(
+            Panel(
+                f"[red]No alias matching '{alias}' on "
+                f"'{entity.canonical_name}'.[/red]",
+                title="Alias Not Found",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=1)
+    return entity, found
+
+
+@entity_app.command("remove-alias")
+def remove_alias(
+    entity_name: str = typer.Argument(
+        ..., help="Canonical name of the entity to remove the alias from."
+    ),
+    alias: str | None = typer.Option(
+        None,
+        "--alias",
+        help="Alias text to remove (matched case/accent-insensitively).",
+    ),
+    alias_id: str | None = typer.Option(
+        None, "--alias-id", help="Alias UUID to remove."
+    ),
+) -> None:
+    """Remove a single alias from a named entity (by text or by id).
+
+    Mentions already detected via this alias are keyed to the entity, not the
+    alias, so they are not removed — the alias just stops matching on future
+    scans.
+    """
+
+    async def _run() -> None:
+        normalizer = TagNormalizationService()
+        alias_repo = EntityAliasRepository()
+
+        async for session in db_manager.get_session(echo=False):
+            entity, found = await _resolve_entity_and_alias(
+                session,
+                normalizer,
+                alias_repo,
+                entity_name=entity_name,
+                alias=alias,
+                alias_id=alias_id,
+            )
+            removed_name = found.alias_name
+            occurrences = found.occurrence_count
+            await alias_repo.delete(session, id=found.id)
+            await session.commit()
+
+            note = (
+                ""
+                if occurrences == 0
+                else (
+                    f"\n[yellow]Note:[/yellow] it had matched {occurrences} "
+                    f"mention(s); those remain on the entity."
+                )
+            )
+            console.print(
+                Panel(
+                    f"[bold]Entity:[/bold] {entity.canonical_name}\n"
+                    f"[bold]Removed alias:[/bold] {removed_name}{note}",
+                    title="[green]Alias Removed[/green]",
+                    border_style="green",
+                )
+            )
+
+    asyncio.run(_run())
+
+
+@entity_app.command("edit-alias")
+def edit_alias(
+    entity_name: str = typer.Argument(
+        ..., help="Canonical name of the entity that owns the alias."
+    ),
+    alias: str | None = typer.Option(
+        None, "--alias", help="Current alias text to edit (case/accent-insensitive)."
+    ),
+    alias_id: str | None = typer.Option(None, "--alias-id", help="Alias UUID to edit."),
+    new_name: str | None = typer.Option(None, "--new-name", help="New alias text."),
+    new_type: str | None = typer.Option(
+        None,
+        "--new-type",
+        help=(
+            "New alias type: name_variant, abbreviation, nickname, "
+            "translated_name, former_name."
+        ),
+    ),
+    case_sensitive: bool | None = typer.Option(
+        None,
+        "--case-sensitive/--no-case-sensitive",
+        help="Set whether the alias matches case-sensitively.",
+    ),
+) -> None:
+    """Edit an alias's text, type, and/or case-sensitivity.
+
+    Renaming re-normalizes and is re-checked against the entity's other aliases
+    for a duplicate. Existing mentions are unaffected; matching-rule changes
+    take effect on the next scan.
+    """
+    allowed_types = {
+        "name_variant",
+        "abbreviation",
+        "nickname",
+        "translated_name",
+        "former_name",
+    }
+
+    async def _run() -> None:
+        if new_name is None and new_type is None and case_sensitive is None:
+            console.print(
+                Panel(
+                    "[red]Provide at least one of --new-name, --new-type, "
+                    "--case-sensitive/--no-case-sensitive.[/red]",
+                    title="Nothing to Change",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
+        if new_type is not None and new_type not in allowed_types:
+            console.print(
+                Panel(
+                    f"[red]'{new_type}' is not a valid alias type.[/red]\n"
+                    f"Allowed: {', '.join(sorted(allowed_types))}.",
+                    title="Invalid Type",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
+
+        normalizer = TagNormalizationService()
+        alias_repo = EntityAliasRepository()
+
+        async for session in db_manager.get_session(echo=False):
+            entity, found = await _resolve_entity_and_alias(
+                session,
+                normalizer,
+                alias_repo,
+                entity_name=entity_name,
+                alias=alias,
+                alias_id=alias_id,
+            )
+
+            changes: list[str] = []
+            if new_name is not None:
+                normalized = normalizer.normalize(new_name)
+                if normalized is None:
+                    console.print(
+                        Panel(
+                            "[red]New alias name normalizes to empty string.[/red]",
+                            title="Invalid Name",
+                            border_style="red",
+                        )
+                    )
+                    raise typer.Exit(code=1)
+                if normalized != found.alias_name_normalized:
+                    clash = await alias_repo.get_by_entity_and_normalized(
+                        session, entity.id, normalized
+                    )
+                    if clash is not None and clash.id != found.id:
+                        console.print(
+                            Panel(
+                                f"[red]'{new_name}' collides with existing alias "
+                                f"'{clash.alias_name}'.[/red]",
+                                title="Duplicate Alias",
+                                border_style="red",
+                            )
+                        )
+                        raise typer.Exit(code=1)
+                changes.append(f"name → {new_name}")
+                found.alias_name = new_name
+                found.alias_name_normalized = normalized
+            if new_type is not None:
+                changes.append(f"type → {new_type}")
+                found.alias_type = EntityAliasType(new_type)
+            if case_sensitive is not None:
+                changes.append(f"case_sensitive → {case_sensitive}")
+                found.case_sensitive = case_sensitive
+
+            await session.commit()
+
+            console.print(
+                Panel(
+                    f"[bold]Entity:[/bold] {entity.canonical_name}\n"
+                    f"[bold]Alias:[/bold] {found.alias_name}\n"
+                    f"[bold]Changes:[/bold] {'; '.join(changes)}",
+                    title="[green]Alias Updated[/green]",
+                    border_style="green",
+                )
+            )
+
+    asyncio.run(_run())
+
+
 @entity_app.command("list")
 def list_entities(
     type_str: str | None = typer.Option(

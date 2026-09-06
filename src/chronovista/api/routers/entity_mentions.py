@@ -1051,7 +1051,7 @@ async def create_entity_alias(
 @router.patch(
     "/entities/{entity_id}/aliases/{alias_id}",
     status_code=200,
-    summary="Update an alias's matching behaviour",
+    summary="Edit an alias's text, type, or matching behaviour",
 )
 async def update_entity_alias(
     entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
@@ -1061,13 +1061,18 @@ async def update_entity_alias(
     entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
     alias_repo: EntityAliasRepository = Depends(get_entity_alias_repository),
 ) -> dict[str, Any]:
-    """Set whether an alias matches case-sensitively.
+    """Edit an alias's text, type, and/or case-sensitivity (#289).
 
-    Changing the flag does not retroactively alter existing mentions — matching
-    rules are applied when a scan runs. A caller that wants the change
-    reflected must follow this with a full rescan of the entity; an incremental
-    scan only adds, so it would never retract the mentions the previous rule
-    produced.
+    Any subset of the three fields may be updated. Renaming re-normalizes the
+    alias and re-checks the entity's normalized-uniqueness, so a rename that
+    collides with another of the entity's aliases is a 409.
+
+    None of these edits retroactively alter existing mentions — mentions are
+    keyed to the entity, not the alias, so an edit never orphans them, and
+    matching-rule changes (text/case) take effect only when a scan next runs. A
+    caller that wants the change reflected must follow with a full rescan; an
+    incremental scan only adds, so it would never retract mentions the previous
+    rule produced.
 
     Parameters
     ----------
@@ -1076,7 +1081,7 @@ async def update_entity_alias(
     alias_id : uuid.UUID
         Alias to update.
     body : UpdateEntityAliasRequest
-        New matching behaviour.
+        New text, type, and/or matching behaviour (at least one field).
     session : AsyncSession
         Database session (injected).
 
@@ -1089,6 +1094,9 @@ async def update_entity_alias(
     ------
     NotFoundError
         If the entity does not exist, or the alias does not exist on it (404).
+    ConflictError
+        If a rename normalizes to empty, or collides with another of the
+        entity's aliases (409).
     """
     if not await entity_repo.exists(session, entity_id):
         raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
@@ -1100,7 +1108,42 @@ async def update_entity_alias(
     if alias is None or alias.entity_id != entity_id:
         raise NotFoundError(resource_type="Alias", identifier=str(alias_id))
 
-    alias.case_sensitive = body.case_sensitive
+    # Rename: re-normalize and re-check the entity's normalized-uniqueness so a
+    # rename can't create a duplicate the create path forbids.
+    if body.alias_name is not None:
+        normalized = _normalizer.normalize(body.alias_name)
+        if normalized is None:
+            raise ConflictError(
+                message="Alias name normalizes to an empty string",
+                details={"alias_name": body.alias_name},
+            )
+        if normalized != alias.alias_name_normalized:
+            clash = await alias_repo.get_by_entity_and_normalized(
+                session, entity_id, normalized
+            )
+            if clash is not None and clash.id != alias_id:
+                raise ConflictError(
+                    message=(
+                        f"Already covered by the existing alias "
+                        f"'{clash.alias_name}' — accents and case are ignored "
+                        f"when matching, so this variant is treated as the same."
+                    ),
+                    details={
+                        "entity_id": str(entity_id),
+                        "alias_name": body.alias_name,
+                        "existing_alias_name": clash.alias_name,
+                        "normalized": normalized,
+                    },
+                )
+        alias.alias_name = body.alias_name
+        alias.alias_name_normalized = normalized
+
+    if body.alias_type is not None:
+        alias.alias_type = EntityAliasType(body.alias_type)
+
+    if body.case_sensitive is not None:
+        alias.case_sensitive = body.case_sensitive
+
     await session.commit()
     await session.refresh(alias)
 
@@ -1113,6 +1156,85 @@ async def update_entity_alias(
             case_sensitive=alias.case_sensitive,
         ).model_dump()
     }
+
+
+@router.delete(
+    "/entities/{entity_id}/aliases/{alias_id}",
+    status_code=200,
+    summary="Delete an alias from a named entity",
+)
+async def delete_entity_alias(
+    entity_id: uuid.UUID = Path(..., description="Named entity UUID"),
+    alias_id: uuid.UUID = Path(..., description="Alias UUID"),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    alias_repo: EntityAliasRepository = Depends(get_entity_alias_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
+) -> dict[str, Any]:
+    """Delete an alias and its auto-detected associations (#289).
+
+    Removing an alias also removes the entity's **auto-detected**
+    (``rule_match``) mentions of that alias — leaving them would be an illusion
+    of coverage that no longer has a matching rule. Mentions are matched to the
+    alias by the same case/accent fold that attributes them for
+    ``occurrence_count``, scoped to this entity, so one alias's mentions are
+    removed without touching another's. Hand-made (``manual``) and
+    correction-derived (``user_correction``) mentions are **preserved** — those
+    are deliberate work, not alias output. The entity's mention/video counters
+    are then recomputed. Returns the deleted alias plus the number of
+    associations removed.
+
+    (A recorded alias→mention provenance link and an undoable delete are the
+    follow-up — see #298. Today the match is derived, which is precise because
+    alias normalized-forms are unique per entity.)
+
+    Parameters
+    ----------
+    entity_id : uuid.UUID
+        Named entity that owns the alias.
+    alias_id : uuid.UUID
+        Alias to delete.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    dict
+        The deleted alias plus ``removed_mention_count``, in a ``data`` envelope.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist, or the alias does not exist on it (404).
+    """
+    if not await entity_repo.exists(session, entity_id):
+        raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
+
+    alias = await alias_repo.get(session, alias_id)
+    # Same ownership guard as PATCH: the entity_id in the path must own the
+    # alias, or a mismatched pair would delete through any entity's URL.
+    if alias is None or alias.entity_id != entity_id:
+        raise NotFoundError(resource_type="Alias", identifier=str(alias_id))
+
+    summary = EntityAliasSummary(
+        id=alias.id,
+        alias_name=alias.alias_name,
+        alias_type=alias.alias_type,
+        occurrence_count=alias.occurrence_count,
+        case_sensitive=alias.case_sensitive,
+    ).model_dump()
+
+    # Remove the alias's auto-detected mentions (preserving manual/correction),
+    # then the alias row, then recompute the entity's counters — all in one
+    # transaction so an interrupted delete leaves the entity consistent.
+    removed = await mention_repo.delete_rule_match_mentions_for_alias(
+        session, entity_id=entity_id, alias_id=alias_id, alias_name=alias.alias_name
+    )
+    await alias_repo.delete(session, id=alias_id)
+    await mention_repo.update_entity_counters(session, [entity_id])
+    await session.commit()
+
+    return {"data": {**summary, "removed_mention_count": removed}}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -30,8 +30,13 @@ import {
   useUpdateEntity,
 } from "../hooks/useEntityMentions";
 import { apiFetch } from "../api/config";
-import type { EntityDetail, EntityAliasSummary, UpdateEntityRequest } from "../api/entityMentions";
-import { createEntityAlias, updateEntityAlias } from "../api/entityMentions";
+import type {
+  EntityDetail,
+  EntityAliasSummary,
+  UpdateEntityRequest,
+  UpdateEntityAliasRequest,
+} from "../api/entityMentions";
+import { createEntityAlias, updateEntityAlias, deleteEntityAlias } from "../api/entityMentions";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhoneticVariantsSection } from "../components/corrections/PhoneticVariantsSection";
 import { ExclusionPatternsSection } from "../components/corrections/ExclusionPatternsSection";
@@ -138,6 +143,26 @@ function PencilIcon({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
       />
     </svg>
   );
@@ -550,72 +575,367 @@ function EntityVideoCard({
 interface AliasRowProps {
   alias: EntityAliasSummary;
   entityId: string;
-  /** Called after the flag is persisted, so the caller can rebuild mentions. */
-  onCaseSensitivityChanged: () => void;
+  /**
+   * Called after a mutation that changes what text matches — the
+   * case-sensitivity flag, or a rename — so the caller can rebuild mentions.
+   */
+  onMatchingChanged: () => void;
+  /**
+   * Called after a mutation that doesn't change what text matches or which
+   * videos are associated (an edit that only changed the alias type) — just
+   * refreshes the list.
+   */
+  onAliasListChanged: () => void;
+  /**
+   * Called after a successful delete. The backend also retracts the
+   * alias's auto-detected mentions, which changes entity↔video
+   * associations — so this must refresh the same query families a
+   * mention-changing scan does, not just the alias list.
+   */
+  onAliasDeleted: () => void;
 }
 
-function AliasRow({ alias, entityId, onCaseSensitivityChanged }: AliasRowProps) {
+function AliasRow({
+  alias,
+  entityId,
+  onMatchingChanged,
+  onAliasListChanged,
+  onAliasDeleted,
+}: AliasRowProps) {
   const [caseSensitive, setCaseSensitive] = useState(alias.case_sensitive);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isSavingCase, setIsSavingCase] = useState(false);
+  const [caseError, setCaseError] = useState<string | null>(null);
   const toggleId = `alias-case-${alias.id}`;
+
+  // ---------------------------------------------------------------------------
+  // Edit (name + type) — Feature #289
+  // ---------------------------------------------------------------------------
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [nameInput, setNameInput] = useState(alias.alias_name);
+  const [typeInput, setTypeInput] = useState(alias.alias_type);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // ---------------------------------------------------------------------------
+  // Delete — Feature #289
+  // ---------------------------------------------------------------------------
+
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (isEditing) {
+      nameInputRef.current?.focus();
+    }
+  }, [isEditing]);
+
+  useEffect(() => {
+    if (isConfirmingDelete) {
+      deleteConfirmButtonRef.current?.focus();
+    }
+  }, [isConfirmingDelete]);
 
   async function handleToggle(next: boolean) {
     // Optimistic, because the switch is the feedback — a checkbox that lags
     // behind the click reads as broken.
     setCaseSensitive(next);
-    setIsSaving(true);
-    setError(null);
+    setIsSavingCase(true);
+    setCaseError(null);
     try {
-      await updateEntityAlias(entityId, alias.id, next);
-      onCaseSensitivityChanged();
+      await updateEntityAlias(entityId, alias.id, { case_sensitive: next });
+      onMatchingChanged();
     } catch {
       setCaseSensitive(!next);
-      setError("Could not save. Try again.");
+      setCaseError("Could not save. Try again.");
     } finally {
-      setIsSaving(false);
+      setIsSavingCase(false);
     }
   }
 
-  return (
-    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 transition-colors">
-      <span className="text-sm font-medium text-gray-800">{alias.alias_name}</span>
-      <div className="flex items-center gap-3">
-        <label
-          htmlFor={toggleId}
-          className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer"
-          title={
-            `Match "${alias.alias_name}" only with this exact capitalisation. ` +
-            "Use when the alias is also an ordinary word and casing tells them " +
-            "apart — check the mentions first, since automatic transcripts " +
-            "often drop capitals from names."
-          }
-        >
+  function enterEditMode() {
+    setNameInput(alias.alias_name);
+    setTypeInput(alias.alias_type);
+    setEditError(null);
+    setIsEditing(true);
+  }
+
+  function exitEditMode() {
+    setIsEditing(false);
+    // Return focus to the trigger for keyboard users (WCAG 2.4.3).
+    requestAnimationFrame(() => editButtonRef.current?.focus());
+  }
+
+  function handleEditCancel() {
+    setEditError(null);
+    exitEditMode();
+  }
+
+  function handleEditKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      handleEditCancel();
+    }
+  }
+
+  const trimmedNameInput = nameInput.trim();
+  const editHasChanges =
+    trimmedNameInput !== alias.alias_name || typeInput !== alias.alias_type;
+
+  async function handleEditSave() {
+    // Belt-and-suspenders: the Save button is already disabled for both of
+    // these, so this only guards a race (e.g. a stray Enter keypress).
+    if (isSavingEdit || trimmedNameInput === "" || !editHasChanges) return;
+
+    const nameChanged = trimmedNameInput !== alias.alias_name;
+    const patch: UpdateEntityAliasRequest = {};
+    if (nameChanged) patch.alias_name = trimmedNameInput;
+    if (typeInput !== alias.alias_type) patch.alias_type = typeInput;
+
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      await updateEntityAlias(entityId, alias.id, patch);
+      exitEditMode();
+      // A rename changes what text matches, so it needs the same rescan the
+      // case-sensitivity flag does. A type-only change doesn't affect
+      // matching — just refresh the list.
+      if (nameChanged) {
+        onMatchingChanged();
+      } else {
+        onAliasListChanged();
+      }
+    } catch (err: unknown) {
+      const status = (err as { status?: number } | null)?.status;
+      if (status === 409) {
+        setEditError(
+          "This name is already covered by an existing alias — accents and case " +
+            "are ignored when matching, so this spelling counts as the same."
+        );
+      } else if (status === 404) {
+        setEditError("Alias not found. Please refresh the page.");
+      } else {
+        setEditError("Failed to save changes. Please try again.");
+      }
+      // Editor stays open and the user's input is preserved.
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }
+
+  function handleDeleteCancel() {
+    setIsConfirmingDelete(false);
+    setDeleteError(null);
+    requestAnimationFrame(() => deleteButtonRef.current?.focus());
+  }
+
+  function handleDeleteKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      handleDeleteCancel();
+    }
+  }
+
+  async function handleDeleteConfirm() {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteEntityAlias(entityId, alias.id);
+      setIsConfirmingDelete(false);
+      // The backend also retracted this alias's auto-detected mentions —
+      // an association-level change, not just a list refresh — so this
+      // must invalidate the same query families a mention-changing scan
+      // does (see refreshEntityAssociations). It must NOT trigger an actual
+      // rescan: the server already removed the mentions and recomputed
+      // counts, so re-scanning would just be redundant work.
+      onAliasDeleted();
+    } catch (err: unknown) {
+      const status = (err as { status?: number } | null)?.status;
+      setDeleteError(
+        status === 404
+          ? "Alias not found. Please refresh the page."
+          : "Failed to delete alias. Please try again."
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  if (isEditing) {
+    return (
+      <div
+        className="py-2 px-3 space-y-2"
+        onKeyDown={handleEditKeyDown}
+        role="group"
+        aria-label={`Edit alias "${alias.alias_name}"`}
+      >
+        <div className="flex items-center gap-2">
           <input
-            id={toggleId}
-            type="checkbox"
-            checked={caseSensitive}
-            disabled={isSaving}
-            onChange={(e) => void handleToggle(e.target.checked)}
-            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+            ref={nameInputRef}
+            type="text"
+            value={nameInput}
+            onChange={(e) => {
+              setNameInput(e.target.value);
+              if (editError) setEditError(null);
+            }}
+            disabled={isSavingEdit}
+            aria-label={`Alias name for "${alias.alias_name}"`}
+            maxLength={200}
+            className="flex-1 min-w-0 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-slate-100 disabled:text-slate-500"
           />
-          Match case
-        </label>
-        {error !== null && (
-          <span role="alert" className="text-xs text-red-600">
-            {error}
-          </span>
+          <select
+            value={typeInput}
+            onChange={(e) => setTypeInput(e.target.value)}
+            disabled={isSavingEdit}
+            aria-label={`Alias type for "${alias.alias_name}"`}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 disabled:bg-slate-100 disabled:text-slate-500"
+          >
+            {ALIAS_TYPE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {isSavingEdit && (
+          <p role="status" aria-live="polite" className="text-xs text-slate-500">
+            Saving…
+          </p>
         )}
-        <span
-          className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded border ${getAliasTypeBadgeClass(alias.alias_type)}`}
-        >
-          {getAliasTypeLabel(alias.alias_type)}
-        </span>
-        <span className="text-xs text-gray-400 tabular-nums w-16 text-right">
-          {alias.occurrence_count.toLocaleString()}{" "}
-          {alias.occurrence_count === 1 ? "occurrence" : "occurrences"}
-        </span>
+        {editError !== null && (
+          <p role="alert" className="text-xs text-red-600">
+            {editError}
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void handleEditSave()}
+            disabled={isSavingEdit || trimmedNameInput === "" || !editHasChanges}
+            aria-busy={isSavingEdit ? "true" : undefined}
+            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isSavingEdit ? "Saving…" : "Save"}
+          </button>
+          <button
+            type="button"
+            onClick={handleEditCancel}
+            disabled={isSavingEdit}
+            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-md hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 transition-colors">
+        <span className="text-sm font-medium text-gray-800">{alias.alias_name}</span>
+        <div className="flex items-center gap-3">
+          <label
+            htmlFor={toggleId}
+            className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer"
+            title={
+              `Match "${alias.alias_name}" only with this exact capitalisation. ` +
+              "Use when the alias is also an ordinary word and casing tells them " +
+              "apart — check the mentions first, since automatic transcripts " +
+              "often drop capitals from names."
+            }
+          >
+            <input
+              id={toggleId}
+              type="checkbox"
+              checked={caseSensitive}
+              disabled={isSavingCase}
+              onChange={(e) => void handleToggle(e.target.checked)}
+              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+            />
+            Match case
+          </label>
+          {caseError !== null && (
+            <span role="alert" className="text-xs text-red-600">
+              {caseError}
+            </span>
+          )}
+          <span
+            className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded border ${getAliasTypeBadgeClass(alias.alias_type)}`}
+          >
+            {getAliasTypeLabel(alias.alias_type)}
+          </span>
+          <span className="text-xs text-gray-400 tabular-nums w-16 text-right">
+            {alias.occurrence_count.toLocaleString()}{" "}
+            {alias.occurrence_count === 1 ? "occurrence" : "occurrences"}
+          </span>
+          <button
+            ref={editButtonRef}
+            type="button"
+            onClick={enterEditMode}
+            aria-label={`Edit alias "${alias.alias_name}"`}
+            className="inline-flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 transition-colors"
+          >
+            <PencilIcon className="w-3.5 h-3.5" />
+          </button>
+          <button
+            ref={deleteButtonRef}
+            type="button"
+            onClick={() => setIsConfirmingDelete(true)}
+            aria-label={`Delete alias "${alias.alias_name}"`}
+            className="inline-flex items-center justify-center w-7 h-7 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1 transition-colors"
+          >
+            <TrashIcon className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {isConfirmingDelete && (
+        <div
+          className="mt-1 mb-2 flex flex-wrap items-start gap-2 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
+          onKeyDown={handleDeleteKeyDown}
+        >
+          <WarningIcon className="w-4 h-4 flex-shrink-0 text-amber-600 mt-0.5" />
+          <span className="text-xs text-amber-900 flex-1">
+            {`Deleting this alias will remove about ${alias.occurrence_count.toLocaleString()} auto-detected ${alias.occurrence_count === 1 ? "mention" : "mentions"} it produced. Mentions you added manually, or that came from a correction, will be kept.`}
+          </span>
+          {deleteError !== null && (
+            <span role="alert" className="text-xs text-red-700 w-full">
+              {deleteError}
+            </span>
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              ref={deleteConfirmButtonRef}
+              type="button"
+              onClick={() => void handleDeleteConfirm()}
+              disabled={isDeleting}
+              aria-busy={isDeleting ? "true" : undefined}
+              aria-label={`Confirm deletion of alias "${alias.alias_name}"`}
+              className="min-h-[36px] px-3 py-1 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1 transition-colors"
+            >
+              {isDeleting ? "Deleting…" : "Delete"}
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteCancel}
+              disabled={isDeleting}
+              aria-label={`Cancel deletion of alias "${alias.alias_name}"`}
+              className="min-h-[36px] px-3 py-1 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1248,6 +1568,35 @@ export function EntityDetailPage() {
     );
   }
 
+  // Refreshes the entity-detail cache (and therefore the alias list, which
+  // is read straight off `entity.aliases`) without a rescan — for mutations
+  // that don't change what text matches or which videos are associated,
+  // e.g. adding an alias or editing only its type.
+  function refreshEntityDetail() {
+    void queryClient.invalidateQueries({
+      queryKey: ["entity-detail", entityId],
+    });
+  }
+
+  // Deleting an alias now also retracts that alias's auto-detected
+  // (rule_match) mentions on the backend, which changes entity↔video
+  // associations and recomputed counts — the same shape of change a scan
+  // makes. So it must invalidate the same query families `useScanEntity`
+  // does (see its `getInvalidationKeys` in useEntityMentions.ts), just
+  // without actually re-running a scan (the server already did the removal
+  // and recompute — a rescan would be redundant work, not a correctness fix).
+  function refreshEntityAssociations() {
+    void queryClient.invalidateQueries({
+      queryKey: ["entity-detail", entityId],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["entity-videos", entityId],
+    });
+    void queryClient.invalidateQueries({ queryKey: ["video-entities"] });
+    void queryClient.invalidateQueries({ queryKey: ["entities"] });
+    void queryClient.invalidateQueries({ queryKey: ["entitySearch"] });
+  }
+
   // Fetch entity detail — we reuse the video-entity summary shape to get
   // the canonical_name, entity_type, and description.  The backend exposes
   // GET /api/v1/entities/{entity_id} which returns the NamedEntity record.
@@ -1517,11 +1866,19 @@ export function EntityDetailPage() {
                   key={alias.id}
                   alias={alias}
                   entityId={entityId ?? ""}
-                  // Changing the flag changes nothing until mentions are
-                  // rebuilt: an incremental scan only adds, so it would never
-                  // retract what the previous rule matched. Firing the rescan
-                  // here is what makes the toggle mean something.
-                  onCaseSensitivityChanged={handleScanClick}
+                  // Changing the flag, or renaming the alias text, changes
+                  // nothing until mentions are rebuilt: an incremental scan
+                  // only adds, so it would never retract what the previous
+                  // rule matched. Firing the rescan here is what makes either
+                  // change mean something.
+                  onMatchingChanged={handleScanClick}
+                  // Editing only the alias's type doesn't change what text
+                  // matches — just refresh the list.
+                  onAliasListChanged={refreshEntityDetail}
+                  // Deleting an alias now also retracts its auto-detected
+                  // mentions on the backend — an association-level change,
+                  // not just a list refresh.
+                  onAliasDeleted={refreshEntityAssociations}
                 />
               ))}
             </div>
@@ -1529,14 +1886,7 @@ export function EntityDetailPage() {
             <p className="text-sm text-gray-400 italic">No aliases registered.</p>
           )}
           {entityId && (
-            <AddAliasForm
-              entityId={entityId}
-              onCreated={() => {
-                void queryClient.invalidateQueries({
-                  queryKey: ["entity-detail", entityId],
-                });
-              }}
-            />
+            <AddAliasForm entityId={entityId} onCreated={refreshEntityDetail} />
           )}
         </div>
       </section>

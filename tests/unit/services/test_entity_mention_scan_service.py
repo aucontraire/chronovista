@@ -69,6 +69,7 @@ def _make_alias_row(
     and change what the compiled pattern means.
     """
     row = MagicMock()
+    row.id = _make_uuid()  # real UUID: the scan records alias provenance (#298)
     row.entity_id = entity_id
     row.alias_name = alias_name
     row.case_sensitive = case_sensitive

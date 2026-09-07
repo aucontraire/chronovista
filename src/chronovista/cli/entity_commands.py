@@ -642,6 +642,50 @@ def edit_alias(
     asyncio.run(_run())
 
 
+@entity_app.command("backfill-alias-links")
+def backfill_alias_links(
+    apply: bool = typer.Option(
+        False, "--apply", help="Write the links (default: dry-run, no writes)."
+    ),
+) -> None:
+    """Backfill alias→mention provenance on historical auto-detected mentions (#298).
+
+    Links each ``rule_match`` mention with no recorded alias to the entity alias
+    whose folded name matches its text — but only where that fold maps to exactly
+    ONE alias (ambiguous folds like ``pena``/``peña`` stay unlinked). Manual and
+    correction-derived mentions are never touched. Dry-run by default.
+    """
+
+    async def _run() -> None:
+        mention_repo = EntityMentionRepository()
+        async for session in db_manager.get_session(echo=False):
+            linked, remaining = await mention_repo.backfill_alias_links(
+                session, apply=apply
+            )
+            if apply:
+                await session.commit()
+            else:
+                # Dry-run does only reads, but get_session() auto-commits on
+                # scope exit — roll back explicitly so nothing can slip through.
+                await session.rollback()
+
+            verb = "Linked" if apply else "Would link"
+            note = (
+                "" if apply else "\n[yellow]Dry run — pass --apply to write.[/yellow]"
+            )
+            console.print(
+                Panel(
+                    f"[bold]{verb}:[/bold] {linked}\n"
+                    f"[bold]Still unlinked (ambiguous / no matching alias):[/bold] "
+                    f"{remaining}{note}",
+                    title="[green]Alias-link Backfill[/green]",
+                    border_style="green",
+                )
+            )
+
+    asyncio.run(_run())
+
+
 @entity_app.command("list")
 def list_entities(
     type_str: str | None = typer.Option(

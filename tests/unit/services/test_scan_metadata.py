@@ -59,9 +59,11 @@ def _make_entity_row(
 def _make_alias_row(entity_id: uuid.UUID, alias_name: str) -> MagicMock:
     """Create a mock ORM EntityAlias row."""
     row = MagicMock()
+    row.id = _make_uuid()  # real UUID: the scan records alias provenance (#298)
     row.entity_id = entity_id
     row.alias_name = alias_name
     row.alias_type = "name_variant"
+    row.case_sensitive = False
     return row
 
 

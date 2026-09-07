@@ -20,17 +20,24 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import EntityAlias as EntityAliasDB
+from chronovista.db.models import EntityOperationLog as EntityOperationLogDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.models.entity_enrichment import ExternalIdentifier
 from chronovista.models.entity_operation_log import (
+    AliasDeleteRollback,
+    AliasSnapshot,
     EntityEditRollback,
     EntityEditSnapshot,
     EntityOperationLogCreate,
     GroundingRollback,
     GroundingSnapshot,
+    MentionSnapshot,
 )
 from chronovista.models.enums import EntityType
 from chronovista.models.named_entity import NamedEntityUpdate
+from chronovista.repositories.entity_alias_repository import EntityAliasRepository
+from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.entity_operation_log_repository import (
     EntityOperationLogRepository,
 )
@@ -97,6 +104,8 @@ class EntityCurationService:
         named_entity_repo: NamedEntityRepository,
         operation_log_repo: EntityOperationLogRepository,
         normalizer: TagNormalizationService | None = None,
+        entity_alias_repo: EntityAliasRepository | None = None,
+        entity_mention_repo: EntityMentionRepository | None = None,
     ) -> None:
         """
         Initialize the service with its repositories.
@@ -115,6 +124,10 @@ class EntityCurationService:
         self._entity_repo = named_entity_repo
         self._operation_log_repo = operation_log_repo
         self._normalizer = normalizer or TagNormalizationService()
+        # Only the alias delete/undo paths (#298) need these; other methods
+        # never touch them, so they stay optional for lighter construction.
+        self._entity_alias_repo = entity_alias_repo
+        self._entity_mention_repo = entity_mention_repo
 
     async def update_entity(
         self,
@@ -445,6 +458,128 @@ class EntityCurationService:
         )
         return entity, current_qid
 
+    async def delete_alias(
+        self,
+        session: AsyncSession,
+        *,
+        entity: NamedEntityDB,
+        alias: EntityAliasDB,
+        actor: str,
+    ) -> tuple[int, uuid.UUID]:
+        """Delete an alias and its auto-detected mentions as a reversible op (#298).
+
+        Selects the alias's ``rule_match`` mentions (recorded ``alias_id`` link
+        ∪ folded-null fallback with the sibling guard), captures the removed
+        alias + mention rows into an ``AliasDeleteRollback``, deletes the
+        mentions and the alias, recomputes the entity's counters, and logs one
+        ``alias_delete`` operation. Manual and correction-derived mentions are
+        never selected, so they are preserved. Returns
+        ``(removed_mention_count, operation_id)``; the caller commits.
+
+        The caller has already fetched and ownership-checked ``entity``/``alias``.
+        """
+        if self._entity_alias_repo is None or self._entity_mention_repo is None:
+            raise RuntimeError("alias/mention repositories are required for delete")
+
+        rows = await self._entity_mention_repo.select_mentions_for_alias_removal(
+            session,
+            entity_id=entity.id,
+            alias_id=alias.id,
+            alias_name=alias.alias_name,
+        )
+        rollback = AliasDeleteRollback(
+            alias=AliasSnapshot.model_validate(alias),
+            removed_mentions=[MentionSnapshot.model_validate(r) for r in rows],
+        )
+        removed = await self._entity_mention_repo.delete_mentions_by_ids(
+            session, [r.id for r in rows]
+        )
+        await self._entity_alias_repo.delete(session, id=alias.id)
+        await self._entity_mention_repo.update_entity_counters(session, [entity.id])
+        op = await self._operation_log_repo.create(
+            session,
+            obj_in=EntityOperationLogCreate(
+                entity_id=entity.id,
+                operation_type="alias_delete",
+                rollback_data=rollback,
+                performed_by=actor,
+            ),
+        )
+        logger.info(
+            "Alias deleted (reversible): entity=%s alias=%s removed=%d op=%s actor=%s",
+            entity.id,
+            alias.id,
+            removed,
+            op.id,
+            actor,
+        )
+        return removed, op.id
+
+    async def _undo_alias_delete(
+        self,
+        session: AsyncSession,
+        log_entry: EntityOperationLogDB,
+        *,
+        actor: str,
+    ) -> NamedEntityDB:
+        """Restore an alias and its removed mentions from an ``alias_delete`` op.
+
+        Rejects with a collision (no partial restore) if an alias with the same
+        normalized form was created since the deletion; skips mentions whose
+        transcript segment no longer exists; recomputes counters; marks the
+        operation rolled back. Returns the entity (for the endpoint's detail
+        response).
+        """
+        if self._entity_alias_repo is None or self._entity_mention_repo is None:
+            raise RuntimeError("alias/mention repositories are required for undo")
+
+        rollback = AliasDeleteRollback.model_validate(log_entry.rollback_data)
+        entity = await self._entity_repo.get(session, log_entry.entity_id)
+        if entity is None:
+            raise EntityNotFoundError(
+                f"Entity '{log_entry.entity_id}' not found.",
+                entity_id=log_entry.entity_id,
+            )
+
+        # A colliding alias created since the deletion → reject, no partial state.
+        clash = await self._entity_alias_repo.get_by_entity_and_normalized(
+            session, entity.id, rollback.alias.alias_name_normalized
+        )
+        if clash is not None:
+            raise EntityNameCollisionError(
+                f"Cannot restore alias '{rollback.alias.alias_name}': an alias "
+                f"with the same normalized form already exists on this entity."
+            )
+
+        # Recreate the alias verbatim (same id preserves identity for the undo).
+        session.add(
+            EntityAliasDB(
+                id=rollback.alias.id,
+                entity_id=rollback.alias.entity_id,
+                alias_name=rollback.alias.alias_name,
+                alias_name_normalized=rollback.alias.alias_name_normalized,
+                alias_type=rollback.alias.alias_type,
+                case_sensitive=rollback.alias.case_sensitive,
+                occurrence_count=rollback.alias.occurrence_count,
+            )
+        )
+        await session.flush()
+
+        restored, skipped = await self._entity_mention_repo.restore_mentions(
+            session, rollback.removed_mentions
+        )
+        await self._entity_mention_repo.update_entity_counters(session, [entity.id])
+        await self._operation_log_repo.mark_rolled_back(session, log_entry.id)
+        logger.info(
+            "Alias deletion undone: op=%s entity=%s restored=%d skipped=%d actor=%s",
+            log_entry.id,
+            entity.id,
+            restored,
+            skipped,
+            actor,
+        )
+        return entity
+
     async def undo_operation(
         self,
         session: AsyncSession,
@@ -492,6 +627,10 @@ class EntityCurationService:
             raise OperationAlreadyUndoneError(
                 f"Operation '{operation_id}' has already been rolled back."
             )
+
+        # Alias deletions restore an alias + its mentions, not entity fields.
+        if log_entry.operation_type == "alias_delete":
+            return await self._undo_alias_delete(session, log_entry, actor=actor)
 
         entity = await self._entity_repo.get(session, log_entry.entity_id)
         if entity is None:

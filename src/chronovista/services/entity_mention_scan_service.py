@@ -138,6 +138,12 @@ class _EntityPattern:
     entity_type: str
     pg_pattern: str  # diacritic-folded, re.escaped alias alternation (no \b)
     alias_names: list[str]  # all raw names contributing to pattern
+    # Provenance (#298): diacritic-folded alias name -> alias id, for folds that
+    # map to exactly ONE alias. A matched span is attributed to an alias by
+    # folding it and looking it up here; a fold shared by two aliases
+    # (e.g. "pena"/"peña") is absent, so such spans record NULL — the matcher
+    # can't tell them apart either, so we don't guess.
+    alias_id_by_fold: dict[str, uuid.UUID] = field(default_factory=dict)
     exclusion_patterns: list[str] = field(default_factory=list)
     # True when at least one alias opted into case-sensitive matching (#177).
     # The pattern then carries per-alternative `(?i:...)` scopes and MUST be
@@ -978,6 +984,9 @@ class EntityMentionScanService:
                 match_end=m_end,
                 mention_source=mention_source,
                 mention_context=context,
+                alias_id=pat.alias_id_by_fold.get(
+                    _fold_diacritics(matched_text)[0].casefold()
+                ),
             )
             mentions.append(mention)
 
@@ -1103,11 +1112,12 @@ class EntityMentionScanService:
         alias_result = await session.execute(alias_stmt)
         all_aliases = list(alias_result.scalars().all())
 
-        # Group aliases by entity_id, carrying each alias's case-sensitivity.
-        alias_map: dict[uuid.UUID, list[tuple[str, bool]]] = {}
+        # Group aliases by entity_id, carrying each alias's id (#298 provenance)
+        # and case-sensitivity.
+        alias_map: dict[uuid.UUID, list[tuple[uuid.UUID, str, bool]]] = {}
         for alias in all_aliases:
             alias_map.setdefault(alias.entity_id, []).append(
-                (alias.alias_name, bool(alias.case_sensitive))
+                (alias.id, alias.alias_name, bool(alias.case_sensitive))
             )
 
         patterns: list[_EntityPattern] = []
@@ -1122,11 +1132,29 @@ class EntityMentionScanService:
 
             # Add aliases (may include canonical name again, dedup below)
             entity_aliases = alias_map.get(entity.id, [])
-            for alias_name, alias_cs in entity_aliases:
+            for _alias_id, alias_name, alias_cs in entity_aliases:
                 if alias_name not in names:
                     names.append(alias_name)
                 if alias_cs:
                     case_sensitive_names.add(alias_name)
+
+            # Provenance map (#298): folded alias name -> id, unambiguous folds
+            # only. Spans whose fold maps to >1 alias are indistinguishable to
+            # the matcher, so they are omitted and record NULL.
+            # casefold on top of the diacritic fold: detection is
+            # case-insensitive (re.IGNORECASE), so attribution must be too, or a
+            # lowercase transcript match of a capitalized alias would record no
+            # link. (Two aliases differing only in case can't coexist —
+            # alias_name_normalized is already lowercased — so this adds no new
+            # collision.)
+            fold_to_ids: dict[str, list[uuid.UUID]] = {}
+            for a_id, a_name, _cs in entity_aliases:
+                folded_name = _fold_diacritics(a_name)[0].casefold()
+                if folded_name:
+                    fold_to_ids.setdefault(folded_name, []).append(a_id)
+            alias_id_by_fold = {
+                f: ids[0] for f, ids in fold_to_ids.items() if len(ids) == 1
+            }
 
             # Warn about short aliases
             for name in names:
@@ -1179,6 +1207,7 @@ class EntityMentionScanService:
                     entity_type=entity.entity_type,
                     pg_pattern=pg_pattern,
                     alias_names=names,
+                    alias_id_by_fold=alias_id_by_fold,
                     exclusion_patterns=list(entity.exclusion_patterns or []),
                     has_case_sensitive_alias=any_case_sensitive,
                 )
@@ -1422,6 +1451,9 @@ class EntityMentionScanService:
                     # transcript is the largest source by a wide margin.
                     mention_context=self._extract_context_snippet(
                         effective_text, m_start, m_end
+                    ),
+                    alias_id=pat.alias_id_by_fold.get(
+                        _fold_diacritics(matched_text)[0].casefold()
                     ),
                 )
                 new_mentions.append(mention)

@@ -1394,7 +1394,7 @@ class EntityOperationLog(Base):
     # Table constraints and indexes
     __table_args__ = (
         CheckConstraint(
-            "operation_type IN ('update', 'reground', 'refetch')",
+            "operation_type IN ('update', 'reground', 'refetch', 'alias_delete')",
             name="chk_entity_operation_type_valid",
         ),
         Index("idx_entity_operation_logs_entity_id", "entity_id"),
@@ -1534,6 +1534,16 @@ class EntityMention(Base):
         index=True,
     )
 
+    # The alias that produced this auto-detected mention (#298). NULL for manual
+    # and user_correction mentions, fold-ambiguous spans, and un-backfilled rows.
+    # ON DELETE SET NULL: an alias removed by any other path unlinks rather than
+    # destroying the mention — only the recorded alias-delete flow removes them.
+    alias_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("entity_aliases.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Source location where the mention was found (transcript, title, description)
     mention_source: Mapped[str] = mapped_column(
         String(20),
@@ -1552,6 +1562,8 @@ class EntityMention(Base):
 
     # Table constraints and indexes
     __table_args__ = (
+        # Alias→mention provenance lookup (#298), matching the migration's name.
+        Index("idx_entity_mentions_alias_id", "alias_id"),
         # Partial unique index for segment-bound (automated) mentions.
         # Replaces the former uq_entity_mention_entity_segment_position
         # unique constraint so that NULL segment_id rows (manual mentions)

@@ -426,6 +426,8 @@ def get_entity_curation_service() -> "EntityCurationService":
     return EntityCurationService(
         named_entity_repo=container.create_named_entity_repository(),
         operation_log_repo=container.create_entity_operation_log_repository(),
+        entity_alias_repo=container.create_entity_alias_repository(),
+        entity_mention_repo=container.create_entity_mention_repository(),
     )
 
 

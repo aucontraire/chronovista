@@ -53,6 +53,9 @@ from chronovista.db.models import (
     VideoTranscript as VideoTranscriptDB,
 )
 from chronovista.models.enums import DetectionMethod
+from chronovista.repositories.entity_mention_repository import (
+    EntityMentionRepository,
+)
 from chronovista.services.entity_mention_scan_service import (
     EntityMentionScanService,
     ScanResult,
@@ -1445,3 +1448,178 @@ class TestDiacriticInsensitiveMetadataScan:
         assert m.mention_text == "Perú"
         assert m.mention_source == "title"
         assert result.mentions_found == 1
+
+
+# ---------------------------------------------------------------------------
+# T014: alias→mention provenance (#298)
+# ---------------------------------------------------------------------------
+
+
+class TestAliasProvenance:
+    """The scan records alias_id for an unambiguous match; NULL when two
+    aliases of the entity fold to the same form (indistinguishable to the
+    matcher)."""
+
+    async def test_unambiguous_match_records_alias_id(
+        self, db_session: AsyncSession
+    ) -> None:
+        vid = video_id(seed="prov_ok")
+        await _seed_channel(db_session)
+        await _seed_video(db_session, vid)
+        await _seed_transcript(db_session, vid)
+        await _seed_segment(db_session, vid, text="Aardvark walks by.")
+        entity = await _seed_entity(db_session, "Zephyrus", entity_type="person")
+        alias = await _seed_alias(db_session, entity.id, "Aardvark")
+        await db_session.commit()
+
+        service = EntityMentionScanService(
+            session_factory=_make_session_factory_from_session(db_session)
+        )
+        await service.scan()
+
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].mention_text.lower() == "aardvark"
+        # Attributed to the one alias whose folded name equals the span.
+        # (compare as str: DB round-trips a stdlib UUID, alias.id is uuid_utils)
+        assert str(rows[0].alias_id) == str(alias.id)
+
+    async def test_fold_colliding_aliases_record_null(
+        self, db_session: AsyncSession
+    ) -> None:
+        vid = video_id(seed="prov_amb")
+        await _seed_channel(db_session)
+        await _seed_video(db_session, vid)
+        await _seed_transcript(db_session, vid)
+        await _seed_segment(db_session, vid, text="peña appears here.")
+        entity = await _seed_entity(
+            db_session, "Collisiontest Person", entity_type="person"
+        )
+        # Two aliases that fold identically (accent stripped) → ambiguous.
+        await _seed_alias(db_session, entity.id, "pena")
+        await _seed_alias(db_session, entity.id, "peña")
+        await db_session.commit()
+
+        service = EntityMentionScanService(
+            session_factory=_make_session_factory_from_session(db_session)
+        )
+        await service.scan()
+
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
+        assert len(rows) >= 1
+        # The span matched, but the matcher can't tell pena from peña, so the
+        # scan records no alias link (deletion falls back to the folded guard).
+        assert all(r.alias_id is None for r in rows)
+
+
+# ---------------------------------------------------------------------------
+# T015: backfill_alias_links (#298)
+# ---------------------------------------------------------------------------
+
+
+class TestBackfillAliasLinks:
+    """Backfill links historical NULL rule_match mentions to their unambiguous
+    alias fold; leaves fold-colliding and manual/correction mentions NULL;
+    idempotent; dry-run writes nothing."""
+
+    async def _seed(self, session: AsyncSession) -> dict[str, Any]:
+        vid = video_id(seed="bf_001")
+        await _seed_channel(session)
+        await _seed_video(session, vid)
+        await _seed_transcript(session, vid)
+        seg = await _seed_segment(session, vid, text="filler")
+        entity = await _seed_entity(session, "Backfilltest", entity_type="person")
+        aardvark = await _seed_alias(session, entity.id, "Aardvark")
+        await _seed_alias(session, entity.id, "pena")
+        await _seed_alias(session, entity.id, "peña")
+
+        def _mention(text: str, method: str, seg_id: int | None) -> EntityMentionDB:
+            return EntityMentionDB(
+                id=uuid.uuid4(),
+                entity_id=entity.id,
+                segment_id=seg_id,
+                video_id=vid,
+                language_code="en" if seg_id is not None else None,
+                mention_text=text,
+                detection_method=method,
+                confidence=1.0 if method == "rule_match" else None,
+                alias_id=None,
+            )
+
+        rule_aardvark = _mention("Aardvark", "rule_match", seg.id)
+        rule_pena = _mention("peña", "rule_match", seg.id)
+        manual_aardvark = _mention("Aardvark", "manual", None)
+        session.add_all([rule_aardvark, rule_pena, manual_aardvark])
+        await session.commit()
+        return {
+            "aardvark_alias_id": aardvark.id,
+            "rule_aardvark_id": rule_aardvark.id,
+            "rule_pena_id": rule_pena.id,
+            "manual_id": manual_aardvark.id,
+        }
+
+    async def test_dry_run_reports_without_writing(
+        self, db_session: AsyncSession
+    ) -> None:
+        seeded = await self._seed(db_session)
+        repo = EntityMentionRepository()
+
+        linked, remaining = await repo.backfill_alias_links(db_session, apply=False)
+        assert linked == 1  # only the unambiguous "Aardvark" rule_match
+        assert remaining == 1  # "peña" rule_match stays NULL (ambiguous)
+
+        # Nothing was written.
+        m = await db_session.get(EntityMentionDB, seeded["rule_aardvark_id"])
+        assert m is not None and m.alias_id is None
+
+    async def test_apply_links_unambiguous_only_and_is_idempotent(
+        self, db_session: AsyncSession
+    ) -> None:
+        seeded = await self._seed(db_session)
+        repo = EntityMentionRepository()
+
+        linked, remaining = await repo.backfill_alias_links(db_session, apply=True)
+        await db_session.commit()
+        assert linked == 1
+        assert remaining == 1
+
+        aardvark = await db_session.get(EntityMentionDB, seeded["rule_aardvark_id"])
+        pena = await db_session.get(EntityMentionDB, seeded["rule_pena_id"])
+        manual = await db_session.get(EntityMentionDB, seeded["manual_id"])
+        assert aardvark is not None and str(aardvark.alias_id) == str(
+            seeded["aardvark_alias_id"]
+        )
+        assert pena is not None and pena.alias_id is None  # ambiguous → untouched
+        assert manual is not None and manual.alias_id is None  # manual → untouched
+
+        # Idempotent: a second apply links nothing more.
+        linked2, _ = await repo.backfill_alias_links(db_session, apply=True)
+        assert linked2 == 0
+
+
+class TestAliasProvenanceCase:
+    """Attribution is case-insensitive, matching case-insensitive detection."""
+
+    async def test_lowercase_match_of_capitalized_alias_records_alias_id(
+        self, db_session: AsyncSession
+    ) -> None:
+        vid = video_id(seed="prov_case")
+        await _seed_channel(db_session)
+        await _seed_video(db_session, vid)
+        await _seed_transcript(db_session, vid)
+        # Transcript casing differs from the alias casing.
+        await _seed_segment(db_session, vid, text="aardvark walks by.")
+        entity = await _seed_entity(db_session, "Zephyrus", entity_type="person")
+        alias = await _seed_alias(db_session, entity.id, "Aardvark")
+        await db_session.commit()
+
+        service = EntityMentionScanService(
+            session_factory=_make_session_factory_from_session(db_session)
+        )
+        await service.scan()
+
+        rows = (await db_session.execute(select(EntityMentionDB))).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].mention_text == "aardvark"  # lowercase in the transcript
+        # Still attributed despite the case difference (casefolded attribution).
+        assert str(rows[0].alias_id) == str(alias.id)

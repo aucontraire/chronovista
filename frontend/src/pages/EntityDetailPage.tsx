@@ -37,6 +37,7 @@ import type {
   UpdateEntityAliasRequest,
 } from "../api/entityMentions";
 import { createEntityAlias, updateEntityAlias, deleteEntityAlias } from "../api/entityMentions";
+import { useUndoAliasDeletion } from "../hooks/useUndoAliasDeletion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhoneticVariantsSection } from "../components/corrections/PhoneticVariantsSection";
 import { ExclusionPatternsSection } from "../components/corrections/ExclusionPatternsSection";
@@ -587,12 +588,15 @@ interface AliasRowProps {
    */
   onAliasListChanged: () => void;
   /**
-   * Called after a successful delete. The backend also retracts the
-   * alias's auto-detected mentions, which changes entity↔video
-   * associations — so this must refresh the same query families a
-   * mention-changing scan does, not just the alias list.
+   * Called after a successful delete with the info needed to offer Undo.
+   * The backend also retracts the alias's auto-detected mentions, which
+   * changes entity↔video associations — so the caller must refresh the same
+   * query families a mention-changing scan does, not just the alias list.
+   * This row unmounts as soon as that refresh resolves (the alias leaves
+   * `entity.aliases`), so the Undo affordance itself must live at the page
+   * level, not here.
    */
-  onAliasDeleted: () => void;
+  onAliasDeleted: (deleted: { operationId: string; aliasName: string }) => void;
 }
 
 function AliasRow({
@@ -746,15 +750,20 @@ function AliasRow({
     setIsDeleting(true);
     setDeleteError(null);
     try {
-      await deleteEntityAlias(entityId, alias.id);
+      const deleted = await deleteEntityAlias(entityId, alias.id);
       setIsConfirmingDelete(false);
       // The backend also retracted this alias's auto-detected mentions —
-      // an association-level change, not just a list refresh — so this
-      // must invalidate the same query families a mention-changing scan
-      // does (see refreshEntityAssociations). It must NOT trigger an actual
-      // rescan: the server already removed the mentions and recomputed
-      // counts, so re-scanning would just be redundant work.
-      onAliasDeleted();
+      // an association-level change, not just a list refresh — so the
+      // caller must invalidate the same query families a mention-changing
+      // scan does (see refreshEntityAssociations). It must NOT trigger an
+      // actual rescan: the server already removed the mentions and
+      // recomputed counts, so re-scanning would just be redundant work.
+      // Also hands up `operation_id` so the page can offer Undo (#298) —
+      // this row is about to unmount once that refresh resolves.
+      onAliasDeleted({
+        operationId: deleted.operation_id,
+        aliasName: deleted.alias_name,
+      });
     } catch (err: unknown) {
       const status = (err as { status?: number } | null)?.status;
       setDeleteError(
@@ -1597,6 +1606,80 @@ export function EntityDetailPage() {
     void queryClient.invalidateQueries({ queryKey: ["entitySearch"] });
   }
 
+  // ---------------------------------------------------------------------------
+  // Alias deletion — Undo banner (Feature #298)
+  //
+  // The deleted AliasRow unmounts as soon as refreshEntityAssociations's
+  // refetch resolves (the alias leaves `entity.aliases`), so the Undo
+  // affordance can't live in the row itself — it's lifted to the page.
+  // ---------------------------------------------------------------------------
+
+  interface DeletedAliasBanner {
+    operationId: string;
+    aliasName: string;
+  }
+
+  const [deletedAliasBanner, setDeletedAliasBanner] =
+    useState<DeletedAliasBanner | null>(null);
+  const [undoError, setUndoError] = useState<string | null>(null);
+  const undoButtonRef = useRef<HTMLButtonElement>(null);
+  const undoAliasDeletionMutation = useUndoAliasDeletion();
+
+  // Move focus to Undo when the banner appears — the row the user just
+  // interacted with (the delete confirm button) no longer exists.
+  useEffect(() => {
+    if (deletedAliasBanner) {
+      undoButtonRef.current?.focus();
+    }
+  }, [deletedAliasBanner]);
+
+  function handleAliasDeleted(deleted: DeletedAliasBanner) {
+    refreshEntityAssociations();
+    setUndoError(null);
+    setDeletedAliasBanner(deleted);
+  }
+
+  function handleUndoAliasDeletion() {
+    if (!deletedAliasBanner || !entityId || undoAliasDeletionMutation.isPending) {
+      return;
+    }
+    setUndoError(null);
+    undoAliasDeletionMutation.mutate(
+      { operationId: deletedAliasBanner.operationId, entityId },
+      {
+        onSuccess: () => {
+          // The association refetch above repaints the alias list — nothing
+          // further to do here besides dismissing the banner.
+          setDeletedAliasBanner(null);
+        },
+        onError: (err) => {
+          const status = (err as { status?: number } | null)?.status;
+          setUndoError(
+            status === 409
+              ? "Couldn't undo — it may already be undone, or a new alias with that name was created since."
+              : status === 404
+                ? "Couldn't undo — the entity or operation could no longer be found."
+                : "Couldn't undo. Please try again."
+          );
+        },
+      }
+    );
+  }
+
+  function handleDismissDeletedAliasBanner() {
+    setDeletedAliasBanner(null);
+    setUndoError(null);
+  }
+
+  function handleDeletedAliasBannerKeyDown(
+    event: React.KeyboardEvent<HTMLDivElement>
+  ) {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      handleDismissDeletedAliasBanner();
+    }
+  }
+
   // Fetch entity detail — we reuse the video-entity summary shape to get
   // the canonical_name, entity_type, and description.  The backend exposes
   // GET /api/v1/entities/{entity_id} which returns the NamedEntity record.
@@ -1850,6 +1933,57 @@ export function EntityDetailPage() {
         </div>
       </article>
 
+      {/* Alias-deletion Undo banner (Feature #298) — page-level because the
+          deleted AliasRow has already unmounted by the time this shows. */}
+      {deletedAliasBanner && (
+        <div
+          role="status"
+          aria-live="polite"
+          onKeyDown={handleDeletedAliasBannerKeyDown}
+          className="mb-4 flex flex-wrap items-center gap-3 bg-slate-100 border border-slate-200 rounded-md px-4 py-2.5"
+        >
+          <span className="text-sm text-slate-700 flex-1">
+            {`Alias "${deletedAliasBanner.aliasName}" deleted.`}
+          </span>
+          {undoError !== null && (
+            <span role="alert" className="text-sm text-red-600">
+              {undoError}
+            </span>
+          )}
+          <button
+            ref={undoButtonRef}
+            type="button"
+            onClick={handleUndoAliasDeletion}
+            disabled={undoAliasDeletionMutation.isPending}
+            aria-busy={undoAliasDeletionMutation.isPending ? "true" : undefined}
+            className="text-sm font-medium text-indigo-600 hover:text-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 rounded"
+          >
+            {undoAliasDeletionMutation.isPending ? "Undoing…" : "Undo"}
+          </button>
+          <button
+            type="button"
+            onClick={handleDismissDeletedAliasBanner}
+            aria-label={`Dismiss "${deletedAliasBanner.aliasName}" deleted notification`}
+            className="inline-flex items-center justify-center w-6 h-6 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* Aliases section */}
       <section aria-labelledby="entity-aliases-heading" className="mb-6">
         <h2
@@ -1877,8 +2011,8 @@ export function EntityDetailPage() {
                   onAliasListChanged={refreshEntityDetail}
                   // Deleting an alias now also retracts its auto-detected
                   // mentions on the backend — an association-level change,
-                  // not just a list refresh.
-                  onAliasDeleted={refreshEntityAssociations}
+                  // not just a list refresh — and offers Undo (#298).
+                  onAliasDeleted={handleAliasDeleted}
                 />
               ))}
             </div>

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-09-06
+
+### Added
+- **Alias→mention provenance and undoable alias deletion (#298, follow-up to #289).**
+  - **Undoable delete**: deleting an entity alias is now reversible. The deletion is recorded as an `alias_delete` operation capturing the removed alias and its removed mentions; an **Undo** affordance on the entity detail page (and the existing `POST /entities/operations/{id}/undo` route) restores both and recomputes counts. Undo is idempotent, rejects with a conflict (no partial restore) if a colliding alias was created since, and skips a mention whose transcript segment has since been deleted.
+  - **Recorded provenance**: `entity_mentions` gains a nullable `alias_id` (FK → `entity_aliases`, `ON DELETE SET NULL`). The scan records which alias produced each auto-detected mention (attributing by the same case/accent fold detection uses; a span that folds to two aliases records NULL). Deleting an alias now prefers this recorded link — so it targets exactly that alias's mentions even after a rename — and falls back to the folded match for un-linked rows. Mentions whose text folds to the entity's **canonical name** are never removed (the name survives the deletion and still covers them), so deleting the canonical self-alias strips nothing.
+  - **Backfill**: `chronovista entities backfill-alias-links` (dry-run by default, `--apply` to write) populates the link for historical auto-detected mentions where the fold is unambiguous; it never touches manual or correction-derived mentions and is idempotent.
+
 ## [0.78.0] - 2026-09-06
 
 ### Added

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-09-07
+
+### Added
+- **Mark and guard the canonical ("Primary") alias on the entity detail page (#301, follow-up to #298).** When an entity is created its canonical name is also stored as an ordinary name-variant alias (the "self-alias"), with nothing distinguishing it from user-added aliases.
+  - **Primary badge**: the entity detail alias list now marks the alias that is the entity's own name with a **Primary** badge. Detection is derived at display time — the alias whose case/accent-folded name equals the entity's folded canonical name — so it needs no schema, backend, or API change. If a rename has left the self-alias stale (folding to none of the current canonical name), no alias is marked.
+  - **Reinforced delete confirmation**: deleting the Primary alias now shows a distinct, stronger single-step confirmation that states the alias is the entity's own name and that its mentions stay (they also match the canonical name, so #298's guard keeps them). Deletion remains allowed and undoable; ordinary aliases keep their existing confirmation unchanged.
+
 ## [0.79.0] - 2026-09-06
 
 ### Added

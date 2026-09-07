@@ -299,9 +299,24 @@ class EntityMentionRepository(
             )
             .exists()
         )
+        # The entity's canonical_name is a covering name too, and it survives the
+        # alias deletion (it lives on named_entities, not this alias row). A
+        # mention whose text folds to the canonical name is therefore never
+        # removed — deleting the canonical self-alias must not strip the entity's
+        # own-name coverage, and a rescan would immediately re-create it anyway.
+        canonical_covers = (
+            select(NamedEntityDB.id)
+            .where(
+                NamedEntityDB.id == entity_id,
+                _folded(NamedEntityDB.canonical_name)
+                == _folded(EntityMentionDB.mention_text),
+            )
+            .exists()
+        )
         stmt = select(EntityMentionDB).where(
             EntityMentionDB.entity_id == entity_id,
             EntityMentionDB.detection_method == "rule_match",
+            ~canonical_covers,
             or_(
                 EntityMentionDB.alias_id == alias_id,
                 and_(

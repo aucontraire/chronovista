@@ -1177,8 +1177,11 @@ async def delete_entity_alias(
     mentions of it, preferring the recorded ``alias_id`` provenance link and
     falling back to the #289 case/accent fold for un-linked rows, so the
     associations don't linger with no rule behind them. Hand-made (``manual``)
-    and correction-derived (``user_correction``) mentions are **preserved**, and
-    the entity's counters are recomputed. The deletion is recorded as a
+    and correction-derived (``user_correction``) mentions are **preserved**;
+    mentions of the entity's **canonical name** are also preserved (that name
+    survives the alias deletion and still covers them, so deleting the canonical
+    self-alias strips nothing). The entity's counters are recomputed. The
+    deletion is recorded as a
     reversible ``alias_delete`` operation — the returned ``operation_id`` can be
     passed to ``POST /entities/operations/{operation_id}/undo`` to restore the
     alias and its removed mentions.

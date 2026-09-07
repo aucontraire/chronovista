@@ -24,7 +24,8 @@ stable fact that survives a rename. It cannot fix the second — and neither can
 because **detection itself folds diacritics**, so the matcher genuinely cannot tell `pena`
 from `peña`. When a matched span folds to more than one of the entity's aliases the scan
 records **no link** (NULL) rather than guessing; deletion then falls back to the derived fold
-with a guard that keeps any mention another surviving alias still covers.
+with a guard that keeps any mention another surviving alias — **or the entity's canonical
+name** — still covers.
 
 Manual and correction-derived mentions are never alias output, so they never carry a link and
 are never removed by an alias deletion.
@@ -33,7 +34,10 @@ are never removed by an alias deletion.
 
 Deleting an alias removes the entity's auto-detected (`rule_match`) mentions that are EITHER
 recorded against that alias (`alias_id`) OR unlinked and matched by the fold while not covered
-by another surviving alias. The recorded link is preferred, so a delete targets exactly that
+by another surviving alias. A mention whose text folds to the entity's **canonical name** is
+never removed either way — the canonical name lives on the entity, survives the alias
+deletion, and still covers it (so deleting the canonical self-alias strips nothing; it just
+removes a redundant row). The recorded link is preferred, so a delete targets exactly that
 alias's mentions even after a rename; the fold is the fallback for rows created before the
 link was recorded (a one-time `backfill-alias-links` populates those where unambiguous).
 

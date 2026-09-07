@@ -904,3 +904,207 @@ class TestDeleteByRecordedLink:
                 .all()
             )
             assert rows == []
+
+
+class TestDeleteCanonicalAliasKeepsCanonicalMentions:
+    """Deleting the canonical self-alias must NOT strip the entity's own-name
+    mentions (#298 guard fix): the canonical_name column survives the alias
+    deletion and still covers them, so they are kept."""
+
+    _CHANNEL_ID = "UCeac289canon00000001"
+    _VIDEO_ID = "eac289_canon1"
+    _LANG = "en"
+    _ENTITY_NORM = "eac289 canontest"
+
+    @pytest.fixture
+    async def seeded_canonical(
+        self,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> AsyncGenerator[dict[str, uuid.UUID], None]:
+        entity_id = uuid.uuid4()
+        self_alias_id = uuid.uuid4()
+        other_alias_id = uuid.uuid4()
+
+        async def _wipe(session: AsyncSession) -> None:
+            await session.execute(
+                delete(EntityMentionDB).where(
+                    EntityMentionDB.video_id == self._VIDEO_ID
+                )
+            )
+            await session.execute(
+                delete(TranscriptSegmentDB).where(
+                    TranscriptSegmentDB.video_id == self._VIDEO_ID
+                )
+            )
+            await session.execute(
+                delete(VideoTranscriptDB).where(
+                    VideoTranscriptDB.video_id == self._VIDEO_ID
+                )
+            )
+            ids = (
+                (
+                    await session.execute(
+                        select(NamedEntityDB.id).where(
+                            NamedEntityDB.canonical_name_normalized == self._ENTITY_NORM
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if ids:
+                await session.execute(
+                    delete(EntityAliasDB).where(EntityAliasDB.entity_id.in_(list(ids)))
+                )
+                await session.execute(
+                    delete(NamedEntityDB).where(NamedEntityDB.id.in_(list(ids)))
+                )
+            await session.execute(
+                delete(VideoDB).where(VideoDB.video_id == self._VIDEO_ID)
+            )
+            await session.execute(
+                delete(ChannelDB).where(ChannelDB.channel_id == self._CHANNEL_ID)
+            )
+            await session.commit()
+
+        async with integration_session_factory() as session:
+            await _wipe(session)
+            session.add(ChannelDB(channel_id=self._CHANNEL_ID, title="EAC Canon"))
+            session.add(
+                VideoDB(
+                    video_id=self._VIDEO_ID,
+                    channel_id=self._CHANNEL_ID,
+                    title="EAC Canon Video",
+                    description="canonical self-alias guard test",
+                    upload_date=datetime(2024, 8, 1, tzinfo=UTC),
+                    duration=90,
+                )
+            )
+            await session.commit()
+            session.add(
+                VideoTranscriptDB(
+                    video_id=self._VIDEO_ID,
+                    language_code=self._LANG,
+                    transcript_text="Canontest and Othername here.",
+                    transcript_type="MANUAL",
+                    download_reason="USER_REQUEST",
+                    is_cc=False,
+                    is_auto_synced=False,
+                    track_kind="standard",
+                )
+            )
+            await session.commit()
+            seg = TranscriptSegmentDB(
+                video_id=self._VIDEO_ID,
+                language_code=self._LANG,
+                text="Canontest and Othername here.",
+                start_time=0.0,
+                duration=5.0,
+                end_time=5.0,
+                sequence_number=0,
+                has_correction=False,
+            )
+            session.add(seg)
+            await session.commit()
+            # Canonical name == the self-alias name.
+            session.add(
+                create_named_entity_db(
+                    id=entity_id,
+                    canonical_name="Canontest",
+                    canonical_name_normalized=self._ENTITY_NORM,
+                    entity_type="person",
+                )
+            )
+            for aid, name, norm in (
+                (self_alias_id, "Canontest", "canontest"),  # the canonical self-alias
+                (other_alias_id, "Othername", "othername"),
+            ):
+                session.add(
+                    EntityAliasDB(
+                        id=aid,
+                        entity_id=entity_id,
+                        alias_name=name,
+                        alias_name_normalized=norm,
+                        alias_type="name_variant",
+                        occurrence_count=1,
+                    )
+                )
+            await session.flush()
+            # One rule_match mention of the canonical name, one of the other alias.
+            for text in ("Canontest", "Othername"):
+                session.add(
+                    EntityMentionDB(
+                        id=uuid.uuid4(),
+                        entity_id=entity_id,
+                        segment_id=seg.id,
+                        video_id=self._VIDEO_ID,
+                        language_code=self._LANG,
+                        mention_text=text,
+                        detection_method="rule_match",
+                        confidence=1.0,
+                    )
+                )
+            await session.commit()
+        yield {
+            "entity_id": entity_id,
+            "self_alias_id": self_alias_id,
+            "other_alias_id": other_alias_id,
+        }
+        async with integration_session_factory() as session:
+            await _wipe(session)
+
+    async def test_deleting_canonical_self_alias_keeps_canonical_mentions(
+        self,
+        async_client: AsyncClient,
+        seeded_canonical: dict[str, uuid.UUID],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        entity_id = seeded_canonical["entity_id"]
+        self_alias_id = seeded_canonical["self_alias_id"]
+        with _auth() as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            resp = await async_client.delete(_url(entity_id, self_alias_id))
+        assert resp.status_code == 200, resp.text
+        # The canonical name still covers its mention → nothing is stripped.
+        assert resp.json()["data"]["removed_mention_count"] == 0
+
+        async with integration_session_factory() as session:
+            texts = sorted(
+                t
+                for (t,) in (
+                    await session.execute(
+                        select(EntityMentionDB.mention_text).where(
+                            EntityMentionDB.entity_id == entity_id
+                        )
+                    )
+                ).all()
+            )
+            # Both mentions survive (the canonical one was NOT stripped).
+            assert texts == ["Canontest", "Othername"]
+
+    async def test_deleting_other_alias_still_removes_its_mention(
+        self,
+        async_client: AsyncClient,
+        seeded_canonical: dict[str, uuid.UUID],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        # Control: a non-canonical alias still has its mention removed.
+        entity_id = seeded_canonical["entity_id"]
+        other_alias_id = seeded_canonical["other_alias_id"]
+        with _auth() as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            resp = await async_client.delete(_url(entity_id, other_alias_id))
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data"]["removed_mention_count"] == 1
+        async with integration_session_factory() as session:
+            texts = sorted(
+                t
+                for (t,) in (
+                    await session.execute(
+                        select(EntityMentionDB.mention_text).where(
+                            EntityMentionDB.entity_id == entity_id
+                        )
+                    )
+                ).all()
+            )
+            assert texts == ["Canontest"]  # "Othername" removed, canonical kept

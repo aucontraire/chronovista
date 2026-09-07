@@ -16,7 +16,7 @@ Delete an alias and its auto-detected associations, as a **reversible** operatio
 - Removes the entity's auto-detected (`rule_match`) mentions of the alias — preferring the
   recorded `alias_id` provenance link, falling back to the case/accent fold for un-linked rows
   (keeping mentions another surviving alias still covers).
-- **Preserves** hand-made (`manual`) and correction-derived (`user_correction`) mentions.
+- **Preserves** hand-made (`manual`) and correction-derived (`user_correction`) mentions, and any mention whose text folds to the entity's **canonical name** (that name survives the deletion — so deleting the canonical self-alias removes no mentions).
 - Recomputes the entity's mention/video counters.
 - Records one `alias_delete` operation capturing the removed alias + mentions.
 

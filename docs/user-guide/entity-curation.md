@@ -90,6 +90,17 @@ Mentions you added **by hand** and those derived from your **transcript
 corrections** are kept — those are deliberate, not alias output. The delete
 confirmation shows how many auto-detected associations will be removed.
 
+!!! note "The **Primary** alias is the entity's own name"
+    One alias row usually carries a **Primary** badge — it is the alias equal to
+    the entity's own (canonical) name, kept so the name is matched like any other
+    alias. You can still delete it, and the delete is undoable, but its
+    confirmation is distinct and stronger, because removing the entity's own name
+    is almost always unintended. Deleting it does **not** discard mentions: they
+    also match the canonical name, so they stay — the delete just removes the
+    redundant alias row. The badge is shown for whichever alias matches the
+    *current* canonical name, so after a rename the (now stale) old self-alias is
+    no longer marked.
+
 **Changed your mind? Undo it.** An alias deletion is reversible: right after a
 delete, an **Undo** appears on the entity page, restoring the alias and exactly
 the mentions the deletion removed (the entity's counts return with them). The

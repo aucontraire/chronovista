@@ -41,6 +41,7 @@ import { useUndoAliasDeletion } from "../hooks/useUndoAliasDeletion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PhoneticVariantsSection } from "../components/corrections/PhoneticVariantsSection";
 import { ExclusionPatternsSection } from "../components/corrections/ExclusionPatternsSection";
+import { foldName } from "../utils/foldName";
 
 /** Default page title to restore on unmount */
 const DEFAULT_PAGE_TITLE = "Chronovista";
@@ -577,6 +578,13 @@ interface AliasRowProps {
   alias: EntityAliasSummary;
   entityId: string;
   /**
+   * True when this alias is the entity's own name (its case/accent-folded name
+   * equals the entity's folded canonical name — the "self-alias"). Derived at
+   * render time (Feature 075 / #301); it drives the Primary badge and the
+   * reinforced delete confirmation. Deleting it stays allowed and undoable.
+   */
+  isPrimary: boolean;
+  /**
    * Called after a mutation that changes what text matches — the
    * case-sensitivity flag, or a rename — so the caller can rebuild mentions.
    */
@@ -602,6 +610,7 @@ interface AliasRowProps {
 function AliasRow({
   alias,
   entityId,
+  isPrimary,
   onMatchingChanged,
   onAliasListChanged,
   onAliasDeleted,
@@ -850,7 +859,17 @@ function AliasRow({
   return (
     <div>
       <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-50 transition-colors">
-        <span className="text-sm font-medium text-gray-800">{alias.alias_name}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-800">{alias.alias_name}</span>
+          {isPrimary && (
+            <span
+              className="inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded border border-indigo-300 bg-indigo-50 text-indigo-700"
+              title="This alias is the entity's own name (its canonical name)."
+            >
+              Primary
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <label
             htmlFor={toggleId}
@@ -909,12 +928,27 @@ function AliasRow({
 
       {isConfirmingDelete && (
         <div
-          className="mt-1 mb-2 flex flex-wrap items-start gap-2 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
+          className={
+            isPrimary
+              ? "mt-1 mb-2 flex flex-wrap items-start gap-2 bg-red-50 border border-red-300 rounded-md px-3 py-2"
+              : "mt-1 mb-2 flex flex-wrap items-start gap-2 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
+          }
           onKeyDown={handleDeleteKeyDown}
         >
-          <WarningIcon className="w-4 h-4 flex-shrink-0 text-amber-600 mt-0.5" />
-          <span className="text-xs text-amber-900 flex-1">
-            {`Deleting this alias will remove about ${alias.occurrence_count.toLocaleString()} auto-detected ${alias.occurrence_count === 1 ? "mention" : "mentions"} it produced. Mentions you added manually, or that came from a correction, will be kept.`}
+          <WarningIcon
+            className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isPrimary ? "text-red-600" : "text-amber-600"}`}
+          />
+          <span className={`text-xs flex-1 ${isPrimary ? "text-red-900" : "text-amber-900"}`}>
+            {isPrimary ? (
+              <>
+                <strong className="font-semibold">
+                  {"This alias is the entity's own name."}
+                </strong>{" "}
+                {"Deleting it removes the alias, but the mentions it matched stay, because they also match the entity's canonical name. You can undo this."}
+              </>
+            ) : (
+              `Deleting this alias will remove about ${alias.occurrence_count.toLocaleString()} auto-detected ${alias.occurrence_count === 1 ? "mention" : "mentions"} it produced. Mentions you added manually, or that came from a correction, will be kept.`
+            )}
           </span>
           {deleteError !== null && (
             <span role="alert" className="text-xs text-red-700 w-full">
@@ -929,7 +963,11 @@ function AliasRow({
               disabled={isDeleting}
               aria-busy={isDeleting ? "true" : undefined}
               aria-label={`Confirm deletion of alias "${alias.alias_name}"`}
-              className="min-h-[36px] px-3 py-1 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1 transition-colors"
+              className={
+                isPrimary
+                  ? "min-h-[36px] px-3 py-1 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:bg-red-400 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1 transition-colors"
+                  : "min-h-[36px] px-3 py-1 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1 transition-colors"
+              }
             >
               {isDeleting ? "Deleting…" : "Delete"}
             </button>
@@ -2000,6 +2038,12 @@ export function EntityDetailPage() {
                   key={alias.id}
                   alias={alias}
                   entityId={entityId ?? ""}
+                  // Primary = the entity's own name: this alias folds (case/accent-
+                  // insensitive) to the entity's canonical name. Derived at render
+                  // time — no stored flag (Feature 075 / #301).
+                  isPrimary={
+                    foldName(alias.alias_name) === foldName(entity.canonical_name)
+                  }
                   // Changing the flag, or renaming the alias text, changes
                   // nothing until mentions are rebuilt: an incremental scan
                   // only adds, so it would never retract what the previous

@@ -157,6 +157,7 @@ nav:
       - Error responses (RFC 7807): api/error-responses.md
       - RFC 7807 migration: api/rfc7807-migration.md
       - Entity grounding endpoint: api/entity-grounding.md
+      - Entity alias operations: api/entity-alias-operations.md
       - Configuration: getting-started/configuration.md
       - Glossary: glossary.md
   - Explanation:
@@ -168,6 +169,7 @@ nav:
       - API integration: architecture/api-integration.md
       - Frontend architecture: architecture/frontend-architecture.md
       - Post-creation re-grounding: architecture/entity-reground.md
+      - Alias→mention provenance: architecture/entity-alias-provenance.md
   - Contributing:
       - Overview: development/index.md
       - Setup: development/setup.md

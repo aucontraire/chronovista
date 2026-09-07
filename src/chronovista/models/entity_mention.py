@@ -59,6 +59,14 @@ class EntityMentionBase(BaseModel):
         default=None,
         description="UUID of the correction that created or updated this mention",
     )
+    alias_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "UUID of the alias that produced this auto-detected mention (#298). "
+            "Set only for rule_match mentions attributed to exactly one alias; "
+            "NULL for manual/user_correction mentions and fold-ambiguous spans."
+        ),
+    )
     mention_source: MentionSource = Field(
         default=MentionSource.TRANSCRIPT,
         description="Source location where the mention was found (transcript, title, description)",
@@ -139,6 +147,13 @@ class EntityMentionCreate(EntityMentionBase):
                 and self.segment_id is None
             ):
                 raise ValueError("segment_id is required for transcript mentions")
+        # alias provenance (#298) is only meaningful for auto-detected mentions;
+        # manual and correction-derived mentions must never carry a link.
+        if (
+            self.alias_id is not None
+            and self.detection_method != DetectionMethod.RULE_MATCH
+        ):
+            raise ValueError("alias_id is only valid for rule_match mentions")
         return self
 
 

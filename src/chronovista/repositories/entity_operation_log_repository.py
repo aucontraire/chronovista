@@ -35,6 +35,30 @@ class EntityOperationLogRepository(
         """Initialize repository with EntityOperationLog model."""
         super().__init__(EntityOperationLogDB)
 
+    async def create(
+        self, session: AsyncSession, *, obj_in: EntityOperationLogCreate
+    ) -> EntityOperationLogDB:
+        """Create an operation-log row, JSON-serializing ``rollback_data``.
+
+        The base ``create`` uses ``model_dump()`` (Python mode), which leaves
+        typed values like ``UUID`` in the nested ``rollback_data`` — fine for the
+        all-string edit/grounding payloads, but the ``alias_delete`` payload
+        (#298) carries UUIDs that the JSONB column cannot serialize. Dumping
+        ``rollback_data`` with ``mode="json"`` (UUID→str) is JSONB-safe and
+        behaviour-neutral for the existing payloads, and round-trips back through
+        the typed union on read.
+        """
+        db_obj = EntityOperationLogDB(
+            entity_id=obj_in.entity_id,
+            operation_type=obj_in.operation_type,
+            rollback_data=obj_in.rollback_data.model_dump(mode="json"),
+            performed_by=obj_in.performed_by,
+        )
+        session.add(db_obj)
+        await session.flush()
+        await session.refresh(db_obj)
+        return db_obj
+
     async def get(
         self, session: AsyncSession, id: uuid.UUID
     ) -> EntityOperationLogDB | None:

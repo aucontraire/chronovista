@@ -90,6 +90,26 @@ Mentions you added **by hand** and those derived from your **transcript
 corrections** are kept — those are deliberate, not alias output. The delete
 confirmation shows how many auto-detected associations will be removed.
 
+**Changed your mind? Undo it.** An alias deletion is reversible: right after a
+delete, an **Undo** appears on the entity page, restoring the alias and exactly
+the mentions the deletion removed (the entity's counts return with them). The
+deletion is recorded as an operation, so the undo is precise; it is refused only
+if you have since re-created an alias with the same name — resolve that and it
+succeeds. Under the hood the undo is the standard operation-undo endpoint,
+`POST /api/v1/entities/operations/{operation_id}/undo`, given the id the delete
+returned.
+
+Removal is precise because each auto-detected mention records the alias that
+produced it — so a delete targets exactly that alias's mentions, even after the
+alias has been renamed. Mentions detected before that link was recorded fall
+back to matching by folded text; a one-time backfill populates the link for
+historical mentions where it is unambiguous:
+
+```bash
+chronovista entities backfill-alias-links            # dry-run: reports counts
+chronovista entities backfill-alias-links --apply    # write the links
+```
+
 If the alias is only mistyped or mis-categorised, **edit** it instead of deleting
 and re-adding. The alias row has an edit control for its text and type, and the
 CLI mirrors it:

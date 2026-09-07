@@ -75,6 +75,7 @@ from chronovista.models.entity_association import (
     ChannelEntityRankingRow,
 )
 from chronovista.models.entity_mention import EntityMentionCreate
+from chronovista.models.entity_operation_log import MentionSnapshot
 from chronovista.models.enums import (
     AvailabilityStatus,
     EntityAliasType,
@@ -265,34 +266,28 @@ class EntityMentionRepository(
         result = await session.execute(stmt)
         return int(result.rowcount)
 
-    async def delete_rule_match_mentions_for_alias(
+    async def select_mentions_for_alias_removal(
         self,
         session: AsyncSession,
         *,
         entity_id: uuid.UUID,
         alias_id: uuid.UUID,
         alias_name: str,
-    ) -> int:
-        """Delete an entity's auto-detected mentions of a specific alias (#289).
+    ) -> Sequence[EntityMentionDB]:
+        """Return the auto-detected mentions an alias deletion should remove (#298).
 
-        When an alias is removed, its associations must not linger as an
-        illusion. Mentions are matched to the alias by the SAME case/accent fold
-        that attributes mentions to aliases for ``occurrence_count``
-        (``_folded(mention_text) == _folded(alias_name)``), scoped to this
-        entity. Only ``rule_match`` (auto-detected) mentions are removed —
-        hand-made (``manual``) and correction-derived (``user_correction``)
-        mentions are preserved, matching how a full rescan already handles them.
+        A ``rule_match`` mention of this entity is selected when it is EITHER
+        recorded against this alias (``alias_id == {alias_id}`` — the #298
+        provenance link, exact and rename-stable) OR unlinked (``alias_id IS
+        NULL``) and matched by the #289 case/accent fold
+        (``_folded(mention_text) == _folded(alias_name)``) **while not covered by
+        another surviving alias** (the ``NOT EXISTS`` guard, since the fold is
+        coarser than the stored normalized form and ``pena``/``peña`` fold
+        alike). Manual and ``user_correction`` mentions never carry a link and
+        never fold-match into removal.
 
-        A mention is deleted only if **no other surviving alias of the entity
-        still covers it**. The fold ``lower(unaccent(...))`` is coarser than the
-        stored ``alias_name_normalized`` (which keeps tilde/cedilla), so two
-        aliases like ``pena`` and ``peña`` can coexist yet fold to the same
-        value; without this guard, deleting one would strip the other's
-        still-covered mentions. The ``NOT EXISTS`` over the entity's other
-        aliases keeps those mentions (an exact per-alias link is the #298
-        follow-up).
-
-        Returns the number of mentions deleted.
+        Returns the rows (not a count) so the caller can capture them for an
+        undoable rollback before deleting by id.
         """
         other_alias_covers = (
             select(EntityAliasDB.id)
@@ -304,14 +299,155 @@ class EntityMentionRepository(
             )
             .exists()
         )
-        stmt = delete(EntityMentionDB).where(
+        stmt = select(EntityMentionDB).where(
             EntityMentionDB.entity_id == entity_id,
             EntityMentionDB.detection_method == "rule_match",
-            _folded(EntityMentionDB.mention_text) == _folded(literal(alias_name)),
-            ~other_alias_covers,
+            or_(
+                EntityMentionDB.alias_id == alias_id,
+                and_(
+                    EntityMentionDB.alias_id.is_(None),
+                    _folded(EntityMentionDB.mention_text)
+                    == _folded(literal(alias_name)),
+                    ~other_alias_covers,
+                ),
+            ),
         )
         result = await session.execute(stmt)
+        return result.scalars().all()
+
+    async def delete_mentions_by_ids(
+        self, session: AsyncSession, ids: Sequence[uuid.UUID]
+    ) -> int:
+        """Delete specific mention rows by id (used with the capture-then-delete
+        flow so the deleted set exactly equals what was recorded for undo)."""
+        if not ids:
+            return 0
+        result = await session.execute(
+            delete(EntityMentionDB).where(EntityMentionDB.id.in_(list(ids)))
+        )
         return int(result.rowcount)
+
+    async def restore_mentions(
+        self, session: AsyncSession, snapshots: Sequence[MentionSnapshot]
+    ) -> tuple[int, int]:
+        """Re-insert mentions from an alias-delete rollback (#298 undo).
+
+        Restores each snapshot verbatim (same id, to preserve identity),
+        **skipping** any whose ``segment_id`` no longer exists — the
+        transcript_segments FK would reject those, and an undo must never
+        hard-fail on a since-deleted segment (FR-011). Returns
+        ``(restored, skipped)``.
+        """
+        if not snapshots:
+            return (0, 0)
+        seg_ids = {s.segment_id for s in snapshots if s.segment_id is not None}
+        existing: set[int] = set()
+        if seg_ids:
+            rows = await session.execute(
+                select(TranscriptSegmentDB.id).where(
+                    TranscriptSegmentDB.id.in_(list(seg_ids))
+                )
+            )
+            existing = {r for (r,) in rows}
+        restored = 0
+        skipped = 0
+        for s in snapshots:
+            if s.segment_id is not None and s.segment_id not in existing:
+                skipped += 1
+                continue
+            session.add(
+                EntityMentionDB(
+                    id=s.id,
+                    entity_id=s.entity_id,
+                    segment_id=s.segment_id,
+                    video_id=s.video_id,
+                    language_code=s.language_code,
+                    mention_text=s.mention_text,
+                    detection_method=s.detection_method,
+                    confidence=s.confidence,
+                    match_start=s.match_start,
+                    match_end=s.match_end,
+                    correction_id=s.correction_id,
+                    mention_source=s.mention_source,
+                    mention_context=s.mention_context,
+                    alias_id=s.alias_id,
+                )
+            )
+            restored += 1
+        await session.flush()
+        return (restored, skipped)
+
+    async def backfill_alias_links(
+        self, session: AsyncSession, *, apply: bool
+    ) -> tuple[int, int]:
+        """Populate ``alias_id`` on historical auto-detected mentions (#298, T018).
+
+        For every entity, groups its non-asr_error aliases by folded name and
+        keeps only the folds that map to exactly ONE alias (ambiguous folds like
+        ``pena``/``peña`` are skipped — the matcher couldn't tell them apart, so
+        neither can a backfill). A ``rule_match`` mention with ``alias_id IS
+        NULL`` whose folded ``mention_text`` equals one of those unambiguous
+        folds is linked to that alias. Manual and ``user_correction`` mentions
+        are never touched. Idempotent (only NULL rows are considered).
+
+        Returns ``(linked, remaining_null)`` — how many were (or would be)
+        linked, and how many rule_match mentions still have a NULL link after.
+        With ``apply=False`` nothing is written (the counts are what an apply
+        would produce).
+        """
+        unambiguous_folds = (
+            select(
+                EntityAliasDB.entity_id.label("entity_id"),
+                _folded(EntityAliasDB.alias_name).label("fold"),
+                # Postgres has no MIN(uuid); the HAVING count()==1 guarantees a
+                # single alias per fold, so aggregate on the text form.
+                func.min(cast(EntityAliasDB.id, String)).label("alias_id"),
+            )
+            .where(EntityAliasDB.alias_type != "asr_error")
+            .group_by(EntityAliasDB.entity_id, _folded(EntityAliasDB.alias_name))
+            .having(func.count() == 1)
+            .cte("unambiguous_folds")
+        )
+        match = and_(
+            EntityMentionDB.entity_id == unambiguous_folds.c.entity_id,
+            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.alias_id.is_(None),
+            _folded(EntityMentionDB.mention_text) == unambiguous_folds.c.fold,
+        )
+
+        if apply:
+            result = await session.execute(
+                update(EntityMentionDB)
+                .where(match)
+                .values(alias_id=cast(unambiguous_folds.c.alias_id, Uuid))
+            )
+            linked = int(result.rowcount)
+            # Post-update: the linked rows now have a link, so this is the true
+            # count that remains NULL.
+            remaining = await session.execute(
+                select(func.count()).where(
+                    EntityMentionDB.detection_method == "rule_match",
+                    EntityMentionDB.alias_id.is_(None),
+                )
+            )
+            remaining_null = int(remaining.scalar() or 0)
+        else:
+            would = await session.execute(
+                select(func.count()).select_from(
+                    EntityMentionDB.__table__.join(unambiguous_folds, match)
+                )
+            )
+            linked = int(would.scalar() or 0)
+            # Nothing written yet, so subtract what an apply WOULD link to report
+            # the count that would remain NULL.
+            null_now = await session.execute(
+                select(func.count()).where(
+                    EntityMentionDB.detection_method == "rule_match",
+                    EntityMentionDB.alias_id.is_(None),
+                )
+            )
+            remaining_null = int(null_now.scalar() or 0) - linked
+        return linked, remaining_null
 
     async def delete_by_correction_ids(
         self,

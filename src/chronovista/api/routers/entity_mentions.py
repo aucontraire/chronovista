@@ -1169,24 +1169,19 @@ async def delete_entity_alias(
     session: AsyncSession = Depends(get_db),
     entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
     alias_repo: EntityAliasRepository = Depends(get_entity_alias_repository),
-    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
+    curation_service: EntityCurationService = Depends(get_entity_curation_service),
 ) -> dict[str, Any]:
-    """Delete an alias and its auto-detected associations (#289).
+    """Delete an alias and its auto-detected mentions — a reversible op (#298).
 
-    Removing an alias also removes the entity's **auto-detected**
-    (``rule_match``) mentions of that alias — leaving them would be an illusion
-    of coverage that no longer has a matching rule. Mentions are matched to the
-    alias by the same case/accent fold that attributes them for
-    ``occurrence_count``, scoped to this entity, so one alias's mentions are
-    removed without touching another's. Hand-made (``manual``) and
-    correction-derived (``user_correction``) mentions are **preserved** — those
-    are deliberate work, not alias output. The entity's mention/video counters
-    are then recomputed. Returns the deleted alias plus the number of
-    associations removed.
-
-    (A recorded alias→mention provenance link and an undoable delete are the
-    follow-up — see #298. Today the match is derived, which is precise because
-    alias normalized-forms are unique per entity.)
+    Removing an alias also removes the entity's **auto-detected** (``rule_match``)
+    mentions of it, preferring the recorded ``alias_id`` provenance link and
+    falling back to the #289 case/accent fold for un-linked rows, so the
+    associations don't linger with no rule behind them. Hand-made (``manual``)
+    and correction-derived (``user_correction``) mentions are **preserved**, and
+    the entity's counters are recomputed. The deletion is recorded as a
+    reversible ``alias_delete`` operation — the returned ``operation_id`` can be
+    passed to ``POST /entities/operations/{operation_id}/undo`` to restore the
+    alias and its removed mentions.
 
     Parameters
     ----------
@@ -1200,19 +1195,21 @@ async def delete_entity_alias(
     Returns
     -------
     dict
-        The deleted alias plus ``removed_mention_count``, in a ``data`` envelope.
+        The deleted alias plus ``removed_mention_count`` and ``operation_id``,
+        in a ``data`` envelope.
 
     Raises
     ------
     NotFoundError
         If the entity does not exist, or the alias does not exist on it (404).
     """
-    if not await entity_repo.exists(session, entity_id):
+    entity = await entity_repo.get(session, entity_id)
+    if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=str(entity_id))
 
     alias = await alias_repo.get(session, alias_id)
-    # Same ownership guard as PATCH: the entity_id in the path must own the
-    # alias, or a mismatched pair would delete through any entity's URL.
+    # Ownership guard: the entity_id in the path must own the alias, or a
+    # mismatched pair would delete through any entity's URL.
     if alias is None or alias.entity_id != entity_id:
         raise NotFoundError(resource_type="Alias", identifier=str(alias_id))
 
@@ -1224,17 +1221,18 @@ async def delete_entity_alias(
         case_sensitive=alias.case_sensitive,
     ).model_dump()
 
-    # Remove the alias's auto-detected mentions (preserving manual/correction),
-    # then the alias row, then recompute the entity's counters — all in one
-    # transaction so an interrupted delete leaves the entity consistent.
-    removed = await mention_repo.delete_rule_match_mentions_for_alias(
-        session, entity_id=entity_id, alias_id=alias_id, alias_name=alias.alias_name
+    removed, operation_id = await curation_service.delete_alias(
+        session, entity=entity, alias=alias, actor=ACTOR_USER_LOCAL
     )
-    await alias_repo.delete(session, id=alias_id)
-    await mention_repo.update_entity_counters(session, [entity_id])
     await session.commit()
 
-    return {"data": {**summary, "removed_mention_count": removed}}
+    return {
+        "data": {
+            **summary,
+            "removed_mention_count": removed,
+            "operation_id": str(operation_id),
+        }
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════

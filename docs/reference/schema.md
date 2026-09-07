@@ -579,6 +579,7 @@ Entity mention records linking named entities to transcript segments.
 | `match_start` | INTEGER | yes |  |  |
 | `match_end` | INTEGER | yes |  |  |
 | `correction_id` | UUID | yes |  | FK → `transcript_corrections.id` |
+| `alias_id` | UUID | yes |  | FK → `entity_aliases.id` |
 | `mention_source` | VARCHAR(20) | no | `transcript` |  |
 | `mention_context` | TEXT | yes |  |  |
 | `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
@@ -591,6 +592,7 @@ Entity mention records linking named entities to transcript segments.
 
 **Indexes:**
 
+- INDEX `idx_entity_mentions_alias_id` on `alias_id`
 - INDEX `ix_entity_mentions_correction_id` on `correction_id`
 - INDEX `ix_entity_mentions_detection_method` on `detection_method`
 - INDEX `ix_entity_mentions_entity_id` on `entity_id`
@@ -620,7 +622,7 @@ Audit log for named-entity curation edits (name/description) — Feature 057.
 
 **Constraints:**
 
-- CHECK `chk_entity_operation_type_valid`: `operation_type IN ('update', 'reground', 'refetch')`
+- CHECK `chk_entity_operation_type_valid`: `operation_type IN ('update', 'reground', 'refetch', 'alias_delete')`
 
 **Indexes:**
 

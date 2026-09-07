@@ -403,7 +403,7 @@ export async function updateEntityAlias(
 
 /**
  * The deleted alias, plus how many of the entity's auto-detected mentions
- * were retracted along with it.
+ * were retracted along with it, and the operation id needed to undo it.
  */
 export interface DeletedEntityAlias extends EntityAliasSummary {
   /**
@@ -412,6 +412,13 @@ export interface DeletedEntityAlias extends EntityAliasSummary {
    * counted here — they're preserved even when their text matches.
    */
   removed_mention_count: number;
+  /**
+   * Identifies this delete for `undoAliasDeletion` (Feature #298). The
+   * operation stays undoable until another mutation invalidates it (e.g. a
+   * colliding alias created in the meantime), which the undo endpoint
+   * enforces server-side (409).
+   */
+  operation_id: string;
 }
 
 /** Response envelope for DELETE /api/v1/entities/{entity_id}/aliases/{alias_id} */
@@ -426,11 +433,11 @@ export interface DeleteEntityAliasResponse {
  * alias and recomputes its mention/video counts — this is an association-
  * level change, not just a list refresh. Mentions added manually, or that
  * came from a transcript correction, are preserved even if their text
- * matches.
+ * matches. Reversible via `undoAliasDeletion(operation_id)`.
  *
  * @param entityId - UUID of the named entity that owns the alias
  * @param aliasId - UUID of the alias to delete
- * @returns The deleted EntityAliasSummary plus `removed_mention_count`
+ * @returns The deleted EntityAliasSummary plus `removed_mention_count` and `operation_id`
  * @throws ApiError with status 404 if the entity or alias is not found, or if
  *   the alias does not belong to that entity
  */
@@ -441,6 +448,32 @@ export async function deleteEntityAlias(
   const res = await apiFetch<DeleteEntityAliasResponse>(
     `/entities/${entityId}/aliases/${aliasId}`,
     { method: "DELETE" }
+  );
+  return res.data;
+}
+
+/** Response envelope for POST /api/v1/entities/operations/{operation_id}/undo */
+export interface UndoOperationResponse {
+  data: EntityDetail;
+}
+
+/**
+ * Reverses an undoable entity operation, e.g. an alias deletion — restores
+ * the alias and its removed mentions and recomputes counts (Feature #298).
+ *
+ * @param operationId - The `operation_id` returned by the original mutation
+ *   (e.g. `deleteEntityAlias`'s `DeletedEntityAlias.operation_id`)
+ * @returns The restored EntityDetail, in the same shape as `fetchEntityDetail`
+ * @throws ApiError with status 404 if the operation or entity is gone, 409 if
+ *   already undone or if a colliding alias was created since (restore
+ *   rejected — nothing changed)
+ */
+export async function undoAliasDeletion(
+  operationId: string
+): Promise<EntityDetail> {
+  const res = await apiFetch<UndoOperationResponse>(
+    `/entities/operations/${operationId}/undo`,
+    { method: "POST" }
   );
   return res.data;
 }

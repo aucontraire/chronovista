@@ -1,5 +1,6 @@
 /**
- * EntityDetailPage — alias delete affordance (#289, "Level 1" follow-up).
+ * EntityDetailPage — alias delete affordance (#289, "Level 1" follow-up)
+ * and its Undo banner (#298).
  *
  * Deleting an alias is destructive, so it requires a confirm step. The
  * backend also retracts the alias's auto-detected (rule_match) mentions —
@@ -10,6 +11,12 @@
  * (entity-detail, entity-videos, video-entities, entities, entitySearch) —
  * without actually triggering a rescan, since the server already did the
  * removal and recompute.
+ *
+ * The deletion is now reversible: the delete response carries an
+ * `operation_id`, and a page-level "Alias '<name>' deleted — Undo" banner
+ * (NOT row-level, since the deleted AliasRow unmounts as soon as the
+ * association refetch resolves) lets the user call
+ * `POST /entities/operations/{operation_id}/undo` to restore it.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -88,6 +95,7 @@ vi.mock("../../api/entityMentions", () => ({
   createEntityAlias: vi.fn(),
   updateEntityAlias: vi.fn(),
   deleteEntityAlias: vi.fn(),
+  undoAliasDeletion: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
@@ -96,10 +104,11 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 });
 
 import { useQuery } from "@tanstack/react-query";
-import { deleteEntityAlias } from "../../api/entityMentions";
+import { deleteEntityAlias, undoAliasDeletion } from "../../api/entityMentions";
 
 const ALIAS_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const ENTITY_ID = "entity-uuid-002";
+const OPERATION_ID = "op-dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 function mockEntity(occurrenceCount = 7) {
   return {
@@ -155,6 +164,7 @@ describe("EntityDetailPage — alias delete (#289)", () => {
       occurrence_count: 7,
       case_sensitive: false,
       removed_mention_count: 7,
+      operation_id: OPERATION_ID,
     });
   });
 
@@ -293,5 +303,167 @@ describe("EntityDetailPage — alias delete (#289)", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/alias not found/i);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Undo (Feature #298)
+// ---------------------------------------------------------------------------
+
+describe("EntityDetailPage — alias delete Undo banner (#298)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(useQuery).mockReturnValue({
+      data: mockEntity(),
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof useQuery>);
+    vi.mocked(deleteEntityAlias).mockResolvedValue({
+      id: ALIAS_ID,
+      alias_name: "Test Alias",
+      alias_type: "name_variant",
+      occurrence_count: 7,
+      case_sensitive: false,
+      removed_mention_count: 7,
+      operation_id: OPERATION_ID,
+    });
+    vi.mocked(undoAliasDeletion).mockResolvedValue({
+      entity_id: ENTITY_ID,
+      canonical_name: "Test Person",
+      entity_type: "person",
+      description: null,
+      status: "active",
+      mention_count: 50,
+      video_count: 12,
+      by_source: { manual: 0, transcript: 12, title: 0, description: 0, tag: 0 },
+      aliases: [
+        {
+          id: ALIAS_ID,
+          alias_name: "Test Alias",
+          alias_type: "name_variant",
+          occurrence_count: 7,
+          case_sensitive: false,
+        },
+      ],
+      exclusion_patterns: [],
+    });
+  });
+
+  async function deleteAlias(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: /delete alias "test alias"/i }));
+    await user.click(screen.getByRole("button", { name: /confirm deletion of alias "test alias"/i }));
+    await waitFor(() => {
+      expect(deleteEntityAlias).toHaveBeenCalled();
+    });
+  }
+
+  it("(a) shows the Undo banner with the alias name after a successful delete", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await deleteAlias(user);
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(/alias "test alias" deleted/i);
+    });
+    expect(screen.getByRole("button", { name: /^undo$/i })).toBeInTheDocument();
+  });
+
+  it("does not show the Undo banner before any delete happens", () => {
+    renderPage();
+    expect(screen.queryByRole("button", { name: /^undo$/i })).not.toBeInTheDocument();
+  });
+
+  it("(b) clicking Undo calls undoAliasDeletion with the operation_id returned by the delete", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await deleteAlias(user);
+
+    await user.click(screen.getByRole("button", { name: /^undo$/i }));
+
+    await waitFor(() => {
+      expect(undoAliasDeletion).toHaveBeenCalledWith(OPERATION_ID);
+    });
+  });
+
+  it("(b) a successful Undo invalidates the association/mention query families", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderPage();
+    await deleteAlias(user);
+
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    await user.click(screen.getByRole("button", { name: /^undo$/i }));
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ["entity-detail", ENTITY_ID] })
+      );
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["entity-videos", ENTITY_ID] })
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["video-entities"] })
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["entities"] })
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ["entitySearch"] })
+    );
+  });
+
+  it("dismisses the banner after a successful Undo", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await deleteAlias(user);
+
+    await user.click(screen.getByRole("button", { name: /^undo$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /^undo$/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("(c) a 409 undo surfaces an error in the banner instead of crashing", async () => {
+    vi.mocked(undoAliasDeletion).mockRejectedValue({ status: 409 });
+    const user = userEvent.setup();
+    renderPage();
+    await deleteAlias(user);
+
+    await user.click(screen.getByRole("button", { name: /^undo$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/couldn.t undo/i);
+    });
+    // The banner (and its Undo button) stays — dismissible, not crashed away.
+    expect(screen.getByRole("button", { name: /^undo$/i })).toBeInTheDocument();
+  });
+
+  it("a 404 undo also surfaces an error rather than failing silently", async () => {
+    vi.mocked(undoAliasDeletion).mockRejectedValue({ status: 404 });
+    const user = userEvent.setup();
+    renderPage();
+    await deleteAlias(user);
+
+    await user.click(screen.getByRole("button", { name: /^undo$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(/couldn.t undo/i);
+    });
+  });
+
+  it("(d) the banner is dismissible without calling undo", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await deleteAlias(user);
+
+    await user.click(
+      screen.getByRole("button", { name: /dismiss "test alias" deleted notification/i })
+    );
+
+    expect(undoAliasDeletion).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /^undo$/i })).not.toBeInTheDocument();
   });
 });

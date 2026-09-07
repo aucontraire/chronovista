@@ -13,7 +13,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-ALLOWED_ENTITY_OPERATION_TYPES = {"update", "reground", "refetch"}
+ALLOWED_ENTITY_OPERATION_TYPES = {"update", "reground", "refetch", "alias_delete"}
 
 
 class EntityEditSnapshot(BaseModel):
@@ -97,6 +97,76 @@ class GroundingRollback(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
 
+class AliasSnapshot(BaseModel):
+    """Snapshot of a deleted alias, enough to recreate the row (#298)."""
+
+    id: uuid.UUID = Field(..., description="Alias UUID (restored verbatim)")
+    entity_id: uuid.UUID = Field(..., description="Owning entity UUID")
+    alias_name: str = Field(..., description="Alias display text")
+    alias_name_normalized: str = Field(..., description="Normalized identity")
+    alias_type: str = Field(..., description="Alias type")
+    case_sensitive: bool = Field(
+        default=False, description="Case-sensitive matching flag"
+    )
+    occurrence_count: int = Field(default=0, description="Occurrence counter")
+
+    model_config = ConfigDict(
+        validate_assignment=True, extra="forbid", from_attributes=True
+    )
+
+
+class MentionSnapshot(BaseModel):
+    """Snapshot of an auto-detected mention removed by an alias deletion (#298).
+
+    Captures every column needed to re-insert the row verbatim on undo (the
+    same ``id`` is restored to preserve identity). ``segment_id`` may reference
+    a segment that no longer exists at undo time — the restore skips those.
+    """
+
+    id: uuid.UUID = Field(..., description="Mention UUID (restored verbatim)")
+    entity_id: uuid.UUID = Field(..., description="Owning entity UUID")
+    segment_id: int | None = Field(default=None, description="Transcript segment id")
+    video_id: str = Field(..., description="Video id")
+    language_code: str | None = Field(default=None, description="Language code")
+    mention_text: str = Field(..., description="Matched text span")
+    detection_method: str = Field(..., description="Detection method (rule_match)")
+    confidence: float | None = Field(default=None, description="Detection confidence")
+    match_start: int | None = Field(default=None, description="Match start offset")
+    match_end: int | None = Field(default=None, description="Match end offset")
+    correction_id: uuid.UUID | None = Field(
+        default=None, description="Correction link, if any"
+    )
+    mention_source: str = Field(
+        default="transcript", description="Source (transcript/title/description)"
+    )
+    mention_context: str | None = Field(default=None, description="Context snippet")
+    alias_id: uuid.UUID | None = Field(
+        default=None, description="The alias this mention was attributed to"
+    )
+
+    model_config = ConfigDict(
+        validate_assignment=True, extra="forbid", from_attributes=True
+    )
+
+
+class AliasDeleteRollback(BaseModel):
+    """Typed rollback payload for an alias deletion (#298, Level 3).
+
+    Captures the removed alias and the auto-detected mentions the deletion took
+    with it, so an undo restores both. Its top-level field set (``alias`` +
+    ``removed_mentions``) is disjoint from the edit/grounding rollbacks, keeping
+    the ``rollback_data`` smart union unambiguous.
+    """
+
+    alias: AliasSnapshot = Field(..., description="The deleted alias to restore")
+    removed_mentions: list[MentionSnapshot] = Field(
+        default_factory=list,
+        description="Auto-detected mentions removed with the alias",
+    )
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+
 class EntityOperationLogBase(BaseModel):
     """Base model for entity operation log data."""
 
@@ -106,8 +176,12 @@ class EntityOperationLogBase(BaseModel):
         max_length=30,
         description="Type of operation ('update', 'reground', or 'refetch')",
     )
-    rollback_data: EntityEditRollback | GroundingRollback = Field(
-        ..., description="Typed before/after snapshot for undo (edit or grounding)"
+    rollback_data: EntityEditRollback | GroundingRollback | AliasDeleteRollback = Field(
+        ...,
+        description=(
+            "Typed rollback payload for undo (entity edit, grounding, or "
+            "alias deletion)"
+        ),
     )
     performed_by: str = Field(
         default="system",

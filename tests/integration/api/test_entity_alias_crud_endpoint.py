@@ -731,3 +731,176 @@ class TestDeleteFoldedCollisionKeepsSiblingMentions:
                 )
             ).all()
             assert [t for (t,) in survivor] == ["peña"], "sibling's mention must remain"
+
+
+class TestDeleteByRecordedLink:
+    """Deletion uses the recorded ``alias_id`` link, not just the fold (#298, US2).
+
+    A ``rule_match`` mention linked to the alias via ``alias_id`` is removed on
+    delete even when its text does NOT fold to the alias name — which is exactly
+    what makes the link survive an alias rename (the folded heuristic alone would
+    miss it).
+    """
+
+    _CHANNEL_ID = "UCeac289link00000001"
+    _VIDEO_ID = "eac289_link01"
+    _LANG = "en"
+    _ENTITY_NORM = "eac289 linktest"
+
+    @pytest.fixture
+    async def seeded_linked(
+        self,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> AsyncGenerator[dict[str, uuid.UUID], None]:
+        entity_id = uuid.uuid4()
+        alias_id = uuid.uuid4()
+
+        async def _wipe(session: AsyncSession) -> None:
+            await session.execute(
+                delete(EntityMentionDB).where(
+                    EntityMentionDB.video_id == self._VIDEO_ID
+                )
+            )
+            await session.execute(
+                delete(TranscriptSegmentDB).where(
+                    TranscriptSegmentDB.video_id == self._VIDEO_ID
+                )
+            )
+            await session.execute(
+                delete(VideoTranscriptDB).where(
+                    VideoTranscriptDB.video_id == self._VIDEO_ID
+                )
+            )
+            ids = (
+                (
+                    await session.execute(
+                        select(NamedEntityDB.id).where(
+                            NamedEntityDB.canonical_name_normalized == self._ENTITY_NORM
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if ids:
+                await session.execute(
+                    delete(EntityAliasDB).where(EntityAliasDB.entity_id.in_(list(ids)))
+                )
+                await session.execute(
+                    delete(NamedEntityDB).where(NamedEntityDB.id.in_(list(ids)))
+                )
+            await session.execute(
+                delete(VideoDB).where(VideoDB.video_id == self._VIDEO_ID)
+            )
+            await session.execute(
+                delete(ChannelDB).where(ChannelDB.channel_id == self._CHANNEL_ID)
+            )
+            await session.commit()
+
+        async with integration_session_factory() as session:
+            await _wipe(session)
+            session.add(ChannelDB(channel_id=self._CHANNEL_ID, title="EAC Link"))
+            session.add(
+                VideoDB(
+                    video_id=self._VIDEO_ID,
+                    channel_id=self._CHANNEL_ID,
+                    title="EAC Link Video",
+                    description="recorded-link delete test",
+                    upload_date=datetime(2024, 7, 1, tzinfo=UTC),
+                    duration=90,
+                )
+            )
+            await session.commit()
+            session.add(
+                VideoTranscriptDB(
+                    video_id=self._VIDEO_ID,
+                    language_code=self._LANG,
+                    transcript_text="filler",
+                    transcript_type="MANUAL",
+                    download_reason="USER_REQUEST",
+                    is_cc=False,
+                    is_auto_synced=False,
+                    track_kind="standard",
+                )
+            )
+            await session.commit()
+            seg = TranscriptSegmentDB(
+                video_id=self._VIDEO_ID,
+                language_code=self._LANG,
+                text="filler",
+                start_time=0.0,
+                duration=5.0,
+                end_time=5.0,
+                sequence_number=0,
+                has_correction=False,
+            )
+            session.add(seg)
+            await session.commit()
+            session.add(
+                create_named_entity_db(
+                    id=entity_id,
+                    canonical_name="Eac289 Linktest",
+                    canonical_name_normalized=self._ENTITY_NORM,
+                    entity_type="person",
+                )
+            )
+            session.add(
+                EntityAliasDB(
+                    id=alias_id,
+                    entity_id=entity_id,
+                    alias_name="Ikelink",
+                    alias_name_normalized="ikelink",
+                    alias_type="name_variant",
+                    occurrence_count=1,
+                )
+            )
+            await session.flush()
+            # A rule_match mention LINKED to the alias, but whose frozen text
+            # does NOT fold to the alias name — only the alias_id link can select
+            # it (mirrors what happens after the alias is renamed).
+            session.add(
+                EntityMentionDB(
+                    id=uuid.uuid4(),
+                    entity_id=entity_id,
+                    segment_id=seg.id,
+                    video_id=self._VIDEO_ID,
+                    language_code=self._LANG,
+                    mention_text="Zzznomatch",
+                    detection_method="rule_match",
+                    confidence=1.0,
+                    alias_id=alias_id,
+                )
+            )
+            await session.commit()
+        yield {"entity_id": entity_id, "alias_id": alias_id}
+        async with integration_session_factory() as session:
+            await _wipe(session)
+
+    async def test_delete_removes_linked_mention_despite_nonmatching_text(
+        self,
+        async_client: AsyncClient,
+        seeded_linked: dict[str, uuid.UUID],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        entity_id, alias_id = seeded_linked["entity_id"], seeded_linked["alias_id"]
+        with _auth() as mock_oauth:
+            mock_oauth.is_authenticated.return_value = True
+            resp = await async_client.delete(_url(entity_id, alias_id))
+        assert resp.status_code == 200, resp.text
+        # Removed via the recorded alias_id link, though "Zzznomatch" doesn't
+        # fold to "ikelink".
+        assert resp.json()["data"]["removed_mention_count"] == 1
+
+        async with integration_session_factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(EntityMentionDB.id).where(
+                            EntityMentionDB.entity_id == entity_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert rows == []

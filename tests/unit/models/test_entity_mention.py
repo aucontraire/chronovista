@@ -512,6 +512,7 @@ class TestEntityMentionBase:
             "match_start",
             "match_end",
             "correction_id",
+            "alias_id",
             "mention_source",
             "mention_context",
         }
@@ -773,6 +774,7 @@ class TestEntityMention:
         orm_like.match_start = None
         orm_like.match_end = None
         orm_like.correction_id = None
+        orm_like.alias_id = None
         orm_like.mention_source = "transcript"
         orm_like.mention_context = None
         orm_like.created_at = now
@@ -809,6 +811,7 @@ class TestEntityMention:
         orm_like.match_start = None
         orm_like.match_end = None
         orm_like.correction_id = None
+        orm_like.alias_id = None
         orm_like.mention_source = "transcript"
         orm_like.mention_context = None
         orm_like.created_at = datetime.now(UTC)
@@ -832,6 +835,7 @@ class TestEntityMention:
             orm_like.match_start = None
             orm_like.match_end = None
             orm_like.correction_id = None
+            orm_like.alias_id = None
             orm_like.mention_source = "transcript"
             orm_like.mention_context = None
             orm_like.created_at = datetime.now(UTC)

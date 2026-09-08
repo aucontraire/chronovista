@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.81.0] - 2026-09-07
+
+### Fixed
+- **Whitespace in caption text no longer hides matches in correction find/replace and the entity scan (#293).**
+  - **The problem.** Caption files often wrap a cue across two display lines with a line break, or use a non-breaking space (U+00A0), a zero-width character (U+200B/U+200C/U+200D/U+FEFF), or a soft hyphen (U+00AD) where a normal space belongs. Text matching was literal, so a phrase or a multi-word entity name split by one of these was silently missed — a batch correction found nothing to replace, and the entity-mention scan skipped the mention. Because a literal scan cannot report what it fails to match, those losses were invisible. Across the corpus this affects tens of thousands of segments (dominated by line breaks, then non-breaking spaces).
+  - **The fix.** A single shared, content-preserving normalizer collapses every whitespace run (newlines, tabs, non-breaking and other Unicode spaces) to one regular space, strips zero-width characters and soft hyphens, and applies Unicode NFC — never altering letters, accents, emoji, currency, or non-Latin scripts. Segment text is normalized where it is derived at **ingest** (the untouched original is retained in the transcript's raw data, so this is lossless), and both match paths also fold whitespace so a split phrase or name is found. The batch-correction search pattern is normalized too (so a pattern pasted with a line break matches), while regex patterns are left untouched.
+  - **Recovering existing transcripts.** A new operator-run CLI command, `chronovista transcript normalize-whitespace` (dry-run by default; `--apply` to write; `--video-id` / `--limit` to stage), normalizes the affected videos' stored segment text **in place** (preserving segment identifiers, so corrections and mentions stay linked) and **re-scans** each changed video so its auto-detected mentions are regenerated with correct character offsets. Hand-made and correction-derived mentions are preserved; transcript corrections and the raw caption data are never touched. It commits per video (resumable) and is idempotent (a second run changes nothing). It is intentionally **not** an Alembic migration, so this heavy rewrite never fires unattended on a container restart.
+  - **Scope notes.** The display-only full-transcript projection (`video_transcripts.transcript_text`) is left as-is: it is not a match/search surface, and its inter-cue newlines are meaningful structure. Two transient windows exist between deploying the code and running the backfill — a correction over still-dirty stored text won't find a split phrase yet, and a newly-recovered mention is briefly under-counted until the re-scan — both self-heal once the backfill runs, so run it promptly after deploying. No schema change, no migration, no new dependency.
+
 ## [0.80.0] - 2026-09-07
 
 ### Added

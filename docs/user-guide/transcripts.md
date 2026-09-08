@@ -800,6 +800,45 @@ for video_id in video_ids:
         await asyncio.sleep(60)
 ```
 
+## Whitespace normalization
+
+Caption files sometimes wrap a cue across two display lines with a line break, or
+use a non-breaking / zero-width character where a normal space belongs. Because
+text matching is literal, a phrase or a multi-word name split by one of these was
+silently missed — a batch correction found nothing, and the entity scan skipped
+the mention.
+
+Segment text is now **normalized** where it is derived at ingest — whitespace
+runs (newlines, tabs, non-breaking and other Unicode spaces) collapse to a single
+space, zero-width characters and soft hyphens are removed, and Unicode NFC is
+applied. Letters, accents, emoji, currency, and non-Latin scripts are never
+altered, and the untouched original stays in the transcript's raw data. Both the
+batch-correction search and the entity scan also fold whitespace when matching,
+so a phrase or name split by an artifact is found.
+
+### Backfilling existing transcripts
+
+Transcripts fetched before this change still hold the raw whitespace. A one-time,
+operator-run command normalizes the affected videos' stored segment text **and**
+re-scans them so previously-missed entity mentions are recovered with correct
+positions (hand-made and correction-derived mentions are preserved):
+
+```bash
+# Dry run first — reports how many videos/segments/mentions are affected, writes nothing:
+chronovista transcript normalize-whitespace
+
+# Apply (run on a copy / dev first, then deliberately on production):
+chronovista transcript normalize-whitespace --apply
+
+# Stage or verify a single video:
+chronovista transcript normalize-whitespace --apply --video-id <VIDEO_ID>
+```
+
+It is idempotent (a second run changes nothing) and commits per video, so it is
+safe to interrupt and re-run. If a run is **hard-killed**, re-run it — and if it
+logged a warning naming a video with "offset-shifting normalization", re-run that
+video explicitly with `--video-id` to be sure its mentions were regenerated.
+
 ## See Also
 
 - [Data Synchronization](data-sync.md) - Sync operations

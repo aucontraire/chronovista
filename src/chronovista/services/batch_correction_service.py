@@ -64,8 +64,29 @@ from chronovista.repositories.transcript_segment_repository import (
 from chronovista.services.transcript_correction_service import (
     TranscriptCorrectionService,
 )
+from chronovista.utils.text import normalize_segment_text
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_literal_pattern(pattern: str, *, regex: bool) -> str:
+    """Whitespace-normalize a literal search pattern before matching (#293).
+
+    A literal (non-regex) search phrase is folded with the shared segment-text
+    normalizer so a phrase written or pasted with a line break or non-breaking
+    space matches the normalized stored text. Regex patterns are returned
+    unchanged — their whitespace may be significant (e.g. ``\\s``).
+
+    If the phrase is entirely whitespace/invisible characters it would normalize
+    to the empty string, which a substring search reads as "match everything";
+    to avoid turning a non-empty pattern into that footgun, the raw pattern is
+    returned unchanged in that case.
+    """
+    if regex:
+        return pattern
+    normalized = normalize_segment_text(pattern)
+    return normalized or pattern
+
 
 T = TypeVar("T")
 
@@ -274,6 +295,10 @@ class BatchCorrectionService:
 
         # Step 1: Validate pattern
         self._validate_pattern(pattern, regex=regex)
+
+        # Normalize a literal search phrase so a line break / nbsp in the
+        # pattern (or in normalized stored text) still matches (#293).
+        pattern = _normalize_literal_pattern(pattern, regex=regex)
 
         # Step 2: Find matching segments (single-segment)
         matched_segments = await self._segment_repo.find_by_text_pattern(
@@ -887,6 +912,12 @@ class BatchCorrectionService:
 
         # Step 1: Validate pattern
         self._validate_pattern(pattern, regex=regex)
+
+        # Normalize a literal search phrase so a line break / nbsp in the
+        # pattern (or in normalized stored text) still matches (#293). Applied
+        # before both the dry-run delegation and the live find/replace so all
+        # paths use the same normalized pattern.
+        pattern = _normalize_literal_pattern(pattern, regex=regex)
 
         # ------ Dry-run mode: delegate to find_matching_segments() ------
         if dry_run:

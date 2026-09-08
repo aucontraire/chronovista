@@ -25,6 +25,7 @@ from ..models.video_transcript import (
     VideoTranscriptWithQuality,
 )
 from ..models.youtube_types import VideoId
+from ..utils.text import normalize_segment_text
 from .base import BaseSQLAlchemyRepository
 
 logger = logging.getLogger(__name__)
@@ -948,11 +949,14 @@ class VideoTranscriptRepository(
                 duration = float(duration_val)
                 end_time = start_time + duration
 
-                # Create segment
+                # Create segment. Normalize the derived text at ingest so new
+                # transcripts store clean text (collapse whitespace / strip
+                # invisibles / NFC) — the raw original is retained in
+                # raw_transcript_data, so this is lossless (#293).
                 segment = TranscriptSegmentDB(
                     video_id=video_id,
                     language_code=language_code,
-                    text=text_content,
+                    text=normalize_segment_text(text_content),
                     start_time=start_time,
                     duration=duration,
                     end_time=end_time,

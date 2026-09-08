@@ -43,28 +43,43 @@ _MIN_ALIAS_LENGTH = 3
 # stop; this bounds the retry.
 _MAX_FETCH_RETRIES = 3
 
+# Zero-width / invisible formatting code points stripped by the match fold: they
+# are not whitespace (so ``str.isspace()`` misses them) but would break a
+# contiguous match. Zero-width space, ZWNJ, ZWJ, BOM/ZWNBSP, and soft hyphen.
+_MATCH_INVISIBLE_CPS = frozenset({0x200B, 0x200C, 0x200D, 0xFEFF, 0x00AD})
+
 
 def _fold_diacritics(raw: str) -> tuple[str, list[int]]:
-    """Fold accents off a string and map folded positions back to raw ones.
+    """Fold a string for matching and map folded positions back to raw ones.
 
-    The fold decomposes each character with canonical (NFD) normalization and
-    drops non-spacing combining marks (Unicode category ``Mn``), so ``"Perú"``
-    folds to ``"Peru"``.  Case is intentionally left untouched — callers keep
-    handling case with ``re.IGNORECASE``.  Compatibility decomposition (NFKD) is
-    deliberately avoided so characters such as ``"½"`` or the ``"ﬁ"`` ligature
-    are not expanded, which keeps the fold conservative.
+    The fold does three things, all so an alias written with normal spaces and
+    no accents can match segment text that differs only in those respects:
 
-    The fold is not guaranteed to preserve length: a raw pre-composed character
-    may decompose into several folded characters, and a raw combining mark
-    disappears entirely.  The returned offset map therefore records, for every
-    folded-string position, the index of the RAW character that produced it, so
-    a match found in folded space can be sliced back out of the raw text with
-    correct offsets.
+    1. **Diacritics** — decomposes each character with canonical (NFD)
+       normalization and drops non-spacing combining marks (Unicode category
+       ``Mn``), so ``"Perú"`` folds to ``"Peru"``. Case is intentionally left
+       untouched — callers keep handling case with ``re.IGNORECASE``.
+       Compatibility decomposition (NFKD) is deliberately avoided so ``"½"`` or
+       the ``"ﬁ"`` ligature are not expanded, which keeps the fold conservative.
+    2. **Whitespace** — collapses every run of whitespace (newlines, tabs,
+       non-breaking and other Unicode spaces) to a single regular space, so a
+       multi-word alias matches a name a caption split across a line break or an
+       ``nbsp`` (bug #293). A whitespace run maps to the raw index of its first
+       character.
+    3. **Invisibles** — drops zero-width characters and the soft hyphen
+       (U+200B/U+200C/U+200D/U+FEFF/U+00AD), which are not whitespace but would
+       otherwise break a contiguous match.
+
+    The fold is not length-preserving: a pre-composed character may decompose,
+    a combining mark or invisible disappears, and a whitespace run shrinks to
+    one space. The returned offset map records, for every folded position, the
+    index of the RAW character that produced it, so a match found in folded
+    space can be sliced back out of the raw text with correct offsets.
 
     Parameters
     ----------
     raw : str
-        The original (possibly accented) string.
+        The original (possibly accented / oddly-spaced) string.
 
     Returns
     -------
@@ -77,7 +92,17 @@ def _fold_diacritics(raw: str) -> tuple[str, list[int]]:
     """
     folded_chars: list[str] = []
     offset_map: list[int] = []
+    prev_was_space = False
     for raw_index, char in enumerate(raw):
+        if ord(char) in _MATCH_INVISIBLE_CPS:
+            continue
+        if char.isspace():
+            if not prev_was_space:
+                folded_chars.append(" ")
+                offset_map.append(raw_index)
+                prev_was_space = True
+            continue
+        prev_was_space = False
         for decomposed in unicodedata.normalize("NFD", char):
             if unicodedata.category(decomposed) == "Mn":
                 continue

@@ -13,6 +13,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.panel import Panel
 
 from chronovista.cli.sync.base import run_sync_operation
 from chronovista.config.database import db_manager
@@ -365,6 +366,99 @@ def range_command(
         return EXIT_SUCCESS
 
     exit_code = run_sync_operation(_query, "Transcript Range Query")
+    if exit_code is not None:
+        raise typer.Exit(exit_code)
+
+
+@transcript_app.command("normalize-whitespace")
+def normalize_whitespace_command(
+    apply: Annotated[
+        bool,
+        typer.Option(
+            "--apply",
+            help="Write changes. Without this flag the command is a dry run "
+            "(reports scope, writes nothing).",
+        ),
+    ] = False,
+    limit: Annotated[
+        int | None,
+        typer.Option("--limit", help="Process at most this many affected videos."),
+    ] = None,
+    video_id: Annotated[
+        str | None,
+        typer.Option("--video-id", help="Restrict to a single video (verification)."),
+    ] = None,
+) -> None:
+    """Normalize whitespace in stored transcript segment text and re-scan (#293).
+
+    Collapses newlines / non-breaking & other Unicode spaces / runs to a single
+    space, strips zero-width characters and soft hyphens, and applies NFC — for
+    the affected videos' segments, in place (the raw caption data is retained).
+    Because that shifts character offsets, each changed video is then re-scanned
+    so its auto-detected entity mentions are regenerated with valid offsets;
+    hand-made and correction-derived mentions are preserved. Idempotent and
+    resumable (per-video commit). Iterates candidate videos, so a full run reads
+    broadly — use --limit / --video-id for staged runs. Run on dev first.
+    """
+    from chronovista.repositories.transcript_correction_repository import (
+        TranscriptCorrectionRepository,
+    )
+    from chronovista.services.batch_correction_service import BatchCorrectionService
+    from chronovista.services.transcript_correction_service import (
+        TranscriptCorrectionService,
+    )
+    from chronovista.services.transcript_whitespace_service import (
+        TranscriptWhitespaceBackfillService,
+    )
+
+    async def _run() -> int:
+        session_factory = db_manager.get_session_factory()
+
+        segment_repo = TranscriptSegmentRepository()
+        correction_repo = TranscriptCorrectionRepository()
+        transcript_repo = VideoTranscriptRepository()
+        batch = BatchCorrectionService(
+            correction_service=TranscriptCorrectionService(
+                correction_repo=correction_repo,
+                segment_repo=segment_repo,
+                transcript_repo=transcript_repo,
+            ),
+            segment_repo=segment_repo,
+            correction_repo=correction_repo,
+        )
+
+        async def _rebuild(vid: str) -> None:
+            # Keep the corrected-transcript concatenation consistent with the
+            # normalized segments (no-op for videos without corrections).
+            async with session_factory() as s:
+                await batch.rebuild_text(s, video_ids=[vid])
+                await s.commit()
+
+        service = TranscriptWhitespaceBackfillService(
+            session_factory, rebuild_text=_rebuild
+        )
+        summary = await service.run(apply=apply, video_id=video_id, limit=limit)
+
+        title = "Whitespace Normalization" + ("" if apply else " (dry run)")
+        console.print(
+            Panel(
+                f"Videos considered: {summary.videos_considered}\n"
+                f"Videos changed:    {summary.videos_changed}\n"
+                f"Segments normalized: {summary.segments_normalized}\n"
+                f"Mentions regenerated: {summary.mentions_regenerated}\n"
+                f"Videos failed:     {summary.videos_failed}"
+                + (
+                    ""
+                    if apply
+                    else "\n\n[dim]Dry run — nothing written. Re-run with --apply.[/dim]"
+                ),
+                title=title,
+                border_style="yellow" if not apply else "green",
+            )
+        )
+        return EXIT_SUCCESS
+
+    exit_code = run_sync_operation(_run, "Whitespace Normalization")
     if exit_code is not None:
         raise typer.Exit(exit_code)
 

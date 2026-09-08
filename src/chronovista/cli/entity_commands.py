@@ -1376,8 +1376,20 @@ def scan_entities(
             ),
         ),
     ] = "transcript",
+    resume: Annotated[
+        bool,
+        typer.Option(
+            "--resume",
+            help="Continue a previously-interrupted scan of the same scope "
+            "from where it left off (per source), instead of restarting.",
+        ),
+    ] = False,
 ) -> None:
-    """Scan transcript segments for named entity mentions."""
+    """Scan transcript segments for named entity mentions.
+
+    A live scan commits incrementally (per batch), so Ctrl+C keeps the work
+    already done and prints how to resume; re-run with --resume to continue.
+    """
 
     # Validate mutual exclusivity: --audit and --full
     if audit and full:
@@ -1658,57 +1670,167 @@ def scan_entities(
                 )
             console.print(dry_run_summary)
         else:
-            # Live mode: scan with progress bar
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                TaskProgressColumn(),
-                console=console,
-            ) as progress:
-                task = progress.add_task("Scanning...", total=None)
+            # Live mode: incremental commits + Ctrl+C-safe resume (#291)
+            import signal as _signal
 
-                def _progress_callback(scanned: int, found: int) -> None:
-                    progress.update(
-                        task,
-                        completed=scanned,
-                        description=f"Scanning... ({found:,} mentions found)",
-                    )
+            from chronovista.cli.scan_resume_state import (
+                clear_scope_if_all_complete,
+                compute_scope_key,
+                is_source_completed,
+                read_position,
+                record_cursor,
+            )
 
-                transcript_result_live: ScanResult | None = None
-                metadata_result_live: ScanResult | None = None
+            scope_key = compute_scope_key(
+                sources=parsed_sources,
+                entity_type=effective_entity_type,
+                entity_ids=(
+                    [str(e) for e in effective_entity_ids]
+                    if effective_entity_ids
+                    else None
+                ),
+                video_ids=video_id,
+                language=language,
+                full=full,
+            )
+            expected_state_sources: list[str] = []
+            if transcript_sources:
+                expected_state_sources.append("transcript")
+            if metadata_sources:
+                expected_state_sources.append("metadata")
 
-                if transcript_sources:
-                    progress.update(task, description="Scanning segments...")
-                    transcript_result_live = await service.scan(
-                        entity_type=effective_entity_type,
-                        video_ids=video_id,
-                        language_code=language,
-                        batch_size=batch_size,
-                        dry_run=False,
-                        full_rescan=full,
-                        new_entities_only=effective_new_entities_only,
-                        progress_callback=_progress_callback,
-                        entity_ids=effective_entity_ids,
-                    )
+            stop_requested = {"v": False}
+            current_pos = {"v": "start"}
 
-                if metadata_sources:
-                    progress.update(
-                        task,
-                        description=f"Scanning {', '.join(metadata_sources)}...",
+            def _handle_sigint(signum: int, frame: object) -> None:
+                stop_requested["v"] = True
+
+            def _should_continue() -> bool:
+                return not stop_requested["v"]
+
+            previous_handler = _signal.signal(_signal.SIGINT, _handle_sigint)
+            transcript_result_live: ScanResult | None = None
+            metadata_result_live: ScanResult | None = None
+            try:
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TaskProgressColumn(),
+                    console=console,
+                ) as progress:
+                    task = progress.add_task("Scanning...", total=None)
+
+                    def _progress_callback(scanned: int, found: int) -> None:
+                        progress.update(
+                            task,
+                            completed=scanned,
+                            description=(
+                                f"Scanning... ({found:,} mentions found; "
+                                f"at {current_pos['v']})"
+                            ),
+                        )
+
+                    # On resume, skip a phase that already finished for this
+                    # scope (e.g. transcript done, metadata interrupted) rather
+                    # than re-scanning it from scratch.
+                    _skip_transcript = resume and is_source_completed(
+                        scope_key, "transcript"
                     )
-                    metadata_result_live = await service.scan_metadata(
-                        sources=metadata_sources,
-                        entity_type=effective_entity_type,
-                        video_ids=video_id,
-                        language_code=language,
-                        batch_size=batch_size,
-                        dry_run=False,
-                        full_rescan=full,
-                        new_entities_only=effective_new_entities_only,
-                        entity_ids=effective_entity_ids,
-                        progress_callback=_progress_callback,
+                    if transcript_sources and not _skip_transcript:
+                        progress.update(task, description="Scanning segments...")
+                        t_resume: int | None = None
+                        if resume:
+                            _saved = read_position(scope_key, "transcript")
+                            if _saved is not None:
+                                t_resume = int(_saved.cursor)
+
+                        def _t_checkpoint(last_id: int) -> None:
+                            current_pos["v"] = f"segment {last_id}"
+                            record_cursor(scope_key, "transcript", str(last_id))
+
+                        transcript_result_live = await service.scan(
+                            entity_type=effective_entity_type,
+                            video_ids=video_id,
+                            language_code=language,
+                            batch_size=batch_size,
+                            dry_run=False,
+                            full_rescan=full,
+                            new_entities_only=effective_new_entities_only,
+                            progress_callback=_progress_callback,
+                            entity_ids=effective_entity_ids,
+                            resume_from=t_resume,
+                            should_continue=_should_continue,
+                            checkpoint_callback=_t_checkpoint,
+                        )
+                        if transcript_result_live.completed:
+                            record_cursor(
+                                scope_key,
+                                "transcript",
+                                str(transcript_result_live.last_processed_id or 0),
+                                completed=True,
+                            )
+
+                    # Skip the metadata phase if the transcript phase was interrupted.
+                    _skip_metadata = resume and is_source_completed(
+                        scope_key, "metadata"
                     )
+                    if metadata_sources and not _skip_metadata and _should_continue():
+                        progress.update(
+                            task,
+                            description=f"Scanning {', '.join(metadata_sources)}...",
+                        )
+                        m_resume: str | None = None
+                        if resume:
+                            _saved_m = read_position(scope_key, "metadata")
+                            if _saved_m is not None:
+                                m_resume = _saved_m.cursor
+
+                        def _m_checkpoint(vid: str) -> None:
+                            current_pos["v"] = f"video {vid}"
+                            record_cursor(scope_key, "metadata", vid)
+
+                        metadata_result_live = await service.scan_metadata(
+                            sources=metadata_sources,
+                            entity_type=effective_entity_type,
+                            video_ids=video_id,
+                            language_code=language,
+                            batch_size=batch_size,
+                            dry_run=False,
+                            full_rescan=full,
+                            new_entities_only=effective_new_entities_only,
+                            entity_ids=effective_entity_ids,
+                            progress_callback=_progress_callback,
+                            resume_from_video_id=m_resume,
+                            should_continue=_should_continue,
+                            checkpoint_callback=_m_checkpoint,
+                        )
+                        if metadata_result_live.completed:
+                            record_cursor(
+                                scope_key,
+                                "metadata",
+                                metadata_result_live.last_processed_video_id or "",
+                                completed=True,
+                            )
+            finally:
+                _signal.signal(_signal.SIGINT, previous_handler)
+
+            # Clear the scope's resume entry once every ran source completed.
+            clear_scope_if_all_complete(scope_key, expected_state_sources)
+
+            # Observability (FR-017): tell the operator whether the run finished
+            # or was interrupted (and how to resume) — completed only if every
+            # source phase that ran reported completion.
+            _interrupted = stop_requested["v"] or any(
+                r is not None and not r.completed
+                for r in (transcript_result_live, metadata_result_live)
+            )
+            if _interrupted:
+                console.print(
+                    "[yellow]Scan interrupted — committed work was kept. "
+                    "Re-run with [bold]--resume[/bold] to continue where it left "
+                    "off.[/yellow]"
+                )
 
             result = _merge_scan_results(transcript_result_live, metadata_result_live)
 

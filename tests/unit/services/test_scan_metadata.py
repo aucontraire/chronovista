@@ -98,6 +98,7 @@ def _make_session_factory(
     session.execute = AsyncMock()
     session.flush = AsyncMock()
     session.commit = AsyncMock()
+    session.rollback = AsyncMock()
 
     # Build the sequence of return values for execute()
     call_results: list[MagicMock] = []
@@ -368,10 +369,9 @@ class TestScanMetadataTitle:
         assert len(result.dry_run_matches) == 2  # trimmed to limit
         assert result.segments_scanned == 2  # third batch never fetched (early-exit)
 
-    async def test_title_scan_full_rescan_deletes_before_scan(self) -> None:
-        """Title scanning with full_rescan=True calls delete_by_scope with
-        mention_source='title' before scanning.
-        """
+    async def test_title_scan_full_rescan_deletes_per_batch_by_source(self) -> None:
+        """Title full-rescan deletes per batch, scoped to the batch's video ids,
+        with mention_source='title' (the #291 per-batch atomic replace)."""
         entity_id = _make_uuid()
         entity = _make_entity_row(entity_id=entity_id, canonical_name="Ada Lovelace")
         video = _make_video_row(
@@ -393,6 +393,12 @@ class TestScanMetadataTitle:
                 "delete_by_scope",
                 new_callable=AsyncMock,
             ) as mock_delete,
+            patch.object(
+                service._mention_repo,
+                "entities_with_metadata_mentions_in_videos",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
             patch.object(
                 service._mention_repo,
                 "bulk_create_with_conflict_skip",
@@ -420,6 +426,8 @@ class TestScanMetadataTitle:
         call_kwargs = mock_delete.call_args
         assert call_kwargs[1]["mention_source"] == "title"
         assert call_kwargs[1]["detection_method"] == "rule_match"
+        # Per-batch: delete is scoped to the batch's video ids, not a global pass.
+        assert call_kwargs[1]["video_ids"] == ["vid00500005"]
 
     async def test_title_scan_with_aliases(self) -> None:
         """Title scanning detects entity aliases in video titles."""

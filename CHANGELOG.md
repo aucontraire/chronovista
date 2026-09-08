@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.82.0] - 2026-09-08
+
+### Changed
+- **The entity-mention scan is now interruptible and resumable (#291).**
+  - **The problem.** A scan over a large library ran as one long-lived database transaction that committed only at the very end. Pressing `Ctrl+C` — or any mid-run failure — rolled back the entire run, so hours of detection work were lost and had to be redone from scratch. A `--full` re-scan additionally deleted all of a scope's existing mentions up front, so an interruption could leave the library with fewer mentions than it started with.
+  - **The fix.** The scan now commits **per batch** and reports a durable cursor after each commit. Stopping is safe (every committed batch is kept, clean exit, no traceback) and resuming is cheap: re-running the same command with `--resume` continues from the last committed position, repeating at most one batch. Resume state is keyed to the scan's scope (sources, entity/type/video filters, language, and whether `--full` was set) and tracked per source, so a combined transcript + title/description scan resumes each source independently and a completed phase is skipped rather than re-run. A detection-phase failure on one batch is logged, counted, and skipped (its cursor advanced so a resume won't re-hit it) instead of aborting the whole run.
+  - **`--full` safety.** A full re-scan now deletes and re-derives its mentions one batch at a time, committed together, so no segment is ever left with its old mentions removed and the new ones not yet written — even under interrupt. Manually added mentions are never touched. Per-entity mention counts are recomputed as the scan progresses and reconciled across the full scope when a `--full` run completes.
+  - **Scope notes.** No schema change, no migration, no new dependency — resume state is a small CLI-local file. The `scan_metadata()` (title/description) path has the same guarantees as the transcript path, and the whitespace-normalization backfill (#293), which drives a per-video full re-scan, is unchanged in outcome. See the operator guide *"Interrupt and resume a scan"*.
+
 ## [0.81.1] - 2026-09-07
 
 ### Fixed

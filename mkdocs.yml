@@ -145,6 +145,7 @@ nav:
       - Find entity intersections: user-guide/entity-intersection.md
       - See what a channel is about: user-guide/channel-entities.md
       - Fix an over-matching entity: user-guide/entity-curation.md
+      - Interrupt and resume a scan: user-guide/scan-resume.md
       - Attach tags to an entity: user-guide/entity-tags.md
       - Ground entities in a knowledge base: user-guide/entity-enrichment.md
       - CLI workflows: user-guide/cli-overview.md
@@ -171,6 +172,7 @@ nav:
       - Post-creation re-grounding: architecture/entity-reground.md
       - Alias→mention provenance: architecture/entity-alias-provenance.md
       - Transcript whitespace normalization: architecture/transcript-whitespace-normalization.md
+      - Resumable entity scan: architecture/entity-scan-resumability.md
   - Contributing:
       - Overview: development/index.md
       - Setup: development/setup.md

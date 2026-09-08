@@ -197,3 +197,44 @@ class TestWhitespaceBackfillIntegration:
         assert summary.segments_normalized == 1
         seg = await db_session.get(TranscriptSegmentDB, seg_id)
         assert seg is not None and seg.text == "visited Foo\nBar today"  # untouched
+
+    async def test_dry_run_count_is_transcript_only(
+        self, db_session: AsyncSession
+    ) -> None:
+        # The dry-run projection must count only transcript-source rule_match
+        # mentions (what --apply regenerates), not title/description ones.
+        entity_id, _seg_id = await _seed(db_session)
+        db_session.add(
+            EntityMentionDB(
+                entity_id=entity_id,
+                video_id=VID,
+                segment_id=None,
+                mention_text="Foo Bar",
+                detection_method="rule_match",
+                mention_source="transcript",
+                confidence=1.0,
+            )
+        )
+        await db_session.flush()
+        db_session.add(
+            EntityMentionDB(
+                entity_id=entity_id,
+                video_id=VID,
+                segment_id=None,
+                mention_text="Foo Bar",
+                detection_method="rule_match",
+                mention_source="title",  # must be excluded from the projection
+                confidence=1.0,
+            )
+        )
+        await db_session.flush()
+        await db_session.commit()
+
+        factory = _factory(db_session)
+        service = TranscriptWhitespaceBackfillService(
+            factory, scan_service=EntityMentionScanService(session_factory=factory)
+        )
+        summary = await service.run(apply=False, video_id=VID)
+        # Only the transcript rule_match mention is counted (not the title one,
+        # not the manual one seeded by _seed).
+        assert summary.mentions_regenerated == 1

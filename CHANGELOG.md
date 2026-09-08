@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.81.1] - 2026-09-07
+
+### Fixed
+- **`transcript normalize-whitespace` dry run no longer overstates the mentions it will regenerate (#293 follow-up).** The dry run projected *all* `rule_match` mentions on each affected video (transcript + title + description), but `--apply` only re-scans and regenerates **transcript-source** mentions — title/description mentions are managed separately and are left untouched. So the dry run's "Mentions regenerated" figure read a few thousand higher than the apply actually reported (in one prod run, 94,794 projected vs 90,294 applied — the ~4,500 gap was entirely untouched title/description mentions, not lost data). The dry-run projection now filters to `mention_source='transcript'`, so the two figures agree. Projection-only change; no effect on what `--apply` writes.
+
 ## [0.81.0] - 2026-09-07
 
 ### Fixed

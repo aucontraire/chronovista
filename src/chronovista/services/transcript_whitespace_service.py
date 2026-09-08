@@ -81,6 +81,10 @@ _ARTIFACT_CLASS = (
 )
 
 _RULE_MATCH = "rule_match"
+# The re-scan (full_rescan) regenerates only transcript-source mentions;
+# title/description mentions are managed separately and are never touched here.
+# The dry-run projection filters to this so its count matches what --apply does.
+_TRANSCRIPT = "transcript"
 
 
 class WhitespaceBackfillSummary(BaseModel):
@@ -212,8 +216,11 @@ class TranscriptWhitespaceBackfillService:
             result.segments_normalized = len(changed)
 
             if not apply:
-                # Dry run: also report how many rule_match mentions would be
-                # regenerated (deleted + re-detected) for a changed video.
+                # Dry run: report how many rule_match mentions would be
+                # regenerated (deleted + re-detected) for a changed video. Scope
+                # to transcript-source only, matching what the apply re-scan
+                # actually regenerates — title/description mentions are untouched,
+                # so counting them here would overstate the projection.
                 if changed:
                     result.mentions_regenerated = int(
                         (
@@ -223,6 +230,7 @@ class TranscriptWhitespaceBackfillService:
                                 .where(
                                     EntityMentionDB.video_id == video_id,
                                     EntityMentionDB.detection_method == _RULE_MATCH,
+                                    EntityMentionDB.mention_source == _TRANSCRIPT,
                                 )
                             )
                         ).scalar_one()

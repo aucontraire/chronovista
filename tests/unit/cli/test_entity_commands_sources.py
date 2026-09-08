@@ -77,6 +77,11 @@ def _make_scan_result(
     result.failed_batches = failed_batches
     result.skipped_longest_match = skipped_longest_match
     result.skipped_exclusion_pattern = skipped_exclusion_pattern
+    # Resumable-scan fields (#291): real str|None / bool, not MagicMock, so the
+    # CLI's per-source cursor persistence sees valid values.
+    result.completed = True
+    result.last_processed_id = None
+    result.last_processed_video_id = None
     return result
 
 

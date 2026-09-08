@@ -152,6 +152,13 @@ class ScanResult:
     dry_run_matches: list[dict[str, Any]] | None = None
     skipped_longest_match: int = 0
     skipped_exclusion_pattern: int = 0
+    # Resumability (#291): the last committed keyset position, and whether the
+    # scan reached the end of its scope. `last_processed_id` is the transcript
+    # segment id; `last_processed_video_id` is the metadata video id. A caller
+    # (the CLI) persists these per batch to enable `--resume`.
+    last_processed_id: int | None = None
+    last_processed_video_id: str | None = None
+    completed: bool = False
 
 
 @dataclass
@@ -226,6 +233,9 @@ class EntityMentionScanService:
         limit: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
         entity_ids: list[uuid.UUID] | None = None,
+        resume_from: int | None = None,
+        should_continue: Callable[[], bool] | None = None,
+        checkpoint_callback: Callable[[int], None] | None = None,
     ) -> ScanResult:
         """Scan transcript segments for entity mentions.
 
@@ -289,22 +299,11 @@ class EntityMentionScanService:
 
             scoped_entity_ids = [p.entity_id for p in patterns]
 
-            # 2. Handle --full rescan: delete existing mentions in scope
-            #    Only delete transcript-sourced mentions — title/description
-            #    mentions are managed by scan_metadata() separately.
-            if full_rescan and not dry_run:
-                deleted = await self._mention_repo.delete_by_scope(
-                    session,
-                    entity_ids=scoped_entity_ids,
-                    video_ids=video_ids,
-                    language_code=language_code,
-                    detection_method="rule_match",
-                    mention_source="transcript",
-                )
-                logger.info(
-                    "Full rescan: deleted %d existing transcript mentions", deleted
-                )
-                await session.flush()
+            # 2. (#291) Under --full, the delete of existing transcript mentions
+            #    is done PER BATCH (scoped to that batch's segment ids) and
+            #    committed together with the batch's re-inserts — see the loop
+            #    below — so an interrupt never leaves segments deleted-but-not-
+            #    re-detected. No global upfront delete.
 
             # 3. Process segments in batches
             result = ScanResult(dry_run=dry_run)
@@ -314,8 +313,10 @@ class EntityMentionScanService:
             matched_entity_ids: set[uuid.UUID] = set()
             matched_video_ids: set[str] = set()
 
-            last_id = 0
+            last_id = resume_from or 0
             fetch_failures_at_cursor = 0
+            stopped_early = False
+            exhausted = False
             while True:
                 try:
                     batch_rows = await self._fetch_segment_batch(
@@ -338,6 +339,8 @@ class EntityMentionScanService:
                     )
                     result.failed_batches += 1
                     fetch_failures_at_cursor += 1
+                    # Clear any aborted transaction before retrying the fetch.
+                    await session.rollback()
                     if fetch_failures_at_cursor >= _MAX_FETCH_RETRIES:
                         logger.error(
                             "Aborting scan: %d consecutive fetch failures after "
@@ -351,6 +354,7 @@ class EntityMentionScanService:
                 fetch_failures_at_cursor = 0
 
                 if not batch_rows:
+                    exhausted = True
                     break
 
                 result.segments_scanned += len(batch_rows)
@@ -382,13 +386,22 @@ class EntityMentionScanService:
                         exc_info=True,
                     )
                     result.failed_batches += 1
-                    # The rows are in hand, so the batch can still be skipped
-                    # exactly as before: advance past the ones just fetched.
+                    # Clear any aborted transaction from the failed batch so the
+                    # next fetch/commit starts clean (prior committed batches are
+                    # untouched by this rollback).
+                    await session.rollback()
+                    # (#291/FR-016) Isolate the bad batch: prior batches are
+                    # already committed and are NOT rolled back. Advance past the
+                    # poisoned rows and persist that position so a resume skips
+                    # them instead of re-hitting the same failure forever.
                     last_id = batch_rows[-1].id
+                    result.last_processed_id = last_id
                     if progress_callback:
                         progress_callback(
                             result.segments_scanned, result.mentions_found
                         )
+                    if checkpoint_callback and not dry_run:
+                        checkpoint_callback(last_id)
                     continue
 
                 # Accumulate results
@@ -396,14 +409,51 @@ class EntityMentionScanService:
                     matched_entity_ids.add(m.entity_id)
                     matched_video_ids.add(m.video_id)
 
-                if not dry_run and batch_mentions:
-                    inserted = await self._mention_repo.bulk_create_with_conflict_skip(
-                        session, batch_mentions
-                    )
-                    result.mentions_found += inserted
-                    result.mentions_skipped += len(batch_mentions) - inserted
-                    await session.flush()
-                elif dry_run:
+                if not dry_run:
+                    # (#291) Per-batch, resumable-unit write: under --full, delete
+                    # this batch's existing transcript mentions and re-insert the
+                    # freshly detected ones, then recompute counters for every
+                    # entity this batch changed, and COMMIT — all together. The
+                    # entities whose counts change are those matched now PLUS any
+                    # whose mentions this batch deletes (so an entity that matched
+                    # nothing new but lost mentions is still made consistent).
+                    batch_segment_ids = [r.id for r in batch_rows]
+                    batch_touched: set[uuid.UUID] = {
+                        m.entity_id for m in batch_mentions
+                    }
+                    if full_rescan:
+                        delete_affected = await self._mention_repo.entities_with_transcript_mentions_in_segments(
+                            session,
+                            segment_ids=batch_segment_ids,
+                            entity_ids=scoped_entity_ids,
+                        )
+                        batch_touched.update(delete_affected)
+                        await self._mention_repo.delete_transcript_mentions_by_segments(
+                            session,
+                            segment_ids=batch_segment_ids,
+                            entity_ids=scoped_entity_ids,
+                        )
+
+                    if batch_mentions:
+                        inserted = (
+                            await self._mention_repo.bulk_create_with_conflict_skip(
+                                session, batch_mentions
+                            )
+                        )
+                        result.mentions_found += inserted
+                        result.mentions_skipped += len(batch_mentions) - inserted
+
+                    if batch_touched:
+                        await self._mention_repo.update_entity_counters(
+                            session, list(batch_touched)
+                        )
+                        await self._mention_repo.update_alias_counters(
+                            session, list(batch_touched)
+                        )
+
+                    # Commit this batch's work as one durable unit (#291).
+                    await session.commit()
+                else:
                     result.mentions_found += len(batch_mentions)
                     if result.dry_run_matches is not None and batch_previews:
                         result.dry_run_matches.extend(batch_previews)
@@ -412,10 +462,15 @@ class EntityMentionScanService:
                 result.skipped_longest_match += batch_lmw_skips
                 result.skipped_exclusion_pattern += batch_ep_skips
 
+                last_id = batch_rows[-1].id
+                result.last_processed_id = last_id
+
                 if progress_callback:
                     progress_callback(result.segments_scanned, result.mentions_found)
-
-                last_id = batch_rows[-1].id
+                # Persist the resume position only AFTER the batch commit, so the
+                # saved cursor is never ahead of durable data (#291 SEAM-1).
+                if checkpoint_callback and not dry_run:
+                    checkpoint_callback(last_id)
 
                 # If dry-run and we have reached the limit, stop early
                 if (
@@ -428,29 +483,39 @@ class EntityMentionScanService:
                     result.dry_run_matches = result.dry_run_matches[:limit]
                     break
 
+                # Cooperative graceful stop (e.g. Ctrl+C via the CLI): the just-
+                # committed batch is durable; stop before fetching more (#291).
+                if should_continue is not None and not should_continue():
+                    stopped_early = True
+                    break
+
             result.unique_entities = len(matched_entity_ids)
             result.unique_videos = len(matched_video_ids)
 
-            # 4. Update entity and alias counters (live mode only)
-            # On full_rescan we must refresh ALL scanned entities (some may
-            # have had their mentions deleted with nothing new to replace
-            # them, so their counters need to be zeroed).
-            counter_entity_ids: set[uuid.UUID] = set()
-            if full_rescan:
-                counter_entity_ids = set(scoped_entity_ids)
-            counter_entity_ids |= matched_entity_ids
+            # 4/5. (#291) Counter recompute and commit are now per batch (see the
+            # loop). Under --full, each batch recomputes counters for the entities
+            # it matched OR whose mentions it deleted, so an entity that loses all
+            # its mentions is zeroed in the batch that deleted them — no separate
+            # end-of-run pass is needed, and counters stay consistent with the
+            # mentions committed so far. Record whether the scan reached the end
+            # of its scope (vs stopped early by a cooperative interrupt or a
+            # fetch-failure abort) so a caller can clear/keep its resume position.
+            result.completed = exhausted and not stopped_early
 
-            if not dry_run and counter_entity_ids:
+            # Under --full, a COMPLETED run recomputes counters for ALL scoped
+            # entities: per-batch recompute only covers entities a batch matched
+            # or whose mentions it deleted, so an entity that lost every mention
+            # (or carried a stale count with no rows in any scanned segment) would
+            # otherwise keep a wrong count. On an interrupted run this is skipped
+            # and the eventual resume-to-completion performs it. (FR-008 holds
+            # during the run for entities the run actually touched.)
+            if full_rescan and not dry_run and result.completed and scoped_entity_ids:
                 await self._mention_repo.update_entity_counters(
-                    session, list(counter_entity_ids)
+                    session, scoped_entity_ids
                 )
                 await self._mention_repo.update_alias_counters(
-                    session, list(counter_entity_ids)
+                    session, scoped_entity_ids
                 )
-                await session.flush()
-
-            # 5. Commit all work
-            if not dry_run:
                 await session.commit()
 
             result.duration_seconds = time.monotonic() - t0
@@ -552,6 +617,9 @@ class EntityMentionScanService:
         entity_ids: list[uuid.UUID] | None = None,
         limit: int | None = None,
         progress_callback: Callable[[int, int], None] | None = None,
+        resume_from_video_id: str | None = None,
+        should_continue: Callable[[], bool] | None = None,
+        checkpoint_callback: Callable[[str], None] | None = None,
     ) -> ScanResult:
         """Scan video titles and/or descriptions for entity mentions.
 
@@ -621,22 +689,9 @@ class EntityMentionScanService:
 
             scoped_entity_ids = [p.entity_id for p in patterns]
 
-            # 2. Handle --full rescan: delete existing mentions per source type
-            if full_rescan and not dry_run:
-                for source in sources:
-                    deleted = await self._mention_repo.delete_by_scope(
-                        session,
-                        entity_ids=scoped_entity_ids,
-                        video_ids=video_ids,
-                        detection_method="rule_match",
-                        mention_source=source,
-                    )
-                    logger.info(
-                        "Full rescan: deleted %d existing %s mentions",
-                        deleted,
-                        source,
-                    )
-                await session.flush()
+            # 2. (#291) Under --full, the delete of existing metadata mentions is
+            #    done PER BATCH (scoped to that batch's video ids) and committed
+            #    together with the batch's re-inserts — see the loop below.
 
             # 3. Pre-compile Python regexes
             compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]] = []
@@ -663,8 +718,10 @@ class EntityMentionScanService:
             matched_entity_ids: set[uuid.UUID] = set()
             matched_video_ids: set[str] = set()
 
-            last_video_id = ""
+            last_video_id = resume_from_video_id or ""
             fetch_failures_at_cursor = 0
+            stopped_early = False
+            exhausted = False
             while True:
                 try:
                     batch_rows = await self._fetch_video_batch(
@@ -681,6 +738,7 @@ class EntityMentionScanService:
                     )
                     result.failed_batches += 1
                     fetch_failures_at_cursor += 1
+                    await session.rollback()
                     if fetch_failures_at_cursor >= _MAX_FETCH_RETRIES:
                         logger.error(
                             "Aborting metadata scan: %d consecutive fetch "
@@ -695,6 +753,7 @@ class EntityMentionScanService:
                 fetch_failures_at_cursor = 0
 
                 if not batch_rows:
+                    exhausted = True
                     break
 
                 result.segments_scanned += len(batch_rows)
@@ -714,33 +773,77 @@ class EntityMentionScanService:
                         exc_info=True,
                     )
                     result.failed_batches += 1
+                    await session.rollback()
                     last_video_id = batch_rows[-1].video_id
+                    result.last_processed_video_id = last_video_id
                     if progress_callback:
                         progress_callback(
                             result.segments_scanned, result.mentions_found
                         )
+                    if checkpoint_callback and not dry_run:
+                        checkpoint_callback(last_video_id)
                     continue
 
                 for m in batch_mentions:
                     matched_entity_ids.add(m.entity_id)
                     matched_video_ids.add(m.video_id)
 
-                if not dry_run and batch_mentions:
-                    inserted = await self._mention_repo.bulk_create_with_conflict_skip(
-                        session, batch_mentions
-                    )
-                    result.mentions_found += inserted
-                    result.mentions_skipped += len(batch_mentions) - inserted
-                    await session.flush()
-                elif dry_run:
+                if not dry_run:
+                    # (#291) Per-batch, resumable-unit write mirroring scan():
+                    # delete this batch's videos' metadata mentions (per source)
+                    # and re-insert, recompute counters for matched-or-deleted
+                    # entities, and COMMIT together.
+                    batch_video_ids = [r.video_id for r in batch_rows]
+                    batch_touched: set[uuid.UUID] = {
+                        m.entity_id for m in batch_mentions
+                    }
+                    if full_rescan:
+                        delete_affected = await self._mention_repo.entities_with_metadata_mentions_in_videos(
+                            session,
+                            video_ids=batch_video_ids,
+                            sources=sources,
+                            entity_ids=scoped_entity_ids,
+                        )
+                        batch_touched.update(delete_affected)
+                        for source in sources:
+                            await self._mention_repo.delete_by_scope(
+                                session,
+                                entity_ids=scoped_entity_ids,
+                                video_ids=batch_video_ids,
+                                detection_method="rule_match",
+                                mention_source=source,
+                            )
+
+                    if batch_mentions:
+                        inserted = (
+                            await self._mention_repo.bulk_create_with_conflict_skip(
+                                session, batch_mentions
+                            )
+                        )
+                        result.mentions_found += inserted
+                        result.mentions_skipped += len(batch_mentions) - inserted
+
+                    if batch_touched:
+                        await self._mention_repo.update_entity_counters(
+                            session, list(batch_touched)
+                        )
+                        await self._mention_repo.update_alias_counters(
+                            session, list(batch_touched)
+                        )
+
+                    await session.commit()
+                else:
                     result.mentions_found += len(batch_mentions)
                     if result.dry_run_matches is not None and batch_previews:
                         result.dry_run_matches.extend(batch_previews)
 
+                last_video_id = batch_rows[-1].video_id
+                result.last_processed_video_id = last_video_id
+
                 if progress_callback:
                     progress_callback(result.segments_scanned, result.mentions_found)
-
-                last_video_id = batch_rows[-1].video_id
+                if checkpoint_callback and not dry_run:
+                    checkpoint_callback(last_video_id)
 
                 # If dry-run and we have reached the limit, stop early
                 if (
@@ -753,26 +856,25 @@ class EntityMentionScanService:
                     result.dry_run_matches = result.dry_run_matches[:limit]
                     break
 
+                if should_continue is not None and not should_continue():
+                    stopped_early = True
+                    break
+
             result.unique_entities = len(matched_entity_ids)
             result.unique_videos = len(matched_video_ids)
 
-            # 5. Update entity and alias counters (live mode only)
-            counter_entity_ids: set[uuid.UUID] = set()
-            if full_rescan:
-                counter_entity_ids = set(scoped_entity_ids)
-            counter_entity_ids |= matched_entity_ids
+            result.completed = exhausted and not stopped_early
 
-            if not dry_run and counter_entity_ids:
+            # Under --full, a COMPLETED metadata run recomputes counters for ALL
+            # scoped entities (same rationale as scan()): zero entities that lost
+            # every mention or carried a stale count.
+            if full_rescan and not dry_run and result.completed and scoped_entity_ids:
                 await self._mention_repo.update_entity_counters(
-                    session, list(counter_entity_ids)
+                    session, scoped_entity_ids
                 )
                 await self._mention_repo.update_alias_counters(
-                    session, list(counter_entity_ids)
+                    session, scoped_entity_ids
                 )
-                await session.flush()
-
-            # 6. Commit
-            if not dry_run:
                 await session.commit()
 
             result.duration_seconds = time.monotonic() - t0

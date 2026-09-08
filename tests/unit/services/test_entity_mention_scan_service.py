@@ -1433,44 +1433,60 @@ class TestDryRunMode:
 
 
 class TestFullRescan:
-    """Verify that delete_by_scope is called before scanning when full_rescan=True."""
+    """Verify the per-batch, segment-scoped delete under full_rescan (#291)."""
 
-    async def test_delete_by_scope_called_when_full_rescan_true(self) -> None:
-        """Full rescan must call delete_by_scope before processing segments."""
+    async def test_full_rescan_deletes_per_batch_by_segment_ids(self) -> None:
+        """Full rescan deletes each batch's transcript mentions scoped to that
+        batch's segment ids (not a single upfront delete_by_scope)."""
         from chronovista.services.entity_mention_scan_service import _EntityPattern
 
         entity_id = _make_uuid()
         fake_pattern = _EntityPattern(
             entity_id=entity_id,
-            canonical_name="SpaceX",
+            canonical_name="Acme",
             entity_type="organization",
-            pg_pattern=re.escape("SpaceX"),
-            alias_names=["SpaceX"],
+            pg_pattern=re.escape("Acme"),
+            alias_names=["Acme"],
         )
 
         session = AsyncMock()
         session.flush = AsyncMock()
         session.commit = AsyncMock()
+        session.rollback = AsyncMock()
 
         factory = _make_session_factory(session)
         svc = _build_service(factory)
-        svc._mention_repo.delete_by_scope = AsyncMock(return_value=5)
+        svc._mention_repo.delete_by_scope = AsyncMock(return_value=0)
+        svc._mention_repo.delete_transcript_mentions_by_segments = AsyncMock(
+            return_value=3
+        )
+        svc._mention_repo.entities_with_transcript_mentions_in_segments = AsyncMock(
+            return_value=[entity_id]
+        )
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
         svc._mention_repo.update_entity_counters = AsyncMock()
         svc._mention_repo.update_alias_counters = AsyncMock()
+
+        seg = MagicMock()
+        seg.id = 101
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", return_value=[]),
+            patch.object(
+                svc, "_fetch_segment_batch", AsyncMock(side_effect=[[seg], []])
+            ),
+            patch.object(svc, "_scan_batch", AsyncMock(return_value=([], 0, [], 0, 0))),
         ):
             await svc.scan(full_rescan=True, dry_run=False)
-        svc._mention_repo.delete_by_scope.assert_called_once()
-        call_kwargs = (
-            svc._mention_repo.delete_by_scope.call_args
-        )  # entity_ids should contain our entity_id
-        passed_entity_ids = call_kwargs.kwargs.get("entity_ids") or call_kwargs[1].get(
-            "entity_ids"
-        )
-        assert entity_id in passed_entity_ids
+
+        # New per-batch delete is used; the old upfront delete_by_scope is not.
+        svc._mention_repo.delete_by_scope.assert_not_called()
+        svc._mention_repo.delete_transcript_mentions_by_segments.assert_called_once()
+        kw = svc._mention_repo.delete_transcript_mentions_by_segments.call_args.kwargs
+        assert kw["segment_ids"] == [101]
+        assert entity_id in kw["entity_ids"]
+        # The delete-affected entity is recomputed even though it matched nothing.
+        svc._mention_repo.update_entity_counters.assert_called()
+        assert entity_id in svc._mention_repo.update_entity_counters.call_args.args[1]
 
     async def test_delete_by_scope_not_called_without_full_rescan(self) -> None:
         """Without full_rescan=True, delete_by_scope must NOT be called."""
@@ -2630,41 +2646,52 @@ class TestFullRescanSourceScoping:
     mention_source='transcript' mentions.
     """
 
-    async def test_full_rescan_passes_transcript_source_to_delete(self) -> None:
-        """Full rescan must scope delete to mention_source='transcript'."""
+    async def test_full_rescan_uses_transcript_scoped_delete_only(self) -> None:
+        """Full rescan must use the transcript-scoped per-batch delete (which by
+        construction only removes mention_source='transcript'), never the broad
+        delete_by_scope — so title/description mentions are never wiped."""
         from chronovista.services.entity_mention_scan_service import _EntityPattern
 
         entity_id = _make_uuid()
         fake_pattern = _EntityPattern(
             entity_id=entity_id,
-            canonical_name="SpaceX",
+            canonical_name="Acme",
             entity_type="organization",
-            pg_pattern=re.escape("SpaceX"),
-            alias_names=["SpaceX"],
+            pg_pattern=re.escape("Acme"),
+            alias_names=["Acme"],
         )
 
         session = AsyncMock()
         session.flush = AsyncMock()
         session.commit = AsyncMock()
+        session.rollback = AsyncMock()
 
         factory = _make_session_factory(session)
         svc = _build_service(factory)
-        svc._mention_repo.delete_by_scope = AsyncMock(return_value=5)
+        svc._mention_repo.delete_by_scope = AsyncMock(return_value=0)
+        svc._mention_repo.delete_transcript_mentions_by_segments = AsyncMock(
+            return_value=2
+        )
+        svc._mention_repo.entities_with_transcript_mentions_in_segments = AsyncMock(
+            return_value=[]
+        )
         svc._mention_repo.bulk_create_with_conflict_skip = AsyncMock(return_value=0)
         svc._mention_repo.update_entity_counters = AsyncMock()
         svc._mention_repo.update_alias_counters = AsyncMock()
+
+        seg = MagicMock()
+        seg.id = 7
         with (
             patch.object(svc, "_load_entity_patterns", return_value=[fake_pattern]),
-            patch.object(svc, "_fetch_segment_batch", return_value=[]),
+            patch.object(
+                svc, "_fetch_segment_batch", AsyncMock(side_effect=[[seg], []])
+            ),
+            patch.object(svc, "_scan_batch", AsyncMock(return_value=([], 0, [], 0, 0))),
         ):
             await svc.scan(full_rescan=True, dry_run=False)
 
-        svc._mention_repo.delete_by_scope.assert_called_once()
-        call_kwargs = svc._mention_repo.delete_by_scope.call_args.kwargs
-        assert call_kwargs.get("mention_source") == "transcript", (
-            "Full rescan must scope deletion to mention_source='transcript' "
-            "to avoid wiping title/description mentions"
-        )
+        svc._mention_repo.delete_transcript_mentions_by_segments.assert_called_once()
+        svc._mention_repo.delete_by_scope.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

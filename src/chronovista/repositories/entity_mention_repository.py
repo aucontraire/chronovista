@@ -266,6 +266,85 @@ class EntityMentionRepository(
         result = await session.execute(stmt)
         return int(result.rowcount)
 
+    async def entities_with_transcript_mentions_in_segments(
+        self,
+        session: AsyncSession,
+        *,
+        segment_ids: list[int],
+        entity_ids: list[uuid.UUID] | None = None,
+    ) -> list[uuid.UUID]:
+        """Return entity ids that have a ``rule_match``/``transcript`` mention in
+        any of ``segment_ids`` (optionally restricted to ``entity_ids``).
+
+        Used by the resumable `--full` rescan (#291): before a batch deletes its
+        segments' machine-detected mentions, the caller collects the entities
+        whose counts that delete will change, so their counters can be recomputed
+        in the same per-batch commit (keeping counters consistent with committed
+        mentions even for an entity that matches nothing new in the batch).
+        """
+        if not segment_ids:
+            return []
+        stmt = select(distinct(EntityMentionDB.entity_id)).where(
+            EntityMentionDB.segment_id.in_(segment_ids),
+            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.mention_source == "transcript",
+        )
+        if entity_ids is not None:
+            stmt = stmt.where(EntityMentionDB.entity_id.in_(entity_ids))
+        return list((await session.execute(stmt)).scalars().all())
+
+    async def delete_transcript_mentions_by_segments(
+        self,
+        session: AsyncSession,
+        *,
+        segment_ids: list[int],
+        entity_ids: list[uuid.UUID] | None = None,
+    ) -> int:
+        """Delete ``rule_match``/``transcript`` mentions for the given segment ids
+        (optionally restricted to ``entity_ids``) and return the count (#291).
+
+        The per-batch, segment-scoped counterpart of ``delete_by_scope`` used by
+        the resumable `--full` rescan: deleting only the current batch's segments'
+        machine-detected mentions and re-inserting them in the same commit closes
+        the "deleted but not re-detected" window. Manual and correction-derived
+        mentions (other detection methods / sources) are never touched.
+        """
+        if not segment_ids:
+            return 0
+        stmt = delete(EntityMentionDB).where(
+            EntityMentionDB.segment_id.in_(segment_ids),
+            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.mention_source == "transcript",
+        )
+        if entity_ids is not None:
+            stmt = stmt.where(EntityMentionDB.entity_id.in_(entity_ids))
+        result = await session.execute(stmt)
+        return int(result.rowcount)
+
+    async def entities_with_metadata_mentions_in_videos(
+        self,
+        session: AsyncSession,
+        *,
+        video_ids: list[str],
+        sources: list[str],
+        entity_ids: list[uuid.UUID] | None = None,
+    ) -> list[uuid.UUID]:
+        """Return entity ids with a ``rule_match`` mention in any of ``video_ids``
+        for any of ``sources`` (title/description) — the metadata counterpart of
+        ``entities_with_transcript_mentions_in_segments`` (#291), so a per-batch
+        `--full` metadata rescan can recompute the counters its delete changes.
+        """
+        if not video_ids or not sources:
+            return []
+        stmt = select(distinct(EntityMentionDB.entity_id)).where(
+            EntityMentionDB.video_id.in_(video_ids),
+            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.mention_source.in_(sources),
+        )
+        if entity_ids is not None:
+            stmt = stmt.where(EntityMentionDB.entity_id.in_(entity_ids))
+        return list((await session.execute(stmt)).scalars().all())
+
     async def select_mentions_for_alias_removal(
         self,
         session: AsyncSession,

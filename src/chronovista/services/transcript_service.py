@@ -149,6 +149,21 @@ class TranscriptService(TranscriptServiceInterface):
                 return transcript
 
             except Exception as e:
+                # An IP block must NOT be disguised as "no transcript". Its
+                # message contains "transcript" (from the wrapped
+                # "Could not retrieve a transcript…" text), so the keyword
+                # check below would misclassify it as not-found and the caller
+                # would surface a misleading 404. Detect it first and raise a
+                # service-unavailable error so callers return 503.
+                if self._is_ip_block_error(e):
+                    logger.error(
+                        f"YouTube is blocking requests from this IP while "
+                        f"fetching transcript for {video_id}: {e}"
+                    )
+                    raise TranscriptServiceUnavailableError(
+                        "YouTube is temporarily blocking requests from this IP "
+                        "address. Please try again later."
+                    ) from e
                 # Check error message to determine type of failure
                 error_msg = str(e).lower()
                 if any(
@@ -840,6 +855,7 @@ class TranscriptService(TranscriptServiceInterface):
                 exc,
             )
             consecutive_ip_blocks = 0
+            ip_block_seen = False
             for lang_code in language_codes:
                 if consecutive_ip_blocks >= 2:
                     logger.error(
@@ -868,6 +884,7 @@ class TranscriptService(TranscriptServiceInterface):
                 except Exception as lang_exc:
                     if self._is_ip_block_error(lang_exc):
                         consecutive_ip_blocks += 1
+                        ip_block_seen = True
                         logger.warning(
                             "IP block detected on '%s' fetch for video %s "
                             "(consecutive=%d): %s",
@@ -885,13 +902,10 @@ class TranscriptService(TranscriptServiceInterface):
                             exc_info=True,
                         )
                     results[lang_code] = None
-            # If ALL results are None AND IP blocking was detected (>=2
-            # consecutive), raise so callers can return 503 instead of 404.
-            if (
-                consecutive_ip_blocks >= 2
-                and results
-                and all(v is None for v in results.values())
-            ):
+            # If ALL results are None AND any IP block was detected, raise so
+            # callers return 503 instead of a misleading 404 (a single block
+            # that empties the result set is enough).
+            if ip_block_seen and results and all(v is None for v in results.values()):
                 raise TranscriptServiceUnavailableError(
                     "YouTube is temporarily blocking requests from this IP "
                     "address. Please try again later."
@@ -922,6 +936,7 @@ class TranscriptService(TranscriptServiceInterface):
 
         # --- Fetch each requested language ---
         consecutive_ip_blocks = 0
+        ip_block_seen = False
         for lang_code in language_codes:
             # Early-terminate if we have seen 2+ consecutive IP-block errors.
             # Remaining languages are all going to fail for the same reason.
@@ -1021,6 +1036,7 @@ class TranscriptService(TranscriptServiceInterface):
             except Exception as exc:
                 if self._is_ip_block_error(exc):
                     consecutive_ip_blocks += 1
+                    ip_block_seen = True
                     logger.error(
                         "IP block detected while fetching '%s' transcript for "
                         "video %s (consecutive=%d): %s",
@@ -1058,13 +1074,11 @@ class TranscriptService(TranscriptServiceInterface):
                         )
                     results[lang_code] = None
 
-        # If ALL results are None AND IP blocking was the dominant failure,
-        # raise so callers can return 503 instead of a misleading 404.
-        if (
-            consecutive_ip_blocks >= 2
-            and results
-            and all(v is None for v in results.values())
-        ):
+        # If ALL results are None AND any IP block was detected, raise so
+        # callers return 503 instead of a misleading 404. A single block that
+        # empties the result set is enough — waiting for 2 consecutive blocks
+        # let a lone block (other languages simply absent) slip through as 404.
+        if ip_block_seen and results and all(v is None for v in results.values()):
             raise TranscriptServiceUnavailableError(
                 "YouTube is temporarily blocking requests from this IP "
                 "address. Please try again later."

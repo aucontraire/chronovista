@@ -1425,3 +1425,59 @@ class TestBatchDownloadIpBlockReturns503:
         await client.post(DOWNLOAD_URL)
 
         assert VALID_VIDEO_ID not in transcripts_module._downloads_in_progress
+
+
+# ---------------------------------------------------------------------------
+# Test class: batch dedup — two requested languages resolving to one stored code
+# ---------------------------------------------------------------------------
+
+
+class TestBatchResolvedLanguageDedup:
+    """Regression: two requested languages can resolve to the SAME stored
+    language_code (region-qualified matching, #274). Persisting both collided
+    on the video_transcripts (video_id, language_code) primary key and, because
+    the IntegrityError was swallowed without a rollback, poisoned the session
+    and 500'd the whole request. The router must now persist the resolved code
+    once and skip the duplicate.
+    """
+
+    @patch("chronovista.api.routers.transcripts._pref_filter")
+    async def test_two_languages_same_resolved_code_persists_once(
+        self,
+        mock_pref_filter: MagicMock,
+        mock_service: MagicMock,
+        mock_repo: MagicMock,
+        mock_pref_repo: MagicMock,
+        client: AsyncClient,
+    ) -> None:
+        """create_or_update is called once, the request returns 200, and the
+        duplicate language is reported skipped — no primary-key collision."""
+        # Path B with two distinct requested languages...
+        mock_pref_repo.get_user_preferences = AsyncMock(
+            return_value=[_make_orm_pref("de-AT")]
+        )
+        mock_pref_filter.get_download_languages.return_value = ["de-AT", "de-CH"]
+        mock_repo.get_video_transcripts = AsyncMock(return_value=[])
+
+        # ...that BOTH resolve to the same stored code "de".
+        mock_service.get_transcripts_for_languages = AsyncMock(
+            return_value={
+                "de-AT": _make_enhanced_transcript(
+                    language_code="de", transcript_type="auto", is_cc=False
+                ),
+                "de-CH": _make_enhanced_transcript(
+                    language_code="de", transcript_type="auto", is_cc=False
+                ),
+            }
+        )
+        mock_repo.create_or_update = AsyncMock(
+            return_value=_make_db_transcript(
+                language_code="de", is_cc=False, transcript_type="auto"
+            )
+        )
+
+        response = await client.post(DOWNLOAD_URL)
+
+        assert response.status_code == 200, response.text
+        # Dedup: the second track resolving to "de" must NOT be inserted again.
+        assert mock_repo.create_or_update.await_count == 1

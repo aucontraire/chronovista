@@ -4,6 +4,7 @@ import logging
 import re
 
 from fastapi import APIRouter, Depends, Path, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import (
@@ -589,12 +590,34 @@ async def download_transcript(
                 },
             )
 
+        # Two requested languages can resolve to the same stored language_code
+        # (region-qualified track matching, #274) — e.g. "de" and "de-DE" both
+        # resolving to "de-DE". Persisting both would collide on the
+        # video_transcripts (video_id, language_code) primary key. Dedup by the
+        # RESOLVED code within this request, and isolate each persist in a
+        # SAVEPOINT so a residual IntegrityError (e.g. a concurrent request that
+        # stored the same language) rolls back only that language instead of
+        # poisoning the shared session for the whole request.
+        processed_codes: set[str] = set()
+
         for lang_code, enhanced_transcript in batch_results.items():
             if enhanced_transcript is None:
                 skipped.append(lang_code)
                 logger.info(
                     "No transcript available in '%s' for video %s — skipped",
                     lang_code,
+                    video_id,
+                )
+                continue
+
+            resolved_code = enhanced_transcript.language_code
+            if resolved_code in processed_codes:
+                skipped.append(lang_code)
+                logger.info(
+                    "'%s' resolved to already-processed language '%s' for video "
+                    "%s — skipped to avoid a duplicate transcript",
+                    lang_code,
+                    resolved_code,
                     video_id,
                 )
                 continue
@@ -613,15 +636,21 @@ async def download_transcript(
                     caption_name=enhanced_transcript.caption_name,
                 )
 
-                db_transcript = await transcript_repo.create_or_update(
-                    session,
-                    transcript_create,
-                    raw_transcript_data=(
-                        enhanced_transcript.raw_transcript_data
-                        if enhanced_transcript.raw_transcript_data
-                        else None
-                    ),
-                )
+                # SAVEPOINT per language: a failed INSERT here is rolled back to
+                # the savepoint, leaving the outer transaction (and every
+                # already-persisted language) intact and the session usable.
+                async with session.begin_nested():
+                    db_transcript = await transcript_repo.create_or_update(
+                        session,
+                        transcript_create,
+                        raw_transcript_data=(
+                            enhanced_transcript.raw_transcript_data
+                            if enhanced_transcript.raw_transcript_data
+                            else None
+                        ),
+                    )
+
+                processed_codes.add(resolved_code)
 
                 transcript_type_display = (
                     "manual"
@@ -639,6 +668,18 @@ async def download_transcript(
                     )
                 )
 
+            except IntegrityError:
+                # Duplicate (video_id, language_code) — the savepoint already
+                # rolled this language back; count it failed and keep going.
+                failed.append(lang_code)
+                logger.warning(
+                    "Duplicate transcript for '%s' (resolved '%s') on video %s — "
+                    "rolled back and skipped",
+                    lang_code,
+                    resolved_code,
+                    video_id,
+                    exc_info=True,
+                )
             except (
                 TranscriptServiceUnavailableError,
                 TranscriptServiceError,

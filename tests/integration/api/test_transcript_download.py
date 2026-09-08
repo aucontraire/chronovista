@@ -31,7 +31,10 @@ from httpx import AsyncClient
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.api.deps import get_transcript_service
+from chronovista.api.deps import (
+    get_transcript_service,
+    get_user_language_preference_repository,
+)
 from chronovista.api.main import app
 from chronovista.db.models import (
     Channel as ChannelDB,
@@ -1090,3 +1093,90 @@ class TestDownloadDatabaseState:
         assert (
             len(saved_segments) == 0
         ), f"Expected 0 segments after service failure but found {len(saved_segments)}"
+
+
+# ===========================================================================
+# Test class — batch dedup against the REAL database
+# ===========================================================================
+
+
+def _make_orm_pref(language_code: str) -> MagicMock:
+    """Mock ORM UserLanguagePreference row that model_validate() accepts."""
+    mock = MagicMock()
+    mock.user_id = "default"
+    mock.language_code = language_code
+    mock.preference_type = "fluent"
+    mock.priority = 1
+    mock.auto_download_transcripts = True
+    mock.learning_goal = None
+    mock.created_at = datetime(2024, 1, 1, tzinfo=UTC)
+    return mock
+
+
+class TestBatchResolvedLanguageDedupRealDB:
+    """Regression against real Postgres: two requested languages resolving to
+    the same stored language_code (region-qualified matching, #274) must not
+    collide on the video_transcripts primary key and 500 the request.
+    """
+
+    async def test_two_languages_same_resolved_code_persist_once(
+        self,
+        async_client: AsyncClient,
+        seed_video_without_transcript: dict[str, Any],
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        video_id = seed_video_without_transcript["video_id"]
+
+        # Two requested languages, both resolving to the SAME stored code "de".
+        enh = _make_enhanced_transcript(
+            video_id=video_id, language_code="de", snippet_count=3
+        )
+        mock_svc = MagicMock()
+        mock_svc.get_transcripts_for_languages = AsyncMock(
+            return_value={"de-AT": enh, "de-CH": enh}
+        )
+
+        mock_pref_repo = MagicMock()
+        mock_pref_repo.get_user_preferences = AsyncMock(
+            return_value=[_make_orm_pref("de-AT")]
+        )
+
+        app.dependency_overrides[get_user_language_preference_repository] = (
+            lambda: mock_pref_repo
+        )
+        try:
+            with (
+                patch("chronovista.api.deps.youtube_oauth") as mock_oauth,
+                patch(
+                    "chronovista.api.routers.transcripts._pref_filter"
+                ) as mock_pref_filter,
+                _override_transcript_service(mock_svc),
+            ):
+                _mock_auth(mock_oauth)
+                mock_pref_filter.get_download_languages.return_value = [
+                    "de-AT",
+                    "de-CH",
+                ]
+                response = await async_client.post(_download_url(video_id))
+        finally:
+            app.dependency_overrides.pop(get_user_language_preference_repository, None)
+
+        # No 500 / PendingRollbackError — the request completes.
+        assert response.status_code == 200, response.text
+
+        # Exactly ONE transcript row persisted for the resolved code (not two,
+        # and not a failed insert leaving zero after a poisoned session).
+        async with integration_session_factory() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(VideoTranscriptDB).where(
+                            VideoTranscriptDB.video_id == video_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert len(rows) == 1
+        assert rows[0].language_code == "de"

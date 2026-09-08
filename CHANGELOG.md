@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.82.0] - 2026-09-08
+## [0.82.1] - 2026-09-08
+
+### Fixed
+- **A YouTube IP block during transcript download is now reported as a clear 503 instead of a misleading 404.** When YouTube blocks the caller's IP, the transcript fetch fails — but the failure was being disguised as "no transcript available" and surfaced as `404 No transcript is available for this video in any language`, which is actively misleading for a video that plainly has transcripts. Two gaps caused it: (1) `get_transcript()` classified the block by fuzzy keyword and, because the block message contains the word "transcript", let it fall through to a `TranscriptNotFoundError`; (2) the batch download only raised a service-unavailable error after **two consecutive** detected blocks, so a single block that emptied the result set (the other languages simply absent) slipped through as 404. Now a block raises `TranscriptServiceUnavailableError` at the source, and the batch path raises it whenever **any** block is detected and no transcript was retrieved — so the endpoint returns 503 with "YouTube is temporarily blocking requests from this IP address. Please try again later." Detection logic and the successful-download path are unchanged.
 
 ### Changed
 - **The entity-mention scan is now interruptible and resumable (#291).**

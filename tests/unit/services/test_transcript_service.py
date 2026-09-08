@@ -194,6 +194,31 @@ class TestTranscriptServiceGetTranscript:
         service._get_transcript_from_official_api.assert_called_once()
         mock_logger.info.assert_called()
 
+    async def test_get_transcript_ip_block_raises_service_unavailable(
+        self, service, sample_video_id
+    ):
+        """An IP block from the third-party API must raise
+        TranscriptServiceUnavailableError (→ 503), not be disguised as a
+        TranscriptNotFoundError (→ 404). The official-API fallback must not be
+        consulted, since it cannot help a blocked IP."""
+        service._api_available = True
+        service.enable_mock_fallback = False
+
+        service._get_transcript_from_third_party_api = AsyncMock(
+            side_effect=Exception(
+                "Could not retrieve a transcript. "
+                "YouTube is blocking requests from your IP."
+            )
+        )
+        service._get_transcript_from_official_api = AsyncMock(
+            return_value=MagicMock(spec=EnhancedVideoTranscriptBase)
+        )
+
+        with pytest.raises(TranscriptServiceUnavailableError):
+            await service.get_transcript(sample_video_id)
+
+        service._get_transcript_from_official_api.assert_not_called()
+
     async def test_get_transcript_success_mock_fallback(self, service, sample_video_id):
         """Test successful transcript retrieval using mock fallback."""
         service._api_available = False

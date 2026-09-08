@@ -2151,3 +2151,68 @@ class TestBaseLanguageMatching:
         assert result["en"].language_code == "en-GB"  # manual preferred
         en_man.fetch.assert_called_once()
         en_gen.fetch.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestIpBlockRaises503NotEmpty — a detected block must surface as
+# TranscriptServiceUnavailableError (router → 503), never an all-None dict
+# that the router turns into a misleading 404.
+# ---------------------------------------------------------------------------
+
+
+class TestIpBlockRaises503NotEmpty:
+    """Regression: a single IP block that empties the result set must raise
+    TranscriptServiceUnavailableError, not return all-None (→ 404)."""
+
+    async def test_single_native_fetch_block_raises_service_unavailable(self) -> None:
+        """One native track whose fetch() is IP-blocked → raise (was: {de-DE: None})."""
+        de_transcript = _make_transcript_mock(
+            language_code="de-DE", language="German", is_generated=True
+        )
+        de_transcript.fetch.side_effect = Exception(
+            "Could not retrieve a transcript. YouTube is blocking requests from your IP."
+        )
+        transcript_list = _make_transcript_list([de_transcript])
+
+        service = _service_with_api()
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.return_value = transcript_list
+
+        with patch(
+            "chronovista.services.transcript_service.YouTubeTranscriptApi",
+            return_value=mock_api_instance,
+        ):
+            with pytest.raises(TranscriptServiceUnavailableError):
+                await service.get_transcripts_for_languages(
+                    video_id=VIDEO_ID,
+                    language_codes=["de-DE"],
+                )
+
+    async def test_one_block_plus_absent_languages_raises_service_unavailable(
+        self,
+    ) -> None:
+        """The real incident shape: one language's fetch is blocked and the
+        others simply are not in the track list. A lone block (consecutive=1)
+        used to fall below the >=2 threshold and 404; now it raises 503."""
+        de_transcript = _make_transcript_mock(
+            language_code="de-DE", language="German", is_generated=True
+        )
+        de_transcript.fetch.side_effect = Exception(
+            "YouTube is blocking requests from your IP"
+        )
+        # Only de-DE is in the list; 'fr' has no native match and no translation.
+        transcript_list = _make_transcript_list([de_transcript])
+
+        service = _service_with_api()
+        mock_api_instance = MagicMock()
+        mock_api_instance.list.return_value = transcript_list
+
+        with patch(
+            "chronovista.services.transcript_service.YouTubeTranscriptApi",
+            return_value=mock_api_instance,
+        ):
+            with pytest.raises(TranscriptServiceUnavailableError):
+                await service.get_transcripts_for_languages(
+                    video_id=VIDEO_ID,
+                    language_codes=["de-DE", "fr"],
+                )

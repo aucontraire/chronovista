@@ -172,6 +172,7 @@ nav:
       - Post-creation re-grounding: architecture/entity-reground.md
       - Alias→mention provenance: architecture/entity-alias-provenance.md
       - Transcript whitespace normalization: architecture/transcript-whitespace-normalization.md
+      - Resumable entity scan: architecture/entity-scan-resumability.md
   - Contributing:
       - Overview: development/index.md
       - Setup: development/setup.md

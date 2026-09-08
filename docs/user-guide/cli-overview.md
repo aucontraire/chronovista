@@ -206,8 +206,11 @@ chronovista entities scan
 # Scan only person entities in a specific video
 chronovista entities scan --entity-type person --video-id VIDEO_ID
 
-# Full rescan (deletes existing rule_match mentions first)
+# Full rescan (re-derives rule_match mentions, one batch at a time)
 chronovista entities scan --full
+
+# Resume an interrupted scan from where it stopped (same flags + --resume)
+chronovista entities scan --resume
 
 # Scan only entities with zero existing mentions
 chronovista entities scan --new-entities-only
@@ -259,7 +262,8 @@ chronovista entities scan --full
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Preview mentions without writing |
-| `--full` | Delete existing `rule_match` mentions and rescan |
+| `--full` | Re-derive `rule_match` mentions. Deletes and re-inserts one batch at a time (committed together), so no segment is ever left with its old mentions removed and the new ones not yet written — even under interrupt. Manually added mentions are untouched. |
+| `--resume` | Continue an interrupted scan from its last committed position (repeats at most one batch). Repeat the original flags — the saved position is keyed to the scan's scope. A no-op with `--dry-run`. |
 | `--audit` | Report user-correction mentions with unregistered text forms. Displays a Rich table showing entities with mention texts that don't match any registered alias or canonical name, along with suggested CLI commands to register them. Read-only operation. Mutually exclusive with `--full`. |
 | `--new-entities-only` | Scan only entities with zero existing mentions |
 | `--entity-id` | Scan for a single entity by UUID. Takes precedence over `--entity-type` and `--new-entities-only` |
@@ -267,6 +271,10 @@ chronovista entities scan --full
 | `--video-id` | Filter by video ID |
 | `--batch-size` | Custom batch size for large libraries |
 | `--limit` | Limit number of segments to scan |
+
+The scan commits per batch, so it is safe to stop with `Ctrl+C` — committed work
+is kept and you can continue with `--resume`. See
+[Interrupt and resume a scan](scan-resume.md).
 
 **Limitations:**
 

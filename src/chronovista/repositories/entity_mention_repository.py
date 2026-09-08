@@ -273,14 +273,29 @@ class EntityMentionRepository(
         segment_ids: list[int],
         entity_ids: list[uuid.UUID] | None = None,
     ) -> list[uuid.UUID]:
-        """Return entity ids that have a ``rule_match``/``transcript`` mention in
-        any of ``segment_ids`` (optionally restricted to ``entity_ids``).
+        """Return entity ids with a ``rule_match``/``transcript`` mention in the
+        given segments.
 
-        Used by the resumable `--full` rescan (#291): before a batch deletes its
+        Used by the resumable ``--full`` rescan (#291): before a batch deletes its
         segments' machine-detected mentions, the caller collects the entities
         whose counts that delete will change, so their counters can be recomputed
         in the same per-batch commit (keeping counters consistent with committed
         mentions even for an entity that matches nothing new in the batch).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active async session.
+        segment_ids : list[int]
+            Transcript segment ids to look within. An empty list returns ``[]``.
+        entity_ids : list[uuid.UUID] | None, optional
+            Restrict to these entities. ``None`` (default) applies no entity
+            restriction; an empty list matches no entities.
+
+        Returns
+        -------
+        list[uuid.UUID]
+            Distinct entity ids with a matching mention.
         """
         if not segment_ids:
             return []
@@ -300,14 +315,29 @@ class EntityMentionRepository(
         segment_ids: list[int],
         entity_ids: list[uuid.UUID] | None = None,
     ) -> int:
-        """Delete ``rule_match``/``transcript`` mentions for the given segment ids
-        (optionally restricted to ``entity_ids``) and return the count (#291).
+        """Delete ``rule_match``/``transcript`` mentions for the given segments.
 
         The per-batch, segment-scoped counterpart of ``delete_by_scope`` used by
-        the resumable `--full` rescan: deleting only the current batch's segments'
-        machine-detected mentions and re-inserting them in the same commit closes
-        the "deleted but not re-detected" window. Manual and correction-derived
-        mentions (other detection methods / sources) are never touched.
+        the resumable ``--full`` rescan (#291): deleting only the current batch's
+        segments' machine-detected mentions and re-inserting them in the same
+        commit closes the "deleted but not re-detected" window. Manual and
+        correction-derived mentions (other detection methods / sources) are never
+        touched.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active async session.
+        segment_ids : list[int]
+            Transcript segment ids whose mentions to delete. Empty ``→`` no-op.
+        entity_ids : list[uuid.UUID] | None, optional
+            Restrict the delete to these entities. ``None`` (default) applies no
+            entity restriction; an empty list deletes nothing.
+
+        Returns
+        -------
+        int
+            Number of mention rows deleted.
         """
         if not segment_ids:
             return 0
@@ -329,10 +359,30 @@ class EntityMentionRepository(
         sources: list[str],
         entity_ids: list[uuid.UUID] | None = None,
     ) -> list[uuid.UUID]:
-        """Return entity ids with a ``rule_match`` mention in any of ``video_ids``
-        for any of ``sources`` (title/description) — the metadata counterpart of
+        """Return entity ids with a ``rule_match`` metadata mention in the given
+        videos for the given sources.
+
+        The metadata counterpart of
         ``entities_with_transcript_mentions_in_segments`` (#291), so a per-batch
-        `--full` metadata rescan can recompute the counters its delete changes.
+        ``--full`` metadata rescan can recompute the counters its delete changes.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active async session.
+        video_ids : list[str]
+            Video ids to look within. An empty list returns ``[]``.
+        sources : list[str]
+            Metadata sources to match (e.g. ``"title"``, ``"description"``). An
+            empty list returns ``[]``.
+        entity_ids : list[uuid.UUID] | None, optional
+            Restrict to these entities. ``None`` (default) applies no entity
+            restriction; an empty list matches no entities.
+
+        Returns
+        -------
+        list[uuid.UUID]
+            Distinct entity ids with a matching mention.
         """
         if not video_ids or not sources:
             return []

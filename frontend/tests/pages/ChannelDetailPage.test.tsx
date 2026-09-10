@@ -22,7 +22,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
-import { renderWithProviders, getTestLocation } from '../test-utils';
+import { renderWithProviders, getTestLocation } from '@/test/test-utils';
 import { ChannelDetailPage } from '../../src/pages/ChannelDetailPage';
 import type { ChannelDetail } from '../../src/types/channel';
 import type { VideoListItem } from '../../src/types/video';

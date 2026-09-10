@@ -25,7 +25,7 @@
 
 import { describe, it, expect } from "vitest";
 import { screen } from "@testing-library/react";
-import { renderWithProviders } from "../test-utils";
+import { renderWithProviders } from "@/test/test-utils";
 import { PlaylistCard, PlaylistCardSkeleton } from "../../src/components/PlaylistCard";
 import type { PlaylistListItem } from "../../src/types/playlist";
 

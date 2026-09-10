@@ -16,7 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithProviders, getTestLocation } from '../test-utils';
+import { renderWithProviders, getTestLocation } from '@/test/test-utils';
 import { FilterToggle } from '../../src/components/FilterToggle';
 
 /**

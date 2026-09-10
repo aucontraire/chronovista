@@ -14,7 +14,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, within } from "@testing-library/react";
 
-import { renderWithProviders } from "../test-utils";
+import { renderWithProviders } from "@/test/test-utils";
 import { OverviewPage } from "../../src/pages/OverviewPage";
 import { useOverview } from "../../src/hooks/useOverview";
 import type { Overview } from "../../src/api/overview";

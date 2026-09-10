@@ -24,7 +24,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { renderWithProviders } from '../test-utils';
+import { renderWithProviders } from '@/test/test-utils';
 import { SearchResultList } from '../../src/components/SearchResultList';
 import type { SearchResultSegment } from '../../src/types/search';
 import { SEARCH_CONFIG } from '../../src/config/search';

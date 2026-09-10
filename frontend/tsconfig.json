@@ -28,6 +28,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "tests/test-utils.tsx"],
+  "include": ["src"],
   "exclude": ["node_modules", "dist"]
 }

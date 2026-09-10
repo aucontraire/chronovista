@@ -26,7 +26,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { renderWithProviders, getTestLocation } from '../test-utils';
+import { renderWithProviders, getTestLocation } from '@/test/test-utils';
 import { SortDropdown } from '../../src/components/SortDropdown';
 import type { SortOption } from '../../src/types/filters';
 

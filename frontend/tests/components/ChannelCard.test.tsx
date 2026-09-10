@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
-import { renderWithProviders } from '../test-utils';
+import { renderWithProviders } from '@/test/test-utils';
 import { ChannelCard } from '../../src/components/ChannelCard';
 import type { ChannelListItem } from '../../src/types/channel';
 

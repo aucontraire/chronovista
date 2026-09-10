@@ -23,7 +23,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { renderWithProviders } from '../test-utils';
+import { renderWithProviders } from '@/test/test-utils';
 import { TopicCombobox } from '../../src/components/TopicCombobox';
 import { QueryClient } from '@tanstack/react-query';
 import type { TopicHierarchyItem } from '../../src/types/filters';

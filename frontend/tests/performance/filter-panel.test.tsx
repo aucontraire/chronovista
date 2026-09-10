@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderWithProviders } from '../test-utils';
+import { renderWithProviders } from '@/test/test-utils';
 import { VideoFilters } from '../../src/components/VideoFilters';
 import { QueryClient } from '@tanstack/react-query';
 

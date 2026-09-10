@@ -23,7 +23,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { renderWithProviders, getTestLocation } from '../../test-utils';
+import { renderWithProviders, getTestLocation } from '@/test/test-utils';
 import { SidebarCategories } from '../../../src/components/layout/SidebarCategories';
 import type { SidebarCategory } from '../../../src/hooks/useSidebarCategories';
 

@@ -14,7 +14,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { renderWithProviders, getTestLocation } from "../test-utils";
+import { renderWithProviders, getTestLocation } from "@/test/test-utils";
 import { PlaylistDetailPage } from "../../src/pages/PlaylistDetailPage";
 import { usePlaylistDetail, usePlaylistVideos } from "../../src/hooks";
 

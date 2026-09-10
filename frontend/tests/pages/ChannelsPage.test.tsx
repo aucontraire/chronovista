@@ -18,7 +18,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
-import { renderWithProviders } from '../test-utils';
+import { renderWithProviders } from '@/test/test-utils';
 import { ChannelsPage } from '../../src/pages/ChannelsPage';
 import type { ChannelListItem } from '../../src/types/channel';
 

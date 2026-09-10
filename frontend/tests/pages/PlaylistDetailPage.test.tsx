@@ -12,7 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import { renderWithProviders, getTestLocation } from '../test-utils';
+import { renderWithProviders, getTestLocation } from '@/test/test-utils';
 import { PlaylistDetailPage } from '../../src/pages/PlaylistDetailPage';
 import type { PlaylistVideoItem } from '../../src/types/playlist';
 

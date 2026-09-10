@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
-import { renderWithProviders } from '../test-utils';
+import { renderWithProviders } from '@/test/test-utils';
 import { ChannelDetailPage } from '../../src/pages/ChannelDetailPage';
 import type { ChannelDetail } from '../../src/types/channel';
 import type { VideoListItem } from '../../src/types/video';

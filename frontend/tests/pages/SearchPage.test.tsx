@@ -25,7 +25,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
-import { renderWithProviders } from "../test-utils";
+import { renderWithProviders } from "@/test/test-utils";
 import { SearchPage } from "../../src/pages/SearchPage";
 import { apiFetch } from "../../src/api/config";
 import type { SearchResponse } from "../../src/types/search";

@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
-import { renderWithProviders, getTestLocation } from '../test-utils';
+import { renderWithProviders, getTestLocation } from '@/test/test-utils';
 import { PlaylistsPage } from '../../src/pages/PlaylistsPage';
 import type { PlaylistListItem } from '../../src/types/playlist';
 

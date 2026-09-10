@@ -21,7 +21,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { renderWithProviders } from '../test-utils';
+import { renderWithProviders } from '@/test/test-utils';
 import { TagAutocomplete } from '../../src/components/TagAutocomplete';
 import { QueryClient } from '@tanstack/react-query';
 import type { SelectedCanonicalTag } from '../../src/types/canonical-tags';

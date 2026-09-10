@@ -15,8 +15,11 @@ one written by a later batch load agree by construction (only the per-run ``set_
 Everything here is pure (no I/O): ``WikidataClient.fetch_properties`` performs the two API rounds and
 calls these functions, and the unit test pins the shape as the parity anchor.
 
-RECOMMENDED FOLLOW-UP (out of Feature 068 scope): refactor ``fetch_properties.py`` to import
-``WANTED`` / the extractors from here so the two writers cannot drift.
+SINGLE SOURCE OF TRUTH (#258): the gitignored batch pipeline
+(``scripts/entity_resolution/fetch_properties.py``) imports ``WANTED`` / ``WANTED_LITERAL`` / the
+extractors from here and no longer redefines them, so the batch writer and the on-approval writer
+cannot drift. Anything added here (a new property, a new extractor) reaches both paths; nothing in
+that script should re-declare these.
 """
 
 from __future__ import annotations
@@ -27,8 +30,8 @@ from typing import Any
 SOURCE = "wikidata"
 
 # Wikidata property -> our field name. Item-valued: the value is a QID that must be resolved to a
-# readable label. Mirrors the pipeline map exactly (P27 and P17 both fold into "country"; P31 is the
-# entity-type cross-check).
+# readable label. This is the single source; the batch pipeline imports it rather than keeping its
+# own copy (#258) — P27 and P17 both fold into "country"; P31 is the entity-type cross-check.
 WANTED: dict[str, str] = {
     "P31": "instance_of",
     "P279": "subclass_of",

@@ -9,15 +9,44 @@
  * - Each entity chip links to /entities/{entity_id}
  * - Invokes onEntityClick callback when a chip is clicked
  * - Renders all known entity type groups in correct order
- * - Shows search/link UI (T025)
+ * - Shows search/link UI (T025) — full autocomplete behaviour (TC-S01..S10)
  *
- * Note: Full search-UI behaviour is tested in the TDD suite at
- * src/tests/components/EntityMentionsPanel.test.tsx.  This file tests
- * the baseline chip/group behaviour and panel structure.
+ * Merged from two divergent copies (#309 Phase 3 consolidation): this file
+ * (baseline chip/group/rescan behaviour) absorbed
+ * `src/tests/components/EntityMentionsPanel.test.tsx` (the T025 search
+ * autocomplete TDD suite, plus a "baseline behaviour" suite that mostly
+ * duplicated tests already here).
+ *
+ * Dropped as duplicates of tests already in this file (documented, not
+ * silently lost — same intent, same assertion, different test titles):
+ * - Loading skeleton: "renders a skeleton section..." / "renders animated
+ *   skeleton chips..." → covered by "shows an accessible loading label" /
+ *   "shows skeleton elements when isLoading is true" below.
+ * - Empty state: "renders the 'Entity Mentions' heading..." / "shows the
+ *   empty-state message when no entities exist" → covered by the two tests
+ *   under "Empty state" below.
+ * - Chip rendering: "renders a chip with the canonical entity name" /
+ *   "renders the mention count badge..." / "links each chip to the entity
+ *   detail page" → covered by "shows entity names within chips" / "shows
+ *   count badge next to entity name" / "Entity links (T033)" below.
+ * - Entity type grouping: individual "People"/"Organizations"/"Places"
+ *   heading tests → covered by "renders a section heading for each entity
+ *   type group" below, which already asserts all three.
+ * - onEntityClick: "invokes onEntityClick with (0, timestamp)..." →
+ *   covered by "calls onEntityClick with timestamp when chip is clicked"
+ *   below.
+ * - Search UI: "renders a search input (role='searchbox') within the
+ *   panel" → covered by "renders a search input within the panel" below.
+ *
+ * The source suite mocked `react-router-dom` with a stub `<Link>` instead
+ * of wrapping in `<MemoryRouter>`; this merge keeps this file's existing
+ * `<MemoryRouter>` approach throughout (both render the same resulting
+ * anchor markup, so no assertion needed to change).
  */
 
-import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 // ---------------------------------------------------------------------------
@@ -83,6 +112,91 @@ function createEntity(overrides: Partial<VideoEntitySummary> = {}): VideoEntityS
 
 const VIDEO_ID = "test-video-001";
 
+// ---------------------------------------------------------------------------
+// Search-autocomplete fixtures (T025) — used only by the "Entity search
+// autocomplete" describe block below.
+// ---------------------------------------------------------------------------
+
+interface EntitySearchResult {
+  entity_id: string;
+  canonical_name: string;
+  entity_type: string;
+  description: string | null;
+  status: string;
+  matched_alias: string | null;
+  is_linked: boolean | null;
+  link_sources: string[] | null;
+  mention_count: number;
+  video_count: number;
+}
+
+/** An active entity that is not yet linked to the test video. */
+const ACTIVE_RESULT: EntitySearchResult = {
+  entity_id: "ent-search-001",
+  canonical_name: "MIT Media Lab",
+  entity_type: "organization",
+  description: "Research laboratory at MIT",
+  status: "active",
+  matched_alias: null,
+  is_linked: false,
+  link_sources: null,
+  mention_count: 3,
+  video_count: 2,
+};
+
+/** An entity with a manual link — should be disabled (duplicate prevention). */
+const MANUALLY_LINKED_RESULT: EntitySearchResult = {
+  entity_id: "ent-search-002",
+  canonical_name: "Ada Lovelace",
+  entity_type: "person",
+  description: null,
+  status: "active",
+  matched_alias: null,
+  is_linked: true,
+  link_sources: ["manual"],
+  mention_count: 12,
+  video_count: 7,
+};
+
+/** An entity with only transcript links — should still be selectable for manual linking. */
+const TRANSCRIPT_LINKED_RESULT: EntitySearchResult = {
+  entity_id: "ent-search-004",
+  canonical_name: "Angela Davis",
+  entity_type: "person",
+  description: null,
+  status: "active",
+  matched_alias: null,
+  is_linked: true,
+  link_sources: ["transcript"],
+  mention_count: 5,
+  video_count: 3,
+};
+
+/** A deprecated entity that must not be selectable. */
+const DEPRECATED_RESULT: EntitySearchResult = {
+  entity_id: "ent-search-003",
+  canonical_name: "Bell Telephone",
+  entity_type: "organization",
+  description: null,
+  status: "deprecated",
+  matched_alias: null,
+  is_linked: false,
+  link_sources: null,
+  mention_count: 0,
+  video_count: 0,
+};
+
+/** useEntitySearch idle state — no query, empty results, not loading. */
+function makeIdleSearchState() {
+  return {
+    entities: [] as EntitySearchResult[],
+    isLoading: false,
+    isFetched: false,
+    isError: false,
+    isBelowMinChars: true,
+  };
+}
+
 function renderPanel(props: Partial<EntityMentionsPanelProps> = {}) {
   const defaultProps: EntityMentionsPanelProps = {
     entities: [],
@@ -136,6 +250,11 @@ describe("EntityMentionsPanel", () => {
       renderPanel({ entities: [], isLoading: false });
       expect(screen.getByText(/no entity mentions yet/i)).toBeInTheDocument();
     });
+
+    it("does not show the empty-state message when entities are present", () => {
+      renderPanel({ entities: [createEntity()] });
+      expect(screen.queryByText(/no entity mentions yet/i)).not.toBeInTheDocument();
+    });
   });
 
   describe("Loading state", () => {
@@ -149,6 +268,11 @@ describe("EntityMentionsPanel", () => {
       renderPanel({ entities: [], isLoading: true });
       const section = screen.getByRole("region", { name: /entity mentions loading/i });
       expect(section).toBeInTheDocument();
+    });
+
+    it("does not render entity chips while loading", () => {
+      renderPanel({ entities: [createEntity()], isLoading: true });
+      expect(screen.queryByRole("list")).not.toBeInTheDocument();
     });
   });
 
@@ -185,6 +309,12 @@ describe("EntityMentionsPanel", () => {
       ];
       renderPanel({ entities });
       expect(screen.getByText("(12)")).toBeInTheDocument();
+    });
+
+    it("does not render a count badge when mention_count is 0", () => {
+      const entities = [createEntity({ mention_count: 0 })];
+      renderPanel({ entities });
+      expect(screen.queryByText(/\(\d+\)/)).not.toBeInTheDocument();
     });
 
     it("renders a chip for each entity", () => {
@@ -232,6 +362,22 @@ describe("EntityMentionsPanel", () => {
       renderPanel({ entities });
       const link = screen.getByRole("link", { name: /Test Entity/i });
       expect(() => fireEvent.click(link)).not.toThrow();
+    });
+
+    it("does not invoke onEntityClick when first_mention_time is null", () => {
+      const onEntityClick = vi.fn();
+      const entities = [
+        createEntity({
+          entity_id: "e1",
+          canonical_name: "No Timestamp Entity",
+          first_mention_time: null,
+          mention_count: 0,
+        }),
+      ];
+      renderPanel({ entities, onEntityClick });
+      const link = screen.getByRole("link", { name: /No Timestamp Entity/i });
+      fireEvent.click(link);
+      expect(onEntityClick).not.toHaveBeenCalled();
     });
   });
 
@@ -284,6 +430,26 @@ describe("EntityMentionsPanel", () => {
         name: /John Doe.*5 mention/i,
       });
       expect(chip).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Manual link badge (T009 baseline)
+  // ---------------------------------------------------------------------------
+
+  describe("Manual link badge (T009 baseline)", () => {
+    it("shows the [MANUAL] badge for entities with has_manual=true", () => {
+      const entities = [
+        createEntity({ has_manual: true, sources: ["transcript", "manual"] }),
+      ];
+      renderPanel({ entities });
+      expect(screen.getByText("MANUAL")).toBeInTheDocument();
+    });
+
+    it("does not show the [MANUAL] badge when has_manual is false", () => {
+      const entities = [createEntity({ has_manual: false })];
+      renderPanel({ entities });
+      expect(screen.queryByText("MANUAL")).not.toBeInTheDocument();
     });
   });
 
@@ -728,6 +894,491 @@ describe("EntityMentionsPanel", () => {
       expect(
         screen.getByText(/scanning.*this can take a few minutes/i)
       ).toBeInTheDocument();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Entity search autocomplete (T025 full coverage, Feature 050)
+  //
+  // The "Search UI (T025)" describe above covers the minimal contract (a
+  // searchbox is always rendered). This block covers the full autocomplete
+  // behaviour: loading state, result display, already-linked/deprecated
+  // handling, selection → createManualAssociation, empty-results messaging,
+  // the raw-input → useEntitySearch contract, the isBelowMinChars guard, and
+  // results-list accessibility.
+  // ---------------------------------------------------------------------------
+
+  describe("Entity search autocomplete (T025 full coverage)", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    describe("search input field", () => {
+      it("the search input has an accessible name via aria-label, aria-labelledby, or placeholder", () => {
+        renderPanel();
+        const input = screen.getByRole("searchbox");
+        const hasAccessibleName =
+          Boolean(input.getAttribute("aria-label")) ||
+          Boolean(input.getAttribute("aria-labelledby")) ||
+          Boolean(input.getAttribute("placeholder"));
+        expect(hasAccessibleName).toBe(true);
+      });
+
+      it("the search input starts empty", () => {
+        renderPanel();
+        const input = screen.getByRole("searchbox") as HTMLInputElement;
+        expect(input.value).toBe("");
+      });
+    });
+
+    describe("loading indicator during search", () => {
+      it("shows a loading indicator when useEntitySearch returns isLoading=true", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isLoading: true,
+          isBelowMinChars: false,
+          entities: [],
+        });
+
+        renderPanel();
+
+        // Acceptable forms: a role="status" element, a data-testid, or
+        // aria-busy="true" on the dropdown container.
+        const indicator =
+          screen.queryByRole("status") ??
+          screen.queryByTestId("entity-search-loading") ??
+          document.querySelector('[aria-busy="true"]');
+
+        expect(indicator).toBeInTheDocument();
+      });
+
+      it("does not show a loading indicator when isLoading is false", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isLoading: false,
+        });
+
+        renderPanel();
+
+        expect(
+          screen.queryByTestId("entity-search-loading")
+        ).not.toBeInTheDocument();
+        expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      });
+    });
+
+    describe("search results display", () => {
+      it("displays the canonical name of each search result", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [ACTIVE_RESULT],
+        });
+
+        renderPanel();
+
+        expect(screen.getByText("MIT Media Lab")).toBeInTheDocument();
+      });
+
+      it("displays the entity type label alongside each result name", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [ACTIVE_RESULT],
+        });
+
+        renderPanel();
+
+        // "organization" or "Organizations" must appear somewhere in the result.
+        expect(screen.getByText(/organization/i)).toBeInTheDocument();
+      });
+
+      it("renders one result item per entity returned by useEntitySearch", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [ACTIVE_RESULT, MANUALLY_LINKED_RESULT, DEPRECATED_RESULT],
+        });
+
+        renderPanel();
+
+        expect(screen.getByText("MIT Media Lab")).toBeInTheDocument();
+        // MANUALLY_LINKED_RESULT may already appear as an existing chip — getAllByText handles duplicates.
+        expect(screen.getAllByText(/ada lovelace/i).length).toBeGreaterThan(0);
+        expect(screen.getByText("Bell Telephone")).toBeInTheDocument();
+      });
+    });
+
+    describe("already-linked indicator", () => {
+      it("shows an 'Already linked' label for entities with a manual link", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [MANUALLY_LINKED_RESULT],
+        });
+
+        renderPanel();
+
+        expect(screen.getByText(/already linked/i)).toBeInTheDocument();
+      });
+
+      it("does not show 'Already linked' for transcript-only linked entities", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [TRANSCRIPT_LINKED_RESULT],
+        });
+
+        renderPanel();
+
+        expect(screen.queryByText(/already linked/i)).not.toBeInTheDocument();
+      });
+
+      it("does not show 'Already linked' for results where is_linked is false", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [ACTIVE_RESULT],
+        });
+
+        renderPanel();
+
+        expect(screen.queryByText(/already linked/i)).not.toBeInTheDocument();
+      });
+
+      it("allows selecting transcript-linked entities for manual linking", () => {
+        const mutateFn = vi.fn();
+        (useCreateManualAssociation as Mock).mockReturnValue({
+          mutate: mutateFn,
+          isPending: false,
+          isError: false,
+          error: null,
+          isSuccess: false,
+        });
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [TRANSCRIPT_LINKED_RESULT],
+        });
+
+        renderPanel({ videoId: VIDEO_ID });
+
+        // Transcript-linked entity should still have a selectable button
+        expect(
+          screen.getByRole("button", { name: /angela davis/i })
+        ).toBeInTheDocument();
+      });
+    });
+
+    describe("deprecated entity handling", () => {
+      it("displays a 'deprecated' label for entities with status='deprecated'", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [DEPRECATED_RESULT],
+        });
+
+        renderPanel();
+
+        expect(screen.getByText(/deprecated/i)).toBeInTheDocument();
+      });
+
+      it("disables the deprecated result so it cannot be selected (button disabled or aria-disabled=true)", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [DEPRECATED_RESULT],
+        });
+
+        renderPanel();
+
+        // Acceptable: <button disabled>, aria-disabled="true", or no
+        // interactive element rendered for the deprecated item.
+        const deprecatedBtn = screen.queryByRole("button", {
+          name: /bell telephone/i,
+        });
+        const deprecatedOption = screen.queryByRole("option", {
+          name: /bell telephone/i,
+        });
+        const deprecatedItem = deprecatedBtn ?? deprecatedOption;
+
+        if (deprecatedItem !== null) {
+          const isButtonDisabled =
+            deprecatedItem instanceof HTMLButtonElement && deprecatedItem.disabled;
+          const hasAriaDisabled =
+            deprecatedItem.getAttribute("aria-disabled") === "true";
+          expect(isButtonDisabled || hasAriaDisabled).toBe(true);
+        } else {
+          // No interactive element — the item must still be visible (with label).
+          expect(screen.getByText("Bell Telephone")).toBeInTheDocument();
+          expect(screen.getByText(/deprecated/i)).toBeInTheDocument();
+        }
+      });
+    });
+
+    describe("entity selection triggers createManualAssociation", () => {
+      it("calls mutate with { videoId, entityId } when an active result button is clicked", async () => {
+        const mutateFn = vi.fn();
+        (useCreateManualAssociation as Mock).mockReturnValue({
+          mutate: mutateFn,
+          isPending: false,
+          isError: false,
+          error: null,
+          isSuccess: false,
+        });
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [ACTIVE_RESULT],
+        });
+
+        renderPanel({ videoId: VIDEO_ID });
+
+        const user = userEvent.setup();
+        const resultButton = screen.getByRole("button", {
+          name: /mit media lab/i,
+        });
+        await user.click(resultButton);
+
+        expect(mutateFn).toHaveBeenCalledWith({
+          videoId: VIDEO_ID,
+          entityId: ACTIVE_RESULT.entity_id,
+        });
+      });
+
+      it("does not render a selectable button for manually-linked entities", () => {
+        const mutateFn = vi.fn();
+        (useCreateManualAssociation as Mock).mockReturnValue({
+          mutate: mutateFn,
+          isPending: false,
+          isError: false,
+          error: null,
+          isSuccess: false,
+        });
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [MANUALLY_LINKED_RESULT],
+        });
+
+        renderPanel({ videoId: VIDEO_ID });
+
+        // No "add" button must exist for the manually-linked result.
+        expect(
+          screen.queryByRole("button", { name: /ada lovelace/i })
+        ).not.toBeInTheDocument();
+        expect(mutateFn).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("empty search results message", () => {
+      it("shows 'No matching entities' when isBelowMinChars is false and results are empty after fetch", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          isFetched: true,
+          entities: [],
+        });
+
+        renderPanel();
+
+        expect(screen.getByText(/no matching entities/i)).toBeInTheDocument();
+      });
+
+      it("does not show 'No matching entities' when isBelowMinChars is true (idle state)", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: true,
+          isFetched: false,
+          entities: [],
+        });
+
+        renderPanel();
+
+        expect(
+          screen.queryByText(/no matching entities/i)
+        ).not.toBeInTheDocument();
+      });
+
+      it("does not show 'No matching entities' while the query is still loading", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          isLoading: true,
+          isFetched: false,
+          entities: [],
+        });
+
+        renderPanel();
+
+        expect(
+          screen.queryByText(/no matching entities/i)
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // Debounce lives inside useEntitySearch (via useDebounce at 300 ms). The
+    // component must pass the raw, un-filtered input value to the hook on
+    // every re-render triggered by input change events.
+    // -------------------------------------------------------------------------
+
+    describe("raw input is passed to useEntitySearch on change", () => {
+      it("passes the typed value to useEntitySearch after an input change event", async () => {
+        vi.useFakeTimers();
+
+        const searchCallArgs: string[] = [];
+        (useEntitySearch as Mock).mockImplementation((search: string) => {
+          searchCallArgs.push(search);
+          return makeIdleSearchState();
+        });
+
+        renderPanel();
+
+        const input = screen.getByRole("searchbox");
+
+        await vi.waitFor(() => {
+          fireEvent.change(input, { target: { value: "Noa" } });
+        });
+
+        // After the change, React re-renders and calls the hook with "Noa".
+        expect(searchCallArgs).toContain("Noa");
+      });
+
+      it("passes an empty string to useEntitySearch when the input is cleared", async () => {
+        vi.useFakeTimers();
+
+        const searchCallArgs: string[] = [];
+        (useEntitySearch as Mock).mockImplementation((search: string) => {
+          searchCallArgs.push(search);
+          return makeIdleSearchState();
+        });
+
+        renderPanel();
+
+        const input = screen.getByRole("searchbox");
+        fireEvent.change(input, { target: { value: "Noa" } });
+        fireEvent.change(input, { target: { value: "" } });
+
+        expect(searchCallArgs).toContain("");
+      });
+    });
+
+    // -------------------------------------------------------------------------
+    // useEntitySearch sets isBelowMinChars=true when the debounced search is
+    // fewer than 2 characters. The component must use this flag to suppress
+    // the results dropdown and the empty-results message.
+    // -------------------------------------------------------------------------
+
+    describe("minimum query length guard (isBelowMinChars=true)", () => {
+      it("does not show a results dropdown when isBelowMinChars is true after a single-char input", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: true,
+          entities: [],
+        });
+
+        renderPanel();
+
+        const input = screen.getByRole("searchbox");
+        fireEvent.change(input, { target: { value: "N" } });
+
+        // No listbox or named results list should appear.
+        expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("list", { name: /search results/i })
+        ).not.toBeInTheDocument();
+      });
+
+      it("does not show the empty-results message when isBelowMinChars is true", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: true,
+          entities: [],
+        });
+
+        renderPanel();
+
+        const input = screen.getByRole("searchbox");
+        fireEvent.change(input, { target: { value: "N" } });
+
+        expect(
+          screen.queryByText(/no matching entities/i)
+        ).not.toBeInTheDocument();
+      });
+
+      it("shows results when isBelowMinChars is false (2+ characters typed)", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          isFetched: true,
+          entities: [ACTIVE_RESULT],
+        });
+
+        renderPanel();
+
+        const input = screen.getByRole("searchbox");
+        fireEvent.change(input, { target: { value: "MI" } });
+
+        expect(screen.getByText("MIT Media Lab")).toBeInTheDocument();
+      });
+    });
+
+    describe("search results list accessibility", () => {
+      it("renders the results container with role='listbox' or role='list'", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [ACTIVE_RESULT],
+        });
+
+        renderPanel();
+
+        const container = screen.queryByRole("listbox") ?? screen.queryByRole("list");
+        expect(container).toBeInTheDocument();
+      });
+
+      it("each active result has an accessible button labelled with the entity name", () => {
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          entities: [ACTIVE_RESULT],
+        });
+
+        renderPanel();
+
+        expect(
+          screen.getByRole("button", { name: /mit media lab/i })
+        ).toBeInTheDocument();
+      });
+
+      it("hides the results list when the search input is cleared", async () => {
+        // Phase 1: results are showing.
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: false,
+          isFetched: true,
+          entities: [ACTIVE_RESULT],
+        });
+
+        renderPanel();
+        expect(screen.getByText("MIT Media Lab")).toBeInTheDocument();
+
+        // Phase 2: input cleared — hook now returns idle (isBelowMinChars=true).
+        (useEntitySearch as Mock).mockReturnValue({
+          ...makeIdleSearchState(),
+          isBelowMinChars: true,
+          entities: [],
+        });
+
+        const user = userEvent.setup();
+        const input = screen.getByRole("searchbox");
+        await user.clear(input);
+
+        await waitFor(() => {
+          expect(screen.queryByText("MIT Media Lab")).not.toBeInTheDocument();
+        });
+      });
     });
   });
 });

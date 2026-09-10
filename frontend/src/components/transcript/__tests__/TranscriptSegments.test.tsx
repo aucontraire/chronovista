@@ -1,63 +1,65 @@
 /**
- * Unit tests for TranscriptSegments active-segment highlighting logic (Feature 048, T016a).
+ * Unit tests for the TranscriptSegments component (Feature 048, T016a and
+ * general coverage).
  *
- * These tests exercise the FR-014 highlight behaviour: the component applies
- * `border-blue-500 bg-blue-50` to the single segment whose `id` matches the
- * `activeSegmentId` prop. They also verify the correction-precedence rule
- * (FR-014 / amber takes priority over blue) and the null / undefined guard
- * (Edge Case 6 and "no player mounted" paths).
+ * Merged from two divergent copies (#309 Phase 3 consolidation):
+ * - Active-segment highlighting suite (TC-001 .. TC-009): FR-014 highlight
+ *   behaviour, correction-precedence (amber over blue), null/undefined
+ *   guards, and the action-button stopPropagation fix.
+ * - General behavior suite: loading/error states, segment rendering,
+ *   end-of-transcript indicator, empty state, keyboard navigation
+ *   (NFR-A11-A14), ARIA attributes (NFR-A15), and virtualization
+ *   (NFR-P12-P16).
  *
- * Architecture note:
- * - The `activeSegmentId` value originates from `useYouTubePlayer` (binary
- *   search inside the hook) and is passed as a plain prop to
- *   `TranscriptSegments`. These tests pass it directly, so the binary-search
- *   logic itself is not exercised here — those tests live in the hook's own
- *   test file.
- * - `TranscriptSegments` depends on several hooks. All are mocked at module
- *   scope so the component renders without network or database access.
- *   The mocking pattern mirrors `TranscriptSegments.corrections.test.tsx`.
+ * Both suites render the real component and mock the same hook
+ * (`useTranscriptSegments`); the highlighting suite additionally mocks
+ * `useCorrectSegment`/`useRevertSegment`/`useSegmentCorrectionHistory`/
+ * `usePrefersReducedMotion`/`formatTimestamp`, which the general suite did
+ * not need to mock explicitly (its assertions don't exercise those paths) —
+ * merging under one mock setup is safe since those extra mocks default to
+ * inert/idle values.
  *
- * Test inventory:
- * - TC-001: Segment at exact start_time boundary is highlighted (blue classes)
- * - TC-002: Mid-range active segment is highlighted correctly
- * - TC-003: activeSegmentId={null} — no segment receives blue classes
- * - TC-004: activeSegmentId undefined (prop omitted) — no segment receives blue classes
- * - TC-005: Timestamp gap (activeSegmentId=null) — component renders without blue classes
- * - TC-006: Single-entry segments array — the one segment is highlighted when active
- * - TC-007: Correction highlight (amber) takes precedence over active-playback blue (FR-014)
- * - TC-008: Only the active segment is blue; all others have a transparent border
+ * The general suite originally lived under `tests/`, which `tsconfig.json`
+ * excludes from `tsc --noEmit` (only `src` and `tests/test-utils.tsx` are
+ * checked — see #159). Moving it into `src/**__tests__/` brings its mock
+ * literals into strict typechecking, so its `useTranscriptSegments` mock
+ * return values (previously missing `isFetchingPreviousPage`,
+ * `hasPreviousPage`, `fetchPreviousPage`, `seekToTimestamp`) are now built
+ * through the shared `makeTranscriptSegmentsReturn` factory + overrides
+ * instead of ad hoc partial object literals — same values, now type-complete.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import { TranscriptSegments } from "../../components/transcript/TranscriptSegments";
-import type { TranscriptSegmentsProps } from "../../components/transcript/TranscriptSegments";
-import type { TranscriptSegment } from "../../types/transcript";
+import { TranscriptSegments } from "../TranscriptSegments";
+import type { TranscriptSegmentsProps } from "../TranscriptSegments";
+import type { TranscriptSegment } from "../../../types/transcript";
 
 // ---------------------------------------------------------------------------
 // Module-level mocks — must appear before any imports of the mocked modules
 // (vi.mock is hoisted by Vitest)
 // ---------------------------------------------------------------------------
 
-vi.mock("../../hooks/useTranscriptSegments", () => ({
+vi.mock("../../../hooks/useTranscriptSegments", () => ({
   useTranscriptSegments: vi.fn(),
 }));
 
-vi.mock("../../hooks/useCorrectSegment", () => ({
+vi.mock("../../../hooks/useCorrectSegment", () => ({
   useCorrectSegment: vi.fn(),
 }));
 
-vi.mock("../../hooks/useRevertSegment", () => ({
+vi.mock("../../../hooks/useRevertSegment", () => ({
   useRevertSegment: vi.fn(),
 }));
 
-vi.mock("../../hooks/useSegmentCorrectionHistory", () => ({
+vi.mock("../../../hooks/useSegmentCorrectionHistory", () => ({
   useSegmentCorrectionHistory: vi.fn(),
 }));
 
-vi.mock("../../hooks/usePrefersReducedMotion", () => ({
+vi.mock("../../../hooks/usePrefersReducedMotion", () => ({
   usePrefersReducedMotion: vi.fn().mockReturnValue(false),
 }));
 
@@ -72,7 +74,7 @@ vi.mock("@tanstack/react-virtual", () => ({
   })),
 }));
 
-vi.mock("../../utils/formatTimestamp", () => ({
+vi.mock("../../../utils/formatTimestamp", () => ({
   formatTimestamp: vi.fn((seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -84,10 +86,10 @@ vi.mock("../../utils/formatTimestamp", () => ({
 // Import mocked hook references after vi.mock declarations
 // ---------------------------------------------------------------------------
 
-import { useTranscriptSegments } from "../../hooks/useTranscriptSegments";
-import { useCorrectSegment } from "../../hooks/useCorrectSegment";
-import { useRevertSegment } from "../../hooks/useRevertSegment";
-import { useSegmentCorrectionHistory } from "../../hooks/useSegmentCorrectionHistory";
+import { useTranscriptSegments } from "../../../hooks/useTranscriptSegments";
+import { useCorrectSegment } from "../../../hooks/useCorrectSegment";
+import { useRevertSegment } from "../../../hooks/useRevertSegment";
+import { useSegmentCorrectionHistory } from "../../../hooks/useSegmentCorrectionHistory";
 
 const mockUseTranscriptSegments = vi.mocked(useTranscriptSegments);
 const mockUseCorrectSegment = vi.mocked(useCorrectSegment);
@@ -121,10 +123,15 @@ function makeSegment(
 }
 
 /**
- * Returns the minimal return value for `useTranscriptSegments` loaded with the
- * given segments and no loading / error state.
+ * Returns the return value for `useTranscriptSegments` loaded with the given
+ * segments and no loading / error state, merged with any overrides. Using a
+ * single factory (rather than ad hoc object literals) keeps every call
+ * type-complete against `UseTranscriptSegmentsResult`.
  */
-function makeTranscriptSegmentsReturn(segments: TranscriptSegment[]) {
+function makeTranscriptSegmentsReturn(
+  segments: TranscriptSegment[],
+  overrides: Record<string, unknown> = {}
+) {
   return {
     segments,
     totalCount: segments.length,
@@ -140,6 +147,7 @@ function makeTranscriptSegmentsReturn(segments: TranscriptSegment[]) {
     retry: vi.fn(),
     cancelRequests: vi.fn(),
     seekToTimestamp: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
   };
 }
 
@@ -898,5 +906,365 @@ describe("TC-009: Action buttons do not propagate click to segment row (stopProp
     fireEvent.click(segmentText);
 
     expect(segmentText).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// General behavior suite: loading/error states, rendering, end-of-transcript,
+// empty state, keyboard navigation, ARIA attributes, virtualization.
+// ---------------------------------------------------------------------------
+
+describe("TranscriptSegments — general behavior", () => {
+  const mockSegments: TranscriptSegment[] = [
+    makeSegment(1, 0.5, {
+      text: "Welcome to this video tutorial.",
+      end_time: 3.2,
+      duration: 2.7,
+    }),
+    makeSegment(2, 3.5, {
+      text: "Today we will learn about React testing.",
+      end_time: 7.1,
+      duration: 3.6,
+    }),
+    makeSegment(3, 7.5, {
+      text: "Let us start with the basics.",
+      end_time: 10.0,
+      duration: 2.5,
+    }),
+  ];
+
+  describe("Loading States", () => {
+    it("should render skeleton segments during initial load", () => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn([], {
+          isLoading: true,
+        }) as ReturnType<typeof useTranscriptSegments>
+      );
+
+      renderTranscriptSegments();
+
+      expect(
+        screen.getByRole("status", { name: "Loading transcript segments" })
+      ).toBeInTheDocument();
+      expect(screen.getByText("Loading transcript segments...")).toBeInTheDocument();
+    });
+
+    it("should render 3 skeleton segments during loading (FR-020d)", () => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn([], {
+          isLoading: true,
+        }) as ReturnType<typeof useTranscriptSegments>
+      );
+
+      const { container } = renderTranscriptSegments();
+
+      // Count skeleton elements (animated pulse divs)
+      const skeletons = container.querySelectorAll(".animate-pulse");
+      expect(skeletons.length).toBe(3);
+    });
+
+    it("should show loading indicator when fetching next page", () => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn(mockSegments, {
+          totalCount: 100,
+          isFetchingNextPage: true,
+          hasNextPage: true,
+        }) as ReturnType<typeof useTranscriptSegments>
+      );
+
+      renderTranscriptSegments();
+
+      expect(
+        screen.getByRole("status", { name: "Loading more segments" })
+      ).toBeInTheDocument();
+      expect(screen.getByText("Loading more segments...")).toBeInTheDocument();
+    });
+  });
+
+  describe("Segments Rendering", () => {
+    beforeEach(() => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn(mockSegments) as ReturnType<
+          typeof useTranscriptSegments
+        >
+      );
+    });
+
+    it("should render all segments with timestamps and text", () => {
+      renderTranscriptSegments();
+
+      expect(screen.getByText("Welcome to this video tutorial.")).toBeInTheDocument();
+      expect(
+        screen.getByText("Today we will learn about React testing.")
+      ).toBeInTheDocument();
+      expect(screen.getByText("Let us start with the basics.")).toBeInTheDocument();
+    });
+
+    it("should render timestamps in MM:SS format (FR-018)", () => {
+      renderTranscriptSegments();
+
+      expect(screen.getByText("0:00")).toBeInTheDocument(); // 0.5s rounded down
+      expect(screen.getByText("0:03")).toBeInTheDocument(); // 3.5s
+      expect(screen.getByText("0:07")).toBeInTheDocument(); // 7.5s
+    });
+
+    it("should render timestamp on left and text on right (FR-018)", () => {
+      const { container } = renderTranscriptSegments();
+
+      const segmentContainers = container.querySelectorAll("[data-segment-id]");
+      expect(segmentContainers.length).toBe(3);
+
+      // Check first segment structure
+      const firstSegment = segmentContainers[0];
+      expect(firstSegment).toHaveClass("flex");
+      expect(firstSegment).toHaveClass("gap-4");
+    });
+  });
+
+  describe("Error States", () => {
+    it("should render error message when fetch fails with no segments", () => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn([], {
+          isError: true,
+          error: { type: "network", message: "Network error" },
+        }) as ReturnType<typeof useTranscriptSegments>
+      );
+
+      renderTranscriptSegments();
+
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByText("Could not load transcript segments.")).toBeInTheDocument();
+    });
+
+    it("should render retry button in error state", () => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn([], {
+          isError: true,
+          error: { type: "network", message: "Network error" },
+        }) as ReturnType<typeof useTranscriptSegments>
+      );
+
+      renderTranscriptSegments();
+
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    });
+
+    it("should call retry when retry button is clicked", async () => {
+      const mockRetry = vi.fn();
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn([], {
+          isError: true,
+          error: { type: "network", message: "Network error" },
+          retry: mockRetry,
+        }) as ReturnType<typeof useTranscriptSegments>
+      );
+
+      renderTranscriptSegments();
+      const user = userEvent.setup();
+
+      const retryButton = screen.getByRole("button", { name: /retry/i });
+      await user.click(retryButton);
+
+      await waitFor(() => {
+        expect(mockRetry).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it("should preserve loaded segments when error occurs during pagination (FR-025b)", () => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn(mockSegments, {
+          totalCount: 100,
+          hasNextPage: true,
+          isError: true,
+          error: { type: "network", message: "Network error" },
+        }) as ReturnType<typeof useTranscriptSegments>
+      );
+
+      renderTranscriptSegments();
+
+      // Segments should still be visible
+      expect(screen.getByText("Welcome to this video tutorial.")).toBeInTheDocument();
+      expect(
+        screen.getByText("Today we will learn about React testing.")
+      ).toBeInTheDocument();
+
+      // Error message should be shown inline
+      expect(screen.getByText("Could not load more segments.")).toBeInTheDocument();
+    });
+  });
+
+  describe("End of Transcript", () => {
+    it('should show "End of transcript" when all segments loaded (FR-020e)', () => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn(mockSegments) as ReturnType<
+          typeof useTranscriptSegments
+        >
+      );
+
+      renderTranscriptSegments();
+
+      expect(screen.getByText("End of transcript")).toBeInTheDocument();
+    });
+
+    it('should NOT show "End of transcript" when more segments available', () => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn(mockSegments, {
+          totalCount: 100,
+          hasNextPage: true,
+        }) as ReturnType<typeof useTranscriptSegments>
+      );
+
+      renderTranscriptSegments();
+
+      expect(screen.queryByText("End of transcript")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("Empty State", () => {
+    it("should show message when no segments available", () => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn([]) as ReturnType<typeof useTranscriptSegments>
+      );
+
+      renderTranscriptSegments();
+
+      expect(
+        screen.getByText("No transcript segments available for this language.")
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("Keyboard Navigation (NFR-A11-A14)", () => {
+    beforeEach(() => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn(mockSegments) as ReturnType<
+          typeof useTranscriptSegments
+        >
+      );
+    });
+
+    it('should be focusable with tabindex="0" (NFR-A11)', () => {
+      renderTranscriptSegments();
+
+      const container = screen.getByRole("region", { name: "Transcript segments" });
+      expect(container).toHaveAttribute("tabindex", "0");
+    });
+
+    it("should scroll down when ArrowDown is pressed (NFR-A12)", async () => {
+      renderTranscriptSegments();
+      const user = userEvent.setup();
+
+      const container = screen.getByRole("region", { name: "Transcript segments" });
+      container.focus();
+
+      await user.keyboard("{ArrowDown}");
+
+      // scrollBy should be called on the container
+      expect(container.scrollBy).toHaveBeenCalled();
+    });
+
+    it("should scroll up when ArrowUp is pressed (NFR-A12)", async () => {
+      renderTranscriptSegments();
+      const user = userEvent.setup();
+
+      const container = screen.getByRole("region", { name: "Transcript segments" });
+      container.focus();
+
+      await user.keyboard("{ArrowUp}");
+
+      expect(container.scrollBy).toHaveBeenCalled();
+    });
+
+    it("should scroll by viewport height with PageDown (NFR-A13)", async () => {
+      renderTranscriptSegments();
+      const user = userEvent.setup();
+
+      const container = screen.getByRole("region", { name: "Transcript segments" });
+      container.focus();
+
+      await user.keyboard("{PageDown}");
+
+      expect(container.scrollBy).toHaveBeenCalled();
+    });
+
+    it("should scroll by viewport height with PageUp (NFR-A13)", async () => {
+      renderTranscriptSegments();
+      const user = userEvent.setup();
+
+      const container = screen.getByRole("region", { name: "Transcript segments" });
+      container.focus();
+
+      await user.keyboard("{PageUp}");
+
+      expect(container.scrollBy).toHaveBeenCalled();
+    });
+
+    it("should scroll to beginning with Home key (NFR-A14)", async () => {
+      renderTranscriptSegments();
+      const user = userEvent.setup();
+
+      const container = screen.getByRole("region", { name: "Transcript segments" });
+      container.focus();
+
+      await user.keyboard("{Home}");
+
+      expect(container.scrollTo).toHaveBeenCalledWith(
+        expect.objectContaining({ top: 0 })
+      );
+    });
+
+    it("should scroll to end with End key (NFR-A14)", async () => {
+      renderTranscriptSegments();
+      const user = userEvent.setup();
+
+      const container = screen.getByRole("region", { name: "Transcript segments" });
+      container.focus();
+
+      await user.keyboard("{End}");
+
+      expect(container.scrollTo).toHaveBeenCalled();
+    });
+  });
+
+  describe("Accessibility Attributes (NFR-A15)", () => {
+    beforeEach(() => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn(mockSegments) as ReturnType<
+          typeof useTranscriptSegments
+        >
+      );
+    });
+
+    it("should have region role with proper label", () => {
+      renderTranscriptSegments();
+
+      expect(
+        screen.getByRole("region", { name: "Transcript segments" })
+      ).toBeInTheDocument();
+    });
+
+    it("should have visible focus indicator", () => {
+      renderTranscriptSegments();
+
+      const container = screen.getByRole("region", { name: "Transcript segments" });
+      expect(container).toHaveClass("focus-visible:ring-2");
+      expect(container).toHaveClass("focus-visible:ring-blue-500");
+    });
+  });
+
+  describe("Virtualization (NFR-P12-P16)", () => {
+    it("should use standard rendering for < 500 segments", () => {
+      mockUseTranscriptSegments.mockReturnValue(
+        makeTranscriptSegmentsReturn(mockSegments) as ReturnType<
+          typeof useTranscriptSegments
+        >
+      );
+
+      const { container } = renderTranscriptSegments();
+
+      // Standard rendering should show all segment elements directly
+      const segmentElements = container.querySelectorAll("[data-segment-id]");
+      expect(segmentElements.length).toBe(3);
+    });
   });
 });

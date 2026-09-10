@@ -25,7 +25,7 @@ from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
 from chronovista.services.segment_service import (
-    OutputFormat,
+    SegmentOutputFormat,
     format_segment_human,
     format_segment_json,
     format_segment_srt,
@@ -68,8 +68,8 @@ def segment_command(
         str, typer.Option("--language", "-l", help="Language code")
     ] = DEFAULT_LANGUAGE,
     format: Annotated[
-        OutputFormat, typer.Option("--format", "-f", help="Output format")
-    ] = OutputFormat.HUMAN,
+        SegmentOutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = SegmentOutputFormat.HUMAN,
 ) -> None:
     """Get the transcript segment at a specific timestamp.
 
@@ -134,11 +134,11 @@ def segment_command(
 
             pydantic_segment = TSPydantic.model_validate(segment)
 
-            if format == OutputFormat.HUMAN:
+            if format == SegmentOutputFormat.HUMAN:
                 console.print(format_segment_human(pydantic_segment))
-            elif format == OutputFormat.JSON:
+            elif format == SegmentOutputFormat.JSON:
                 console.print(format_segment_json(pydantic_segment))
-            elif format == OutputFormat.SRT:
+            elif format == SegmentOutputFormat.SRT:
                 console.print(format_segment_srt(pydantic_segment, sequence=1))
 
             return EXIT_SUCCESS
@@ -162,8 +162,8 @@ def context_command(
         str, typer.Option("--language", "-l", help="Language code")
     ] = DEFAULT_LANGUAGE,
     format: Annotated[
-        OutputFormat, typer.Option("--format", "-f", help="Output format")
-    ] = OutputFormat.HUMAN,
+        SegmentOutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = SegmentOutputFormat.HUMAN,
 ) -> None:
     """Get transcript segments within a context window around a timestamp.
 
@@ -238,15 +238,15 @@ def context_command(
 
             # Format output
             title = f"Context around {timestamp} (±{int(actual_window)}s)"
-            if format == OutputFormat.HUMAN:
+            if format == SegmentOutputFormat.HUMAN:
                 console.print(format_segments_human(pydantic_segments, title=title))
-            elif format == OutputFormat.JSON:
+            elif format == SegmentOutputFormat.JSON:
                 console.print(
                     format_segments_json(
                         pydantic_segments, video_id=video_id, language_code=language
                     )
                 )
-            elif format == OutputFormat.SRT:
+            elif format == SegmentOutputFormat.SRT:
                 console.print(format_segments_srt(pydantic_segments))
 
             return EXIT_SUCCESS
@@ -268,8 +268,8 @@ def range_command(
         str, typer.Option("--language", "-l", help="Language code")
     ] = DEFAULT_LANGUAGE,
     format: Annotated[
-        OutputFormat, typer.Option("--format", "-f", help="Output format")
-    ] = OutputFormat.HUMAN,
+        SegmentOutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = SegmentOutputFormat.HUMAN,
 ) -> None:
     """Get all transcript segments within a time range.
 
@@ -349,15 +349,15 @@ def range_command(
             # Format output
             duration = end_seconds - start_seconds
             title = f"Segments from {start} to {end} ({duration:.1f}s)"
-            if format == OutputFormat.HUMAN:
+            if format == SegmentOutputFormat.HUMAN:
                 console.print(format_segments_human(pydantic_segments, title=title))
-            elif format == OutputFormat.JSON:
+            elif format == SegmentOutputFormat.JSON:
                 console.print(
                     format_segments_json(
                         pydantic_segments, video_id=video_id, language_code=language
                     )
                 )
-            elif format == OutputFormat.SRT:
+            elif format == SegmentOutputFormat.SRT:
                 console.print(format_segments_srt(pydantic_segments))
 
             return EXIT_SUCCESS

@@ -11,7 +11,7 @@ from chronovista.models.transcript_segment import (
     TranscriptSegment,
 )
 from chronovista.services.segment_service import (
-    OutputFormat,
+    SegmentOutputFormat,
     format_segment_human,
     format_segment_json,
     format_segment_srt,
@@ -66,26 +66,26 @@ def create_test_segment(
     )
 
 
-class TestOutputFormatEnum:
-    """Tests for OutputFormat enum."""
+class TestSegmentOutputFormatEnum:
+    """Tests for SegmentOutputFormat enum."""
 
     def test_human_format_value(self) -> None:
         """Test HUMAN format has correct value."""
-        assert OutputFormat.HUMAN.value == "human"
+        assert SegmentOutputFormat.HUMAN.value == "human"
 
     def test_json_format_value(self) -> None:
         """Test JSON format has correct value."""
-        assert OutputFormat.JSON.value == "json"
+        assert SegmentOutputFormat.JSON.value == "json"
 
     def test_srt_format_value(self) -> None:
         """Test SRT format has correct value."""
-        assert OutputFormat.SRT.value == "srt"
+        assert SegmentOutputFormat.SRT.value == "srt"
 
     def test_is_string_enum(self) -> None:
-        """Test OutputFormat is a string enum."""
-        assert isinstance(OutputFormat.HUMAN, str)
+        """Test SegmentOutputFormat is a string enum."""
+        assert isinstance(SegmentOutputFormat.HUMAN, str)
         # String enum value comparison via .value attribute
-        assert OutputFormat.HUMAN.value == "human"
+        assert SegmentOutputFormat.HUMAN.value == "human"
 
 
 class TestFormatSegmentHuman:

@@ -16,7 +16,7 @@ from enum import Enum
 from chronovista.models.transcript_segment import TranscriptSegment
 
 
-class OutputFormat(str, Enum):
+class SegmentOutputFormat(str, Enum):
     """Output format for segment display.
 
     Attributes
@@ -396,7 +396,7 @@ def format_segments_srt(segments: Sequence[TranscriptSegment]) -> str:
 
 
 __all__ = [
-    "OutputFormat",
+    "SegmentOutputFormat",
     "parse_timestamp",
     "format_timestamp",
     "format_timestamp_srt",

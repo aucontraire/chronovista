@@ -42,7 +42,7 @@ from chronovista.repositories.playlist_repository import PlaylistRepository
 console = Console()
 
 
-class OutputFormat(str, Enum):
+class PlaylistOutputFormat(str, Enum):
     """Output format options for playlist commands."""
 
     TABLE = "table"
@@ -96,8 +96,8 @@ def list(
         help="Maximum playlists to show",
         min=1,
     ),
-    format: OutputFormat = typer.Option(
-        OutputFormat.TABLE,
+    format: PlaylistOutputFormat = typer.Option(
+        PlaylistOutputFormat.TABLE,
         "--format",
         help="Output format",
     ),
@@ -180,9 +180,9 @@ def list(
                     )
 
                 # Format output
-                if format == OutputFormat.JSON:
+                if format == PlaylistOutputFormat.JSON:
                     _output_json(playlists, stats)
-                elif format == OutputFormat.CSV:
+                elif format == PlaylistOutputFormat.CSV:
                     _output_csv(playlists, stats)
                 else:
                     _output_table(playlists, stats, limit)

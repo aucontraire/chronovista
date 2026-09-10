@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.82.2] - 2026-09-10
+
+### Changed
+- **Disambiguated the three same-named `OutputFormat` enums and documented two intentional name-collisions (#255 — closes the `debt-before-heavy-features` milestone).** Three independent CLI/service enums that happened to share the name `OutputFormat` (with *different* member sets) are renamed to `LanguageOutputFormat`, `PlaylistOutputFormat`, and `SegmentOutputFormat`; they were never mergeable (merging would let a command advertise a format it cannot emit). The remaining same-name cases are kept as-is with a documented rationale rather than changed: `TranscriptSegment` deliberately names three layers (domain model / ORM / API schema) and is disambiguated at import via the repo-wide `as …DB` convention, so renaming one layer would be inconsistent and renaming all is out of scope; and `AvailabilityStatus` keeps its full value set (only `available`/`unavailable` are populated today, the rest reserved for the deleted-content / recovery features). No behavior change and no API/CLI contract change — the `--format` option values are unchanged.
+
 ## [0.82.1] - 2026-09-08
 
 ### Fixed

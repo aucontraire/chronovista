@@ -44,6 +44,9 @@ class TranscriptResponse(ApiResponse[TranscriptFull]):
     pass
 
 
+# NOTE (#255): three layers deliberately share the name `TranscriptSegment`
+# (this domain model, the `db/models.py` ORM, the `api/schemas` schema). Kept
+# as-is; the ORM is disambiguated at import via the repo-wide `as TranscriptSegmentDB`.
 class TranscriptSegment(BaseModel):
     """Single transcript segment."""
 

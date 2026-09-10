@@ -54,7 +54,14 @@ class PrivacyStatus(str, Enum):
 
 
 class AvailabilityStatus(str, Enum):
-    """Content availability status."""
+    """Content availability status.
+
+    NOTE (#255): of these seven values, only ``AVAILABLE`` and ``UNAVAILABLE``
+    are written in practice. ``PRIVATE``/``DELETED``/``TERMINATED``/``COPYRIGHT``/
+    ``TOS_VIOLATION`` are reserved for the deleted-content / recovery features
+    (023/024/065) and are intentionally kept (not collapsed) so those reasons
+    can be distinguished as recovery provenance improves.
+    """
 
     AVAILABLE = "available"
     PRIVATE = "private"

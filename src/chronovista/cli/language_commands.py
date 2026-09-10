@@ -216,7 +216,7 @@ def _current_user_id() -> str:
 _upgrade_prompt_shown: bool = False
 
 
-class OutputFormat(str, Enum):
+class LanguageOutputFormat(str, Enum):
     """Output format options for list command."""
 
     TABLE = "table"
@@ -870,8 +870,11 @@ def _show_available_languages() -> None:
 
 @language_app.command(name="list")
 def list_preferences(
-    format: OutputFormat = typer.Option(
-        OutputFormat.TABLE, "--format", "-f", help="Output format (table, json, yaml)"
+    format: LanguageOutputFormat = typer.Option(
+        LanguageOutputFormat.TABLE,
+        "--format",
+        "-f",
+        help="Output format (table, json, yaml)",
     ),
     preference_type: LanguagePreferenceType | None = typer.Option(
         None, "--type", "-t", help="Filter by preference type"
@@ -888,7 +891,7 @@ def list_preferences(
 
     Parameters
     ----------
-    format : OutputFormat
+    format : LanguageOutputFormat
         Output format (table, json, yaml), default is table.
     preference_type : Optional[LanguagePreferenceType]
         Filter by specific preference type.
@@ -919,11 +922,11 @@ def list_preferences(
         grouped = asyncio.run(_list_preferences(_current_user_id(), preference_type))
 
         # Format output based on selected format
-        if format == OutputFormat.TABLE:
+        if format == LanguageOutputFormat.TABLE:
             _format_table_output(grouped)
-        elif format == OutputFormat.JSON:
+        elif format == LanguageOutputFormat.JSON:
             _format_json_output(grouped)
-        elif format == OutputFormat.YAML:
+        elif format == LanguageOutputFormat.YAML:
             _format_yaml_output(grouped)
 
     except Exception as e:

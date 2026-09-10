@@ -38,7 +38,7 @@ def _mock_identity_resolver(monkeypatch):  # type: ignore[no-untyped-def]
 
 from chronovista.cli.language_commands import (
     LANGUAGE_NAMES,
-    OutputFormat,
+    LanguageOutputFormat,
     _get_terminal_width,
     _is_tty,
     _truncate_text,
@@ -1635,10 +1635,10 @@ class TestLanguageConstants:
         assert not hasattr(_mod, "DEFAULT_USER_ID")
 
     def test_output_format_enum(self) -> None:
-        """Test OutputFormat enum values."""
-        assert OutputFormat.TABLE.value == "table"
-        assert OutputFormat.JSON.value == "json"
-        assert OutputFormat.YAML.value == "yaml"
+        """Test LanguageOutputFormat enum values."""
+        assert LanguageOutputFormat.TABLE.value == "table"
+        assert LanguageOutputFormat.JSON.value == "json"
+        assert LanguageOutputFormat.YAML.value == "yaml"
 
     def test_language_names_coverage(self) -> None:
         """Test LANGUAGE_NAMES has reasonable coverage."""

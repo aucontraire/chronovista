@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { LANGUAGE_NAMES, getLanguageName } from './languageNames';
+import { LANGUAGE_NAMES, getLanguageName } from '../languageNames';
 
 describe('getLanguageName', () => {
   it('returns the base language name', () => {

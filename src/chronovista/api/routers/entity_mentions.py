@@ -511,11 +511,23 @@ async def wikidata_candidates(
     entity_type: str = Query(
         ..., description="Entity type being assigned (for the cross-check)"
     ),
-    limit: int = Query(5, ge=1, le=10, description="Max candidates (default 5)"),
+    limit: int = Query(
+        7, ge=1, le=20, description="Max candidates per page (default 7)"
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        le=200,
+        description="Page offset into the ranked results (for 'Show more')",
+    ),
 ) -> dict[str, Any]:
     """Return a ranked Wikidata shortlist for the create-time approval modal (US3).
 
     Registered BEFORE ``/entities/{entity_id}`` so the static path is not captured as an id.
+
+    ``offset`` pages deeper into the same ranked results so a match for a common name that ranks
+    below the first page is reachable (the modal's "Show more"). A page shorter than ``limit``
+    means there are no further results.
 
     Degrades gracefully (Constitution VIII, FR-012/015): a reachable knowledge base with no
     match returns ``candidates: []`` with ``unavailable: false`` (a benign "no match"); a
@@ -525,7 +537,9 @@ async def wikidata_candidates(
     """
     client = WikidataClient()
     try:
-        candidates = await client.search_candidates(name, entity_type, limit=limit)
+        candidates = await client.search_candidates(
+            name, entity_type, limit=limit, offset=offset
+        )
         unavailable = False
     except WikidataUnavailable:
         candidates = []
@@ -534,6 +548,44 @@ async def wikidata_candidates(
     return {
         "data": {
             "candidates": [c.model_dump() for c in candidates],
+            "unavailable": unavailable,
+        }
+    }
+
+
+@router.get(
+    "/entities/wikidata-candidates/{qid}",
+    status_code=200,
+    summary="Resolve one Wikidata QID directly to a grounding candidate",
+)
+async def wikidata_candidate_by_qid(
+    qid: str = Path(..., min_length=2, description="Wikidata QID, e.g. Q42"),
+    entity_type: str = Query(
+        ..., description="Entity type being assigned (for the cross-check)"
+    ),
+) -> dict[str, Any]:
+    """Resolve a pasted Wikidata QID to a single candidate (the modal's paste-a-QID fallback).
+
+    A sub-resource of the candidate list (``/entities/wikidata-candidates/{qid}``): for a common
+    name whose wanted match ranks below the paged results, the user pastes the QID (e.g. ``Q42``)
+    and grounds to it in one step. The three-segment path cannot be captured by
+    ``/entities/{entity_id}`` (two segments) nor by any ``/entities/{entity_id}/<literal>`` route.
+
+    Degrades like the search endpoint: a malformed or unknown QID returns ``candidate: null`` with
+    ``unavailable: false`` (a benign "no such item"); a transport/rate-limit failure returns
+    ``candidate: null`` with ``unavailable: true``. Never a 5xx.
+    """
+    client = WikidataClient()
+    try:
+        candidate = await client.resolve_candidate(qid, entity_type)
+        unavailable = False
+    except WikidataUnavailable:
+        candidate = None
+        unavailable = True
+
+    return {
+        "data": {
+            "candidate": candidate.model_dump() if candidate else None,
             "unavailable": unavailable,
         }
     }

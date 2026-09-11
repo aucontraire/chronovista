@@ -30,7 +30,7 @@
  * hooks from each module.
  */
 
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
@@ -164,6 +164,11 @@ function makeWikidataHook(overrides: {
     error: null,
     search: vi.fn(),
     reset: vi.fn(),
+    canShowMore: false,
+    isFetchingMore: false,
+    showMore: vi.fn(),
+    resolveByQid: vi.fn(),
+    isResolvingQid: false,
     ...overrides,
   };
 }
@@ -294,35 +299,6 @@ describe("CreateEntityModal — Wikidata grounding (Feature 067, US3)", () => {
       expect(screen.queryByText(/ground in wikidata/i)).not.toBeInTheDocument();
     });
 
-    it("shows a 'Search again' affordance once a search has completed", () => {
-      mockWikidata({ hasSearched: true, candidates: [] });
-      renderModal();
-      fillNameAndType();
-
-      expect(
-        screen.getByRole("button", { name: /search again/i })
-      ).toBeInTheDocument();
-    });
-
-    it("does not show 'Search again' before any search has completed", () => {
-      mockWikidata({ hasSearched: false });
-      renderModal();
-      fillNameAndType();
-
-      expect(
-        screen.queryByRole("button", { name: /search again/i })
-      ).not.toBeInTheDocument();
-    });
-
-    it("clicking 'Search again' calls the hook's search function", () => {
-      const hook = mockWikidata({ hasSearched: true, candidates: [] });
-      renderModal();
-      fillNameAndType();
-
-      fireEvent.click(screen.getByRole("button", { name: /search again/i }));
-      // Once from the automatic effect, once from the manual click.
-      expect(hook.search).toHaveBeenCalled();
-    });
   });
 
   describe("Shortlist rendering", () => {
@@ -813,6 +789,145 @@ describe("CreateEntityModal — Wikidata grounding (Feature 067, US3)", () => {
         entity_type: "person",
       });
       expect(calledWith).not.toHaveProperty("approvedIdentifier");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // (g) Unapplied-invalid-QID confirm — warns before a silent-discard submit
+  //     when the picker's QID field holds text that never resolved to a
+  //     valid QID/URL. A valid-but-unapplied QID, or any selected candidate,
+  //     must NOT trigger the confirm.
+  // -------------------------------------------------------------------------
+
+  describe("Unapplied-invalid-QID confirm", () => {
+    function getQidInput() {
+      return screen.getByLabelText(/paste a wikidata qid/i);
+    }
+
+    // The picker's own always-visible "Create without grounding" skip
+    // affordance renders in the modal body independent of the confirm; scoping
+    // button queries to the confirm keeps them unambiguous.
+    function getConfirmDialog() {
+      return screen.getByRole("alertdialog");
+    }
+
+    it("shows a confirm with the typed text and 'invalid' messaging, and does not create yet", () => {
+      const mutate = vi.fn();
+      (useCreateEntity as Mock).mockReturnValue(makeCreateEntityMutation({ mutate }));
+      mockWikidata({ hasSearched: true, candidates: [] });
+
+      renderModal();
+      fillNameAndType();
+      fireEvent.change(getQidInput(), { target: { value: "not-a-qid" } });
+
+      fireEvent.click(screen.getByRole("button", { name: /^create entity$/i }));
+
+      const confirm = getConfirmDialog();
+      expect(within(confirm).getByText(/not-a-qid/)).toBeInTheDocument();
+      expect(
+        within(confirm).getByText(/isn.t a valid wikidata qid/i)
+      ).toBeInTheDocument();
+      expect(
+        within(confirm).getByText(/won.t be linked to wikidata/i)
+      ).toBeInTheDocument();
+      expect(mutate).not.toHaveBeenCalled();
+    });
+
+    it("'Create anyway' proceeds with the ungrounded create", () => {
+      const mutate = vi.fn();
+      (useCreateEntity as Mock).mockReturnValue(makeCreateEntityMutation({ mutate }));
+      mockWikidata({ hasSearched: true, candidates: [] });
+
+      renderModal();
+      fillNameAndType();
+      fireEvent.change(getQidInput(), { target: { value: "not-a-qid" } });
+      fireEvent.click(screen.getByRole("button", { name: /^create entity$/i }));
+
+      fireEvent.click(
+        within(getConfirmDialog()).getByRole("button", {
+          name: /^create anyway$/i,
+        })
+      );
+
+      expect(mutate).toHaveBeenCalledOnce();
+      const calledWith = (mutate as Mock).mock.calls[0]?.[0];
+      expect(calledWith).toMatchObject({ name: "Test Person", entity_type: "person" });
+      expect(calledWith).not.toHaveProperty("approvedIdentifier");
+    });
+
+    it("'Fix the ID' dismisses the confirm and moves focus into the QID input", () => {
+      const mutate = vi.fn();
+      (useCreateEntity as Mock).mockReturnValue(makeCreateEntityMutation({ mutate }));
+      mockWikidata({ hasSearched: true, candidates: [] });
+
+      renderModal();
+      fillNameAndType();
+      fireEvent.change(getQidInput(), { target: { value: "not-a-qid" } });
+      fireEvent.click(screen.getByRole("button", { name: /^create entity$/i }));
+
+      fireEvent.click(screen.getByRole("button", { name: /^fix the id$/i }));
+
+      expect(mutate).not.toHaveBeenCalled();
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^create entity$/i })).toBeInTheDocument();
+      expect(getQidInput()).toHaveFocus();
+    });
+
+    it("a valid-but-unapplied QID (e.g. Q42, never resolved) does not trigger the confirm", () => {
+      const mutate = vi.fn();
+      (useCreateEntity as Mock).mockReturnValue(makeCreateEntityMutation({ mutate }));
+      mockWikidata({ hasSearched: true, candidates: [] });
+
+      renderModal();
+      fillNameAndType();
+      fireEvent.change(getQidInput(), { target: { value: "Q42" } });
+
+      fireEvent.click(screen.getByRole("button", { name: /^create entity$/i }));
+
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(mutate).toHaveBeenCalledOnce();
+      const calledWith = (mutate as Mock).mock.calls[0]?.[0];
+      expect(calledWith).not.toHaveProperty("approvedIdentifier");
+    });
+
+    it("does not confirm when a candidate is already selected, even with leftover invalid QID text", async () => {
+      const mutate = vi.fn();
+      (useCreateEntity as Mock).mockReturnValue(makeCreateEntityMutation({ mutate }));
+      mockWikidata({
+        hasSearched: true,
+        candidates: [makeCandidate({ qid: "Q000009", label: "Test Person" })],
+      });
+
+      renderModal();
+      fillNameAndType();
+      fireEvent.click(screen.getByRole("radio"));
+      await waitFor(() => {
+        expect(screen.getByText(/grounded to/i)).toBeInTheDocument();
+      });
+      fireEvent.change(getQidInput(), { target: { value: "not-a-qid" } });
+
+      fireEvent.click(screen.getByRole("button", { name: /^create entity$/i }));
+
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(mutate).toHaveBeenCalledOnce();
+      const calledWith = (mutate as Mock).mock.calls[0]?.[0];
+      expect(calledWith).toMatchObject({
+        approvedIdentifier: { source: "wikidata", id: "Q000009" },
+      });
+    });
+
+    it("does not confirm when the QID field was never touched", () => {
+      const mutate = vi.fn();
+      (useCreateEntity as Mock).mockReturnValue(makeCreateEntityMutation({ mutate }));
+      mockWikidata({ hasSearched: true, candidates: [] });
+
+      renderModal();
+      fillNameAndType();
+
+      fireEvent.click(screen.getByRole("button", { name: /^create entity$/i }));
+
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(mutate).toHaveBeenCalledOnce();
     });
   });
 });

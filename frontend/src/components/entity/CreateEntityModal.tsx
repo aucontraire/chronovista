@@ -47,6 +47,7 @@ import {
 } from "../../hooks/useEntityMentions";
 import type { WikidataCandidate } from "../../api/entityMentions";
 import { WikidataGroundingPicker } from "./WikidataGroundingPicker";
+import type { WikidataGroundingPickerHandle } from "./WikidataGroundingPicker";
 import {
   ENTITY_PRODUCING_TYPES,
   ENTITY_TYPE_LABELS,
@@ -175,6 +176,11 @@ export default function CreateEntityModal({
   // prefill again — but this flag is what stops any of that from clobbering
   // a Description the user typed themselves.
   const [descriptionTouched, setDescriptionTouched] = useState(false);
+  // Feature: picker candidate reachability — text the user typed into the
+  // picker's QID field that never resolved to a valid QID/URL. Used to warn
+  // before a silent-discard submit rather than to block it.
+  const [pendingInvalidQidText, setPendingInvalidQidText] = useState("");
+  const [showQidConfirm, setShowQidConfirm] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Mutation
@@ -216,6 +222,11 @@ export default function CreateEntityModal({
   const dialogRef = useRef<HTMLDivElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLUListElement>(null);
+  const submitButtonRef = useRef<HTMLButtonElement>(null);
+  const fixIdButtonRef = useRef<HTMLButtonElement>(null);
+  // Lets the unapplied-invalid-QID confirm's "Fix the ID" move focus into
+  // the picker's own QID input instead of just dismissing itself.
+  const pickerRef = useRef<WikidataGroundingPickerHandle>(null);
 
   // Stable IDs for ARIA relationships
   const listboxId = useId();
@@ -286,6 +297,8 @@ export default function CreateEntityModal({
     setHighlightedIndex(-1);
     setApprovedCandidate(null);
     setDescriptionTouched(false);
+    setPendingInvalidQidText("");
+    setShowQidConfirm(false);
     // WikidataGroundingPicker's own search/skip state resets on its own —
     // it unmounts whenever this component returns null (isOpen false).
   }, []);
@@ -323,7 +336,29 @@ export default function CreateEntityModal({
   }, [isOpen]);
 
   // ---------------------------------------------------------------------------
-  // Escape to close (also closes dropdown first if open)
+  // Unapplied-invalid-QID confirm — "Fix the ID" handler (used by both its
+  // own button and Escape, below): dismisses the confirm and moves focus
+  // into the picker's QID input so the user can correct the text right away,
+  // rather than just returning focus to the submit button.
+  // ---------------------------------------------------------------------------
+
+  const handleFixTheId = useCallback(() => {
+    setShowQidConfirm(false);
+    pickerRef.current?.focusQidInput();
+  }, []);
+
+  // Focus "Fix the ID" on open (WCAG 2.4.3) — it's the emphasized, nudged-
+  // toward path — mirroring the settings-page confirmation idiom
+  // (CacheSection's ClearConfirmation).
+  useEffect(() => {
+    if (showQidConfirm) {
+      fixIdButtonRef.current?.focus();
+    }
+  }, [showQidConfirm]);
+
+  // ---------------------------------------------------------------------------
+  // Escape to close (takes the "Fix the ID" path on the QID confirm first,
+  // then closes the dropdown, then the modal itself)
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
@@ -331,7 +366,10 @@ export default function CreateEntityModal({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (showDropdown) {
+        if (showQidConfirm) {
+          e.stopPropagation();
+          handleFixTheId();
+        } else if (showDropdown) {
           // First Escape press closes the dropdown only.
           e.stopPropagation();
           setShowDropdown(false);
@@ -345,7 +383,7 @@ export default function CreateEntityModal({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose, showDropdown]);
+  }, [isOpen, onClose, showDropdown, showQidConfirm, handleFixTheId]);
 
   // ---------------------------------------------------------------------------
   // Focus trap
@@ -504,6 +542,123 @@ export default function CreateEntityModal({
     },
     [descriptionTouched]
   );
+
+  // ---------------------------------------------------------------------------
+  // Submit (extracted so it's callable both directly and from the
+  // unapplied-invalid-QID confirm's "Create anyway")
+  // ---------------------------------------------------------------------------
+
+  const performCreate = useCallback(() => {
+    if (selectedTag === null) {
+      // Standalone creation path.
+      setIsSubmitting(true);
+      const trimmedDesc = description.trim();
+      const trimmedAliases = aliases
+        .map((a) => a.trim())
+        .filter((a) => a.length > 0);
+      createEntityMutation.mutate(
+        {
+          name: name.trim(),
+          entity_type: entityType,
+          ...(trimmedDesc ? { description: trimmedDesc } : {}),
+          ...(trimmedAliases.length > 0 ? { aliases: trimmedAliases } : {}),
+          // Feature 067 (US3): only present when the user explicitly
+          // approved a Wikidata match — never sent otherwise.
+          ...(approvedCandidate !== null
+            ? {
+                approvedIdentifier: {
+                  source: "wikidata",
+                  id: approvedCandidate.qid,
+                },
+              }
+            : {}),
+        },
+        {
+          onSuccess: () => {
+            onSuccess?.();
+            onClose();
+          },
+          onError: (err) => {
+            setError(
+              err.message || "Failed to create entity. Please try again."
+            );
+          },
+          onSettled: () => {
+            setIsSubmitting(false);
+          },
+        }
+      );
+      return;
+    }
+
+    setIsSubmitting(true);
+    const trimmedDesc = description.trim();
+    const trimmedDisplayName = displayName.trim();
+    classifyTagMutation.mutate(
+      {
+        normalized_form: selectedTag.normalized_form,
+        entity_type: entityType,
+        ...(trimmedDesc ? { description: trimmedDesc } : {}),
+        // FR-009: sent verbatim, no re-casing.
+        ...(trimmedDisplayName ? { display_name: trimmedDisplayName } : {}),
+        // Feature 067 (US3): only present when the user explicitly
+        // approved a Wikidata match — never sent otherwise. Applied
+        // by the backend only when this call creates a new entity.
+        ...(approvedCandidate !== null
+          ? {
+              approvedIdentifier: {
+                source: "wikidata",
+                id: approvedCandidate.qid,
+              },
+            }
+          : {}),
+      },
+      {
+        onSuccess: () => {
+          onSuccess?.();
+          onClose();
+        },
+        onError: (err) => {
+          setError(
+            err.message.length > 0
+              ? err.message
+              : "Failed to create entity. Please try again."
+          );
+        },
+        onSettled: () => {
+          setIsSubmitting(false);
+        },
+      }
+    );
+  }, [
+    selectedTag,
+    description,
+    aliases,
+    name,
+    entityType,
+    approvedCandidate,
+    displayName,
+    createEntityMutation,
+    classifyTagMutation,
+    onSuccess,
+    onClose,
+  ]);
+
+  // Gates submit on unapplied-invalid QID text (a value the user typed into
+  // the picker's paste field that never resolved) — a valid-but-unapplied
+  // QID, or any selected candidate, submits with no confirm.
+  const handleSubmitClick = useCallback(() => {
+    if (pendingInvalidQidText !== "" && approvedCandidate === null) {
+      setShowQidConfirm(true);
+      return;
+    }
+    performCreate();
+  }, [pendingInvalidQidText, approvedCandidate, performCreate]);
+
+  const handleCreateWithoutGrounding = useCallback(() => {
+    setShowQidConfirm(false);
+    performCreate();
+  }, [performCreate]);
 
   // ---------------------------------------------------------------------------
   // Derived state
@@ -1028,10 +1183,12 @@ export default function CreateEntityModal({
           {/* ---------------------------------------------------------------- */}
           {groundingName !== "" && entityType !== "" && (
             <WikidataGroundingPicker
+              ref={pickerRef}
               name={groundingName}
               entityType={entityType}
               selectedCandidate={approvedCandidate}
               onSelectCandidate={handleCandidateSelect}
+              onPendingInvalidQidChange={setPendingInvalidQidText}
               disabled={isSubmitting}
             />
           )}
@@ -1174,157 +1331,135 @@ export default function CreateEntityModal({
         {/* Footer                                                              */}
         {/* ------------------------------------------------------------------ */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 flex-shrink-0">
-          {/* Cancel button */}
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="
-              min-h-[44px]
-              px-4 py-2
-              text-sm font-medium text-gray-700
-              bg-white border border-gray-300 rounded-lg
-              hover:bg-gray-50 hover:text-gray-900
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1
-              disabled:opacity-50 disabled:cursor-not-allowed
-              transition-colors
-            "
-          >
-            Cancel
-          </button>
-
-          {/* Submit button */}
-          <button
-            type="button"
-            disabled={isSubmitDisabled}
-            aria-busy={isSubmitting}
-            aria-disabled={isSubmitDisabled}
-            onClick={() => {
-              if (selectedTag === null) {
-                // Standalone creation path.
-                setIsSubmitting(true);
-                const trimmedDesc = description.trim();
-                const trimmedAliases = aliases
-                  .map((a) => a.trim())
-                  .filter((a) => a.length > 0);
-                createEntityMutation.mutate(
-                  {
-                    name: name.trim(),
-                    entity_type: entityType,
-                    ...(trimmedDesc ? { description: trimmedDesc } : {}),
-                    ...(trimmedAliases.length > 0
-                      ? { aliases: trimmedAliases }
-                      : {}),
-                    // Feature 067 (US3): only present when the user explicitly
-                    // approved a Wikidata match — never sent otherwise.
-                    ...(approvedCandidate !== null
-                      ? {
-                          approvedIdentifier: {
-                            source: "wikidata",
-                            id: approvedCandidate.qid,
-                          },
-                        }
-                      : {}),
-                  },
-                  {
-                    onSuccess: () => {
-                      onSuccess?.();
-                      onClose();
-                    },
-                    onError: (err) => {
-                      setError(
-                        err.message || "Failed to create entity. Please try again."
-                      );
-                    },
-                    onSettled: () => {
-                      setIsSubmitting(false);
-                    },
-                  }
-                );
-                return;
-              }
-
-              setIsSubmitting(true);
-              const trimmedDesc = description.trim();
-              const trimmedDisplayName = displayName.trim();
-              classifyTagMutation.mutate(
-                {
-                  normalized_form: selectedTag.normalized_form,
-                  entity_type: entityType,
-                  ...(trimmedDesc ? { description: trimmedDesc } : {}),
-                  // FR-009: sent verbatim, no re-casing.
-                  ...(trimmedDisplayName
-                    ? { display_name: trimmedDisplayName }
-                    : {}),
-                  // Feature 067 (US3): only present when the user explicitly
-                  // approved a Wikidata match — never sent otherwise. Applied
-                  // by the backend only when this call creates a new entity.
-                  ...(approvedCandidate !== null
-                    ? {
-                        approvedIdentifier: {
-                          source: "wikidata",
-                          id: approvedCandidate.qid,
-                        },
-                      }
-                    : {}),
-                },
-                {
-                  onSuccess: () => {
-                    onSuccess?.();
-                    onClose();
-                  },
-                  onError: (err) => {
-                    setError(
-                      err.message.length > 0
-                        ? err.message
-                        : "Failed to create entity. Please try again."
-                    );
-                  },
-                  onSettled: () => {
-                    setIsSubmitting(false);
-                  },
-                }
-              );
-            }}
-            className="
-              min-h-[44px]
-              px-5 py-2
-              text-sm font-medium text-white
-              bg-indigo-600 rounded-lg
-              hover:bg-indigo-700
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1
-              disabled:opacity-50 disabled:cursor-not-allowed
-              transition-colors
-            "
-          >
-            {isSubmitting ? (
-              <span className="inline-flex items-center gap-2">
-                <svg
-                  className="w-4 h-4 animate-spin"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
+          {showQidConfirm ? (
+            /* --------------------------------------------------------------
+             * Unapplied-invalid-QID confirm — inline alertdialog, mirroring
+             * the accessible confirm idiom used by CacheSection's
+             * ClearConfirmation (focus-on-open, Escape takes the "Fix the
+             * ID" path via the document-level handler above, labelled).
+             * "Fix the ID" is the emphasized, nudged-toward action — it's
+             * focused on open and dismisses the confirm in favor of
+             * correcting the text in place, rather than discarding it.
+             * ---------------------------------------------------------- */
+            <div
+              role="alertdialog"
+              aria-modal="false"
+              aria-labelledby="qid-confirm-label"
+              className="flex flex-1 flex-wrap items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3"
+            >
+              <p
+                id="qid-confirm-label"
+                className="flex-1 min-w-0 text-sm text-amber-900"
+              >
+                &ldquo;{pendingInvalidQidText}&rdquo; isn&rsquo;t a valid
+                Wikidata QID, so this entity won&rsquo;t be linked to
+                Wikidata. Create it without grounding, or fix the ID to link
+                it?
+              </p>
+              <div className="flex gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCreateWithoutGrounding}
+                  className="
+                    min-h-[44px]
+                    px-4 py-2
+                    text-sm font-medium text-gray-700
+                    bg-white border border-gray-300 rounded-lg
+                    hover:bg-gray-50 hover:text-gray-900
+                    focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1
+                    transition-colors
+                  "
                 >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-                Creating…
-              </span>
-            ) : (
-              "Create Entity"
-            )}
-          </button>
+                  Create anyway
+                </button>
+                <button
+                  ref={fixIdButtonRef}
+                  type="button"
+                  onClick={handleFixTheId}
+                  className="
+                    min-h-[44px]
+                    px-4 py-2
+                    text-sm font-medium text-white
+                    bg-indigo-600 rounded-lg
+                    hover:bg-indigo-700
+                    focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1
+                    transition-colors
+                  "
+                >
+                  Fix the ID
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Cancel button */}
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="
+                  min-h-[44px]
+                  px-4 py-2
+                  text-sm font-medium text-gray-700
+                  bg-white border border-gray-300 rounded-lg
+                  hover:bg-gray-50 hover:text-gray-900
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                  transition-colors
+                "
+              >
+                Cancel
+              </button>
+
+              {/* Submit button */}
+              <button
+                ref={submitButtonRef}
+                type="button"
+                disabled={isSubmitDisabled}
+                aria-busy={isSubmitting}
+                aria-disabled={isSubmitDisabled}
+                onClick={handleSubmitClick}
+                className="
+                  min-h-[44px]
+                  px-5 py-2
+                  text-sm font-medium text-white
+                  bg-indigo-600 rounded-lg
+                  hover:bg-indigo-700
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                  transition-colors
+                "
+              >
+                {isSubmitting ? (
+                  <span className="inline-flex items-center gap-2">
+                    <svg
+                      className="w-4 h-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    Creating…
+                  </span>
+                ) : (
+                  "Create Entity"
+                )}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>,

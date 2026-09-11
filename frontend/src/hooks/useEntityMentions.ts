@@ -23,6 +23,7 @@ import {
   scanVideoEntities,
   getScanJob,
   fetchWikidataCandidates,
+  fetchWikidataCandidateByQid,
 } from "../api/entityMentions";
 import type {
   VideoEntitySummary,
@@ -43,7 +44,9 @@ import type {
   ScanResultResponse,
   ScanJob,
   ApprovedIdentifier,
+  WikidataCandidate,
   WikidataCandidatesData,
+  WikidataCandidateByQidData,
 } from "../api/entityMentions";
 import type { ApiError } from "../types/video";
 
@@ -781,8 +784,8 @@ export function useCheckDuplicate(name: string, entityType: string) {
 
 /** Return shape of `useWikidataCandidates`. */
 export interface UseWikidataCandidatesResult {
-  /** Ranked shortlist from the most recent search; empty before a search runs. */
-  candidates: WikidataCandidatesData["candidates"];
+  /** Ranked shortlist accumulated across all fetched pages; empty before a search runs. */
+  candidates: WikidataCandidate[];
   /** True when the lookup itself failed/timed out (soft failure) — distinct from "no match". */
   unavailable: boolean;
   /** True once `search()` has been called at least once for the current name/entityType. */
@@ -793,42 +796,70 @@ export interface UseWikidataCandidatesResult {
   error: ApiError | null;
   /** Runs the lookup for the `name`/`entityType` passed to the hook at call time. */
   search: () => void;
-  /** Clears the last search, returning the hook to its pre-search state. */
+  /** Clears the last search (all pages) and any QID-resolve state, returning the hook to its pre-search state. */
   reset: () => void;
+  /** True when another page is available and none is currently in flight ("Show more"). */
+  canShowMore: boolean;
+  /** True while a "Show more" page fetch is in flight (distinct from the initial `isLoading`). */
+  isFetchingMore: boolean;
+  /** Fetches the next page of candidates, appending it to `candidates`. */
+  showMore: () => void;
+  /**
+   * Resolves a pasted Wikidata QID directly (the manual fallback for a match
+   * that ranks below the paged shortlist). Resolves to `{ candidate: null,
+   * unavailable: false }` for a malformed/unknown QID, and `{ candidate:
+   * null, unavailable: true }` for a soft lookup failure — never rejects for
+   * those cases.
+   */
+  resolveByQid: (qid: string) => Promise<WikidataCandidateByQidData>;
+  /** True while a QID resolve is in flight. */
+  isResolvingQid: boolean;
 }
 
 /**
- * Lazily fetches ranked Wikidata candidates for a proposed entity name/type
- * (Feature 067, US3). The query never fires on its own — the caller must
- * invoke `search()` (e.g. from a "Search Wikidata" button), so typing in the
- * name field does not spam the lookup on every keystroke.
+ * Lazily fetches ranked Wikidata candidates for a proposed entity name/type,
+ * paginated for "Show more" (Feature 067 US3; paging + QID fallback added for
+ * reachability). The query never fires on its own — the caller must invoke
+ * `search()` (e.g. from a "Search Wikidata" button, or an auto-search
+ * effect), so typing in the name field does not spam the lookup on every
+ * keystroke.
  *
  * `search()` snapshots the `name`/`entityType` values current at call time;
  * changing them afterward does not refetch until `search()` is called again.
+ * `showMore()` fetches the next page and appends it to `candidates`;
+ * `canShowMore` goes false once a page comes back shorter than `limit` (the
+ * backend's end-of-results signal — there is no total/cursor) or while a
+ * page fetch is in flight.
+ *
+ * `resolveByQid()` is independent of the paged search — it resolves one QID
+ * directly via the single-item lookup endpoint, for a match that ranks below
+ * whatever page the user has reached.
  *
  * @param name - Proposed canonical name to search for
  * @param entityType - Entity type (e.g. "person", "organization", "place")
- * @param limit - Max candidates to return (default 5)
- * @returns Candidates, the `unavailable` soft-failure flag, and the trigger/reset functions
+ * @param limit - Max candidates to return per page (default 7)
+ * @returns Paged candidates, the `unavailable` soft-failure flag, paging controls, the QID
+ *   resolver, and the trigger/reset functions
  *
  * @example
  * ```tsx
  * const wikidata = useWikidataCandidates(name, entityType);
  * <button onClick={wikidata.search}>Search Wikidata</button>
  * {wikidata.hasSearched && wikidata.unavailable && <p>Couldn't reach Wikidata.</p>}
+ * {wikidata.canShowMore && <button onClick={wikidata.showMore}>Show more</button>}
  * ```
  */
 export function useWikidataCandidates(
   name: string,
   entityType: string,
-  limit = 5
+  limit = 7
 ): UseWikidataCandidatesResult {
   const [searchParams, setSearchParams] = useState<{
     name: string;
     entityType: string;
   } | null>(null);
 
-  const queryResult = useQuery<WikidataCandidatesData, ApiError>({
+  const queryResult = useInfiniteQuery<WikidataCandidatesData, ApiError>({
     queryKey: [
       "wikidata-candidates",
       searchParams?.name ?? null,
@@ -836,17 +867,25 @@ export function useWikidataCandidates(
       limit,
     ],
     // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
-    queryFn: ({ signal }) =>
+    queryFn: ({ pageParam, signal }) =>
       fetchWikidataCandidates(
         searchParams!.name,
         searchParams!.entityType,
         limit,
-        signal
+        signal,
+        pageParam as number
       ),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.candidates.length < limit ? undefined : pages.length * limit,
     enabled: searchParams !== null,
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     retry: false,
+  });
+
+  const qidMutation = useMutation<WikidataCandidateByQidData, ApiError, string>({
+    mutationFn: (qid: string) => fetchWikidataCandidateByQid(qid, entityType),
   });
 
   const search = useCallback(() => {
@@ -855,11 +894,29 @@ export function useWikidataCandidates(
 
   const reset = useCallback(() => {
     setSearchParams(null);
+    qidMutation.reset();
+    // qidMutation is a new object every render; resetting only needs the
+    // stable `reset` function, which TanStack Query guarantees is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const showMore = useCallback(() => {
+    if (queryResult.hasNextPage && !queryResult.isFetchingNextPage) {
+      void queryResult.fetchNextPage();
+    }
+  }, [queryResult]);
+
+  const resolveByQid = useCallback(
+    (qid: string) => qidMutation.mutateAsync(qid),
+    [qidMutation]
+  );
+
+  const pages = queryResult.data?.pages ?? [];
+  const lastPage = pages[pages.length - 1];
+
   return {
-    candidates: queryResult.data?.candidates ?? [],
-    unavailable: queryResult.data?.unavailable ?? false,
+    candidates: pages.flatMap((page) => page.candidates),
+    unavailable: lastPage?.unavailable ?? false,
     hasSearched: searchParams !== null,
     isLoading: queryResult.isLoading,
     isFetching: queryResult.isFetching,
@@ -867,6 +924,11 @@ export function useWikidataCandidates(
     error: (queryResult.error as ApiError | null) ?? null,
     search,
     reset,
+    canShowMore: (queryResult.hasNextPage ?? false) && !queryResult.isFetchingNextPage,
+    isFetchingMore: queryResult.isFetchingNextPage,
+    showMore,
+    resolveByQid,
+    isResolvingQid: qidMutation.isPending,
   };
 }
 

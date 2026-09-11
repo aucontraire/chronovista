@@ -1067,7 +1067,7 @@ export interface WikidataCandidate {
  * differently; neither should block entity creation.
  */
 export interface WikidataCandidatesData {
-  /** Ranked shortlist, already capped by the backend (≤ `limit`). */
+  /** Ranked shortlist for this page, already capped by the backend (≤ `limit`). */
   candidates: WikidataCandidate[];
   unavailable: boolean;
 }
@@ -1077,34 +1077,80 @@ export interface WikidataCandidatesResponse {
   data: WikidataCandidatesData;
 }
 
+/**
+ * Payload of a single-QID Wikidata lookup. Mirrors the list endpoint's
+ * `unavailable` semantics: `candidate: null, unavailable: false` means the
+ * QID is malformed/unknown (a benign "no such item"); `unavailable: true`
+ * means the lookup itself failed or timed out.
+ */
+export interface WikidataCandidateByQidData {
+  candidate: WikidataCandidate | null;
+  unavailable: boolean;
+}
+
+/** Response envelope for GET /api/v1/entities/wikidata-candidates/{qid} */
+export interface WikidataCandidateByQidResponse {
+  data: WikidataCandidateByQidData;
+}
+
 // ---------------------------------------------------------------------------
-// Wikidata candidate lookup fetcher
+// Wikidata candidate lookup fetchers
 // ---------------------------------------------------------------------------
 
 /**
- * Looks up ranked Wikidata candidates for a proposed entity name and type, so
- * a user can optionally ground a new entity to an external identifier before
- * creating it.
+ * Looks up a page of ranked Wikidata candidates for a proposed entity name
+ * and type, so a user can optionally ground a new entity to an external
+ * identifier before creating it.
  *
  * @param name - Proposed canonical name to search for
  * @param entityType - Entity type (e.g. "person", "organization", "place")
- * @param limit - Max candidates to return (backend default 5)
+ * @param limit - Max candidates to return per page (backend default 7)
  * @param signal - Optional AbortSignal for cancellation
- * @returns Ranked candidates and whether the lookup itself failed
+ * @param offset - Page offset into the ranked results (for "Show more"); omitted from the
+ *   request when 0, mirroring the backend's default
+ * @returns Ranked candidates for this page and whether the lookup itself failed
  */
 export async function fetchWikidataCandidates(
   name: string,
   entityType: string,
-  limit = 5,
-  signal?: AbortSignal
+  limit = 7,
+  signal?: AbortSignal,
+  offset = 0
 ): Promise<WikidataCandidatesData> {
   const params = new URLSearchParams({
     name,
     entity_type: entityType,
     limit: String(limit),
   });
+  if (offset > 0) {
+    params.set("offset", String(offset));
+  }
   const res = await apiFetch<WikidataCandidatesResponse>(
     `/entities/wikidata-candidates?${params.toString()}`,
+    {
+      ...(signal !== undefined ? { externalSignal: signal } : {}),
+    }
+  );
+  return res.data;
+}
+
+/**
+ * Resolves a single pasted Wikidata QID to a grounding candidate — the
+ * manual fallback for a match that ranks below the paged shortlist.
+ *
+ * @param qid - Wikidata QID, e.g. "Q42"
+ * @param entityType - Entity type (e.g. "person", "organization", "place")
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns The resolved candidate (or null) and whether the lookup itself failed
+ */
+export async function fetchWikidataCandidateByQid(
+  qid: string,
+  entityType: string,
+  signal?: AbortSignal
+): Promise<WikidataCandidateByQidData> {
+  const params = new URLSearchParams({ entity_type: entityType });
+  const res = await apiFetch<WikidataCandidateByQidResponse>(
+    `/entities/wikidata-candidates/${encodeURIComponent(qid)}?${params.toString()}`,
     {
       ...(signal !== undefined ? { externalSignal: signal } : {}),
     }

@@ -102,14 +102,17 @@ class WikidataClient:
         raise WikidataUnavailable("rate limited repeatedly")
 
     async def search_candidates(
-        self, name: str, entity_type: str, *, limit: int = 5
+        self, name: str, entity_type: str, *, limit: int = 5, offset: int = 0
     ) -> list[WikidataCandidate]:
         """Return a relevance-ranked shortlist (at most ``limit``) for ``name``.
 
-        Raises ``WikidataUnavailable`` on transport/rate-limit failure; returns ``[]`` when the
-        knowledge base was reached but has no match.
+        ``offset`` pages deeper into the same ranked results (``wbsearchentities`` ``continue``),
+        so a match for a common name that ranks below the first page is still reachable. Raises
+        ``WikidataUnavailable`` on transport/rate-limit failure; returns ``[]`` when the knowledge
+        base was reached but has no (further) match.
         """
         limit = max(1, limit)
+        offset = max(0, offset)
         http = self._http or self._new_client()
         owns = self._http is None
         try:
@@ -121,6 +124,9 @@ class WikidataClient:
                 uselang="en",
                 type="item",
                 limit=limit,
+                # `continue` is Wikidata's offset; it is also a Python keyword, so it
+                # can only be passed via dict-unpacking. Omit at offset 0 (page 1).
+                **({"continue": offset} if offset else {}),
             )
             hits = [h for h in search.get("search", []) if h.get("id")][:limit]
             if not hits:
@@ -152,6 +158,42 @@ class WikidataClient:
                 )
             )
         return candidates
+
+    async def resolve_candidate(
+        self, qid: str, entity_type: str
+    ) -> WikidataCandidate | None:
+        """Resolve one pasted Wikidata QID directly to a candidate.
+
+        The create modal's "paste a QID" fallback: when a common name buries the wanted match
+        below the paged results, the user supplies its QID (e.g. ``Q42``) and grounds to it in
+        one step. Returns ``None`` for a malformed QID or one Wikidata does not know; raises
+        ``WikidataUnavailable`` on transport/rate-limit failure (same contract as search).
+        """
+        q = qid.strip()
+        if not (len(q) >= 2 and q[0] == "Q" and q[1:].isdigit() and int(q[1:]) >= 1):
+            return None
+        http = self._http or self._new_client()
+        owns = self._http is None
+        try:
+            details = await self._item_details(http, [q])
+        finally:
+            if owns:
+                await http.aclose()
+        det = details.get(q)
+        if det is None:
+            return None
+        expected = EXPECTED_INSTANCE_OF.get(entity_type, set())
+        instance_of = det.get("instance_of", [])
+        return WikidataCandidate(
+            qid=q,
+            label=self._resolve_label({"id": q}, det.get("labels", {})),
+            description=det.get("description"),
+            instance_of=instance_of,
+            statement_count=det.get("statements", 0),
+            sitelink_count=det.get("sitelinks", 0),
+            is_stub=bool(det.get("looks_like_author_stub", False)),
+            type_matches=(bool(expected & set(instance_of)) if expected else False),
+        )
 
     async def fetch_properties(self, qid: str) -> dict[str, Any]:
         """Fetch the curated property fields for one grounded entity (Feature 068).
@@ -239,10 +281,14 @@ class WikidataClient:
                 http,
                 action="wbgetentities",
                 ids="|".join(chunk),
-                props="claims|sitelinks|labels",
+                props="claims|sitelinks|labels|descriptions",
                 languages=_LABEL_LANGS,
             )
             for qid, ent in (data.get("entities") or {}).items():
+                if "missing" in ent:
+                    # A QID Wikidata does not know (e.g. a mistyped paste) — skip it
+                    # so callers see it as unresolved rather than an empty candidate.
+                    continue
                 claims = ent.get("claims") or {}
                 vals: list[str] = []
                 for claim in claims.get("P31", []):
@@ -253,11 +299,21 @@ class WikidataClient:
                             vals.append(str(cid))
                 statements = sum(len(v) for v in claims.values())
                 sitelinks = len(ent.get("sitelinks") or {})
+                # Description in the same fallback order as labels — used when a
+                # candidate is resolved directly by QID (no search hit to read it from).
+                description: str | None = None
+                descriptions = ent.get("descriptions") or {}
+                for lang in ("en", "mul", "en-gb"):
+                    entry = descriptions.get(lang)
+                    if isinstance(entry, dict) and entry.get("value"):
+                        description = str(entry["value"])
+                        break
                 out[qid] = {
                     "instance_of": vals,
                     "sitelinks": sitelinks,
                     "statements": statements,
                     "labels": ent.get("labels") or {},
+                    "description": description,
                     "looks_like_author_stub": (
                         "P496" in claims
                         and statements <= _STUB_MAX_STATEMENTS

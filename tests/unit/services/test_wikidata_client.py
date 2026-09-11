@@ -44,6 +44,7 @@ def _entities_details() -> dict[str, Any]:
                 },
                 "sitelinks": {"enwiki": {}, "eswiki": {}},
                 "labels": {"en": {"language": "en", "value": "Placeholder One"}},
+                "descriptions": {"en": {"language": "en", "value": "a person"}},
             },
             # Author stub: ORCID (P496), few statements, no sitelinks; label only under mul.
             "Q000002": {
@@ -62,6 +63,7 @@ def _entities_details() -> dict[str, Any]:
                 },
                 "sitelinks": {},
                 "labels": {"mul": {"language": "mul", "value": "Placeholder Two"}},
+                "descriptions": {"mul": {"language": "mul", "value": "researcher"}},
             },
         }
     }
@@ -75,7 +77,10 @@ def _handler(search: dict[str, Any]) -> httpx.MockTransport:
         props = request.url.params.get("props")
         if action == "wbsearchentities":
             return httpx.Response(200, json=search)
-        if action == "wbgetentities" and props == "claims|sitelinks|labels":
+        if (
+            action == "wbgetentities"
+            and props == "claims|sitelinks|labels|descriptions"
+        ):
             return httpx.Response(200, json=_entities_details())
         return httpx.Response(200, json={})
 
@@ -163,3 +168,69 @@ class TestEmptyVsUnavailable:
         )
         with pytest.raises(WikidataUnavailable):
             await client.search_candidates("X", "person", limit=5)
+
+
+class TestOffsetPaging:
+    async def test_offset_passes_continue_to_search(self) -> None:
+        seen: dict[str, Any] = {}
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            if request.url.params.get("action") == "wbsearchentities":
+                seen["continue"] = request.url.params.get("continue")
+                return httpx.Response(
+                    200,
+                    json={
+                        "search": [
+                            {"id": "Q000001", "label": "P1", "description": "a person"}
+                        ]
+                    },
+                )
+            return httpx.Response(200, json=_entities_details())
+
+        client = _client(httpx.MockTransport(respond))
+        await client.search_candidates("x", "person", limit=5, offset=10)
+        assert seen["continue"] == "10"  # page 2+ sends the offset
+
+    async def test_offset_zero_omits_continue(self) -> None:
+        seen: dict[str, Any] = {"continue": "unset"}
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            if request.url.params.get("action") == "wbsearchentities":
+                seen["continue"] = request.url.params.get("continue")
+            return httpx.Response(200, json={"search": []})
+
+        await _client(httpx.MockTransport(respond)).search_candidates(
+            "x", "person", limit=5, offset=0
+        )
+        assert seen["continue"] is None  # page 1 omits it (unchanged behavior)
+
+
+class TestResolveByQid:
+    async def test_resolve_valid_qid_returns_candidate(self) -> None:
+        c = await _client(_handler({"search": []})).resolve_candidate(
+            "Q000001", "person"
+        )
+        assert c is not None
+        assert c.qid == "Q000001"
+        assert c.label == "Placeholder One"
+        assert c.description == "a person"  # from descriptions, not a search hit
+        assert c.type_matches is True  # instance_of Q5 vs person
+
+    async def test_resolve_malformed_qid_returns_none_without_http(self) -> None:
+        def boom(request: httpx.Request) -> httpx.Response:
+            raise AssertionError("must not hit the network for a malformed QID")
+
+        client = _client(httpx.MockTransport(boom))
+        assert await client.resolve_candidate("not-a-qid", "person") is None
+        assert await client.resolve_candidate("Q0", "person") is None
+        assert await client.resolve_candidate("", "person") is None
+
+    async def test_resolve_unknown_qid_returns_none(self) -> None:
+        def respond(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"entities": {"Q999999999": {"id": "Q999999999", "missing": ""}}},
+            )
+
+        client = _client(httpx.MockTransport(respond))
+        assert await client.resolve_candidate("Q999999999", "person") is None

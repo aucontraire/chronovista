@@ -17,6 +17,12 @@
  *   a different name/type
  * - Rendering the ranked shortlist with type-match/statement/sitelink
  *   signals and a stub warning
+ * - "Show more" pagination that appends the next page of candidates, so a
+ *   match for a common name that ranks below the first page stays reachable
+ * - A paste-a-Wikidata-QID fallback for a match that ranks below wherever
+ *   paging has reached, with an optional `onPendingInvalidQidChange` report
+ *   so the caller can warn before submit that typed-but-invalid text would
+ *   otherwise be silently discarded
  * - The "Grounded to …" chip once a candidate is selected, with a control to
  *   clear it
  * - An optional "Create without grounding" skip affordance
@@ -27,10 +33,36 @@
  * flag) is internal.
  */
 
-import { useCallback, useEffect, useId, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
+import type { KeyboardEvent } from "react";
 import { useDebounce } from "../../hooks/useDebounce";
 import { useWikidataCandidates } from "../../hooks/useEntityMentions";
-import type { WikidataCandidate } from "../../api/entityMentions";
+import type { WikidataCandidate, WikidataCandidateByQidData } from "../../api/entityMentions";
+
+/** A Wikidata QID: "Q" followed by digits with no leading zero, e.g. "Q42". */
+const QID_FORMAT = /^Q[1-9]\d*$/;
+
+/**
+ * Extracts a Wikidata QID from either a bare QID or a genuine wikidata.org
+ * item URL (`/wiki/Qn` or `/entity/Qn`). Deliberately narrow — it does not
+ * grab any Q-token out of arbitrary text — so a non-wikidata URL or stray
+ * text stays invalid rather than silently matching.
+ */
+function extractQid(raw: string): string | null {
+  const s = raw.trim();
+  const bare = s.toUpperCase();
+  if (QID_FORMAT.test(bare)) return bare;
+  const m = s.match(/wikidata\.org\/(?:wiki|entity)\/(Q[1-9]\d*)(?:[#?].*)?$/i);
+  return m?.[1] ? m[1].toUpperCase() : null;
+}
 
 export interface WikidataGroundingPickerProps {
   /**
@@ -62,11 +94,35 @@ export interface WikidataGroundingPickerProps {
   optional?: boolean;
   /** Whether to show the "Create without grounding" skip affordance. */
   allowSkip?: boolean;
+  /**
+   * Reports the pasted QID field's text whenever it is non-empty AND does
+   * not resolve to a valid QID (bare or wikidata.org URL) — `""` when the
+   * field is empty, holds a valid QID/URL, or after a successful resolve.
+   * Lets the caller warn before submitting that this text was typed but
+   * never applied. Omit for callers (e.g. the re-grounding dialog) that
+   * don't need this.
+   */
+  onPendingInvalidQidChange?: (text: string) => void;
+}
+
+/**
+ * Imperative handle exposed via ref — lets a caller with its own confirm
+ * flow (e.g. CreateEntityModal's unapplied-invalid-QID confirm) move focus
+ * into the paste-a-QID input after dismissing itself, rather than guessing
+ * at the picker's internal DOM structure.
+ */
+export interface WikidataGroundingPickerHandle {
+  /** Moves focus into the paste-a-QID input; the field's current text is left untouched. */
+  focusQidInput: () => void;
 }
 
 /**
  * Search → shortlist → select control for grounding an entity to a Wikidata
  * item.
+ *
+ * Exposes a `WikidataGroundingPickerHandle` via ref (currently just
+ * `focusQidInput()`); the ref is entirely optional and unused callers are
+ * unaffected.
  *
  * @example
  * ```tsx
@@ -79,20 +135,41 @@ export interface WikidataGroundingPickerProps {
  * />
  * ```
  */
-export function WikidataGroundingPicker({
-  name,
-  entityType,
-  selectedCandidate,
-  onSelectCandidate,
-  disabled = false,
-  heading = "Ground in Wikidata",
-  optional = true,
-  allowSkip = true,
-}: WikidataGroundingPickerProps) {
+export const WikidataGroundingPicker = forwardRef<
+  WikidataGroundingPickerHandle,
+  WikidataGroundingPickerProps
+>(function WikidataGroundingPicker(
+  {
+    name,
+    entityType,
+    selectedCandidate,
+    onSelectCandidate,
+    disabled = false,
+    heading = "Ground in Wikidata",
+    optional = true,
+    allowSkip = true,
+    onPendingInvalidQidChange,
+  },
+  ref
+) {
   const [groundingSkipped, setGroundingSkipped] = useState(false);
+  const [qidInput, setQidInput] = useState("");
+  const [qidResult, setQidResult] = useState<WikidataCandidateByQidData | null>(null);
 
   // Radio group `name` for candidate selection — unique per mounted instance.
   const wikidataGroupName = useId();
+  const qidInputId = useId();
+  const qidInputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusQidInput: () => {
+        qidInputRef.current?.focus();
+      },
+    }),
+    []
+  );
 
   // Debounced so typing doesn't spam the lookup on every keystroke.
   const debouncedName = useDebounce(name, 450);
@@ -108,6 +185,8 @@ export function WikidataGroundingPicker({
   // silently carry over to a different one.
   useEffect(() => {
     setGroundingSkipped(false);
+    setQidInput("");
+    setQidResult(null);
     wikidata.reset();
     onSelectCandidate(null);
     // Intentionally depends on name/entityType only, not on `wikidata` (a
@@ -139,9 +218,56 @@ export function WikidataGroundingPicker({
     onSelectCandidate(null);
   }, [onSelectCandidate]);
 
+  const extractedQid = extractQid(qidInput);
+  const isQidValid = extractedQid !== null;
+  const trimmedQidInput = qidInput.trim();
+  const showQidHint = trimmedQidInput !== "" && !isQidValid && qidResult === null;
+  // Reported to the caller regardless of `qidResult` (unlike the hint) — a
+  // typed-but-invalid value is "pending" whether or not a stale resolve
+  // message happens to also be showing.
+  const pendingInvalidQid = trimmedQidInput !== "" && !isQidValid ? trimmedQidInput : "";
+
+  // Lets the caller (e.g. CreateEntityModal) warn before submit that this
+  // text was typed but never resolved to a valid QID.
+  useEffect(() => {
+    onPendingInvalidQidChange?.(pendingInvalidQid);
+    // Intentionally depends on the derived value only, not on
+    // `onPendingInvalidQidChange` (may not be stable across the caller's
+    // renders), to avoid a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingInvalidQid]);
+
+  const handleResolveQid = useCallback(async () => {
+    if (extractedQid === null) return;
+    try {
+      const result = await wikidata.resolveByQid(extractedQid);
+      if (result.candidate !== null) {
+        onSelectCandidate(result.candidate);
+        setQidResult(null);
+        setQidInput("");
+      } else {
+        setQidResult(result);
+      }
+    } catch {
+      setQidResult({ candidate: null, unavailable: true });
+    }
+    // `wikidata` is a new object every render; only its (stable) methods matter here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extractedQid, onSelectCandidate]);
+
+  const handleQidKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void handleResolveQid();
+      }
+    },
+    [handleResolveQid]
+  );
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-1.5">
+      <div className="mb-1.5">
         <span className="text-sm font-medium text-gray-700">
           {heading}{" "}
           {optional && (
@@ -150,21 +276,6 @@ export function WikidataGroundingPicker({
             </span>
           )}
         </span>
-        {wikidata.hasSearched && (
-          <button
-            type="button"
-            onClick={() => wikidata.search()}
-            disabled={disabled || wikidata.isFetching}
-            className="
-              text-xs text-indigo-600 hover:text-indigo-700
-              font-medium
-              disabled:opacity-50 disabled:cursor-not-allowed
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 rounded
-            "
-          >
-            Search again
-          </button>
-        )}
       </div>
 
       {!groundingSkipped && (
@@ -293,6 +404,30 @@ export function WikidataGroundingPicker({
             </fieldset>
           )}
 
+          {!isNameSettling &&
+            wikidata.candidates.length > 0 &&
+            (wikidata.canShowMore || wikidata.isFetchingMore) && (
+              <button
+                type="button"
+                onClick={() => wikidata.showMore()}
+                disabled={disabled || wikidata.isFetchingMore}
+                className="
+                  flex items-center gap-2 text-xs text-indigo-600 hover:text-indigo-700
+                  font-medium
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 rounded
+                "
+              >
+                {wikidata.isFetchingMore && (
+                  <span
+                    className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"
+                    aria-hidden="true"
+                  />
+                )}
+                {wikidata.isFetchingMore ? "Loading more…" : "Show more"}
+              </button>
+            )}
+
           {selectedCandidate !== null ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500">Grounded to</span>
@@ -357,6 +492,75 @@ export function WikidataGroundingPicker({
               </button>
             )
           )}
+
+          <div className="pt-1 border-t border-gray-100">
+            <label
+              htmlFor={qidInputId}
+              className="block text-xs text-gray-500 mb-1"
+            >
+              Can&rsquo;t find it? Paste a Wikidata QID
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                ref={qidInputRef}
+                id={qidInputId}
+                type="text"
+                value={qidInput}
+                onChange={(event) => {
+                  setQidInput(event.target.value);
+                  setQidResult(null);
+                }}
+                onKeyDown={handleQidKeyDown}
+                placeholder="Q42"
+                disabled={disabled}
+                className="
+                  flex-1 min-w-0 px-2.5 py-1.5 text-sm
+                  border border-gray-300 rounded-md
+                  focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                "
+              />
+              <button
+                type="button"
+                onClick={() => void handleResolveQid()}
+                disabled={disabled || !isQidValid || wikidata.isResolvingQid}
+                className="
+                  shrink-0 px-2.5 py-1.5 text-xs font-medium
+                  text-indigo-600 border border-indigo-200 rounded-md
+                  hover:bg-indigo-50
+                  disabled:opacity-50 disabled:cursor-not-allowed
+                  focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1
+                "
+              >
+                {wikidata.isResolvingQid ? "Resolving…" : "Use this QID"}
+              </button>
+            </div>
+            {showQidHint && (
+              <p
+                role="status"
+                aria-live="polite"
+                className="mt-1.5 text-xs text-amber-700"
+              >
+                Enter a Wikidata QID like Q42, or paste its wikidata.org link.
+              </p>
+            )}
+            {qidResult !== null && (
+              <p
+                role="status"
+                aria-live="polite"
+                className="mt-1.5 text-xs text-amber-700"
+              >
+                {qidResult.unavailable ? (
+                  <>
+                    Couldn&rsquo;t reach Wikidata. You can still create this
+                    entity without grounding.
+                  </>
+                ) : (
+                  "No Wikidata item with that ID."
+                )}
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -367,6 +571,8 @@ export function WikidataGroundingPicker({
       )}
     </div>
   );
-}
+});
+
+WikidataGroundingPicker.displayName = "WikidataGroundingPicker";
 
 export default WikidataGroundingPicker;

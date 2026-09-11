@@ -34,7 +34,7 @@
  * `CreateEntityModal.candidates.test.tsx`.
  */
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
@@ -86,6 +86,11 @@ function makeWikidataHook(
     isFetching?: boolean;
     search?: Mock;
     reset?: Mock;
+    canShowMore?: boolean;
+    isFetchingMore?: boolean;
+    showMore?: Mock;
+    resolveByQid?: Mock;
+    isResolvingQid?: boolean;
   } = {}
 ) {
   return {
@@ -98,6 +103,11 @@ function makeWikidataHook(
     error: null,
     search: vi.fn(),
     reset: vi.fn(),
+    canShowMore: false,
+    isFetchingMore: false,
+    showMore: vi.fn(),
+    resolveByQid: vi.fn(),
+    isResolvingQid: false,
     ...overrides,
   };
 }
@@ -141,19 +151,6 @@ describe('WikidataGroundingPicker', () => {
       expect(hook.search).toHaveBeenCalled();
     });
 
-    it('shows a "Search again" affordance once a search has completed', () => {
-      mockWikidata({ hasSearched: true, candidates: [] });
-      renderPicker();
-
-      expect(screen.getByRole('button', { name: /search again/i })).toBeInTheDocument();
-    });
-
-    it('does not show "Search again" before any search has completed', () => {
-      mockWikidata({ hasSearched: false });
-      renderPicker();
-
-      expect(screen.queryByRole('button', { name: /search again/i })).not.toBeInTheDocument();
-    });
   });
 
   describe('Shortlist rendering', () => {
@@ -256,6 +253,35 @@ describe('WikidataGroundingPicker', () => {
       expect(onSelectCandidate).toHaveBeenCalledWith(null);
       expect(wikidata.reset).toHaveBeenCalled();
     });
+
+    it('clears the pasted QID field and any resolve result when name changes', () => {
+      mockWikidata({ hasSearched: true, candidates: [] });
+      const onSelectCandidate = vi.fn();
+      const { rerender } = render(
+        <WikidataGroundingPicker
+          name="Test Person"
+          entityType="person"
+          selectedCandidate={null}
+          onSelectCandidate={onSelectCandidate}
+        />
+      );
+
+      fireEvent.change(screen.getByLabelText(/paste a wikidata qid/i), {
+        target: { value: 'Q42' },
+      });
+      expect(screen.getByLabelText(/paste a wikidata qid/i)).toHaveValue('Q42');
+
+      rerender(
+        <WikidataGroundingPicker
+          name="Different Name"
+          entityType="person"
+          selectedCandidate={null}
+          onSelectCandidate={onSelectCandidate}
+        />
+      );
+
+      expect(screen.getByLabelText(/paste a wikidata qid/i)).toHaveValue('');
+    });
   });
 
   describe('No match / unavailable states', () => {
@@ -285,6 +311,325 @@ describe('WikidataGroundingPicker', () => {
       expect(
         screen.getByRole('button', { name: /remove grounding to test person/i })
       ).toBeDisabled();
+    });
+
+    it('disables the QID input and resolve button', () => {
+      mockWikidata({ hasSearched: true, candidates: [] });
+      renderPicker({ disabled: true });
+
+      expect(screen.getByLabelText(/paste a wikidata qid/i)).toBeDisabled();
+      expect(screen.getByRole('button', { name: /use this qid/i })).toBeDisabled();
+    });
+  });
+
+  describe('Show more pagination', () => {
+    it('shows a "Show more" button when canShowMore is true', () => {
+      mockWikidata({ hasSearched: true, candidates: [makeCandidate()], canShowMore: true });
+      renderPicker();
+
+      expect(screen.getByRole('button', { name: /^show more$/i })).toBeInTheDocument();
+    });
+
+    it('hides the "Show more" button once canShowMore is false and no fetch is in flight', () => {
+      mockWikidata({ hasSearched: true, candidates: [makeCandidate()], canShowMore: false });
+      renderPicker();
+
+      expect(screen.queryByRole('button', { name: /show more/i })).not.toBeInTheDocument();
+    });
+
+    it('calls showMore when clicked, appending the next page', () => {
+      const hook = mockWikidata({
+        hasSearched: true,
+        candidates: [makeCandidate()],
+        canShowMore: true,
+      });
+      renderPicker();
+
+      fireEvent.click(screen.getByRole('button', { name: /^show more$/i }));
+
+      expect(hook.showMore).toHaveBeenCalled();
+    });
+
+    it('shows a spinner and disables the button while isFetchingMore, even if canShowMore has gone false', () => {
+      mockWikidata({
+        hasSearched: true,
+        candidates: [makeCandidate()],
+        canShowMore: false,
+        isFetchingMore: true,
+      });
+      renderPicker();
+
+      const button = screen.getByRole('button', { name: /loading more/i });
+      expect(button).toBeDisabled();
+    });
+
+    it('does not show "Show more" before any candidates are rendered', () => {
+      mockWikidata({ hasSearched: true, candidates: [], canShowMore: true });
+      renderPicker();
+
+      expect(screen.queryByRole('button', { name: /show more/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('QID paste fallback', () => {
+    function pasteQid(value: string) {
+      fireEvent.change(screen.getByLabelText(/paste a wikidata qid/i), {
+        target: { value },
+      });
+    }
+
+    it('keeps the resolve button disabled until the QID format is valid', () => {
+      renderPicker();
+
+      pasteQid('not-a-qid');
+      expect(screen.getByRole('button', { name: /use this qid/i })).toBeDisabled();
+
+      pasteQid('Q42');
+      expect(screen.getByRole('button', { name: /use this qid/i })).not.toBeDisabled();
+    });
+
+    it('rejects a leading-zero QID as invalid format', () => {
+      renderPicker();
+
+      pasteQid('Q007');
+      expect(screen.getByRole('button', { name: /use this qid/i })).toBeDisabled();
+    });
+
+    it('rejects a non-wikidata URL as invalid, with no resolve call', () => {
+      const resolveByQid = vi.fn();
+      mockWikidata({ resolveByQid });
+      renderPicker();
+
+      pasteQid('https://example.com/wiki/Q42');
+      expect(screen.getByRole('button', { name: /use this qid/i })).toBeDisabled();
+
+      fireEvent.click(screen.getByRole('button', { name: /use this qid/i }));
+      expect(resolveByQid).not.toHaveBeenCalled();
+    });
+
+    it('rejects a plain number as invalid', () => {
+      renderPicker();
+
+      pasteQid('42');
+      expect(screen.getByRole('button', { name: /use this qid/i })).toBeDisabled();
+    });
+
+    it('extracts the QID from a pasted wikidata.org item URL and resolves with it', async () => {
+      const candidate = makeCandidate({ qid: 'Q42', label: 'Placeholder Match' });
+      const resolveByQid = vi.fn().mockResolvedValue({ candidate, unavailable: false });
+      mockWikidata({ resolveByQid });
+      const { onSelectCandidate } = renderPicker();
+
+      pasteQid('https://www.wikidata.org/wiki/Q42');
+      expect(screen.getByRole('button', { name: /use this qid/i })).not.toBeDisabled();
+
+      fireEvent.click(screen.getByRole('button', { name: /use this qid/i }));
+
+      expect(resolveByQid).toHaveBeenCalledWith('Q42');
+      await waitFor(() => {
+        expect(onSelectCandidate).toHaveBeenCalledWith(candidate);
+      });
+    });
+
+    it('resolves and selects the candidate on success', async () => {
+      const candidate = makeCandidate({ qid: 'Q42', label: 'Placeholder Match' });
+      const resolveByQid = vi.fn().mockResolvedValue({ candidate, unavailable: false });
+      mockWikidata({ resolveByQid });
+      const { onSelectCandidate } = renderPicker();
+
+      pasteQid('Q42');
+      fireEvent.click(screen.getByRole('button', { name: /use this qid/i }));
+
+      expect(resolveByQid).toHaveBeenCalledWith('Q42');
+      await waitFor(() => {
+        expect(onSelectCandidate).toHaveBeenCalledWith(candidate);
+      });
+    });
+
+    it('resolves on pressing Enter in the QID field', async () => {
+      const candidate = makeCandidate({ qid: 'Q42', label: 'Placeholder Match' });
+      const resolveByQid = vi.fn().mockResolvedValue({ candidate, unavailable: false });
+      mockWikidata({ resolveByQid });
+      const { onSelectCandidate } = renderPicker();
+
+      pasteQid('Q42');
+      fireEvent.keyDown(screen.getByLabelText(/paste a wikidata qid/i), { key: 'Enter' });
+
+      await waitFor(() => {
+        expect(onSelectCandidate).toHaveBeenCalledWith(candidate);
+      });
+    });
+
+    it('shows a "no item" message when the QID does not resolve to a candidate', async () => {
+      const resolveByQid = vi.fn().mockResolvedValue({ candidate: null, unavailable: false });
+      mockWikidata({ resolveByQid });
+      renderPicker();
+
+      pasteQid('Q999999999');
+      fireEvent.click(screen.getByRole('button', { name: /use this qid/i }));
+
+      expect(await screen.findByText(/no wikidata item with that id/i)).toBeInTheDocument();
+    });
+
+    it('shows the unavailable message when the QID lookup itself fails', async () => {
+      const resolveByQid = vi.fn().mockResolvedValue({ candidate: null, unavailable: true });
+      mockWikidata({ resolveByQid });
+      renderPicker();
+
+      pasteQid('Q42');
+      fireEvent.click(screen.getByRole('button', { name: /use this qid/i }));
+
+      expect(await screen.findByText(/couldn.t reach wikidata/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('Invalid-format hint', () => {
+    function pasteQid(value: string) {
+      fireEvent.change(screen.getByLabelText(/paste a wikidata qid/i), {
+        target: { value },
+      });
+    }
+
+    it('shows a hint when the field is non-empty but not a valid QID or URL', () => {
+      renderPicker();
+
+      pasteQid('not-a-qid');
+
+      expect(
+        screen.getByText(/enter a wikidata qid like q42, or paste its wikidata\.org link/i)
+      ).toBeInTheDocument();
+    });
+
+    it('renders the hint with the same amber warning treatment as the post-resolve messages', () => {
+      renderPicker();
+
+      pasteQid('not-a-qid');
+
+      const hint = screen.getByText(
+        /enter a wikidata qid like q42, or paste its wikidata\.org link/i
+      );
+      expect(hint.className).toContain('text-amber-700');
+      expect(hint.className).not.toContain('text-gray-500');
+    });
+
+    it('hides the hint when the field is empty', () => {
+      renderPicker();
+
+      expect(screen.queryByText(/enter a wikidata qid like q42/i)).not.toBeInTheDocument();
+    });
+
+    it('hides the hint once the field holds a valid QID', () => {
+      renderPicker();
+
+      pasteQid('not-a-qid');
+      expect(screen.getByText(/enter a wikidata qid like q42/i)).toBeInTheDocument();
+
+      pasteQid('Q42');
+      expect(screen.queryByText(/enter a wikidata qid like q42/i)).not.toBeInTheDocument();
+    });
+
+    it('hides the hint once the field holds a valid wikidata.org URL', () => {
+      renderPicker();
+
+      pasteQid('https://www.wikidata.org/wiki/Q42');
+      expect(screen.queryByText(/enter a wikidata qid like q42/i)).not.toBeInTheDocument();
+    });
+
+    it('does not show at the same time as the post-resolve "no item" message', async () => {
+      const resolveByQid = vi.fn().mockResolvedValue({ candidate: null, unavailable: false });
+      mockWikidata({ resolveByQid });
+      renderPicker();
+
+      pasteQid('Q999999999');
+      fireEvent.click(screen.getByRole('button', { name: /use this qid/i }));
+      expect(await screen.findByText(/no wikidata item with that id/i)).toBeInTheDocument();
+
+      // Typing an invalid value afterward clears the stale result message and
+      // shows the hint instead — never both at once.
+      pasteQid('not-a-qid');
+      expect(screen.queryByText(/no wikidata item with that id/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/enter a wikidata qid like q42/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('onPendingInvalidQidChange', () => {
+    function pasteQid(value: string) {
+      fireEvent.change(screen.getByLabelText(/paste a wikidata qid/i), {
+        target: { value },
+      });
+    }
+
+    it('fires with the trimmed typed text once it fails to resolve to a QID', () => {
+      const onPendingInvalidQidChange = vi.fn();
+      renderPicker({ onPendingInvalidQidChange });
+
+      pasteQid('  not-a-qid  ');
+
+      expect(onPendingInvalidQidChange).toHaveBeenLastCalledWith('not-a-qid');
+    });
+
+    it('fires with "" when the field is empty', () => {
+      const onPendingInvalidQidChange = vi.fn();
+      renderPicker({ onPendingInvalidQidChange });
+
+      expect(onPendingInvalidQidChange).toHaveBeenLastCalledWith('');
+    });
+
+    it('fires with "" once the field holds a valid QID or URL — a valid-but-unapplied QID is not "invalid"', () => {
+      const onPendingInvalidQidChange = vi.fn();
+      renderPicker({ onPendingInvalidQidChange });
+
+      pasteQid('not-a-qid');
+      expect(onPendingInvalidQidChange).toHaveBeenLastCalledWith('not-a-qid');
+
+      pasteQid('Q42');
+      expect(onPendingInvalidQidChange).toHaveBeenLastCalledWith('');
+    });
+
+    it('fires with "" after a successful resolve clears the field', async () => {
+      const candidate = makeCandidate({ qid: 'Q42', label: 'Placeholder Match' });
+      const resolveByQid = vi.fn().mockResolvedValue({ candidate, unavailable: false });
+      const onPendingInvalidQidChange = vi.fn();
+      mockWikidata({ resolveByQid });
+      renderPicker({ onPendingInvalidQidChange });
+
+      pasteQid('not-a-qid');
+      expect(onPendingInvalidQidChange).toHaveBeenLastCalledWith('not-a-qid');
+
+      pasteQid('Q42');
+      fireEvent.click(screen.getByRole('button', { name: /use this qid/i }));
+
+      await waitFor(() => {
+        expect(onPendingInvalidQidChange).toHaveBeenLastCalledWith('');
+      });
+    });
+
+    it('fires with "" after a name/type change resets the field', () => {
+      const onPendingInvalidQidChange = vi.fn();
+      const { rerender } = render(
+        <WikidataGroundingPicker
+          name="Test Person"
+          entityType="person"
+          selectedCandidate={null}
+          onSelectCandidate={vi.fn()}
+          onPendingInvalidQidChange={onPendingInvalidQidChange}
+        />
+      );
+
+      pasteQid('not-a-qid');
+      expect(onPendingInvalidQidChange).toHaveBeenLastCalledWith('not-a-qid');
+
+      rerender(
+        <WikidataGroundingPicker
+          name="Different Name"
+          entityType="person"
+          selectedCandidate={null}
+          onSelectCandidate={vi.fn()}
+          onPendingInvalidQidChange={onPendingInvalidQidChange}
+        />
+      );
+
+      expect(onPendingInvalidQidChange).toHaveBeenLastCalledWith('');
     });
   });
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.83.0] - 2026-09-11
+
+### Added
+- **The create-entity Wikidata grounding picker can now reach a match that ranks below the first page.** The candidate search endpoint (`GET /entities/wikidata-candidates`) gained an `offset` query param (`0..200`) that pages deeper into the same ranked results — powering a "Show more" control that appends the next page. A new sibling endpoint, `GET /entities/wikidata-candidates/{qid}`, resolves a pasted Wikidata QID (or its `wikidata.org` link) directly to a candidate (the picker's paste-a-QID fallback), degrading exactly like the search endpoint: a malformed or unknown QID returns `candidate: null` with `unavailable: false`; a lookup failure returns `candidate: null` with `unavailable: true`; never a 5xx.
+
+### Changed
+- **The Wikidata candidate search now returns up to 7 matches per page by default (was 5), and accepts `limit` up to 20 (was 10).** `limit` is a maximum, so a caller that omits it simply receives more rows than before; the response shape is unchanged. The only in-repo caller is the create-entity picker.
+
 ## [0.82.2] - 2026-09-10
 
 ### Changed

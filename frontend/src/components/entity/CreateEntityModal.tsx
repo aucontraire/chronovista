@@ -170,9 +170,10 @@ export default function CreateEntityModal({
   const [approvedCandidate, setApprovedCandidate] =
     useState<WikidataCandidate | null>(null);
   // Feature 067 (US3, "Option C"): true once the user has edited the
-  // Description field themselves. Approving a candidate only ever prefills
-  // an empty, untouched Description — this flag is what stops a later
-  // re-approval from clobbering (or re-populating) what the user typed.
+  // Description field themselves. Approving a candidate prefills the
+  // Description from it — and re-picking a different candidate updates the
+  // prefill again — but this flag is what stops any of that from clobbering
+  // a Description the user typed themselves.
   const [descriptionTouched, setDescriptionTouched] = useState(false);
 
   // ---------------------------------------------------------------------------
@@ -491,18 +492,17 @@ export default function CreateEntityModal({
   const handleCandidateSelect = useCallback(
     (candidate: WikidataCandidate | null) => {
       setApprovedCandidate(candidate);
-      // Feature 067 (US3, "Option C"): only ever prefill an empty, untouched
-      // Description — never overwrite what the user typed, and never prefill
-      // on a clear (candidate === null, e.g. removing the grounding chip).
-      if (
-        candidate !== null &&
-        !descriptionTouched &&
-        description.trim() === ""
-      ) {
+      // Feature 067 (US3, "Option C"): the Description is prefilled from the
+      // currently-selected candidate whenever the user hasn't manually edited
+      // it — switching candidates updates it (including clearing it when the
+      // newly-picked candidate has no description of its own). A manually
+      // edited Description is never overwritten, and there's no prefill on a
+      // clear (candidate === null, e.g. removing the grounding chip).
+      if (candidate !== null && !descriptionTouched) {
         setDescription(candidate.description ?? "");
       }
     },
-    [descriptionTouched, description]
+    [descriptionTouched]
   );
 
   // ---------------------------------------------------------------------------

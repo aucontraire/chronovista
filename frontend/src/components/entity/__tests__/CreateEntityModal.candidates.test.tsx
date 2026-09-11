@@ -498,6 +498,54 @@ describe("CreateEntityModal — Wikidata grounding (Feature 067, US3)", () => {
       expect(getDescriptionField()).toHaveValue("My own description");
     });
 
+    it("updates the Description to the newly-picked candidate's when switching candidates before touching the field", () => {
+      mockWikidata({
+        hasSearched: true,
+        candidates: [
+          makeCandidate({ qid: "Q000001", description: "a placeholder description" }),
+          makeCandidate({
+            qid: "Q000002",
+            label: "Test Person Two",
+            description: "a different placeholder description",
+          }),
+        ],
+      });
+
+      renderModal();
+      fillNameAndType();
+
+      const radios = screen.getAllByRole("radio");
+
+      fireEvent.click(radios[0]!);
+      expect(getDescriptionField()).toHaveValue("a placeholder description");
+
+      // Regression: picking a second candidate must refresh the prefill
+      // instead of leaving it stuck on the first pick.
+      fireEvent.click(radios[1]!);
+      expect(getDescriptionField()).toHaveValue("a different placeholder description");
+    });
+
+    it("clears the prefilled Description when switching to a candidate with no description", () => {
+      mockWikidata({
+        hasSearched: true,
+        candidates: [
+          makeCandidate({ qid: "Q000001", description: "a placeholder description" }),
+          makeCandidate({ qid: "Q000002", label: "Test Person Two", description: null }),
+        ],
+      });
+
+      renderModal();
+      fillNameAndType();
+
+      const radios = screen.getAllByRole("radio");
+
+      fireEvent.click(radios[0]!);
+      expect(getDescriptionField()).toHaveValue("a placeholder description");
+
+      fireEvent.click(radios[1]!);
+      expect(getDescriptionField()).toHaveValue("");
+    });
+
     it("does not re-prefill after the user has touched Description, even after clearing it and approving a different candidate", () => {
       mockWikidata({
         hasSearched: true,

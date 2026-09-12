@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import os
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
-from uuid import uuid4
+from urllib.parse import quote, urlparse
+from uuid import UUID, uuid4
 
 import httpx
 from pydantic import BaseModel
@@ -25,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
 from chronovista.db.models import Channel as ChannelDB
+from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import Video as VideoDB
 
 logger = logging.getLogger(__name__)
@@ -35,13 +37,67 @@ logger = logging.getLogger(__name__)
 # subdomains (yt3.ggpht.com, i9.ytimg.com, …) are covered, while lookalikes like
 # "evil.ytimg.com.attacker.com" are not. Fetches also disable redirect-following
 # (below), since these CDNs serve thumbnails directly.
-_ALLOWED_IMAGE_HOST_SUFFIXES = (".ytimg.com", ".ggpht.com", ".googleusercontent.com")
+#
+# Feature 079 adds ".wikimedia.org" so entity portraits (Wikimedia Commons, served from
+# upload.wikimedia.org) can be proxied and cached same-origin like YouTube thumbnails.
+_ALLOWED_IMAGE_HOST_SUFFIXES = (
+    ".ytimg.com",
+    ".ggpht.com",
+    ".googleusercontent.com",
+    ".wikimedia.org",
+)
 
 
 def _is_allowed_image_host(url: str) -> bool:
-    """True only if *url*'s host is a YouTube image CDN (#253 SSRF guard)."""
+    """True only if *url*'s host is an allowed image CDN (#253 SSRF guard)."""
     host = urlparse(url).hostname
     return host is not None and host.endswith(_ALLOWED_IMAGE_HOST_SUFFIXES)
+
+
+def _is_transient_fetch_failure(reason: str | None) -> bool:
+    """True if a ``_fetch_and_cache`` failure reason is worth re-attempting on the next view.
+
+    A transient failure (a request timeout, a network/HTTP error, or an upstream 429/5xx) clears on
+    its own — Wikimedia in particular 429s a burst of large-portrait fetches, then recovers within
+    seconds. The placeholder served in that window must therefore NOT be cached by the browser (see
+    ``get_entity_image``), or a single transient blip pins the silhouette for an hour even after the
+    real image is cacheable again. Stable failures (a genuine 404 ``.missing``, a disallowed host, an
+    over-size image, an entity with no image at all) stay cacheable.
+    """
+    if reason is None:
+        return False
+    return (
+        reason.startswith("timeout")
+        or reason.startswith("http_error")
+        or reason.startswith("server_error_")  # 429 and 5xx
+    )
+
+
+# Wikimedia's User-Agent policy 403s requests with a missing/generic UA
+# (httpx's default `python-httpx/...` is rejected). A descriptive UA is required for
+# upload.wikimedia.org (entity portraits); YouTube CDNs accept it too, so it is sent on
+# every image fetch. See https://meta.wikimedia.org/wiki/User-Agent_policy.
+_IMAGE_FETCH_USER_AGENT = (
+    "chronovista/1.0 (local personal library tooling; image cache)"
+)
+
+
+def commons_image_url(filename: str) -> str:
+    """Build the direct Wikimedia Commons upload URL for a bare image filename (Feature 079).
+
+    Commons stores a file at ``/wikipedia/commons/<h0>/<h0h1>/<name>`` where ``h`` is the MD5 hex
+    digest of the underscored filename. The direct URL is used (not ``Special:FilePath``) because the
+    image proxy refuses redirects (#253); this resolves to the file with no redirect. The host,
+    ``upload.wikimedia.org``, is on the SSRF allowlist above.
+    """
+    name = filename.strip().replace(" ", "_")
+    digest = hashlib.md5(
+        name.encode("utf-8")
+    ).hexdigest()  # noqa: S324 - path scheme, not security
+    return (
+        "https://upload.wikimedia.org/wikipedia/commons/"
+        f"{digest[0]}/{digest[:2]}/{quote(name)}"
+    )
 
 
 def iter_cached_files(
@@ -180,6 +236,7 @@ class ImageCacheConfig(BaseModel):
     cache_dir: Path
     channels_dir: Path
     videos_dir: Path
+    entities_dir: Path | None = None
     on_demand_timeout: float = 2.0
     warm_timeout: float = 10.0
     max_concurrent_fetches: int = 5
@@ -276,6 +333,8 @@ class ImageCacheService:
         try:
             self._config.channels_dir.mkdir(parents=True, exist_ok=True)
             self._config.videos_dir.mkdir(parents=True, exist_ok=True)
+            if self._config.entities_dir is not None:
+                self._config.entities_dir.mkdir(parents=True, exist_ok=True)
             logger.debug(
                 "Image cache directories ready: channels=%s, videos=%s",
                 self._config.channels_dir,
@@ -294,13 +353,18 @@ class ImageCacheService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _serve_placeholder(entity_type: str) -> Response:
+    def _serve_placeholder(entity_type: str, *, cacheable: bool = True) -> Response:
         """Return an SVG placeholder response.
 
         Parameters
         ----------
         entity_type : str
             Either ``"channel"`` or ``"video"``.
+        cacheable : bool
+            Whether the browser may cache this placeholder. ``True`` (the default, for a stable
+            "no image" state) sends the 1-hour ``Cache-Control``. ``False`` sends ``no-store`` so a
+            placeholder served after a *transient* upstream failure (e.g. a Wikimedia 429) is not
+            pinned in the browser for an hour — the next view re-requests and gets the real image.
 
         Returns
         -------
@@ -316,8 +380,10 @@ class ImageCacheService:
             content=svg_bytes,
             media_type="image/svg+xml",
             headers={
-                "Cache-Control": _CACHE_CONTROL_PLACEHOLDER,
-                "X-Cache": "PLACEHOLDER",
+                "Cache-Control": (
+                    _CACHE_CONTROL_PLACEHOLDER if cacheable else "no-store"
+                ),
+                "X-Cache": "PLACEHOLDER" if cacheable else "PLACEHOLDER-TRANSIENT",
             },
         )
 
@@ -389,6 +455,7 @@ class ImageCacheService:
                 async with httpx.AsyncClient(
                     follow_redirects=False,
                     timeout=timeout,
+                    headers={"User-Agent": _IMAGE_FETCH_USER_AGENT},
                 ) as client:
                     response = await client.get(url)
             except httpx.TimeoutException:
@@ -728,6 +795,88 @@ class ImageCacheService:
             reason,
         )
         return self._serve_placeholder("channel")
+
+    # ------------------------------------------------------------------
+    # Public API: get_entity_image (Feature 079)
+    # ------------------------------------------------------------------
+
+    async def get_entity_image(
+        self,
+        session: AsyncSession,
+        entity_id: str,
+    ) -> Response:
+        """Serve an entity's Wikidata portrait, fetching and caching on miss (Feature 079).
+
+        Reads the entity's ``properties.image`` (a Wikimedia Commons filename captured from
+        Wikidata), derives the direct Commons upload URL, and proxies it same-origin like a channel
+        thumbnail. An entity with no image property, a malformed id, or an un-fetchable image yields
+        an SVG placeholder.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session for looking up the entity's stored image filename.
+        entity_id : str
+            The entity UUID.
+
+        Returns
+        -------
+        Response
+            Image bytes (JPEG/PNG/WebP) or an SVG placeholder.
+        """
+        if self._passthrough or self._config.entities_dir is None:
+            return self._serve_placeholder("channel")
+
+        cache_path = self._config.entities_dir / f"{entity_id}.jpg"
+
+        # 1. Cache HIT
+        if self._check_cache(cache_path) == "HIT":
+            return self._serve_cached_file(cache_path, "HIT")
+
+        # 2. .missing marker → placeholder
+        if self._check_missing(cache_path):
+            return self._serve_placeholder("channel")
+
+        # 3. Look up the Commons filename from properties.image
+        try:
+            eid = UUID(entity_id)
+        except ValueError:
+            return self._serve_placeholder("channel")
+        result = await session.execute(
+            select(NamedEntityDB.properties).where(NamedEntityDB.id == eid)
+        )
+        row = result.first()
+        filename: str | None = None
+        if row is not None and isinstance(row[0], dict):
+            block = row[0].get("image")
+            if isinstance(block, dict):
+                values = block.get("values")
+                if isinstance(values, list) and values and isinstance(values[0], str):
+                    filename = values[0]
+
+        # 4. No image property → placeholder
+        if not filename:
+            return self._serve_placeholder("channel")
+
+        # 5. Fetch + cache the direct Commons URL
+        success, reason = await self._fetch_and_cache(
+            url=commons_image_url(filename),
+            cache_path=cache_path,
+            timeout=self._config.on_demand_timeout,
+        )
+        if success:
+            return self._serve_cached_file(cache_path, "MISS")
+        logger.info(
+            "Failed to fetch entity image for %s (%s); serving placeholder",
+            entity_id,
+            reason,
+        )
+        # A transient upstream failure (Wikimedia 429, a 5xx, a timeout) must not be cached by the
+        # browser: otherwise one blip pins the silhouette for an hour even after the portrait is
+        # fetchable again. A stable "no image" was already returned above (no filename branch).
+        return self._serve_placeholder(
+            "channel", cacheable=not _is_transient_fetch_failure(reason)
+        )
 
     # ------------------------------------------------------------------
     # Public API: get_video_image (T013)
@@ -1139,6 +1288,132 @@ class ImageCacheService:
 
             # Advance from the last row returned, not by a fixed stride.
             after = batch[-1]
+
+        return WarmResult(
+            downloaded=downloaded,
+            skipped=skipped,
+            failed=failed,
+            no_url=no_url,
+            total=total,
+        )
+
+    # ------------------------------------------------------------------
+    # Public API: warm_entities (Feature 079)
+    # ------------------------------------------------------------------
+
+    async def warm_entities(
+        self,
+        session: AsyncSession,
+        *,
+        delay: float = 1.0,
+        limit: int | None = None,
+        dry_run: bool = False,
+        progress_callback: Callable[[str, str], None] | None = None,
+    ) -> WarmResult:
+        """Pre-download entity portraits (Feature 079) that are not yet cached.
+
+        Mirrors :meth:`warm_channels`: walks every entity whose ``properties.image`` holds a
+        Wikimedia Commons filename, downloads the direct Commons image into the entity cache, and
+        skips ones already cached. Uses :meth:`_fetch_with_warm_retry`, so Wikimedia's intermittent
+        429s are absorbed by exponential backoff rather than leaving a portrait unfetched — the
+        reason on-demand views (a single, no-retry fetch) miss under load. Implicitly resumable: a
+        re-run skips existing cache files, so it can be re-invoked after an interruption or after a
+        backfill adds more image filenames.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session for reading entity image filenames.
+        delay : float
+            Seconds to sleep between successive downloads (default 1.0 — gentler than the channel/
+            video default because Commons originals are larger and rate-limited harder).
+        limit : int | None
+            Maximum number of images to download. ``None`` means unlimited.
+        dry_run : bool
+            If ``True``, count what *would* be downloaded without fetching.
+        progress_callback : Callable[[str, str], None] | None
+            Optional ``(entity_id, status)`` callback for CLI progress.
+
+        Returns
+        -------
+        WarmResult
+            Counts of downloaded / skipped / failed / no_url / total.
+        """
+        downloaded = 0
+        skipped = 0
+        failed = 0
+        no_url = 0
+
+        if self._config.entities_dir is None:
+            return WarmResult(downloaded=0, skipped=0, failed=0, no_url=0, total=0)
+
+        # Work-list: entities with a non-null Commons filename at properties.image.values[0].
+        # Same function-wrapped JSONB extraction as list_wikidata_grounded — seq-scans, acceptable
+        # at the current scale (low thousands of grounded rows).
+        image_filename = NamedEntityDB.properties["image"]["values"][0].as_string()
+        result = await session.execute(
+            select(NamedEntityDB.id, image_filename)
+            .where(image_filename.isnot(None))
+            .order_by(NamedEntityDB.id)
+        )
+        rows = result.all()
+        total = len(rows)
+
+        for row in rows:
+            entity_id: str = str(row[0])
+            filename: str | None = row[1]
+
+            # Defensive: the WHERE already excludes NULLs, but a stored empty string would slip
+            # through and derive a bogus Commons URL.
+            if not filename:
+                no_url += 1
+                if progress_callback is not None:
+                    progress_callback(entity_id, "no_url")
+                continue
+
+            cache_path = self._config.entities_dir / f"{entity_id}.jpg"
+            missing_path = self._get_missing_path(cache_path)
+
+            if self._check_cache(cache_path) == "HIT":
+                skipped += 1
+                if progress_callback is not None:
+                    progress_callback(entity_id, "skipped")
+                continue
+
+            if dry_run:
+                downloaded += 1
+                if progress_callback is not None:
+                    progress_callback(entity_id, "dry_run")
+                continue
+
+            if limit is not None and downloaded >= limit:
+                skipped += 1
+                if progress_callback is not None:
+                    progress_callback(entity_id, "limit_reached")
+                continue
+
+            # Re-attempt a previously failed fetch (mirrors warm_channels).
+            if missing_path.is_file():
+                with contextlib.suppress(OSError):
+                    missing_path.unlink()
+
+            success, reason = await self._fetch_with_warm_retry(
+                url=commons_image_url(filename),
+                cache_path=cache_path,
+                progress_callback=progress_callback,
+            )
+
+            if success:
+                downloaded += 1
+                if progress_callback is not None:
+                    progress_callback(entity_id, "downloaded")
+            else:
+                failed += 1
+                if progress_callback is not None:
+                    progress_callback(entity_id, f"failed:{reason}")
+
+            if delay > 0:
+                await asyncio.sleep(delay)
 
         return WarmResult(
             downloaded=downloaded,

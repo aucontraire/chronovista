@@ -24,15 +24,34 @@
  * mutation instance so one action's pending/error state never bleeds into the
  * other's UI (e.g. Refresh must never show "Refreshing…" because a re-link
  * confirm happens to be in flight).
+ *
+ * Feature 079 (US3) adds special-cased rendering for the expanded Wikidata
+ * property set instead of the generic `<dl>` join:
+ * - `image` — a portrait fetched from the entity image proxy; renders
+ *   nothing when absent or on a load error.
+ * - Relation properties (`spouse`, `father`, …) — each value links to its
+ *   local entity page when its aligned QID resolves via
+ *   `useWikidataEntityMap`, else to wikidata.org, else plain text.
+ * - Social/web properties (`x_username`, …) — a link built from the fixed
+ *   per-platform URL pattern, or plain text for an unrecognized key.
+ * - `wikidata_description` / `wikidata_aliases` — a visually distinct,
+ *   copy-only reference block. These are NEVER editable here — they are not
+ *   the curated `canonical_name`/`description` and offer no control that
+ *   writes to either.
+ * - Every other key (including `native_language_name`/`birth_name`, and any
+ *   future/unknown key) keeps the original generic `<dl>` rendering.
  */
 
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type {
   EntityEnrichment,
   EntityPropertyValue,
   WikidataCandidate,
 } from "../../api/entityMentions";
+import { entityImageUrl, socialProfileUrl } from "../../api/entityMentions";
 import { useRegroundEntity } from "../../hooks/useRegroundEntity";
+import { useWikidataEntityMap } from "../../hooks/useEntityMentions";
 import { WikidataGroundingPicker } from "./WikidataGroundingPicker";
 
 export interface EntityEnrichmentSectionProps {
@@ -44,6 +63,14 @@ export interface EntityEnrichmentSectionProps {
   canonicalName: string;
   /** Enrichment data from the entity detail response; absent on older payloads. */
   enrichment?: EntityEnrichment;
+  /**
+   * Called right before a "Change link" or "Refresh" mutation is fired, so
+   * the containing page can start polling the entity-detail query for the
+   * background write that follows (Feature 079 follow-up) — that write
+   * lands after the mutation itself returns, so the caller needs a moment
+   * to snapshot the pre-mutation properties before anything changes.
+   */
+  onEnrichmentMutationStart?: () => void;
 }
 
 /**
@@ -62,6 +89,43 @@ function formatPropertyValues(value: EntityPropertyValue): string {
   return (value.values ?? []).join(", ");
 }
 
+/** Relation properties (Feature 079): values are labels, `qids` the aligned Wikidata QIDs. */
+const RELATION_KEYS = new Set([
+  "spouse",
+  "father",
+  "mother",
+  "child",
+  "sibling",
+  "place_of_death",
+  "field_of_work",
+  "part_of",
+  "unmarried_partner",
+  "significant_person",
+]);
+
+/** Social/web properties (Feature 079): a single handle value, linked via a fixed URL pattern. */
+// The social/web property keys, kept in sync with `socialProfileUrl` (api/entityMentions).
+// A key present here but unhandled there simply falls back to plain text, so a drift degrades
+// gracefully rather than breaking.
+const SOCIAL_KEYS = new Set<string>([
+  "x_username",
+  "instagram_username",
+  "youtube_channel_id",
+  "facebook_id",
+  "tiktok_username",
+  "mastodon_address",
+  "official_website",
+]);
+
+/** Display-only reference properties (Feature 079): never editable here. */
+const REFERENCE_KEYS = new Set(["wikidata_description", "wikidata_aliases"]);
+
+/** Extracts the string QIDs from a property block's `qids` field, if any. */
+function getQids(value: EntityPropertyValue): string[] {
+  const raw = value.qids;
+  return Array.isArray(raw) ? raw.filter((q): q is string => typeof q === "string") : [];
+}
+
 function VerifiedBadge() {
   return (
     <span
@@ -74,11 +138,84 @@ function VerifiedBadge() {
   );
 }
 
+/**
+ * Renders the relation properties (`spouse`, `father`, …) as a labeled list,
+ * linking each value to its local entity page when its aligned QID resolves
+ * via `useWikidataEntityMap`, else to wikidata.org, else plain text.
+ *
+ * Pulled into its own component — like `WikidataGroundingPicker` for the
+ * "Change link" editor — so `useWikidataEntityMap` is only called (and only
+ * needs mocking in a test harness) when there is at least one relation
+ * property to resolve; the caller only mounts this when `entries` is
+ * non-empty.
+ */
+function RelationsBlock({
+  entries,
+  bordered,
+}: {
+  entries: Array<[string, EntityPropertyValue]>;
+  bordered: boolean;
+}) {
+  const qids = Array.from(new Set(entries.flatMap(([, value]) => getQids(value))));
+  const wikidataMap = useWikidataEntityMap(qids);
+
+  return (
+    <div className={bordered ? "pt-3 border-t border-slate-100" : ""}>
+      <h3 className="text-xs font-medium text-gray-500 mb-2">Relations</h3>
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+        {entries.map(([key, value]) => {
+          const values = value.values ?? [];
+          const qidsForKey = getQids(value);
+          return (
+            <div key={key} className="flex flex-col">
+              <dt className="text-xs font-medium text-gray-500">
+                {humanizePropertyKey(key)}
+              </dt>
+              <dd className="text-sm text-gray-800">
+                <ul>
+                  {values.map((label, i) => {
+                    const qid = qidsForKey[i];
+                    const match = qid ? wikidataMap.data[qid] : undefined;
+                    return (
+                      <li key={`${key}-${i}`}>
+                        {match ? (
+                          <Link
+                            to={`/entities/${match.entity_id}`}
+                            className="text-indigo-700 hover:underline"
+                          >
+                            {label}
+                          </Link>
+                        ) : qid ? (
+                          <a
+                            href={`https://www.wikidata.org/wiki/${qid}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-indigo-700 hover:underline"
+                          >
+                            {label}
+                          </a>
+                        ) : (
+                          <span>{label}</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+    </div>
+  );
+}
+
 export function EntityEnrichmentSection({
   entityId,
   entityType,
   canonicalName,
   enrichment,
+  onEnrichmentMutationStart,
 }: EntityEnrichmentSectionProps) {
   const properties = enrichment?.properties ?? {};
   const identifiers = enrichment?.identifiers ?? [];
@@ -87,6 +224,54 @@ export function EntityEnrichmentSection({
   const hasIdentifiers = identifiers.length > 0;
   const isNotGrounded =
     !enrichment || !enrichment.grounded || (!hasProperties && !hasIdentifiers);
+
+  // ---------------------------------------------------------------------------
+  // Property grouping (Feature 079, US3) — special-cased keys are pulled out
+  // of the generic `<dl>` join; everything else (including unknown future
+  // keys) keeps the original generic rendering.
+  // ---------------------------------------------------------------------------
+
+  const imageBlock = properties["image"];
+  const hasImageValue = Boolean(imageBlock?.values?.[0]);
+  const relationEntries = propertyEntries.filter(([key]) => RELATION_KEYS.has(key));
+  const socialEntries = propertyEntries.filter(([key]) => SOCIAL_KEYS.has(key));
+  const referenceEntries = propertyEntries.filter(([key]) => REFERENCE_KEYS.has(key));
+  const genericEntries = propertyEntries.filter(
+    ([key]) =>
+      key !== "image" &&
+      !RELATION_KEYS.has(key) &&
+      !SOCIAL_KEYS.has(key) &&
+      !REFERENCE_KEYS.has(key)
+  );
+  const hasGenericProperties = genericEntries.length > 0;
+
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const hasImage = hasImageValue && !imageLoadFailed;
+
+  const [copiedReferenceKey, setCopiedReferenceKey] = useState<string | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
+  async function handleCopyReference(key: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedReferenceKey(key);
+      if (copyTimerRef.current !== null) {
+        clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = setTimeout(() => setCopiedReferenceKey(null), 2000);
+    } catch {
+      // Clipboard access denied/unavailable — the text remains visible and
+      // selectable as a fallback, so this is a silent no-op.
+    }
+  }
   // Refresh needs a *current Wikidata link* specifically — the backend 400s
   // otherwise — so check the identifiers list directly rather than the more
   // permissive `grounded`/`isNotGrounded` signals above.
@@ -159,6 +344,7 @@ export function EntityEnrichmentSection({
       refreshTimerRef.current = null;
     }
 
+    onEnrichmentMutationStart?.();
     refreshMutation.mutate(
       // No `approved_identifier` and no `description` key at all — this is
       // the refresh branch (re-fetch facts for the CURRENT link only). Never
@@ -231,6 +417,7 @@ export function EntityEnrichmentSection({
     if (linkMutation.isPending || selectedCandidate === null) return;
 
     setErrorMsg(null);
+    onEnrichmentMutationStart?.();
     linkMutation.mutate(
       {
         entityId,
@@ -478,9 +665,20 @@ export function EntityEnrichmentSection({
           </p>
         ) : (
           <div className="space-y-4">
-            {hasProperties && (
+            {hasImage && (
+              <div className="flex justify-center sm:justify-start">
+                <img
+                  src={entityImageUrl(entityId, imageBlock?.set_at)}
+                  alt={canonicalName}
+                  className="w-24 h-24 rounded-lg object-cover border border-slate-200"
+                  onError={() => setImageLoadFailed(true)}
+                />
+              </div>
+            )}
+
+            {hasGenericProperties && (
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                {propertyEntries.map(([key, value]) => (
+                {genericEntries.map(([key, value]) => (
                   <div key={key} className="flex flex-col">
                     <dt className="text-xs font-medium text-gray-500">
                       {humanizePropertyKey(key)}
@@ -491,6 +689,87 @@ export function EntityEnrichmentSection({
                   </div>
                 ))}
               </dl>
+            )}
+
+            {relationEntries.length > 0 && (
+              <RelationsBlock
+                entries={relationEntries}
+                bordered={hasImage || hasGenericProperties}
+              />
+            )}
+
+            {socialEntries.length > 0 && (
+              <div
+                className={
+                  hasImage || hasGenericProperties || relationEntries.length > 0
+                    ? "pt-3 border-t border-slate-100"
+                    : ""
+                }
+              >
+                <h3 className="text-xs font-medium text-gray-500 mb-2">Social &amp; web</h3>
+                <ul className="flex flex-wrap gap-2">
+                  {socialEntries.map(([key, value]) => {
+                    const handle = value.values?.[0];
+                    if (!handle) return null;
+                    const url = socialProfileUrl(key, handle);
+                    const label = humanizePropertyKey(key);
+                    return (
+                      <li key={key}>
+                        {url ? (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-full hover:bg-indigo-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 transition-colors"
+                          >
+                            {label}: {handle}
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-600 bg-slate-100 border border-slate-200 rounded-full">
+                            {label}: {handle}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {referenceEntries.length > 0 && (
+              <div className="pt-3 border-t border-slate-100">
+                <h3 className="text-xs font-medium text-gray-500 mb-2">
+                  Wikidata reference (display only — not the curated description above)
+                </h3>
+                <dl className="space-y-2">
+                  {referenceEntries.map(([key, value]) => {
+                    const text = (value.values ?? []).join(
+                      key === "wikidata_aliases" ? ", " : " "
+                    );
+                    if (!text) return null;
+                    const label = humanizePropertyKey(key);
+                    return (
+                      <div
+                        key={key}
+                        className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-2.5 flex items-start justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <dt className="text-xs font-medium text-slate-500">{label}</dt>
+                          <dd className="text-sm text-slate-700 break-words">{text}</dd>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyReference(key, text)}
+                          aria-label={`Copy ${label}`}
+                          className="shrink-0 inline-flex items-center gap-1 px-2 py-1 min-h-[32px] text-xs font-medium rounded-md border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+                        >
+                          {copiedReferenceKey === key ? "Copied!" : "Copy"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </dl>
+              </div>
             )}
 
             {hasIdentifiers && (

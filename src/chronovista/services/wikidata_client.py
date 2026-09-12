@@ -198,11 +198,15 @@ class WikidataClient:
     async def fetch_properties(self, qid: str) -> dict[str, Any]:
         """Fetch the curated property fields for one grounded entity (Feature 068).
 
-        Two batched ``wbgetentities`` rounds — ``props=claims`` to extract the curated
-        ``WANTED`` / ``WANTED_LITERAL`` fields, then ``props=labels`` to resolve the item-reference
-        value-QIDs to readable labels — assembled into the persisted verbatim shape
-        ``{field: {"values", "qids", "source", "set_at"}}`` (spec FR-002). An unresolved value-QID is
-        kept as its QID (FR-007). Returns ``{}`` if the item asserts none of the wanted properties.
+        Two batched ``wbgetentities`` rounds — ``props=claims|descriptions|aliases`` to extract the
+        curated ``WANTED`` / ``WANTED_LITERAL`` fields plus the item's own one-line description and
+        aliases, then ``props=labels`` to resolve the item-reference value-QIDs to readable labels —
+        assembled into the persisted verbatim shape ``{field: {"values", "qids", "source", "set_at"}}``
+        (spec FR-002). An unresolved value-QID is kept as its QID (FR-007). The Wikidata description
+        and aliases are captured as separate display-only reference blocks (``wikidata_description`` /
+        ``wikidata_aliases``) that never touch the entity's curated ``description`` / ``entity_aliases``
+        (FR-005/FR-006). Returns ``{}`` only when the item asserts no wanted property AND has no
+        description/aliases.
 
         Parameters
         ----------
@@ -223,12 +227,18 @@ class WikidataClient:
         http = self._http or self._new_client()
         owns = self._http is None
         try:
-            claims_data = await self._get(
-                http, action="wbgetentities", ids=qid, props="claims"
+            entity_data = await self._get(
+                http,
+                action="wbgetentities",
+                ids=qid,
+                props="claims|descriptions|aliases",
+                languages=wp.LABEL_LANGS,
             )
-            entity = (claims_data.get("entities") or {}).get(qid) or {}
+            entity = (entity_data.get("entities") or {}).get(qid) or {}
             extracted = wp.extract_claims(entity.get("claims") or {})
-            if not extracted:
+            description = wp.pick_description(entity.get("descriptions") or {})
+            aliases = wp.extract_aliases(entity.get("aliases") or {})
+            if not extracted and not description and not aliases:
                 return {}
 
             labels: dict[str, str] = {}
@@ -251,7 +261,17 @@ class WikidataClient:
                 await http.aclose()
 
         set_at = datetime.now(UTC).isoformat()
-        return wp.assemble_properties(extracted, labels, set_at)
+        properties = wp.assemble_properties(extracted, labels, set_at)
+        # Display-only reference blocks — kept separate from curated fields (FR-005/FR-006).
+        if description:
+            properties["wikidata_description"] = wp.assemble_reference_block(
+                [description], set_at
+            )
+        if aliases:
+            properties["wikidata_aliases"] = wp.assemble_reference_block(
+                aliases, set_at
+            )
+        return properties
 
     @staticmethod
     def _resolve_label(hit: dict[str, Any], labels: dict[str, Any]) -> str:

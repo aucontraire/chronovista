@@ -37,6 +37,7 @@ _image_cache_config = ImageCacheConfig(
     cache_dir=settings.cache_dir,
     channels_dir=settings.cache_dir / "images" / "channels",
     videos_dir=settings.cache_dir / "images" / "videos",
+    entities_dir=settings.cache_dir / "images" / "entities",
 )
 
 _image_cache_service = ImageCacheService(config=_image_cache_config)
@@ -165,4 +166,51 @@ async def get_video_image(
     return await _image_cache_service.get_video_image(
         video_id=video_id,
         quality=quality,
+    )
+
+
+@router.get(
+    "/images/entities/{entity_id}",
+    responses={
+        200: {
+            "content": {
+                "image/jpeg": {},
+                "image/png": {},
+                "image/webp": {},
+                "image/svg+xml": {},
+            },
+            "description": "Entity portrait image or SVG placeholder",
+        },
+    },
+    response_class=Response,
+)
+async def get_entity_image(
+    entity_id: str = Path(
+        ...,
+        description="Named entity UUID whose Wikidata portrait to serve",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Serve an entity's Wikidata portrait (Feature 079) from local cache.
+
+    Reads the entity's captured ``properties.image`` Commons filename, derives the direct
+    Wikimedia Commons URL, and fetches/caches it same-origin. A missing image property, malformed
+    id, or un-fetchable source degrades to an SVG placeholder (never an error).
+
+    Parameters
+    ----------
+    entity_id : str
+        The named-entity UUID.
+    db : AsyncSession
+        Database session for looking up the entity's stored image filename.
+
+    Returns
+    -------
+    Response
+        Image bytes with appropriate Content-Type / Cache-Control / X-Cache headers, or an SVG
+        placeholder.
+    """
+    return await _image_cache_service.get_entity_image(
+        session=db,
+        entity_id=entity_id,
     )

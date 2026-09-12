@@ -72,6 +72,18 @@ def mock_image_cache_service():
 
     service.warm_videos = AsyncMock(side_effect=mock_warm_videos)
 
+    # Mock warm_entities method (Feature 079)
+    async def mock_warm_entities(*args, **kwargs):
+        return WarmResult(
+            downloaded=3,
+            skipped=1,
+            failed=0,
+            no_url=0,
+            total=4,
+        )
+
+    service.warm_entities = AsyncMock(side_effect=mock_warm_entities)
+
     return service
 
 
@@ -188,9 +200,37 @@ class TestCacheWarmCommand:
 
         assert result.exit_code == 0
 
-        # Verify both channels and videos were warmed
+        # Verify channels, videos, AND entity portraits were warmed (Feature 079)
         mock_image_cache_service.warm_channels.assert_called_once()
         mock_image_cache_service.warm_videos.assert_called_once()
+        mock_image_cache_service.warm_entities.assert_called_once()
+
+    def test_warm_type_entities_only_warms_entities(
+        self, mock_db_session, mock_image_cache_service
+    ):
+        """Test `warm --type entities` only warms entity portraits (Feature 079)."""
+
+        async def mock_get_session(*args, **kwargs):
+            yield mock_db_session
+
+        with (
+            patch(
+                "chronovista.cli.commands.cache._build_cache_service",
+                return_value=mock_image_cache_service,
+            ),
+            patch(
+                "chronovista.cli.commands.cache.db_manager.get_session",
+                side_effect=mock_get_session,
+            ),
+        ):
+            result = runner.invoke(test_warm_app, ["--type", "entities"])
+
+        assert result.exit_code == 0
+
+        # Verify only entity portraits were warmed
+        mock_image_cache_service.warm_entities.assert_called_once()
+        mock_image_cache_service.warm_channels.assert_not_called()
+        mock_image_cache_service.warm_videos.assert_not_called()
 
     def test_warm_limit_passes_limit_to_service(
         self, mock_db_session, mock_image_cache_service

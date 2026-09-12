@@ -12,8 +12,10 @@ Feature 038 — Entity Mention Detection (scan command)
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -32,6 +34,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.config.database import db_manager
+from chronovista.config.settings import settings
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TagOperationLog as TagOperationLogDB
@@ -45,6 +48,7 @@ from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
+from chronovista.services import wikidata_properties as wp
 from chronovista.services.entity_enrichment_loader import (
     load_enrichment,
     parse_ledger,
@@ -54,6 +58,7 @@ from chronovista.services.entity_mention_scan_service import (
     ScanResult,
 )
 from chronovista.services.tag_normalization import TagNormalizationService
+from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -1142,6 +1147,211 @@ def backfill_descriptions(
                         f"entity not found, or invalid ID)",
                         title="[green]Backfill Complete[/green]",
                         border_style="green",
+                    )
+                )
+
+    asyncio.run(_run())
+
+
+def _redact_dsn(dsn: str) -> str:
+    """Hide the password in a DSN for display (``user:pass@host`` -> ``user:***@host``)."""
+    if "://" not in dsn or "@" not in dsn:
+        return dsn
+    scheme, rest = dsn.split("://", 1)
+    creds, tail = rest.split("@", 1)
+    if ":" in creds:
+        user = creds.split(":", 1)[0]
+        creds = f"{user}:***"
+    return f"{scheme}://{creds}@{tail}"
+
+
+def _block_without_set_at(block: Any) -> Any:
+    """Structural view of a property block, ignoring the per-run ``set_at`` timestamp."""
+    if isinstance(block, dict):
+        return {k: v for k, v in block.items() if k != "set_at"}
+    return block
+
+
+def _property_diff_counts(
+    current: dict[str, Any], merged: dict[str, Any]
+) -> tuple[int, int]:
+    """Return ``(added, updated)`` field counts between two property bags (ignoring ``set_at``)."""
+    added = sum(1 for key in merged if key not in current)
+    updated = sum(
+        1
+        for key in merged
+        if key in current
+        and _block_without_set_at(merged[key]) != _block_without_set_at(current[key])
+    )
+    return added, updated
+
+
+@entity_app.command("backfill-wikidata-properties")
+def backfill_wikidata_properties(
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        is_flag=True,
+        help="Write changes. Without this, runs a read-only dry run (default).",
+    ),
+    allow_dev: bool = typer.Option(
+        False,
+        "--allow-dev",
+        is_flag=True,
+        help="Permit --apply against a dev database (otherwise refused).",
+    ),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        help="Process at most N grounded entities (mainly for testing).",
+    ),
+    pause: float = typer.Option(
+        3.5,
+        "--pause",
+        help="Seconds to wait between Wikidata requests (courtesy pacing).",
+    ),
+) -> None:
+    """Re-fetch expanded Wikidata properties for grounded entities and refresh them (Feature 079).
+
+    Dry run (default) reports per-entity added/updated field counts and writes nothing. ``--apply``
+    prints the effective database, requires confirmation, writes a pre-change JSON backup, then
+    upserts each entity's properties — fully replacing the Wikidata-sourced blocks while preserving
+    any non-Wikidata (e.g. DBpedia) blocks (FR-015). Idempotent and resumable (commits per entity).
+    """
+
+    async def _run() -> None:
+        dsn = settings.effective_database_url
+        redacted = _redact_dsn(dsn)
+        is_dev = "chronovista_dev" in dsn or ":5434" in dsn
+
+        if apply:
+            if is_dev and not allow_dev:
+                console.print(
+                    Panel(
+                        f"[red]Refusing --apply against a dev database:[/red] {redacted}\n"
+                        "Pass --allow-dev to backfill a dev database intentionally.",
+                        title="Blocked",
+                        border_style="red",
+                    )
+                )
+                raise typer.Exit(1)
+            console.print(f"[bold]Target database:[/bold] {redacted}")
+            if not typer.confirm(
+                f"Apply the Wikidata-property backfill to {redacted}?"
+            ):
+                console.print("[yellow]Aborted.[/yellow]")
+                raise typer.Exit(1)
+
+        client = WikidataClient()
+        repo = NamedEntityRepository()
+
+        async for session in db_manager.get_session(echo=False):
+            grounded = list(await repo.list_wikidata_grounded(session))
+            if limit is not None:
+                grounded = grounded[:limit]
+
+            if not grounded:
+                console.print(
+                    Panel(
+                        "[yellow]No Wikidata-grounded entities found.[/yellow]",
+                        title="Nothing to Backfill",
+                        border_style="yellow",
+                    )
+                )
+                if not apply:
+                    await session.rollback()
+                return
+
+            # Pre-change backup (apply only): id + prior properties for every entity in scope (FR-016).
+            if apply:
+                backup_dir = Path("backups")
+                backup_dir.mkdir(exist_ok=True)
+                stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+                backup_path = backup_dir / f"enrichment_backfill_{stamp}.json"
+                backup_path.write_text(
+                    json.dumps(
+                        [
+                            {"id": str(e.id), "properties": e.properties}
+                            for e in grounded
+                        ],
+                        indent=2,
+                    )
+                )
+                console.print(
+                    f"[dim]Backup written: {backup_path} ({len(grounded)} rows)[/dim]"
+                )
+
+            preview = Table(
+                title="Wikidata Properties Backfill" + ("" if apply else " (dry run)"),
+                show_header=True,
+                header_style="bold blue",
+            )
+            preview.add_column("Entity", style="cyan", width=30)
+            preview.add_column("+added", justify="right", width=8)
+            preview.add_column("~updated", justify="right", width=9)
+
+            changed = unchanged = errors = 0
+            for index, entity in enumerate(grounded):
+                external_ids = entity.external_ids or {}
+                qid = external_ids.get("wikidata", {}).get("id")
+                if not qid:
+                    continue
+                try:
+                    fresh = await client.fetch_properties(str(qid))
+                except WikidataUnavailable as exc:
+                    errors += 1
+                    logger.warning(
+                        "backfill: Wikidata fetch failed for %s (%s): %s",
+                        entity.id,
+                        qid,
+                        exc,
+                    )
+                    continue
+
+                current = entity.properties or {}
+                merged = wp.merge_wikidata_blocks(current, fresh)
+                if merged == current:
+                    unchanged += 1
+                else:
+                    changed += 1
+                    added, updated = _property_diff_counts(current, merged)
+                    preview.add_row(
+                        f"{entity.canonical_name[:26]} ({str(entity.id)[:6]})",
+                        str(added),
+                        str(updated),
+                    )
+                    if apply:
+                        await repo.replace_properties(
+                            session, entity.id, properties=merged
+                        )
+                        await session.commit()  # per-entity commit -> resumable
+
+                # Courtesy pacing between Wikidata calls (skip after the last).
+                if pause > 0 and index < len(grounded) - 1:
+                    await asyncio.sleep(pause)
+
+            console.print(preview)
+            summary = (
+                f"changed={changed} unchanged={unchanged} "
+                f"errors={errors} total={len(grounded)}"
+            )
+            if apply:
+                console.print(
+                    Panel(
+                        f"[bold]Applied.[/bold] {summary}",
+                        title="[green]Backfill Complete[/green]",
+                        border_style="green",
+                    )
+                )
+            else:
+                # Dry run makes no writes; roll back explicitly since get_session auto-commits on exit.
+                await session.rollback()
+                console.print(
+                    Panel(
+                        f"[bold]Dry run — nothing written.[/bold] {summary}\n"
+                        "Re-run with --apply to write.",
+                        title="Dry Run",
+                        border_style="yellow",
                     )
                 )
 

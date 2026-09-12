@@ -14,9 +14,11 @@ calls in tests).
 
 The write is **properties-only** (``NamedEntityRepository.replace_properties``): it never touches the
 verified ``external_ids`` the endpoint set at create (the anti-clobber guard, research D4) nor the
-human display fields. It is only ever scheduled for a **newly created** grounded entity, whose
-``properties`` bag is empty — so the full-replace write is safe and matches what a later batch load
-would write (FR-002).
+human display fields. It is scheduled both for a newly created grounded entity (empty bag) AND for a
+Feature-073 **refresh** of an existing entity, so the write **merges by source**
+(``wikidata_properties.merge_wikidata_blocks``): it fully replaces the Wikidata-sourced blocks while
+preserving blocks from other sources (e.g. a DBpedia ``category``). At create time the bag is empty,
+so the merge equals the fresh fetch and matches what a later batch load would write (FR-002).
 
 Graceful degradation (FR-006/FR-006a) is added in US2 (``enrich_on_approval`` hardening).
 """
@@ -32,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from chronovista.models.entity_enrichment import ExternalIdentifier
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
+from chronovista.services import wikidata_properties as wp
 from chronovista.services.dbpedia_resolver import DbpediaResolver
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
 
@@ -102,8 +105,23 @@ class EntityEnrichmentService:
             client = self._client_factory()
             properties: dict[str, Any] = await client.fetch_properties(qid)
             async with self._session_factory() as session:
+                # Merge-by-source, not full-replace: this path also runs on a "refresh" of an
+                # existing entity (Feature 073), whose bag may hold non-Wikidata blocks (e.g. a
+                # DBpedia `category`). Replacing outright wiped those (data loss). merge_wikidata_blocks
+                # fully replaces the Wikidata-sourced blocks while preserving every other source. At
+                # create time the bag is empty, so the merge equals the fresh fetch (unchanged).
+                existing = await self._repo.get(session, entity_id)
+                if existing is None:
+                    logger.warning(
+                        "on-approval enrichment matched no row for entity %s "
+                        "(qid=%s) — nothing written",
+                        entity_id,
+                        qid,
+                    )
+                    return False
+                merged = wp.merge_wikidata_blocks(existing.properties or {}, properties)
                 rowcount = await self._repo.replace_properties(
-                    session, entity_id, properties=properties
+                    session, entity_id, properties=merged
                 )
                 if rowcount == 0:
                     logger.warning(

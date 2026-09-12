@@ -85,7 +85,7 @@ def _handler(*, claims: dict[str, Any], labels: dict[str, Any]) -> httpx.MockTra
     def respond(request: httpx.Request) -> httpx.Response:
         action = request.url.params.get("action")
         props = request.url.params.get("props")
-        if action == "wbgetentities" and props == "claims":
+        if action == "wbgetentities" and props == "claims|descriptions|aliases":
             return httpx.Response(200, json=claims)
         if action == "wbgetentities" and props == "labels":
             return httpx.Response(200, json=labels)
@@ -158,7 +158,7 @@ class TestFetchProperties:
 
         def respond(request: httpx.Request) -> httpx.Response:
             props = request.url.params.get("props")
-            if props == "claims":
+            if props == "claims|descriptions|aliases":
                 calls["claims"] += 1
                 return httpx.Response(200, json=claims)
             if props == "labels":
@@ -201,3 +201,78 @@ class TestFetchProperties:
         )
         with pytest.raises(WikidataUnavailable):
             await client.fetch_properties("Q000001")
+
+
+class TestFetchPropertiesExpanded:
+    """Feature 079 — description/aliases reference blocks + expanded fields.
+
+    Every test here also implicitly proves the widened first-round props string: the shared
+    ``_handler`` only returns claims for ``props == "claims|descriptions|aliases"``, so an
+    un-widened fetch would receive ``{}`` and fail.
+    """
+
+    @staticmethod
+    def _entity_with_refs() -> dict[str, Any]:
+        return {
+            "entities": {
+                "Q000001": {
+                    "claims": {
+                        "P18": [
+                            {
+                                "mainsnak": {
+                                    "snaktype": "value",
+                                    "datavalue": {
+                                        "type": "string",
+                                        "value": "Placeholder.jpg",
+                                    },
+                                }
+                            }
+                        ],
+                    },
+                    "descriptions": {
+                        "en": {"language": "en", "value": "a placeholder person"}
+                    },
+                    "aliases": {
+                        "en": [
+                            {"language": "en", "value": "P. Placeholder"},
+                            {"language": "en", "value": "PP"},
+                        ]
+                    },
+                }
+            }
+        }
+
+    async def test_captures_description_and_aliases_reference_blocks(self) -> None:
+        client = _client(
+            _handler(claims=self._entity_with_refs(), labels={"entities": {}})
+        )
+        props = await client.fetch_properties("Q000001")
+        assert props["image"]["values"] == ["Placeholder.jpg"]  # commonsMedia literal
+        assert props["wikidata_description"]["values"] == ["a placeholder person"]
+        assert props["wikidata_aliases"]["values"] == ["P. Placeholder", "PP"]
+        # Reference blocks are display-only — no qids key (FR-006).
+        assert "qids" not in props["wikidata_description"]
+        assert "qids" not in props["wikidata_aliases"]
+
+    async def test_description_only_item_still_captured(self) -> None:
+        # No wanted claims, but a description present -> still returns the reference block, not {}.
+        entity = {
+            "entities": {
+                "Q000001": {
+                    "claims": {},
+                    "descriptions": {"en": {"language": "en", "value": "a place"}},
+                    "aliases": {},
+                }
+            }
+        }
+        client = _client(_handler(claims=entity, labels={"entities": {}}))
+        props = await client.fetch_properties("Q000001")
+        assert list(props) == ["wikidata_description"]
+        assert props["wikidata_description"]["values"] == ["a place"]
+
+    async def test_bare_empty_item_returns_empty(self) -> None:
+        entity = {
+            "entities": {"Q000001": {"claims": {}, "descriptions": {}, "aliases": {}}}
+        }
+        client = _client(_handler(claims=entity, labels={"entities": {}}))
+        assert await client.fetch_properties("Q000001") == {}

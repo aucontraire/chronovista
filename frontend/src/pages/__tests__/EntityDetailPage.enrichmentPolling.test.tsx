@@ -21,6 +21,13 @@
  *   properties never arrive (real interval scheduling via fake timers)
  * - No polling at all for an ungrounded entity, or one whose properties are
  *   already present on the first response
+ * - Feature 079 follow-up: a "Refresh" (Feature 073 US2) replaces
+ *   already-non-empty properties via the same background write, so the
+ *   FR-005a empty-properties condition above never fires on its own. A
+ *   separate, time-windowed poll (started when the refresh/reground
+ *   mutation succeeds) keeps polling regardless, and stops early once the
+ *   properties actually change — or, absent a change, once the window
+ *   elapses
  *
  * This file intentionally does NOT mock `@tanstack/react-query` (unlike
  * EntityDetailPage.enrichment.test.tsx) — the real QueryClient must run so
@@ -29,7 +36,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -323,6 +330,149 @@ describe("EntityDetailPage — bounded enrichment polling (Feature 068, FR-005a)
         await vi.advanceTimersByTimeAsync(10_000);
       });
       expect(detailCallCount()).toBe(5);
+    });
+  });
+
+  describe("Refresh keeps polling past non-empty properties (Feature 079 follow-up)", () => {
+    const GROUNDING_ENDPOINT = `${DETAIL_ENDPOINT}/grounding`;
+
+    /**
+     * Extends the detail-endpoint dispatcher with a stubbed grounding POST
+     * — the "Refresh" mutation's endpoint, reached via the real
+     * `useRegroundEntity`/`regroundEntity` (neither is mocked in this file).
+     * Its response body is irrelevant here: the poll window is started via
+     * `onEnrichmentMutationStart` when the click fires, not from anything
+     * this response returns.
+     */
+    function mockDetailAndRefreshResponses(...detailResponses: EntityDetail[]) {
+      let callIndex = 0;
+      mockedApiFetch.mockImplementation((endpoint: unknown) => {
+        const path = typeof endpoint === "string" ? endpoint : "";
+        if (path === GROUNDING_ENDPOINT) {
+          return Promise.resolve({ data: detailResponses[0] });
+        }
+        if (path === DETAIL_ENDPOINT) {
+          const data =
+            detailResponses[Math.min(callIndex, detailResponses.length - 1)];
+          callIndex += 1;
+          return Promise.resolve({ data });
+        }
+        if (path === `${DETAIL_ENDPOINT}/tags`) {
+          return Promise.resolve({
+            data: { linked_tags: [], needs_attention: false },
+          });
+        }
+        return Promise.resolve({ data: [] });
+      });
+    }
+
+    /** Grounded, with properties AND a Wikidata identifier — required for the "Refresh" button to render. */
+    function groundedWithWikidataLink(occupation: string): EntityDetail {
+      return {
+        ...baseEntity,
+        enrichment: {
+          grounded: true,
+          properties: { occupation: { values: [occupation] } },
+          identifiers: [
+            {
+              source: "wikidata",
+              id: "Q1",
+              url: "https://www.wikidata.org/wiki/Q1",
+              verified: false,
+            },
+          ],
+        },
+      };
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("keeps polling after Refresh even though properties are already non-empty, and stops once the refreshed facts land", async () => {
+      // A "Refresh" replaces facts via the same background write as a
+      // create/re-link, so every response before that write lands still
+      // shows the OLD occupation — including the invalidate-triggered
+      // refetch right after the mutation resolves.
+      mockDetailAndRefreshResponses(
+        groundedWithWikidataLink("journalist"),
+        groundedWithWikidataLink("journalist"),
+        groundedWithWikidataLink("journalist"),
+        groundedWithWikidataLink("author")
+      );
+
+      const queryClient = createQueryClient();
+      renderPage(queryClient);
+
+      // Fake timers are active in this describe block, so `findBy*`'s
+      // internal real-time polling would hang — flush explicitly instead
+      // and assert with the synchronous `getBy*` queries (mirrors the
+      // "attempt cap" block above).
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("journalist")).toBeInTheDocument();
+      expect(detailCallCount()).toBe(1);
+
+      const refreshButton = screen.getByRole("button", {
+        name: /refresh wikidata data/i,
+      });
+
+      await act(async () => {
+        fireEvent.click(refreshButton);
+        await vi.runAllTimersAsync();
+      });
+
+      // Without the fix, the poll never fires because properties were
+      // already non-empty before the refresh — the page would still show
+      // "journalist" here, unchanged until a manual reload.
+      expect(screen.getByText("author")).toBeInTheDocument();
+      expect(detailCallCount()).toBe(4);
+
+      // The early-stop (properties changed from their pre-refresh snapshot)
+      // must have silenced further polling — advancing well past the window
+      // confirms it.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(detailCallCount()).toBe(4);
+    });
+
+    it("stops polling once the refresh window elapses, even if the properties never change", async () => {
+      mockDetailAndRefreshResponses(groundedWithWikidataLink("journalist"));
+
+      const queryClient = createQueryClient();
+      renderPage(queryClient);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("journalist")).toBeInTheDocument();
+      expect(detailCallCount()).toBe(1);
+
+      const refreshButton = screen.getByRole("button", {
+        name: /refresh wikidata data/i,
+      });
+
+      await act(async () => {
+        fireEvent.click(refreshButton);
+        await vi.runAllTimersAsync();
+      });
+
+      const callsAtWindowClose = detailCallCount();
+      expect(callsAtWindowClose).toBeGreaterThan(1);
+      expect(screen.getByText("journalist")).toBeInTheDocument();
+
+      // Once ENRICH_REFRESH_POLL_WINDOW_MS has elapsed, no more polling —
+      // even though properties never changed.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(detailCallCount()).toBe(callsAtWindowClose);
     });
   });
 });

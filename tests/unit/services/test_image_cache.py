@@ -24,6 +24,8 @@ from chronovista.services.image_cache import (
     ImageCacheConfig,
     ImageCacheService,
     _is_allowed_image_host,
+    _is_transient_fetch_failure,
+    commons_image_url,
 )
 from tests.factories.channel_factory import ChannelTestData
 
@@ -146,6 +148,26 @@ class TestPlaceholderGeneration:
         assert response.status_code == 200
         assert response.media_type == "image/svg+xml"
         assert response.body == _VIDEO_PLACEHOLDER_SVG
+        assert response.headers["Cache-Control"] == _CACHE_CONTROL_PLACEHOLDER
+        assert response.headers["X-Cache"] == "PLACEHOLDER"
+
+    def test_serve_placeholder_transient_is_not_browser_cacheable(self) -> None:
+        """A transient-failure placeholder sends ``no-store`` so the next view re-fetches.
+
+        Regression: a Wikimedia 429 on one view otherwise pinned the silhouette in the browser for
+        an hour (``max-age=3600``) even after the portrait became fetchable again.
+        """
+        response = ImageCacheService._serve_placeholder("channel", cacheable=False)
+
+        assert response.status_code == 200
+        assert response.body == _CHANNEL_PLACEHOLDER_SVG
+        assert response.headers["Cache-Control"] == "no-store"
+        assert response.headers["X-Cache"] == "PLACEHOLDER-TRANSIENT"
+
+    def test_serve_placeholder_stable_stays_cacheable_by_default(self) -> None:
+        """A stable placeholder (the default) keeps the 1-hour cache header."""
+        response = ImageCacheService._serve_placeholder("channel")
+
         assert response.headers["Cache-Control"] == _CACHE_CONTROL_PLACEHOLDER
         assert response.headers["X-Cache"] == "PLACEHOLDER"
 
@@ -1121,6 +1143,7 @@ class TestImageHostAllowlist:
             "https://i9.ytimg.com/vi/abc/mqdefault.jpg",
             "https://yt3.ggpht.com/a/default.jpg",
             "https://lh3.googleusercontent.com/x.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/a/ab/Foo.jpg",  # Feature 079
         ],
     )
     def test_allows_youtube_cdn_hosts(self, url: str) -> None:
@@ -1179,3 +1202,267 @@ class TestImageHostAllowlist:
         assert success is False
         assert reason == "redirect_not_followed_302"
         assert not (tmp_path / "x.jpg").exists()
+
+
+class TestCommonsImageUrl:
+    """Feature 079 — the direct Wikimedia Commons upload URL (no redirect, on the allowlist)."""
+
+    def test_derives_direct_upload_url_with_md5_sharding(self) -> None:
+        import hashlib
+
+        url = commons_image_url("Jane Doe portrait.jpg")
+        name = "Jane_Doe_portrait.jpg"  # spaces -> underscores
+        digest = hashlib.md5(name.encode("utf-8")).hexdigest()
+        assert url == (
+            "https://upload.wikimedia.org/wikipedia/commons/"
+            f"{digest[0]}/{digest[:2]}/{name}"
+        )
+        # And the derived URL is itself on the SSRF allowlist (proxy can fetch it).
+        assert _is_allowed_image_host(url) is True
+
+    def test_special_chars_percent_encoded_no_spaces(self) -> None:
+        url = commons_image_url("A (b) c.jpg")
+        assert "%28b%29" in url  # parentheses percent-encoded
+        assert " " not in url
+
+
+class TestImageFetchUserAgent:
+    """Feature 079 — the image fetch must send a descriptive User-Agent.
+
+    Wikimedia's User-Agent policy 403s a missing/generic UA (httpx's default), which silently
+    disabled entity portraits. YouTube CDNs accept a UA too, so it is sent on every fetch.
+    """
+
+    async def test_fetch_and_cache_sends_descriptive_user_agent(
+        self, image_cache_config: ImageCacheConfig, tmp_path: Path
+    ) -> None:
+        service = ImageCacheService(config=image_cache_config)
+        captured: dict[str, object] = {}
+        # A redirect response short-circuits after the client is built — enough to inspect the
+        # constructor's headers without mocking the full write path.
+        mock_response = Mock()
+        mock_response.status_code = 302
+        mock_response.headers = {"location": "https://x.ytimg.com/y.jpg"}
+
+        def _capture(*_args: object, **kwargs: object) -> AsyncMock:
+            captured.update(kwargs)
+            client = AsyncMock()
+            client.__aenter__.return_value = client
+            client.__aexit__.return_value = None
+            client.get.return_value = mock_response
+            return client
+
+        with patch("httpx.AsyncClient", side_effect=_capture):
+            await service._fetch_and_cache(
+                url="https://upload.wikimedia.org/wikipedia/commons/9/94/X.jpg",
+                cache_path=tmp_path / "x.jpg",
+                timeout=8.0,
+            )
+
+        headers = captured.get("headers")
+        assert isinstance(headers, dict)
+        assert "chronovista" in str(headers.get("User-Agent", "")).lower()
+
+
+class TestIsTransientFetchFailure:
+    """Feature 079 — classify which fetch failures should self-heal on the next view."""
+
+    @pytest.mark.parametrize(
+        "reason",
+        ["timeout", "http_error: boom", "server_error_429", "server_error_503"],
+    )
+    def test_transient_reasons(self, reason: str) -> None:
+        assert _is_transient_fetch_failure(reason) is True
+
+    @pytest.mark.parametrize(
+        "reason",
+        [
+            None,
+            "not_found_404",
+            "not_found_410",
+            "disallowed_host",
+            "invalid_content_type: text/html",
+            "too_small_10",
+            "unexpected_status_403",
+        ],
+    )
+    def test_stable_reasons(self, reason: str | None) -> None:
+        assert _is_transient_fetch_failure(reason) is False
+
+
+class TestGetEntityImageTransientPlaceholder:
+    """Feature 079 — a transient upstream failure serves a NON-cacheable entity placeholder.
+
+    A Wikimedia 429 on one portrait fetch must not pin the silhouette in the browser for an hour;
+    the placeholder is served ``no-store`` so the next view re-fetches the (now-available) image.
+    """
+
+    @staticmethod
+    def _config_with_entities(tmp_path: Path) -> ImageCacheConfig:
+        cache_dir = tmp_path / "cache"
+        return ImageCacheConfig(
+            cache_dir=cache_dir,
+            channels_dir=cache_dir / "images" / "channels",
+            videos_dir=cache_dir / "images" / "videos",
+            entities_dir=cache_dir / "images" / "entities",
+            on_demand_timeout=2.0,
+        )
+
+    async def test_429_serves_no_store_placeholder(
+        self, mock_db_session: AsyncMock, tmp_path: Path
+    ) -> None:
+        service = ImageCacheService(config=self._config_with_entities(tmp_path))
+        entity_id = "00000000-0000-4000-8000-000000000001"
+
+        mock_result = MagicMock()
+        mock_result.first.return_value = (
+            {"image": {"values": ["Jane_Doe_portrait.jpg"], "source": "wikidata"}},
+        )
+        mock_db_session.execute.return_value = mock_result
+
+        mock_response = Mock()
+        mock_response.status_code = 429
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client.get.return_value = mock_response
+            mock_client_cls.return_value = mock_client
+
+            response = await service.get_entity_image(
+                session=mock_db_session, entity_id=entity_id
+            )
+
+        assert response.status_code == 200
+        assert response.media_type == "image/svg+xml"
+        assert response.headers["Cache-Control"] == "no-store"
+        assert response.headers["X-Cache"] == "PLACEHOLDER-TRANSIENT"
+
+    async def test_no_image_property_serves_cacheable_placeholder(
+        self, mock_db_session: AsyncMock, tmp_path: Path
+    ) -> None:
+        """A stable "no image" state keeps the 1-hour cache header (no network attempted)."""
+        service = ImageCacheService(config=self._config_with_entities(tmp_path))
+        entity_id = "00000000-0000-4000-8000-000000000002"
+
+        mock_result = MagicMock()
+        mock_result.first.return_value = ({},)  # properties present, no image block
+        mock_db_session.execute.return_value = mock_result
+
+        response = await service.get_entity_image(
+            session=mock_db_session, entity_id=entity_id
+        )
+
+        assert response.headers["Cache-Control"] == _CACHE_CONTROL_PLACEHOLDER
+        assert response.headers["X-Cache"] == "PLACEHOLDER"
+
+
+class TestWarmEntities:
+    """Feature 079 — pre-download entity portraits into the disk cache.
+
+    Warming reliably populates the cache (with 429 backoff/retry) so on-demand views hit ``HIT``
+    instead of a live, single-attempt Wikimedia fetch that misses under intermittent rate-limiting.
+    """
+
+    _FAKE_JPEG = b"\xff\xd8\xff" + b"\x00" * 2000  # valid magic, past the 1 KB floor
+
+    @staticmethod
+    def _config_with_entities(tmp_path: Path) -> ImageCacheConfig:
+        cache_dir = tmp_path / "cache"
+        return ImageCacheConfig(
+            cache_dir=cache_dir,
+            channels_dir=cache_dir / "images" / "channels",
+            videos_dir=cache_dir / "images" / "videos",
+            entities_dir=cache_dir / "images" / "entities",
+        )
+
+    async def test_downloads_uncached_and_skips_cached(
+        self, mock_db_session: AsyncMock, tmp_path: Path
+    ) -> None:
+        config = self._config_with_entities(tmp_path)
+        service = ImageCacheService(config=config)
+        assert config.entities_dir is not None
+
+        cached_id = "00000000-0000-4000-8000-0000000000a1"
+        fresh_id = "00000000-0000-4000-8000-0000000000a2"
+        # Pre-seed a valid cache file for the first entity so it is a HIT (skipped).
+        (config.entities_dir / f"{cached_id}.jpg").write_bytes(self._FAKE_JPEG)
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            (cached_id, "Already_Cached.jpg"),
+            (fresh_id, "Needs_Fetch.jpg"),
+        ]
+        mock_db_session.execute.return_value = mock_result
+
+        service._fetch_with_warm_retry = AsyncMock(return_value=(True, None))  # type: ignore[method-assign]
+
+        result = await service.warm_entities(mock_db_session, delay=0.0)
+
+        assert result.total == 2
+        assert result.skipped == 1  # the pre-cached one
+        assert result.downloaded == 1  # the fresh one
+        assert result.failed == 0
+        # Only the uncached entity triggers a fetch, at its derived Commons URL.
+        service._fetch_with_warm_retry.assert_awaited_once()
+        fetched_url = service._fetch_with_warm_retry.await_args.kwargs["url"]
+        assert "Needs_Fetch.jpg" in fetched_url
+        assert fetched_url.startswith("https://upload.wikimedia.org/")
+
+    async def test_dry_run_counts_without_fetching(
+        self, mock_db_session: AsyncMock, tmp_path: Path
+    ) -> None:
+        service = ImageCacheService(config=self._config_with_entities(tmp_path))
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            ("00000000-0000-4000-8000-0000000000b1", "X.jpg")
+        ]
+        mock_db_session.execute.return_value = mock_result
+
+        service._fetch_with_warm_retry = AsyncMock()  # type: ignore[method-assign]
+
+        result = await service.warm_entities(mock_db_session, delay=0.0, dry_run=True)
+
+        assert result.downloaded == 1  # counted as "would download"
+        assert result.total == 1
+        service._fetch_with_warm_retry.assert_not_awaited()
+
+    async def test_failed_fetch_counts_as_failed(
+        self, mock_db_session: AsyncMock, tmp_path: Path
+    ) -> None:
+        service = ImageCacheService(config=self._config_with_entities(tmp_path))
+
+        mock_result = MagicMock()
+        mock_result.all.return_value = [
+            ("00000000-0000-4000-8000-0000000000c1", "Y.jpg")
+        ]
+        mock_db_session.execute.return_value = mock_result
+
+        service._fetch_with_warm_retry = AsyncMock(  # type: ignore[method-assign]
+            return_value=(False, "server_error_429")
+        )
+
+        result = await service.warm_entities(mock_db_session, delay=0.0)
+
+        assert result.failed == 1
+        assert result.downloaded == 0
+
+    async def test_no_entities_dir_configured_returns_empty(
+        self, mock_db_session: AsyncMock, tmp_path: Path
+    ) -> None:
+        cache_dir = tmp_path / "cache"
+        config = ImageCacheConfig(
+            cache_dir=cache_dir,
+            channels_dir=cache_dir / "images" / "channels",
+            videos_dir=cache_dir / "images" / "videos",
+            # entities_dir intentionally omitted
+        )
+        service = ImageCacheService(config=config)
+
+        result = await service.warm_entities(mock_db_session, delay=0.0)
+
+        assert result.total == 0
+        assert result.downloaded == 0
+        mock_db_session.execute.assert_not_called()

@@ -24,6 +24,7 @@ import {
   getScanJob,
   fetchWikidataCandidates,
   fetchWikidataCandidateByQid,
+  fetchWikidataEntityMap,
 } from "../api/entityMentions";
 import type {
   VideoEntitySummary,
@@ -47,6 +48,7 @@ import type {
   WikidataCandidate,
   WikidataCandidatesData,
   WikidataCandidateByQidData,
+  WikidataEntityMapEntry,
 } from "../api/entityMentions";
 import type { ApiError } from "../types/video";
 
@@ -929,6 +931,59 @@ export function useWikidataCandidates(
     showMore,
     resolveByQid,
     isResolvingQid: qidMutation.isPending,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// useWikidataEntityMap (Feature 079, US3)
+// ---------------------------------------------------------------------------
+
+/** Return shape of `useWikidataEntityMap`. */
+export interface UseWikidataEntityMapResult {
+  /** Map of QID -> matched local entity; unmatched QIDs are simply absent. */
+  data: Record<string, WikidataEntityMapEntry>;
+  isLoading: boolean;
+  isError: boolean;
+  error: ApiError | null;
+}
+
+/**
+ * Resolves a set of Wikidata QIDs (typically gathered from an entity's
+ * relation properties, e.g. `spouse`/`father`) to local named entities, so a
+ * relation value can link to its local entity page when a match exists.
+ *
+ * Disabled when `qids` is empty. The query key is built from a sorted,
+ * deduplicated copy of `qids`, so passing a new array with the same members
+ * on every render (the common case for a caller that recomputes it inline)
+ * does not cause a refetch.
+ *
+ * @param qids - Wikidata QIDs to resolve, e.g. ["Q42", "Q123"]
+ * @returns Map of QID -> matched local entity, plus loading/error state
+ *
+ * @example
+ * ```tsx
+ * const { data } = useWikidataEntityMap(["Q42", "Q123"]);
+ * const match = data["Q42"]; // { entity_id, canonical_name } | undefined
+ * ```
+ */
+export function useWikidataEntityMap(qids: string[]): UseWikidataEntityMapResult {
+  const dedupedSorted = Array.from(new Set(qids)).sort();
+  const enabled = dedupedSorted.length > 0;
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["wikidata-entity-map", dedupedSorted.join("|")],
+    // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.
+    queryFn: ({ signal }) => fetchWikidataEntityMap(dedupedSorted, signal),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  return {
+    data: data ?? {},
+    isLoading,
+    isError,
+    error: (error as ApiError | null) ?? null,
   };
 }
 

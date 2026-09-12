@@ -56,6 +56,18 @@ const DEFAULT_PAGE_TITLE = "Chronovista";
 const ENRICH_POLL_MAX_ATTEMPTS = 5;
 const ENRICH_POLL_INTERVAL_MS = 1500;
 
+/**
+ * Feature 079 follow-up: unlike a create/re-link, a same-link "Refresh"
+ * (Feature 073 US2) *replaces* already-non-empty properties via the same
+ * background write — so the FR-005a empty-properties condition above never
+ * fires and the page would otherwise sit stale until a manual reload. This
+ * bounds a second, time-windowed poll that runs regardless of whether
+ * properties are already present, started when a reground/refresh mutation
+ * is fired (see `handleEnrichmentMutationStart`) and stopped early the
+ * moment the properties actually change from their pre-mutation snapshot.
+ */
+const ENRICH_REFRESH_POLL_WINDOW_MS = 20_000;
+
 // ---------------------------------------------------------------------------
 // Entity detail type (fetched from the named-entities endpoint)
 // ---------------------------------------------------------------------------
@@ -1718,6 +1730,28 @@ export function EntityDetailPage() {
     }
   }
 
+  // Feature 079 follow-up: a reground/refresh mutation (see
+  // `handleEnrichmentMutationStart`) sets `refreshDeadlineRef` to a
+  // near-future timestamp and snapshots the pre-mutation properties in
+  // `refreshSnapshotRef`; `refetchInterval` below polls until either the
+  // deadline passes or the properties change from that snapshot. Refs (not
+  // state) so setting them never forces a render — the poll only needs to
+  // observe them the next time `refetchInterval` runs.
+  //
+  // Started when the mutation is FIRED, not when it succeeds: `useRegroundEntity`'s
+  // own `onSuccess` (which calls `invalidateQueries`, triggering an immediate
+  // refetch) runs before this component's — by the time a success callback
+  // here would run, that immediate refetch may already have completed and
+  // re-evaluated `refetchInterval` against a still-zero deadline, silencing
+  // the poll before it had a chance to start.
+  const refreshDeadlineRef = useRef(0);
+  const refreshSnapshotRef = useRef<string | null>(null);
+
+  function handleEnrichmentMutationStart() {
+    refreshDeadlineRef.current = Date.now() + ENRICH_REFRESH_POLL_WINDOW_MS;
+    refreshSnapshotRef.current = JSON.stringify(entity?.enrichment?.properties ?? {});
+  }
+
   // Fetch entity detail — we reuse the video-entity summary shape to get
   // the canonical_name, entity_type, and description.  The backend exposes
   // GET /api/v1/entities/{entity_id} which returns the NamedEntity record.
@@ -1748,12 +1782,24 @@ export function EntityDetailPage() {
       if (status === 404) return false;
       return failureCount < 3;
     },
-    // FR-005a: bounded auto-refetch — poll only while grounded and properties
-    // are still empty, and only for a capped number of attempts. Stops the
-    // moment properties are present, the entity isn't grounded, or the cap
-    // is reached; never polls indefinitely.
+    // FR-005a (+ Feature 079 follow-up): poll while grounded with empty
+    // properties (bounded by attempt count), OR while a reground/refresh
+    // mutation's poll window is still open (bounded by
+    // ENRICH_REFRESH_POLL_WINDOW_MS, and stopped early once properties
+    // change from their pre-mutation snapshot). Never polls indefinitely.
     refetchInterval: (query) => {
       const enrichment = query.state.data?.enrichment;
+
+      if (Date.now() < refreshDeadlineRef.current) {
+        const currentSnapshot = JSON.stringify(enrichment?.properties ?? {});
+        if (currentSnapshot === refreshSnapshotRef.current) {
+          return ENRICH_POLL_INTERVAL_MS;
+        }
+        // The background write landed — no need to keep polling.
+        refreshDeadlineRef.current = 0;
+        refreshSnapshotRef.current = null;
+      }
+
       if (!enrichment?.grounded) return false;
       if (Object.keys(enrichment.properties).length > 0) return false;
       if (query.state.dataUpdateCount >= ENRICH_POLL_MAX_ATTEMPTS) return false;
@@ -2080,6 +2126,7 @@ export function EntityDetailPage() {
           entityId={entityId}
           entityType={entity.entity_type}
           canonicalName={entity.canonical_name}
+          onEnrichmentMutationStart={handleEnrichmentMutationStart}
           {...(entity.enrichment !== undefined
             ? { enrichment: entity.enrichment }
             : {})}

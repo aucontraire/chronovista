@@ -82,7 +82,11 @@ def _labels() -> dict[str, Any]:
 
 def _transport() -> httpx.MockTransport:
     def respond(request: httpx.Request) -> httpx.Response:
-        if request.url.params.get("props") == "claims":
+        # First round now fetches descriptions/aliases too (Feature 079). This fixture carries
+        # neither, so no wikidata_description/wikidata_aliases block is produced and the claim-field
+        # parity below is unchanged. (Those reference blocks are out of this parity fixture's scope:
+        # the gitignored pipeline in leg 1 does not emit them until its own local update.)
+        if request.url.params.get("props") == "claims|descriptions|aliases":
             return httpx.Response(200, json=_claims())
         if request.url.params.get("props") == "labels":
             return httpx.Response(200, json=_labels())

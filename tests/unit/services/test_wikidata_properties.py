@@ -12,12 +12,37 @@ from typing import Any
 from chronovista.services.wikidata_properties import (
     assemble_block,
     assemble_properties,
+    assemble_reference_block,
+    extract_aliases,
     extract_claims,
     format_time,
+    merge_wikidata_blocks,
+    pick_description,
     pick_label,
     snak_value,
     value_qids,
 )
+
+
+def _mono_snak(text: str, language: str = "en") -> dict[str, Any]:
+    return {
+        "mainsnak": {
+            "snaktype": "value",
+            "datavalue": {
+                "type": "monolingualtext",
+                "value": {"text": text, "language": language},
+            },
+        }
+    }
+
+
+def _quantity_snak(amount: str) -> dict[str, Any]:
+    return {
+        "mainsnak": {
+            "snaktype": "value",
+            "datavalue": {"type": "quantity", "value": {"amount": amount}},
+        }
+    }
 
 
 def _item_snak(qid: str) -> dict[str, Any]:
@@ -199,3 +224,163 @@ class TestAssembleProperties:
         assert props["birth_date"]["values"] == ["1970"]
         for block in props.values():
             assert set(block.keys()) == {"values", "qids", "source", "set_at"}
+
+
+class TestNewFieldExtraction:
+    """Feature 079 — the expanded field set extracts from real-shaped claims."""
+
+    def test_image_commonsmedia_via_string_branch(self) -> None:
+        # commonsMedia serializes as datavalue.type "string" — captured as a literal filename.
+        out = extract_claims({"P18": [_string_snak("Jane Doe 2020.jpg")]})
+        assert out["image"]["literals"] == ["Jane Doe 2020.jpg"]
+        assert out["image"]["qids"] == []
+
+    def test_monolingual_native_and_birth_name(self) -> None:
+        out = extract_claims(
+            {
+                "P1559": [_mono_snak("Yndira", "es")],
+                "P1477": [_mono_snak("Jane Q. Doe")],
+            }
+        )
+        assert out["native_language_name"]["literals"] == ["Yndira"]
+        assert out["birth_name"]["literals"] == ["Jane Q. Doe"]
+
+    def test_item_valued_relations_stay_qids(self) -> None:
+        out = extract_claims({"P26": [_item_snak("Q111")], "P20": [_item_snak("Q222")]})
+        assert out["spouse"]["qids"] == ["Q111"]
+        assert out["place_of_death"]["qids"] == ["Q222"]
+
+    def test_social_identifiers_captured(self) -> None:
+        out = extract_claims(
+            {
+                "P2013": [_string_snak("jane.doe")],
+                "P7085": [_string_snak("janedoe")],
+                "P4033": [_string_snak("jane@mastodon.social")],
+            }
+        )
+        assert out["facebook_id"]["literals"] == ["jane.doe"]
+        assert out["tiktok_username"]["literals"] == ["janedoe"]
+        assert out["mastodon_address"]["literals"] == ["jane@mastodon.social"]
+
+    def test_follower_count_p8687_excluded(self) -> None:
+        # P8687 (social-media followers) is a quantity and is NOT in WANTED/WANTED_LITERAL.
+        out = extract_claims({"P8687": [_quantity_snak("+1000000")]})
+        assert out == {}
+
+    def test_empty_item_yields_no_blocks(self) -> None:
+        assert extract_claims({}) == {}
+
+    def test_relation_label_resolved_else_qid_kept(self) -> None:
+        block = assemble_block(["Q111"], [], {"Q111": "John Doe"}, "T")
+        assert block["values"] == ["John Doe"] and block["qids"] == ["Q111"]
+        unresolved = assemble_block(["Q222"], [], {}, "T")
+        assert unresolved["values"] == ["Q222"]  # FR-007
+
+
+class TestPickDescription:
+    def test_prefers_earliest_label_order_lang(self) -> None:
+        assert (
+            pick_description({"en": {"language": "en", "value": "American journalist"}})
+            == "American journalist"
+        )
+
+    def test_empty_value_skipped_to_next_lang(self) -> None:
+        # empty 'mul' is skipped in favor of a non-empty later lang (unlike pick_label).
+        assert (
+            pick_description(
+                {
+                    "mul": {"language": "mul", "value": ""},
+                    "en": {"language": "en", "value": "writer"},
+                }
+            )
+            == "writer"
+        )
+
+    def test_none_when_absent(self) -> None:
+        assert pick_description({}) is None
+
+
+class TestExtractAliases:
+    def test_first_lang_values_deduped_order_stable(self) -> None:
+        result = extract_aliases(
+            {
+                "en": [
+                    {"language": "en", "value": "J. Doe"},
+                    {"language": "en", "value": "J. Doe"},
+                    {"language": "en", "value": "Janey"},
+                ]
+            }
+        )
+        assert result == ["J. Doe", "Janey"]
+
+    def test_empty_when_absent(self) -> None:
+        assert extract_aliases({}) == []
+
+
+class TestAssembleReferenceBlock:
+    def test_display_only_shape_no_qids(self) -> None:
+        block = assemble_reference_block(["American journalist"], "T")
+        assert block == {
+            "values": ["American journalist"],
+            "source": "wikidata",
+            "set_at": "T",
+        }
+        assert "qids" not in block  # display-only; not an item reference (FR-006)
+
+
+class TestMergeWikidataBlocks:
+    """Feature 079 (FR-015) — refresh replaces wikidata blocks, preserves other sources."""
+
+    def test_preserves_non_wikidata_blocks(self) -> None:
+        # A DBpedia-sourced block (ledger era) MUST survive a wikidata refresh (data-loss guard).
+        current = {
+            "category": {"values": ["Cat A"], "source": "dbpedia", "set_at": "old"},
+            "occupation": {
+                "values": ["Old Job"],
+                "qids": ["Q1"],
+                "source": "wikidata",
+                "set_at": "old",
+            },
+        }
+        fresh = {
+            "occupation": {
+                "values": ["New Job"],
+                "qids": ["Q2"],
+                "source": "wikidata",
+                "set_at": "new",
+            },
+            "spouse": {
+                "values": ["Someone"],
+                "qids": ["Q3"],
+                "source": "wikidata",
+                "set_at": "new",
+            },
+        }
+        merged = merge_wikidata_blocks(current, fresh)
+        assert merged["category"] == current["category"]  # dbpedia block untouched
+        assert merged["occupation"] == fresh["occupation"]  # wikidata block replaced
+        assert merged["spouse"] == fresh["spouse"]  # new wikidata block added
+
+    def test_drops_wikidata_key_no_longer_asserted(self) -> None:
+        current = {
+            "child": {
+                "values": ["Kid"],
+                "qids": ["Q1"],
+                "source": "wikidata",
+                "set_at": "old",
+            }
+        }
+        merged = merge_wikidata_blocks(current, {})  # source now asserts nothing
+        assert merged == {}  # stale wikidata key dropped (FR-015)
+
+    def test_empty_fresh_keeps_only_non_wikidata(self) -> None:
+        current = {
+            "category": {"values": ["Cat"], "source": "dbpedia", "set_at": "old"},
+            "image": {
+                "values": ["x.jpg"],
+                "qids": [],
+                "source": "wikidata",
+                "set_at": "old",
+            },
+        }
+        assert merge_wikidata_blocks(current, {}) == {"category": current["category"]}

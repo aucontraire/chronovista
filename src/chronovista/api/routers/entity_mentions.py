@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -650,6 +651,40 @@ def _build_enrichment(
     return EntityEnrichment(
         grounded=grounded, properties=props, identifiers=identifiers
     )
+
+
+_QID_RE = re.compile(r"^Q[1-9]\d*$")
+
+
+@router.get(
+    "/entities/wikidata-map",
+    status_code=200,
+    summary="Resolve Wikidata QIDs to local entities",
+)
+async def wikidata_entity_map(
+    qids: str = Query(
+        ..., description="Pipe-separated Wikidata QIDs, e.g. Q42|Q123 (max 100)"
+    ),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+) -> dict[str, Any]:
+    """Map Wikidata QIDs to entities in the local library (Feature 079).
+
+    Powers relation links on the entity detail page: a relation whose value-QID matches a local
+    entity links to that entity, otherwise the frontend links out to Wikidata. Registered BEFORE
+    ``/entities/{entity_id}`` so this static path is not captured as an entity id. Malformed items
+    are ignored (never a 422); only matched QIDs appear in ``data``.
+    """
+    wanted = [
+        q for q in (part.strip() for part in qids.split("|")) if _QID_RE.match(q)
+    ][:100]
+    resolved = await entity_repo.get_by_wikidata_qids(session, wanted) if wanted else {}
+    return {
+        "data": {
+            qid: {"entity_id": str(entity_id), "canonical_name": name}
+            for qid, (entity_id, name) in resolved.items()
+        }
+    }
 
 
 @router.get(

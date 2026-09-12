@@ -381,6 +381,71 @@ class NamedEntityRepository(
         result = await session.execute(stmt)
         return result.rowcount
 
+    async def list_wikidata_grounded(
+        self, session: AsyncSession
+    ) -> Sequence[NamedEntityDB]:
+        """Return every entity grounded to a Wikidata item (Feature 079 backfill work-list).
+
+        Grounded == ``external_ids -> 'wikidata' ->> 'id'`` is present. Ordered by ``id`` for a
+        stable, resumable sweep. Read-only.
+
+        The predicate is a function-wrapped JSONB extraction with no index, so it seq-scans
+        ``named_entities``. This is acceptable at the current scale (low thousands of grounded
+        rows); revisit with an ``EXPLAIN ANALYZE``-measured functional GIN index only if the table
+        grows an order of magnitude.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+
+        Returns
+        -------
+        Sequence[NamedEntityDB]
+            Every Wikidata-grounded entity, ordered by ``id``.
+        """
+        stmt = (
+            select(NamedEntityDB)
+            .where(NamedEntityDB.external_ids["wikidata"]["id"].as_string().isnot(None))
+            .order_by(NamedEntityDB.id)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()
+
+    async def get_by_wikidata_qids(
+        self, session: AsyncSession, qids: Sequence[str]
+    ) -> dict[str, tuple[uuid.UUID, str]]:
+        """Map each given Wikidata QID to the local entity grounded to it (Feature 079).
+
+        Read-only — backs the entity-detail relation-linking resolver. Callers bound ``qids`` (the
+        endpoint caps it at 100) so the ``IN`` list stays small; the JSONB predicate seq-scans but is
+        cheap at the current table size (see :meth:`list_wikidata_grounded` on indexing).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        qids : Sequence[str]
+            Wikidata QIDs to resolve.
+
+        Returns
+        -------
+        dict[str, tuple[uuid.UUID, str]]
+            ``{qid: (entity_id, canonical_name)}`` for QIDs matching a local entity; unmatched QIDs
+            are absent. Empty when ``qids`` is empty.
+        """
+        qid_list = list(qids)
+        if not qid_list:
+            return {}
+        wikidata_id = NamedEntityDB.external_ids["wikidata"]["id"].as_string()
+        stmt = select(
+            wikidata_id.label("qid"),
+            NamedEntityDB.id,
+            NamedEntityDB.canonical_name,
+        ).where(wikidata_id.in_(qid_list))
+        result = await session.execute(stmt)
+        return {row.qid: (row.id, row.canonical_name) for row in result.all()}
+
     async def add_external_id(
         self,
         session: AsyncSession,

@@ -23,9 +23,16 @@
  * picker's auto-search effect fires synchronously with `fireEvent`, and
  * `useWikidataCandidates` / `useRegroundEntity` are mocked at the hook
  * boundary, mirroring `CreateEntityModal.candidates.test.tsx`.
+ *
+ * Feature 079 (US3) property rendering (image, relations, social links,
+ * display-only reference blocks) is covered in a separate describe block
+ * below; `useWikidataEntityMap` is mocked the same way as the other data
+ * hooks. `renderSection` wraps in a `MemoryRouter` so the relation-link
+ * assertions (`<Link>` to a local entity page) work without extra setup.
  */
 
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ---------------------------------------------------------------------------
@@ -38,6 +45,7 @@ vi.mock('@/hooks/useDebounce', () => ({
 
 vi.mock('@/hooks/useEntityMentions', () => ({
   useWikidataCandidates: vi.fn(),
+  useWikidataEntityMap: vi.fn(),
 }));
 
 vi.mock('@/hooks/useRegroundEntity', () => ({
@@ -50,9 +58,9 @@ vi.mock('@/hooks/useRegroundEntity', () => ({
 
 import { EntityEnrichmentSection } from '../EntityEnrichmentSection';
 import type { EntityEnrichmentSectionProps } from '../EntityEnrichmentSection';
-import { useWikidataCandidates } from '@/hooks/useEntityMentions';
+import { useWikidataCandidates, useWikidataEntityMap } from '@/hooks/useEntityMentions';
 import { useRegroundEntity } from '@/hooks/useRegroundEntity';
-import type { EntityEnrichment, WikidataCandidate } from '@/api/entityMentions';
+import type { EntityEnrichment, EntityPropertyValue, WikidataCandidate } from '@/api/entityMentions';
 import type { Mock } from 'vitest';
 
 // ---------------------------------------------------------------------------
@@ -118,6 +126,20 @@ function mockReground(overrides: { mutate?: Mock; isPending?: boolean } = {}) {
   return mutation;
 }
 
+function mockWikidataEntityMap(
+  overrides: { data?: Record<string, { entity_id: string; canonical_name: string }> } = {}
+) {
+  const hook = {
+    data: {},
+    isLoading: false,
+    isError: false,
+    error: null,
+    ...overrides,
+  };
+  (useWikidataEntityMap as Mock).mockReturnValue(hook);
+  return hook;
+}
+
 function makeEnrichment(overrides: Partial<EntityEnrichment> = {}): EntityEnrichment {
   return {
     grounded: true,
@@ -136,7 +158,11 @@ function renderSection(overrides: Partial<EntityEnrichmentSectionProps> = {}) {
     canonicalName: 'Test Person',
     ...overrides,
   };
-  return render(<EntityEnrichmentSection {...props} />);
+  return render(
+    <MemoryRouter>
+      <EntityEnrichmentSection {...props} />
+    </MemoryRouter>
+  );
 }
 
 function openEditor() {
@@ -152,6 +178,7 @@ describe('EntityEnrichmentSection — Change link (Feature 073, US1)', () => {
     vi.clearAllMocks();
     mockWikidata();
     mockReground();
+    mockWikidataEntityMap();
   });
 
   it('renders a "Change link" button', () => {
@@ -315,6 +342,7 @@ describe('EntityEnrichmentSection — Refresh (Feature 073, US2)', () => {
     vi.clearAllMocks();
     mockWikidata();
     mockReground();
+    mockWikidataEntityMap();
   });
 
   it('is NOT shown when the entity is ungrounded (no enrichment at all)', () => {
@@ -403,5 +431,280 @@ describe('EntityEnrichmentSection — Refresh (Feature 073, US2)', () => {
     fireEvent.click(screen.getByRole('button', { name: /refresh wikidata data/i }));
 
     expect(screen.getByRole('status')).toHaveTextContent(/refreshing wikidata facts/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Property rendering (Feature 079, US3)
+// ---------------------------------------------------------------------------
+
+function propBlock(
+  values: string[],
+  overrides: Partial<EntityPropertyValue> = {}
+): EntityPropertyValue {
+  return {
+    values,
+    source: 'wikidata',
+    set_at: '2026-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+describe('EntityEnrichmentSection — property rendering (Feature 079, US3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockWikidata();
+    mockReground();
+    mockWikidataEntityMap();
+    // jsdom defines navigator.clipboard as a getter-only property — redefine
+    // it so we can spy on writeText (mirrors MergeResultBanner's tests).
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    });
+  });
+
+  describe('portrait image', () => {
+    it('renders a portrait when an `image` property is present', () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { image: propBlock(['Placeholder_File.jpg']) },
+        }),
+      });
+
+      const img = screen.getByRole('img', { name: 'Test Person' });
+      expect(img).toHaveAttribute(
+        'src',
+        expect.stringContaining('/images/entities/ent-00000000-0000-0000-0000-000000000001')
+      );
+    });
+
+    it('appends the image `set_at` as a `?v=` cache-buster', () => {
+      // The version changes only on (re-)enrichment, so the backend's immutable cache still
+      // applies, while a stale placeholder pinned during an upstream rate-limit blip is bypassed.
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            image: propBlock(['Placeholder_File.jpg'], { set_at: '2026-02-03T04:05:06Z' }),
+          },
+        }),
+      });
+
+      const img = screen.getByRole('img', { name: 'Test Person' });
+      expect(img.getAttribute('src')).toContain(
+        `?v=${encodeURIComponent('2026-02-03T04:05:06Z')}`
+      );
+    });
+
+    it('renders nothing when no `image` property is present', () => {
+      renderSection({
+        enrichment: makeEnrichment({ properties: { occupation: propBlock(['Placeholder Job']) } }),
+      });
+
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    });
+
+    it('renders nothing after the portrait fails to load', () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { image: propBlock(['Placeholder_File.jpg']) },
+        }),
+      });
+
+      const img = screen.getByRole('img', { name: 'Test Person' });
+      fireEvent.error(img);
+
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('relation properties', () => {
+    it('links a relation value to its local entity page when the QID resolves', () => {
+      mockWikidataEntityMap({
+        data: { Q00000101: { entity_id: 'ent-local-match', canonical_name: 'Placeholder Spouse' } },
+      });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            spouse: propBlock(['Placeholder Spouse'], { qids: ['Q00000101'] }),
+          },
+        }),
+      });
+
+      const link = screen.getByRole('link', { name: 'Placeholder Spouse' });
+      expect(link).toHaveAttribute('href', '/entities/ent-local-match');
+    });
+
+    it('links a relation value to wikidata.org when the QID does not resolve locally', () => {
+      mockWikidataEntityMap({ data: {} });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            father: propBlock(['Placeholder Father'], { qids: ['Q00000202'] }),
+          },
+        }),
+      });
+
+      const link = screen.getByRole('link', { name: 'Placeholder Father' });
+      expect(link).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q00000202');
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    });
+
+    it('renders plain text when a relation value has no aligned QID', () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { sibling: propBlock(['Placeholder Sibling']) },
+        }),
+      });
+
+      expect(screen.getByText('Placeholder Sibling')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Placeholder Sibling' })).not.toBeInTheDocument();
+    });
+
+    it('resolves each value against its positionally-aligned QID independently', () => {
+      mockWikidataEntityMap({
+        data: { Q00000301: { entity_id: 'ent-local-match', canonical_name: 'Matched' } },
+      });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            child: propBlock(['Matched Child', 'Unmatched Child'], {
+              qids: ['Q00000301', 'Q00000302'],
+            }),
+          },
+        }),
+      });
+
+      expect(screen.getByRole('link', { name: 'Matched Child' })).toHaveAttribute(
+        'href',
+        '/entities/ent-local-match'
+      );
+      expect(screen.getByRole('link', { name: 'Unmatched Child' })).toHaveAttribute(
+        'href',
+        'https://www.wikidata.org/wiki/Q00000302'
+      );
+    });
+  });
+
+  describe('social/web properties', () => {
+    it('links a known social property via its fixed URL pattern', () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { x_username: propBlock(['placeholderhandle']) },
+        }),
+      });
+
+      const link = screen.getByRole('link', { name: /x username: placeholderhandle/i });
+      expect(link).toHaveAttribute('href', 'https://x.com/placeholderhandle');
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    });
+
+    it('builds the mastodon URL from a user@server address', () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { mastodon_address: propBlock(['placeholderuser@example.social']) },
+        }),
+      });
+
+      const link = screen.getByRole('link', { name: /mastodon address/i });
+      expect(link).toHaveAttribute('href', 'https://example.social/@placeholderuser');
+    });
+
+    it('renders plain text (not a link) for a malformed mastodon address', () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { mastodon_address: propBlock(['not-a-valid-address']) },
+        }),
+      });
+
+      expect(screen.getByText(/mastodon address: not-a-valid-address/i)).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: /mastodon address/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('display-only reference blocks (wikidata_description / wikidata_aliases)', () => {
+    it('renders wikidata_description with a Copy control and no editable input', () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { wikidata_description: propBlock(['a placeholder reference description']) },
+        }),
+      });
+
+      expect(screen.getByText('a placeholder reference description')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /copy wikidata description/i })
+      ).toBeInTheDocument();
+      // Display-only: no textbox for this value anywhere in the section.
+      expect(
+        screen.queryByRole('textbox', { name: /wikidata description/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it('joins multiple wikidata_aliases values with a comma', () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { wikidata_aliases: propBlock(['Alias One', 'Alias Two']) },
+        }),
+      });
+
+      expect(screen.getByText('Alias One, Alias Two')).toBeInTheDocument();
+    });
+
+    it('copies the reference text to the clipboard and shows a confirmation', async () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { wikidata_description: propBlock(['a placeholder reference description']) },
+        }),
+      });
+
+      const button = screen.getByRole('button', { name: /copy wikidata description/i });
+      fireEvent.click(button);
+
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        'a placeholder reference description'
+      );
+      await waitFor(() => expect(button).toHaveTextContent(/copied/i));
+    });
+
+    it('never renders a control that edits the curated description', () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { wikidata_description: propBlock(['a placeholder reference description']) },
+        }),
+      });
+
+      // The only editable description field in this component belongs to the
+      // "Change link" editor, which is closed by default (T022 requirement:
+      // reference blocks offer no control that edits the curated description).
+      expect(screen.queryByLabelText(/^description$/i)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('clean empty/ungrounded degradation', () => {
+    it('renders none of the new sections when the entity is ungrounded', () => {
+      renderSection();
+
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+      expect(screen.queryByText('Relations')).not.toBeInTheDocument();
+      expect(screen.queryByText('Social & web')).not.toBeInTheDocument();
+      expect(screen.queryByText(/wikidata reference/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId('enrichment-not-grounded')).toBeInTheDocument();
+    });
+
+    it('omits a section entirely when its key is absent, without stray empty labels', () => {
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: { occupation: propBlock(['Placeholder Occupation']) },
+        }),
+      });
+
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+      expect(screen.queryByText('Relations')).not.toBeInTheDocument();
+      expect(screen.queryByText('Social & web')).not.toBeInTheDocument();
+      expect(screen.queryByText(/wikidata reference/i)).not.toBeInTheDocument();
+      expect(screen.getByText('Placeholder Occupation')).toBeInTheDocument();
+    });
   });
 });

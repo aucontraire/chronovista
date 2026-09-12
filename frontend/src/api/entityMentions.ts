@@ -6,7 +6,7 @@
  * - GET /api/v1/entities/{entity_id}/videos — entity-to-videos lookup
  */
 
-import { apiFetch } from "./config";
+import { apiFetch, API_BASE_URL } from "./config";
 import type { PhoneticMatch } from "../types/corrections";
 
 // ---------------------------------------------------------------------------
@@ -142,6 +142,8 @@ export interface EntityListItem {
  */
 export interface EntityPropertyValue {
   values?: string[];
+  /** ISO timestamp the block was written; used as an image-URL cache-buster. */
+  set_at?: string;
   [k: string]: unknown;
 }
 
@@ -1462,4 +1464,113 @@ export async function unlinkEntityTag(
     { method: "DELETE" }
   );
   return body.data;
+}
+
+// ---------------------------------------------------------------------------
+// Wikidata entity map (Feature 079, US3 — resolve relation QIDs to local
+// entities so a relation property value, e.g. `spouse`, can link to that
+// entity's own detail page when one already exists locally).
+// ---------------------------------------------------------------------------
+
+/** A local entity matched to a Wikidata QID via `/entities/wikidata-map`. */
+export interface WikidataEntityMapEntry {
+  entity_id: string;
+  canonical_name: string;
+}
+
+/** Response envelope for GET /api/v1/entities/wikidata-map */
+export interface WikidataEntityMapResponse {
+  data: Record<string, WikidataEntityMapEntry>;
+}
+
+/**
+ * Resolves a set of Wikidata QIDs to local named entities.
+ *
+ * Only matched QIDs are present as keys in the result — an unmatched QID is
+ * simply absent, not present with a null/undefined value.
+ *
+ * @param qids - Wikidata QIDs to resolve, e.g. ["Q42", "Q123"]
+ * @param signal - Optional AbortSignal for cancellation
+ * @returns Map of QID -> matched local entity (unmatched QIDs omitted)
+ */
+export async function fetchWikidataEntityMap(
+  qids: string[],
+  signal?: AbortSignal
+): Promise<Record<string, WikidataEntityMapEntry>> {
+  const params = new URLSearchParams({ qids: qids.join("|") });
+  const res = await apiFetch<WikidataEntityMapResponse>(
+    `/entities/wikidata-map?${params.toString()}`,
+    {
+      ...(signal !== undefined ? { externalSignal: signal } : {}),
+    }
+  );
+  return res.data;
+}
+
+// ---------------------------------------------------------------------------
+// Entity portrait image (Feature 079, US3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds the same-origin proxy URL for an entity's portrait image, mirroring
+ * the existing channel/video thumbnail proxy pattern (Feature 026). The
+ * image is served directly from this URL — no separate fetch/blob handling
+ * is needed, just use it as an `<img src>`.
+ *
+ * When `version` is given (the image property's `set_at` timestamp) it is
+ * appended as a `?v=` cache-buster. This changes the URL only when the image
+ * is (re-)enriched, so the backend's 7-day immutable cache still applies, while
+ * a fresh enrichment — or an escape from a stale placeholder the browser cached
+ * during an upstream rate-limit blip — forces the browser to re-request rather
+ * than reuse a pinned response for the bare URL.
+ *
+ * @param entityId - UUID of the named entity
+ * @param version - optional cache-buster (the image block's `set_at`)
+ * @returns URL for GET /api/v1/images/entities/{entityId}
+ */
+export function entityImageUrl(entityId: string, version?: string): string {
+  const base = `${API_BASE_URL}/images/entities/${entityId}`;
+  return version ? `${base}?v=${encodeURIComponent(version)}` : base;
+}
+
+// ---------------------------------------------------------------------------
+// Social profile URL patterns (Feature 079, US3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a profile URL from a social/web property key and its handle value,
+ * per the fixed per-platform URL patterns Feature 079 defines.
+ *
+ * `mastodon_address` holds a `user@server` address rather than a bare handle;
+ * a value missing the "@" separator is treated as malformed and returns
+ * null rather than a broken URL.
+ *
+ * @param key - Property key, e.g. "x_username"
+ * @param handle - The block's handle/value, e.g. "openai" or "user@mastodon.social"
+ * @returns The profile URL, or null when the key is unknown or the value is malformed
+ */
+export function socialProfileUrl(key: string, handle: string): string | null {
+  switch (key) {
+    case "x_username":
+      return `https://x.com/${handle}`;
+    case "instagram_username":
+      return `https://instagram.com/${handle}`;
+    case "youtube_channel_id":
+      return `https://www.youtube.com/channel/${handle}`;
+    case "facebook_id":
+      return `https://www.facebook.com/${handle}`;
+    case "tiktok_username":
+      return `https://www.tiktok.com/@${handle}`;
+    case "mastodon_address": {
+      const atIndex = handle.indexOf("@");
+      if (atIndex <= 0 || atIndex === handle.length - 1) return null;
+      const user = handle.slice(0, atIndex);
+      const server = handle.slice(atIndex + 1);
+      return `https://${server}/@${user}`;
+    }
+    case "official_website":
+      return handle;
+    default:
+      return null;
+  }
 }

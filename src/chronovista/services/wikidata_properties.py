@@ -47,6 +47,17 @@ WANTED: dict[str, str] = {
     "P463": "member_of",
     "P1412": "languages",
     "P159": "headquarters",
+    # Feature 079 — item-valued relations (values are QIDs resolved in the label round).
+    "P26": "spouse",
+    "P22": "father",
+    "P25": "mother",
+    "P40": "child",
+    "P3373": "sibling",
+    "P20": "place_of_death",
+    "P101": "field_of_work",
+    "P361": "part_of",
+    "P451": "unmarried_partner",
+    "P3342": "significant_person",
 }
 
 # Literal-valued: strings, URLs and dates that ARE the value (no label round needed).
@@ -59,6 +70,14 @@ WANTED_LITERAL: dict[str, str] = {
     "P345": "imdb_id",
     "P2002": "x_username",
     "P2003": "instagram_username",
+    # Feature 079 — portrait image (commonsMedia serializes as a "string" filename),
+    # monolingual names, and the remaining social-identifier platforms (no follower counts).
+    "P18": "image",
+    "P1559": "native_language_name",
+    "P1477": "birth_name",
+    "P2013": "facebook_id",
+    "P7085": "tiktok_username",
+    "P4033": "mastodon_address",
 }
 
 # Value-label languages. Some items carry only Wikidata's cross-lingual ``mul`` label — invisible to
@@ -224,3 +243,78 @@ def assemble_properties(
         field: assemble_block(block["qids"], block["literals"], labels, set_at)
         for field, block in extracted.items()
     }
+
+
+def pick_description(descriptions: dict[str, Any]) -> str | None:
+    """Resolve the item's one-line description from its ``descriptions`` block using ``LABEL_ORDER``.
+
+    Mirrors :func:`pick_label`: the first language present in ``LABEL_ORDER`` wins, returned verbatim.
+    Sourced from the item's top-level ``descriptions`` (not from claims). Display-only reference data
+    (spec FR-005/FR-006) — never merged into the entity's curated ``description`` column.
+    """
+    for lang in LABEL_ORDER:
+        entry = descriptions.get(lang)
+        if isinstance(entry, dict) and entry.get("value"):
+            return str(entry["value"])
+    return None
+
+
+def extract_aliases(aliases: dict[str, Any]) -> list[str]:
+    """Resolve the item's aliases from its ``aliases`` block using ``LABEL_ORDER``.
+
+    Wikidata's ``aliases`` maps each language to a list of ``{"language", "value"}`` entries. Returns
+    the values for the first language present in ``LABEL_ORDER`` (deduped, order-stable), or ``[]``.
+    Display-only reference data (spec FR-005/FR-006) — never inserted into the ``entity_aliases`` table.
+    """
+    for lang in LABEL_ORDER:
+        entries = aliases.get(lang)
+        if isinstance(entries, list):
+            out: list[str] = []
+            for entry in entries:
+                if isinstance(entry, dict):
+                    value = entry.get("value")
+                    if isinstance(value, str) and value and value not in out:
+                        out.append(value)
+            if out:
+                return out
+    return []
+
+
+def assemble_reference_block(values: list[str], set_at: str) -> dict[str, Any]:
+    """Assemble a display-only reference block (Wikidata description / aliases).
+
+    Same provenance fields as :func:`assemble_block` but with no ``qids`` — these are not item
+    references, just verbatim reference text kept separate from the entity's curated fields (FR-006).
+    """
+    return {"values": values, "source": SOURCE, "set_at": set_at}
+
+
+def merge_wikidata_blocks(
+    current: dict[str, Any], fresh: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge a freshly-fetched Wikidata bag into an entity's existing ``properties`` (FR-015).
+
+    Used by the backfill/refresh path. **Fully replaces the Wikidata-sourced blocks** — a key the
+    source no longer asserts is dropped — while **preserving every block from another source** (e.g.
+    DBpedia ``category`` blocks with ``source="dbpedia"``, or any hand-set block). A naive full-replace
+    with ``fresh`` alone would silently wipe those (see ``replace_properties`` — full-replace is only
+    safe on an already-merged bag), so refresh MUST go through this merge.
+
+    Parameters
+    ----------
+    current : dict[str, Any]
+        The entity's existing property bag (may hold blocks from multiple sources).
+    fresh : dict[str, Any]
+        A freshly-fetched bag whose blocks are all ``source == "wikidata"`` (from ``fetch_properties``).
+
+    Returns
+    -------
+    dict[str, Any]
+        ``{non-wikidata blocks of current} + {fresh}``.
+    """
+    preserved = {
+        key: block
+        for key, block in current.items()
+        if not (isinstance(block, dict) and block.get("source") == SOURCE)
+    }
+    return {**preserved, **fresh}

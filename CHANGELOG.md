@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.84.0] - 2026-09-11
+
+### Added
+- **Grounded entities now capture a much richer set of Wikidata facts, shown on the entity detail page.** When an entity is grounded to a Wikidata item (at create/approval time, and via the backfill below), it now captures — in addition to the fields already collected — a portrait image, the name in the subject's native language, a birth name, key item-valued relations (spouse, father, mother, child, sibling, place of death, field of work, part of, unmarried partner, significant person), and social-media presence as a list of platform→handle identifiers (X/Twitter, Instagram, YouTube, Facebook, TikTok, Mastodon, official website — no follower counts). It also captures the item's one-line Wikidata description and its aliases as **display-only reference blocks**, which are kept entirely separate from — and never overwrite — the entity's own curated description or alias list. All of this rides in the existing `named_entities.properties` JSONB column with **no schema migration**.
+- **The entity detail page renders the new fields**: the portrait (served same-origin through the image cache proxy), native/birth names, the relation set (each relation links to the matching local entity when one exists, otherwise out to Wikidata), social handles as profile links, and the Wikidata description/aliases as clearly-labeled, copyable, display-only blocks. Absent fields render nothing.
+- **New `chronovista entities backfill-wikidata-properties` CLI** to apply the expanded field set to the already-grounded library. Defaults to a read-only dry run; `--apply` prints the target database, requires confirmation, writes a pre-change backup, refuses a dev database unless `--allow-dev`, paces its Wikidata requests, and is idempotent/resumable. A refresh **fully replaces the Wikidata-sourced blocks while preserving blocks from other sources** (e.g. DBpedia).
+- **New read endpoints**: `GET /api/v1/entities/wikidata-map` (resolve Wikidata QIDs to local entities, for relation linking) and `GET /api/v1/images/entities/{entity_id}` (proxy an entity's Wikidata portrait, same-origin). The image proxy's SSRF allowlist now includes Wikimedia Commons.
+
 ## [0.83.0] - 2026-09-11
 
 ### Added

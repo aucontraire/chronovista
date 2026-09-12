@@ -35,7 +35,7 @@ from chronovista.services.image_cache import (
 console = Console()
 
 # Valid --type values
-_VALID_TYPES = {"channels", "videos", "all"}
+_VALID_TYPES = {"channels", "videos", "entities", "all"}
 
 # Valid --quality values (from ImageQuality enum)
 _VALID_QUALITIES = {q.value for q in ImageQuality}
@@ -59,6 +59,7 @@ def _build_cache_service() -> ImageCacheService:
         cache_dir=settings.cache_dir,
         channels_dir=settings.cache_dir / "images" / "channels",
         videos_dir=settings.cache_dir / "images" / "videos",
+        entities_dir=settings.cache_dir / "images" / "entities",
     )
     return ImageCacheService(config=config)
 
@@ -68,7 +69,7 @@ def warm(
     type_: str = typer.Option(
         "all",
         "--type",
-        help='Image type to warm: "channels", "videos", or "all"',
+        help='Image type to warm: "channels", "videos", "entities", or "all"',
     ),
     quality: str = typer.Option(
         "mqdefault",
@@ -105,6 +106,7 @@ def warm(
         chronovista cache warm
         chronovista cache warm --type channels
         chronovista cache warm --type videos --quality hqdefault --limit 100
+        chronovista cache warm --type entities
         chronovista cache warm --dry-run
     """
     # Validate --type
@@ -175,6 +177,7 @@ async def _warm_async(
 
     channel_result: WarmResult | None = None
     video_result: WarmResult | None = None
+    entity_result: WarmResult | None = None
     had_errors = False
 
     if dry_run:
@@ -206,10 +209,23 @@ async def _warm_async(
             if video_result.failed > 0:
                 had_errors = True
 
+        # --- Warm entity portraits (Feature 079) ---
+        if type_ in ("entities", "all"):
+            entity_result = await _warm_entities(
+                service=service,
+                session=session,
+                delay=delay,
+                limit=limit,
+                dry_run=dry_run,
+            )
+            if entity_result.failed > 0:
+                had_errors = True
+
     # Display summary
     _display_summary(
         channel_result=channel_result,
         video_result=video_result,
+        entity_result=entity_result,
         dry_run=dry_run,
     )
 
@@ -395,10 +411,97 @@ async def _warm_videos(
     return result
 
 
+async def _warm_entities(
+    *,
+    service: ImageCacheService,
+    session: AsyncSession,
+    delay: float,
+    limit: int | None,
+    dry_run: bool,
+) -> WarmResult:
+    """Warm entity portraits (Feature 079) with Rich progress display.
+
+    Parameters
+    ----------
+    service : ImageCacheService
+        The image cache service.
+    session : AsyncSession
+        Database session.
+    delay : float
+        Inter-request delay.
+    limit : int | None
+        Download limit.
+    dry_run : bool
+        Dry-run flag.
+
+    Returns
+    -------
+    WarmResult
+        Entity warming result.
+    """
+    if dry_run:
+        console.print("\n[cyan]Scanning entity portraits...[/cyan]")
+    else:
+        console.print("\n[cyan]Warming entity portraits...[/cyan]")
+
+    downloaded_count = 0
+    skipped_count = 0
+    failed_count = 0
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Entities", total=None)
+
+        def entity_callback(entity_id: str, status: str) -> None:
+            nonlocal downloaded_count, skipped_count, failed_count
+            if status == "downloaded" or status == "dry_run":
+                downloaded_count += 1
+            elif status == "skipped" or status == "limit_reached":
+                skipped_count += 1
+            elif status.startswith("failed"):
+                failed_count += 1
+
+            if status == "__backoff__":
+                return
+
+            progress.update(
+                task,
+                advance=1 if status != "__backoff__" else 0,
+                description=(
+                    f"Entities ({downloaded_count} "
+                    f"{'to download' if dry_run else 'downloaded'}, "
+                    f"{skipped_count} cached)"
+                ),
+            )
+
+            # Log 429 backoffs to console
+            if entity_id == "__backoff__":
+                console.print(f"  [yellow]Warning: {status}[/yellow]")
+
+        result = await service.warm_entities(
+            session=session,
+            delay=delay,
+            limit=limit,
+            dry_run=dry_run,
+            progress_callback=entity_callback,
+        )
+
+        progress.update(task, total=result.total, completed=result.total)
+
+    return result
+
+
 def _display_summary(
     *,
     channel_result: WarmResult | None,
     video_result: WarmResult | None,
+    entity_result: WarmResult | None = None,
     dry_run: bool,
 ) -> None:
     """Display a summary table of warming results.
@@ -409,6 +512,8 @@ def _display_summary(
         Result from channel warming, or ``None`` if not performed.
     video_result : WarmResult | None
         Result from video warming, or ``None`` if not performed.
+    entity_result : WarmResult | None
+        Result from entity-portrait warming, or ``None`` if not performed.
     dry_run : bool
         Whether this was a dry-run operation.
     """
@@ -443,19 +548,32 @@ def _display_summary(
             str(video_result.total),
         )
 
+    if entity_result is not None:
+        table.add_row(
+            "Entities",
+            str(entity_result.downloaded),
+            str(entity_result.skipped),
+            str(entity_result.failed),
+            str(entity_result.no_url),
+            str(entity_result.total),
+        )
+
     console.print(table)
 
     if dry_run:
         # Estimate download sizes
         ch_dl = channel_result.downloaded if channel_result else 0
         vid_dl = video_result.downloaded if video_result else 0
+        ent_dl = entity_result.downloaded if entity_result else 0
         ch_est_mb = ch_dl * 100 / 1024  # ~100 KB per channel avatar
         vid_est_mb = vid_dl * 12 / 1024  # ~12 KB per video thumbnail
-        total_est_mb = ch_est_mb + vid_est_mb
+        ent_est_mb = ent_dl * 1500 / 1024  # ~1.5 MB per Commons portrait (originals)
+        total_est_mb = ch_est_mb + vid_est_mb + ent_est_mb
         console.print(
             f"\n  Estimated download: "
             f"~{ch_est_mb:.1f} MB (channels, ~100 KB each) + "
-            f"~{vid_est_mb:.1f} MB (videos, ~12 KB each) = "
+            f"~{vid_est_mb:.1f} MB (videos, ~12 KB each) + "
+            f"~{ent_est_mb:.1f} MB (entities, ~1.5 MB each) = "
             f"~{total_est_mb:.1f} MB"
         )
 

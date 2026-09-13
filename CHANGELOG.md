@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.84.1] - 2026-09-13
+
+### Fixed
+- **Entity portraits now load reliably.** Wikimedia's User-Agent policy throttles (HTTP 429) requests whose User-Agent lacks a contact URL/email, which was silently blocking the entity image proxy from fetching portraits from Wikimedia Commons. The image fetch now sends a policy-compliant User-Agent that includes the project's contact URL, so portraits (and the `cache warm --type entities` pre-download) fetch successfully instead of being rate-limited.
+
 ## [0.84.0] - 2026-09-11
 
 ### Added

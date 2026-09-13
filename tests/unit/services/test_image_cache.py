@@ -1261,7 +1261,11 @@ class TestImageFetchUserAgent:
 
         headers = captured.get("headers")
         assert isinstance(headers, dict)
-        assert "chronovista" in str(headers.get("User-Agent", "")).lower()
+        ua = str(headers.get("User-Agent", ""))
+        assert "chronovista" in ua.lower()
+        # Wikimedia's policy throttles (429) UAs without a contact URL/email — verified empirically
+        # that the fetch fails without one. The contact link is mandatory, not decoration.
+        assert "http" in ua.lower() or "@" in ua
 
 
 class TestIsTransientFetchFailure:

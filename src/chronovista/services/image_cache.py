@@ -73,12 +73,15 @@ def _is_transient_fetch_failure(reason: str | None) -> bool:
     )
 
 
-# Wikimedia's User-Agent policy 403s requests with a missing/generic UA
-# (httpx's default `python-httpx/...` is rejected). A descriptive UA is required for
-# upload.wikimedia.org (entity portraits); YouTube CDNs accept it too, so it is sent on
-# every image fetch. See https://meta.wikimedia.org/wiki/User-Agent_policy.
+# Wikimedia's User-Agent policy requires a UA that identifies the client AND carries a contact
+# URL/email; it throttles (429) UAs lacking one — a generic browser UA is refused too. Verified
+# empirically: the same fetch 429s with a no-contact UA and returns 200 the instant a contact URL is
+# present. The contact link (the public repo) is what satisfies the policy, so it is NOT optional
+# decoration. YouTube CDNs accept this UA too, so it is sent on every image fetch.
+# See https://meta.wikimedia.org/wiki/User-Agent_policy.
 _IMAGE_FETCH_USER_AGENT = (
-    "chronovista/1.0 (local personal library tooling; image cache)"
+    "chronovista/1.0 (https://github.com/aucontraire/chronovista; "
+    "personal YouTube-library tool)"
 )
 
 

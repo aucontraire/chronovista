@@ -24,7 +24,14 @@ from chronovista.models.wikidata_candidate import WikidataCandidate
 from chronovista.services import wikidata_properties as wp
 
 API = "https://www.wikidata.org/w/api.php"
-USER_AGENT = "chronovista/1.0 (local personal library tooling)"
+# Wikimedia's User-Agent policy gates request rate on a compliant UA that carries a contact
+# URL/email: a no-contact UA is throttled to ~10 req/min (429s), a compliant one to ~200 req/min
+# (see ADR-010). A contact-less UA is what threw the backfill's 429s; the contact link (the public
+# repo) is mandatory, not decoration. Mirrors image_cache._IMAGE_FETCH_USER_AGENT.
+USER_AGENT = (
+    "chronovista/1.0 (https://github.com/aucontraire/chronovista; "
+    "personal YouTube-library tool)"
+)
 
 # Instance_of (P31) values that corroborate a hand-assigned type. Mirrors the pipeline's
 # deliberately-narrow map (sweep_absent_wikidata.EXPECTED): a wrong "matches" is costlier than

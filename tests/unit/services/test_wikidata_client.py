@@ -14,9 +14,32 @@ from typing import Any
 import httpx
 import pytest
 
-from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
+from chronovista.services.wikidata_client import (
+    USER_AGENT,
+    WikidataClient,
+    WikidataUnavailable,
+)
 
 pytestmark = pytest.mark.asyncio
+
+
+class TestUserAgentPolicy:
+    """Wikimedia gates request rate on a contact-bearing User-Agent (ADR-010: 10 vs 200 req/min)."""
+
+    def test_user_agent_carries_a_contact_link(self) -> None:
+        # A no-contact UA is throttled to ~10 req/min (429s under the backfill's pace); the contact
+        # URL/email is mandatory, not decoration.
+        assert "chronovista" in USER_AGENT.lower()
+        assert "http" in USER_AGENT.lower() or "@" in USER_AGENT
+
+    def test_new_client_sends_the_user_agent(self) -> None:
+        client = WikidataClient()._new_client()
+        try:
+            assert client.headers.get("User-Agent") == USER_AGENT
+        finally:
+            # _new_client returns an un-entered AsyncClient; drop the reference without awaiting
+            # aclose (no connections were opened).
+            del client
 
 
 def _entities_details() -> dict[str, Any]:

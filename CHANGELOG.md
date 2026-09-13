@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.84.2] - 2026-09-13
+
+### Fixed
+- **Wikidata grounding and the property backfill no longer get rate-limited.** The Wikidata metadata client sent a User-Agent without a contact URL, which Wikimedia's policy caps at ~10 requests/minute (429s) versus ~200/minute for a compliant one (ADR-010) — this is what throttled the `backfill-wikidata-properties` run and can stall create-time grounding. The client now sends a policy-compliant User-Agent that includes the project's contact URL. Completes the same fix applied to the image proxy in 0.84.1.
+
 ## [0.84.1] - 2026-09-13
 
 ### Fixed

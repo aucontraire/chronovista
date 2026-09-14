@@ -344,6 +344,74 @@ describe("EntityDetailPage", () => {
     });
   });
 
+  describe("Header portrait", () => {
+    function mockEntityWithImage(imageOverrides: Record<string, unknown> = {}) {
+      vi.mocked(useQuery).mockReturnValue({
+        ...({} as ReturnType<typeof useQuery>),
+        data: {
+          ...mockEntity,
+          enrichment: {
+            grounded: true,
+            properties: {
+              image: {
+                values: ["Placeholder_File.jpg"],
+                set_at: "2026-02-03T04:05:06Z",
+                ...imageOverrides,
+              },
+            },
+            identifiers: [],
+          },
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+        status: "success",
+        isPending: false,
+        isSuccess: true,
+        isFetching: false,
+        fetchStatus: "idle" as const,
+      } as ReturnType<typeof useQuery>);
+    }
+
+    it("renders the portrait image with the entity image proxy src, including the `?v=` cache-buster", () => {
+      mockEntityWithImage();
+
+      renderPage();
+
+      const img = screen.getByRole("img", { name: "Ada Lovelace" });
+      expect(img).toHaveAttribute(
+        "src",
+        expect.stringContaining("/images/entities/entity-uuid-001")
+      );
+      expect(img.getAttribute("src")).toContain(
+        `?v=${encodeURIComponent("2026-02-03T04:05:06Z")}`
+      );
+    });
+
+    it("wraps the portrait in a link that opens the full-size image in a new tab", () => {
+      mockEntityWithImage();
+
+      renderPage();
+
+      const link = screen.getByRole("link", {
+        name: /open full-size portrait of ada lovelace/i,
+      });
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener");
+      expect(link).toHaveAttribute(
+        "href",
+        expect.stringContaining("/images/entities/entity-uuid-001")
+      );
+    });
+
+    it("renders a placeholder (not an <img>) when the entity has no image enrichment property", () => {
+      renderPage();
+
+      expect(screen.queryByRole("img", { name: "Ada Lovelace" })).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/no portrait available/i)).toBeInTheDocument();
+    });
+  });
+
   describe("Video list", () => {
     it("renders video cards with title and channel", () => {
       vi.mocked(useEntityVideos).mockReturnValue({

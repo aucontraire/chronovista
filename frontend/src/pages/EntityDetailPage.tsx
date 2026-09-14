@@ -19,6 +19,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { CooccurringPanel } from "../components/entity/CooccurringPanel";
 import { EntityEnrichmentSection } from "../components/entity/EntityEnrichmentSection";
+import { EntityPortrait } from "../components/entity/EntityPortrait";
 import { EntityTagSection } from "../components/entity/EntityTagSection";
 import { EntityTypeBadge } from "../components/EntityTypeBadge";
 import { AssociationBreakdown } from "../components/AssociationBreakdown";
@@ -1908,112 +1909,124 @@ export function EntityDetailPage() {
         </Link>
       </div>
 
-      {/* Entity header card */}
+      {/* Entity header card — portrait on the left, identity + actions on the right */}
       <article className="bg-white rounded-xl shadow-md border border-gray-100 p-6 lg:p-8 mb-6">
-        {/* Name + type badge + description — inline editable (Feature 057) */}
-        <EntityNameEditor
-          entityId={entityId ?? ""}
-          canonicalName={entity.canonical_name}
-          description={entity.description}
-          entityType={entity.entity_type}
-          typeBadge={
-            <EntityTypeBadge entityType={entity.entity_type} size="md" />
-          }
-        />
+        <div className="flex flex-col sm:flex-row gap-6">
+          <EntityPortrait
+            entityId={entityId ?? ""}
+            canonicalName={entity.canonical_name}
+            {...(entity.enrichment?.properties?.image !== undefined
+              ? { imageBlock: entity.enrichment.properties.image }
+              : {})}
+          />
 
-        {/* Stats row */}
-        <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500">
-          <span>
-            <strong className="text-gray-900 font-semibold">
-              {entity.mention_count.toLocaleString()}
-            </strong>{" "}
-            mention{entity.mention_count === 1 ? "" : "s"}
-          </span>
-          <span>
-            <strong className="text-gray-900 font-semibold">
-              {entity.video_count.toLocaleString()}
-            </strong>{" "}
-            association{entity.video_count === 1 ? "" : "s"}
-          </span>
-          <AssociationBreakdown bySource={entity.by_source} />
-        </div>
+          <div className="min-w-0 flex-1">
+            {/* Name + type badge + description — inline editable (Feature 057) */}
+            <EntityNameEditor
+              entityId={entityId ?? ""}
+              canonicalName={entity.canonical_name}
+              description={entity.description}
+              entityType={entity.entity_type}
+              typeBadge={
+                <EntityTypeBadge entityType={entity.entity_type} size="md" />
+              }
+            />
 
-        {/* T008: Scan for mentions button + inline feedback */}
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={handleScanClick}
-            disabled={scanMutation.isPending}
-            aria-busy={scanMutation.isPending ? "true" : undefined}
-            title={scanMutation.isPending ? "A scan is already running" : undefined}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 transition-colors"
-          >
-            {scanMutation.isPending ? (
-              <>
-                <svg
-                  className="w-4 h-4 animate-spin"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
+            {/* Stats row */}
+            <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500">
+              <span>
+                <strong className="text-gray-900 font-semibold">
+                  {entity.mention_count.toLocaleString()}
+                </strong>{" "}
+                mention{entity.mention_count === 1 ? "" : "s"}
+              </span>
+              <span>
+                <strong className="text-gray-900 font-semibold">
+                  {entity.video_count.toLocaleString()}
+                </strong>{" "}
+                association{entity.video_count === 1 ? "" : "s"}
+              </span>
+              <AssociationBreakdown bySource={entity.by_source} />
+            </div>
+
+            {/* T008: Scan for mentions button + inline feedback */}
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleScanClick}
+                disabled={scanMutation.isPending}
+                aria-busy={scanMutation.isPending ? "true" : undefined}
+                title={scanMutation.isPending ? "A scan is already running" : undefined}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 transition-colors"
+              >
+                {scanMutation.isPending ? (
+                  <>
+                    <svg
+                      className="w-4 h-4 animate-spin"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    Rescanning...
+                    <span className="sr-only">Rebuilding mentions for this entity...</span>
+                  </>
+                ) : (
+                  "Rescan Mentions"
+                )}
+              </button>
+
+              {!scanMutation.isPending && (
+                <p className="text-sm text-slate-500">
+                  Rebuilds every detected mention from the entity's current aliases
+                  and exclusion patterns. Mentions you added or corrected by hand
+                  are kept.
+                </p>
+              )}
+
+              {scanMutation.isPending && (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5"
                 >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                  />
-                </svg>
-                Rescanning...
-                <span className="sr-only">Rebuilding mentions for this entity...</span>
-              </>
-            ) : (
-              "Rescan Mentions"
-            )}
-          </button>
+                  Scanning… (this can take a few minutes)
+                </p>
+              )}
 
-          {!scanMutation.isPending && (
-            <p className="text-sm text-slate-500">
-              Rebuilds every detected mention from the entity's current aliases
-              and exclusion patterns. Mentions you added or corrected by hand
-              are kept.
-            </p>
-          )}
-
-          {scanMutation.isPending && (
-            <p
-              role="status"
-              aria-live="polite"
-              className="text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5"
-            >
-              Scanning… (this can take a few minutes)
-            </p>
-          )}
-
-          {scanMessage !== null && scanMessageType === "success" && (
-            <p
-              role="status"
-              aria-live="polite"
-              className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-1.5"
-            >
-              {scanMessage}
-            </p>
-          )}
-          {scanMessage !== null && scanMessageType === "error" && (
-            <p
-              role="alert"
-              className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-1.5"
-            >
-              {scanMessage}
-            </p>
-          )}
+              {scanMessage !== null && scanMessageType === "success" && (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-1.5"
+                >
+                  {scanMessage}
+                </p>
+              )}
+              {scanMessage !== null && scanMessageType === "error" && (
+                <p
+                  role="alert"
+                  className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-1.5"
+                >
+                  {scanMessage}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </article>
 

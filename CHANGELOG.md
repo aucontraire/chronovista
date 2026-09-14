@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.84.4] - 2026-09-14
+
+### Changed
+- **Entity detail page: the portrait moved into the page header.** It now sits to the left of the name, description, and actions (larger, ~160–192px), and clicking it opens the full-resolution image in a new tab. When an entity has no portrait, a neutral placeholder holds the space. The image is no longer shown in the enrichment section (it was the same picture twice); a dedicated provenance view can be added later alongside a custom-image upload feature.
+
 ## [0.84.3] - 2026-09-13
 
 ### Fixed

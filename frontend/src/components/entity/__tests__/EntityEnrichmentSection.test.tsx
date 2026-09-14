@@ -464,58 +464,15 @@ describe('EntityEnrichmentSection — property rendering (Feature 079, US3)', ()
     });
   });
 
-  describe('portrait image', () => {
-    it('renders a portrait when an `image` property is present', () => {
-      renderSection({
-        enrichment: makeEnrichment({
-          properties: { image: propBlock(['Placeholder_File.jpg']) },
-        }),
-      });
-
-      const img = screen.getByRole('img', { name: 'Test Person' });
-      expect(img).toHaveAttribute(
-        'src',
-        expect.stringContaining('/images/entities/ent-00000000-0000-0000-0000-000000000001')
-      );
+  it('excludes the `image` property from the generic property list (rendered in the page header instead)', () => {
+    renderSection({
+      enrichment: makeEnrichment({
+        properties: { image: propBlock(['Placeholder_File.jpg']) },
+      }),
     });
 
-    it('appends the image `set_at` as a `?v=` cache-buster', () => {
-      // The version changes only on (re-)enrichment, so the backend's immutable cache still
-      // applies, while a stale placeholder pinned during an upstream rate-limit blip is bypassed.
-      renderSection({
-        enrichment: makeEnrichment({
-          properties: {
-            image: propBlock(['Placeholder_File.jpg'], { set_at: '2026-02-03T04:05:06Z' }),
-          },
-        }),
-      });
-
-      const img = screen.getByRole('img', { name: 'Test Person' });
-      expect(img.getAttribute('src')).toContain(
-        `?v=${encodeURIComponent('2026-02-03T04:05:06Z')}`
-      );
-    });
-
-    it('renders nothing when no `image` property is present', () => {
-      renderSection({
-        enrichment: makeEnrichment({ properties: { occupation: propBlock(['Placeholder Job']) } }),
-      });
-
-      expect(screen.queryByRole('img')).not.toBeInTheDocument();
-    });
-
-    it('renders nothing after the portrait fails to load', () => {
-      renderSection({
-        enrichment: makeEnrichment({
-          properties: { image: propBlock(['Placeholder_File.jpg']) },
-        }),
-      });
-
-      const img = screen.getByRole('img', { name: 'Test Person' });
-      fireEvent.error(img);
-
-      expect(screen.queryByRole('img')).not.toBeInTheDocument();
-    });
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.queryByText('Image')).not.toBeInTheDocument();
   });
 
   describe('relation properties', () => {

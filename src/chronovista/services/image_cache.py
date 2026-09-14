@@ -84,6 +84,17 @@ _IMAGE_FETCH_USER_AGENT = (
     "personal YouTube-library tool)"
 )
 
+# Entity portraits come from Wikimedia Commons, where a small fraction of originals are enormous
+# archival scans (measured up to ~47 MB) that blow past _MAX_IMAGE_BYTES and would otherwise render
+# as a permanent placeholder. Commons renders a downscaled copy at any width server-side, so rather
+# than reject those — or download the giant original just to discard it — the entity path asks the
+# imageinfo API for the original's byte size plus a downscaled URL, and fetches the downscale ONLY
+# when the original exceeds the cap. Measured across the real library (425 portraits): 1920px keeps
+# every over-cap original well under 5 MB (worst case ~2.4 MB) at high resolution, while the ~89%
+# already under the cap are still fetched at full quality.
+_COMMONS_API = "https://commons.wikimedia.org/w/api.php"
+_ENTITY_THUMBNAIL_WIDTH = 1920
+
 
 def commons_image_url(filename: str) -> str:
     """Build the direct Wikimedia Commons upload URL for a bare image filename (Feature 079).
@@ -800,6 +811,67 @@ class ImageCacheService:
         return self._serve_placeholder("channel")
 
     # ------------------------------------------------------------------
+    # Commons size-aware URL resolution (entity portraits)
+    # ------------------------------------------------------------------
+
+    async def _resolve_commons_fetch_url(self, filename: str) -> str:
+        """Return the best Commons URL to fetch for a portrait, sizing it to the cap.
+
+        Asks Commons' imageinfo API for the original's byte size plus a ``_ENTITY_THUMBNAIL_WIDTH``
+        downscaled URL in one metadata call: the full original when it is within ``_MAX_IMAGE_BYTES``
+        (the ~89% that already fit — served at full quality), else the downscaled rendition (the
+        oversized archival scans). This never downloads a giant original just to reject it.
+
+        Best-effort: any failure (timeout, transport error, missing/odd response) falls back to the
+        directly-constructed original URL, preserving the prior behaviour. Only ``get_entity_image``
+        uses this — channel/video thumbnails are small and fetched directly.
+        """
+        try:
+            async with httpx.AsyncClient(
+                timeout=self._config.on_demand_timeout,
+                headers={"User-Agent": _IMAGE_FETCH_USER_AGENT},
+            ) as client:
+                resp = await client.get(
+                    _COMMONS_API,
+                    params={
+                        "action": "query",
+                        "titles": f"File:{filename}",
+                        "prop": "imageinfo",
+                        "iiprop": "size|url",
+                        "iiurlwidth": str(_ENTITY_THUMBNAIL_WIDTH),
+                        "format": "json",
+                    },
+                )
+            resp.raise_for_status()
+            pages = (resp.json().get("query") or {}).get("pages") or {}
+            info = next(
+                (p["imageinfo"][0] for p in pages.values() if p.get("imageinfo")),
+                None,
+            )
+            if info is None:
+                return commons_image_url(filename)
+            original_bytes = info.get("size")
+            thumb_url = info.get("thumburl")
+            if (
+                isinstance(original_bytes, int)
+                and original_bytes > _MAX_IMAGE_BYTES
+                and isinstance(thumb_url, str)
+                and thumb_url
+            ):
+                return thumb_url
+            original_url = info.get("url")
+            if isinstance(original_url, str) and original_url:
+                return original_url
+            return commons_image_url(filename)
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            logger.info(
+                "Commons imageinfo lookup failed for %s (%s); using the direct original URL",
+                filename,
+                exc,
+            )
+            return commons_image_url(filename)
+
+    # ------------------------------------------------------------------
     # Public API: get_entity_image (Feature 079)
     # ------------------------------------------------------------------
 
@@ -861,9 +933,11 @@ class ImageCacheService:
         if not filename:
             return self._serve_placeholder("channel")
 
-        # 5. Fetch + cache the direct Commons URL
+        # 5. Resolve the best-sized Commons URL (full original if within the cap, else a downscale
+        #    for oversized archival scans) and fetch + cache it.
+        fetch_url = await self._resolve_commons_fetch_url(filename)
         success, reason = await self._fetch_and_cache(
-            url=commons_image_url(filename),
+            url=fetch_url,
             cache_path=cache_path,
             timeout=self._config.on_demand_timeout,
         )
@@ -1400,8 +1474,11 @@ class ImageCacheService:
                 with contextlib.suppress(OSError):
                     missing_path.unlink()
 
+            # Size to the cap the same way the on-demand path does, so warming an oversized
+            # archival original caches a high-res downscale instead of rejecting it.
+            fetch_url = await self._resolve_commons_fetch_url(filename)
             success, reason = await self._fetch_with_warm_retry(
-                url=commons_image_url(filename),
+                url=fetch_url,
                 cache_path=cache_path,
                 progress_callback=progress_callback,
             )

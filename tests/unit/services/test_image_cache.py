@@ -1470,3 +1470,91 @@ class TestWarmEntities:
         assert result.total == 0
         assert result.downloaded == 0
         mock_db_session.execute.assert_not_called()
+
+
+class TestResolveCommonsFetchUrl:
+    """Feature 079 — size-aware Commons URL resolution: full original within the cap, else a downscale.
+
+    A minority of Commons portrait originals are enormous archival scans (>5 MB, up to ~47 MB) that
+    otherwise render as a permanent placeholder. The resolver asks imageinfo for the original's byte
+    size + a 1920px URL and picks the downscale only when the original is over the cap — the ~89%
+    already under it stay full quality — without ever downloading the giant original.
+    """
+
+    _ORIG_URL = "https://upload.wikimedia.org/wikipedia/commons/9/98/X.jpg"
+    _THUMB_URL = (
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/X.jpg/1920px-X.jpg"
+    )
+
+    @staticmethod
+    def _imageinfo(size: int, *, url: str, thumburl: str | None) -> dict[str, object]:
+        info: dict[str, object] = {"size": size, "url": url}
+        if thumburl is not None:
+            info["thumburl"] = thumburl
+            info["thumbwidth"] = 1920
+            info["thumbheight"] = 2880
+        return {"query": {"pages": {"1": {"title": "File:X.jpg", "imageinfo": [info]}}}}
+
+    def _patched_client(
+        self, payload: object | None, *, raises: Exception | None = None
+    ):
+        mock_response = Mock()
+        mock_response.raise_for_status = Mock()
+        mock_response.json = Mock(return_value=payload)
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        if raises is not None:
+            mock_client.get.side_effect = raises
+        else:
+            mock_client.get.return_value = mock_response
+        return patch("httpx.AsyncClient", return_value=mock_client)
+
+    async def test_original_within_cap_returns_full_original(
+        self, image_cache_config: ImageCacheConfig
+    ) -> None:
+        service = ImageCacheService(config=image_cache_config)
+        payload = self._imageinfo(
+            1_000_000, url=self._ORIG_URL, thumburl=self._THUMB_URL
+        )
+        with self._patched_client(payload):
+            url = await service._resolve_commons_fetch_url("X.jpg")
+        assert url == self._ORIG_URL
+
+    async def test_oversized_original_returns_downscale(
+        self, image_cache_config: ImageCacheConfig
+    ) -> None:
+        service = ImageCacheService(config=image_cache_config)
+        payload = self._imageinfo(
+            _MAX_IMAGE_BYTES + 1, url=self._ORIG_URL, thumburl=self._THUMB_URL
+        )
+        with self._patched_client(payload):
+            url = await service._resolve_commons_fetch_url("X.jpg")
+        assert url == self._THUMB_URL
+
+    async def test_oversized_without_thumb_falls_back_to_original(
+        self, image_cache_config: ImageCacheConfig
+    ) -> None:
+        service = ImageCacheService(config=image_cache_config)
+        payload = self._imageinfo(
+            _MAX_IMAGE_BYTES + 1, url=self._ORIG_URL, thumburl=None
+        )
+        with self._patched_client(payload):
+            url = await service._resolve_commons_fetch_url("X.jpg")
+        assert url == self._ORIG_URL
+
+    async def test_http_error_falls_back_to_constructed_url(
+        self, image_cache_config: ImageCacheConfig
+    ) -> None:
+        service = ImageCacheService(config=image_cache_config)
+        with self._patched_client(None, raises=httpx.ConnectError("boom")):
+            url = await service._resolve_commons_fetch_url("X.jpg")
+        assert url == commons_image_url("X.jpg")
+
+    async def test_missing_imageinfo_falls_back_to_constructed_url(
+        self, image_cache_config: ImageCacheConfig
+    ) -> None:
+        service = ImageCacheService(config=image_cache_config)
+        with self._patched_client({"query": {"pages": {}}}):
+            url = await service._resolve_commons_fetch_url("X.jpg")
+        assert url == commons_image_url("X.jpg")

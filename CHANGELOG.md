@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.84.3] - 2026-09-13
+
+### Fixed
+- **Entities with very large Commons portraits now show an image instead of a placeholder.** A minority of Wikimedia Commons originals are enormous archival scans (measured up to ~47 MB) that exceed the image proxy's 5 MB cap and rendered as a permanent placeholder. The entity image path now asks Commons' imageinfo API for the original's size plus a downscaled URL in one metadata call, and fetches a high-resolution 1920px-wide downscale (~1–2 MB) only when the original is over the cap — portraits already under 5 MB (about 89% of the library) are still fetched at full quality, and the oversized original is never downloaded. The same sizing applies to `cache warm --type entities`.
+
 ## [0.84.2] - 2026-09-13
 
 ### Fixed

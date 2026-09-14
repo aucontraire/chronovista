@@ -27,8 +27,9 @@
  *
  * Feature 079 (US3) adds special-cased rendering for the expanded Wikidata
  * property set instead of the generic `<dl>` join:
- * - `image` — a portrait fetched from the entity image proxy; renders
- *   nothing when absent or on a load error.
+ * - `image` — excluded from the generic `<dl>` join here; the portrait itself
+ *   now renders in the entity detail page header (see `EntityPortrait`), not
+ *   in this section.
  * - Relation properties (`spouse`, `father`, …) — each value links to its
  *   local entity page when its aligned QID resolves via
  *   `useWikidataEntityMap`, else to wikidata.org, else plain text.
@@ -49,7 +50,7 @@ import type {
   EntityPropertyValue,
   WikidataCandidate,
 } from "../../api/entityMentions";
-import { entityImageUrl, socialProfileUrl } from "../../api/entityMentions";
+import { socialProfileUrl } from "../../api/entityMentions";
 import { useRegroundEntity } from "../../hooks/useRegroundEntity";
 import { useWikidataEntityMap } from "../../hooks/useEntityMentions";
 import { WikidataGroundingPicker } from "./WikidataGroundingPicker";
@@ -231,8 +232,6 @@ export function EntityEnrichmentSection({
   // keys) keeps the original generic rendering.
   // ---------------------------------------------------------------------------
 
-  const imageBlock = properties["image"];
-  const hasImageValue = Boolean(imageBlock?.values?.[0]);
   const relationEntries = propertyEntries.filter(([key]) => RELATION_KEYS.has(key));
   const socialEntries = propertyEntries.filter(([key]) => SOCIAL_KEYS.has(key));
   const referenceEntries = propertyEntries.filter(([key]) => REFERENCE_KEYS.has(key));
@@ -244,9 +243,6 @@ export function EntityEnrichmentSection({
       !REFERENCE_KEYS.has(key)
   );
   const hasGenericProperties = genericEntries.length > 0;
-
-  const [imageLoadFailed, setImageLoadFailed] = useState(false);
-  const hasImage = hasImageValue && !imageLoadFailed;
 
   const [copiedReferenceKey, setCopiedReferenceKey] = useState<string | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -665,17 +661,6 @@ export function EntityEnrichmentSection({
           </p>
         ) : (
           <div className="space-y-4">
-            {hasImage && (
-              <div className="flex justify-center sm:justify-start">
-                <img
-                  src={entityImageUrl(entityId, imageBlock?.set_at)}
-                  alt={canonicalName}
-                  className="w-24 h-24 rounded-lg object-cover border border-slate-200"
-                  onError={() => setImageLoadFailed(true)}
-                />
-              </div>
-            )}
-
             {hasGenericProperties && (
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                 {genericEntries.map(([key, value]) => (
@@ -694,14 +679,14 @@ export function EntityEnrichmentSection({
             {relationEntries.length > 0 && (
               <RelationsBlock
                 entries={relationEntries}
-                bordered={hasImage || hasGenericProperties}
+                bordered={hasGenericProperties}
               />
             )}
 
             {socialEntries.length > 0 && (
               <div
                 className={
-                  hasImage || hasGenericProperties || relationEntries.length > 0
+                  hasGenericProperties || relationEntries.length > 0
                     ? "pt-3 border-t border-slate-100"
                     : ""
                 }

@@ -1687,7 +1687,7 @@ class TestGetEntityVideoList:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=_uuid()
+                mock_session, entity_id=_uuid(), include_unavailable=True
             )
 
         assert results == []
@@ -1746,7 +1746,11 @@ class TestGetEntityVideoList:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id, limit=1, offset=0
+                mock_session,
+                entity_id=entity_id,
+                limit=1,
+                offset=0,
+                include_unavailable=True,
             )
 
         assert total == 5
@@ -1792,7 +1796,7 @@ class TestGetEntityVideoList:
             ),
         ):
             results, _ = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         assert len(results) == 1
@@ -1851,7 +1855,7 @@ class TestGetEntityVideoList:
             ),
         ):
             results, _ = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         assert len(results[0]["mentions"]) == 3
@@ -1902,7 +1906,10 @@ class TestGetEntityVideoList:
             ),
         ):
             await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id, language_code="fr"
+                mock_session,
+                entity_id=entity_id,
+                language_code="fr",
+                include_unavailable=True,
             )
 
         assert mock_session.execute.call_count == 3
@@ -1946,7 +1953,11 @@ class TestGetEntityVideoList:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id, limit=5, offset=10
+                mock_session,
+                entity_id=entity_id,
+                limit=5,
+                offset=10,
+                include_unavailable=True,
             )
 
         # Verify total reflects all video IDs
@@ -2001,7 +2012,7 @@ class TestGetEntityVideoList:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         # 1 transcript_vid + 1 main + 2 previews = 4 execute() calls
@@ -2072,7 +2083,9 @@ class TestGetEntityVideoList:
                 new=AsyncMock(return_value=set()),
             ),
         ):
-            await repository.get_entity_video_list(mock_session, entity_id=entity_id)
+            await repository.get_entity_video_list(
+                mock_session, entity_id=entity_id, include_unavailable=True
+            )
 
         # Only the count query should have been issued (total=0 short-circuits)
         mock_session.execute.assert_called_once()
@@ -2101,7 +2114,9 @@ class TestGetEntityVideoList:
         count_result.scalar.return_value = 0
         mock_session.execute.return_value = count_result
 
-        await repository.get_entity_video_list(mock_session, entity_id=entity_id)
+        await repository.get_entity_video_list(
+            mock_session, entity_id=entity_id, include_unavailable=True
+        )
 
         count_stmt = mock_session.execute.call_args_list[0].args[0]
         sql_str = self._compile_pg_sql(count_stmt)
@@ -2158,7 +2173,9 @@ class TestGetEntityVideoList:
                 new=AsyncMock(return_value=set()),
             ),
         ):
-            await repository.get_entity_video_list(mock_session, entity_id=entity_id)
+            await repository.get_entity_video_list(
+                mock_session, entity_id=entity_id, include_unavailable=True
+            )
 
         # transcript_vid=0, main=1, preview=2
         assert mock_session.execute.call_count == 3
@@ -2213,7 +2230,9 @@ class TestGetEntityVideoList:
                 new=AsyncMock(return_value=set()),
             ),
         ):
-            await repository.get_entity_video_list(mock_session, entity_id=entity_id)
+            await repository.get_entity_video_list(
+                mock_session, entity_id=entity_id, include_unavailable=True
+            )
 
         # transcript_vid=0, main=1, preview=2
         preview_stmt = mock_session.execute.call_args_list[2].args[0]
@@ -2258,7 +2277,7 @@ class TestGetEntityVideoList:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         assert results == [], "No videos should be returned when count is zero"
@@ -3581,7 +3600,7 @@ class TestGetEntityVideoListMultiSource:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         assert total == 1
@@ -3627,7 +3646,7 @@ class TestGetEntityVideoListMultiSource:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         assert total == 1
@@ -3673,7 +3692,7 @@ class TestGetEntityVideoListMultiSource:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         assert total == 1
@@ -3718,7 +3737,7 @@ class TestGetEntityVideoListMultiSource:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         assert total == 1
@@ -3750,7 +3769,7 @@ class TestGetEntityVideoListMultiSource:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         assert total == 0
@@ -3796,7 +3815,11 @@ class TestGetEntityVideoListMultiSource:
             ),
         ):
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id, limit=2, offset=0
+                mock_session,
+                entity_id=entity_id,
+                limit=2,
+                offset=0,
+                include_unavailable=True,
             )
 
         assert total == 5
@@ -3837,7 +3860,7 @@ class TestGetEntityVideoListMultiSource:
             ),
         ):
             results, _ = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         assert results[0]["upload_date"] is not None
@@ -3877,7 +3900,7 @@ class TestGetEntityVideoListMultiSource:
             ),
         ):
             results, _ = await repository.get_entity_video_list(
-                mock_session, entity_id=entity_id
+                mock_session, entity_id=entity_id, include_unavailable=True
             )
 
         assert results[0]["mentions"] == []
@@ -4274,7 +4297,11 @@ class TestEntityMentionRepositorySourceMapping:
         )
 
         results, total = await repository.get_entity_video_list(
-            mock_session, entity_id=entity_id, limit=20, offset=0
+            mock_session,
+            entity_id=entity_id,
+            limit=20,
+            offset=0,
+            include_unavailable=True,
         )
 
         assert total == 1

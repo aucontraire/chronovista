@@ -1834,9 +1834,11 @@ export function EntityDetailPage() {
   }
 
   // Infinite-scroll video list (union across selected sources; empty = all)
-  const entityVideoParams = selectedSources.length
-    ? { source: selectedSources }
-    : {};
+  const [includeUnavailable, setIncludeUnavailable] = useState(false);
+  const entityVideoParams = {
+    ...(selectedSources.length ? { source: selectedSources } : {}),
+    ...(includeUnavailable ? { includeUnavailable: true } : {}),
+  };
   const {
     videos,
     isLoading: videosLoading,
@@ -2194,6 +2196,22 @@ export function EntityDetailPage() {
               );
             })}
           </fieldset>
+
+          <span className="flex items-center gap-1.5">
+            <input
+              id="include-unavailable-videos"
+              type="checkbox"
+              checked={includeUnavailable}
+              onChange={(e) => setIncludeUnavailable(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            />
+            <label
+              htmlFor="include-unavailable-videos"
+              className="text-sm text-gray-700 whitespace-nowrap"
+            >
+              Include unavailable videos
+            </label>
+          </span>
         </div>
 
         {/* Appears-with panel (Feature 062, US3).

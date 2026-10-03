@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.85.0] - 2026-10-03
+
+### Fixed
+- **The "appears with" co-occurrence panel now agrees with the video list it opens (#321).** The panel computed co-occurrence from mentions only — no tags, and not the visible-name rule — so for a pair that shares videos through a tag it showed a smaller number than the two-entity video list it links to, and tag-only pairs could be missing entirely. The panel now derives "associated" from the one shared definition the counts and the `/videos` intersection already use (mention ∪ canonical-tag ∪ alias-tag), under the same evidence scope and availability, so a partner's shared-video count equals the intersection total for that pair at every scope.
+- **Entity association counts no longer exceed the video list behind them (#252).** The entity-list and detail-header video count ignored availability while the video list hides unavailable videos by default, so the count could read higher than the list it describes. The count, and its per-source breakdown, is now computed over the same available-only population as the default list. The entity detail page's own embedded video list is now available-only by default too, so the header count and the list on the same page agree.
+
+### Added
+- **Availability is a request dimension of the entity association endpoints.** `GET /api/v1/entities/{id}` (detail count), `GET /api/v1/entities/{id}/co-occurring`, and `GET /api/v1/entities/{id}/videos` accept `include_unavailable` (default `false`, mirroring the `/videos` list), so a caller can get counts, co-occurrence, and the entity video list over the unavailable-inclusive population and the numbers stay in step across views. The entity list keeps the default available-only count.
+- **"Include unavailable videos" toggle on the entity detail page.** The entity's video list defaults to available-only (matching the header count); a toggle reveals deleted/unavailable videos when you want them.
+
+### Internal
+- Unified the entity↔video association rule behind a single definition. The co-occurrence panel was the last surface reading mentions raw; it now composes from the shared association arms via a new video-set-anchored association primitive (with an inverted alias-tag resolver, so the unbounded partner side reuses the same rule). No schema change, no new dependency.
+
 ## [0.84.4] - 2026-09-14
 
 ### Changed

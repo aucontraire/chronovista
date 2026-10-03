@@ -45,7 +45,9 @@ async def _capture_sql(entity_ids: list[uuid.UUID]) -> list[str]:
     return [str(s.compile(compile_kwargs={"literal_binds": False})) for s in captured]
 
 
-async def _capture_count_sql(entity_ids: list[uuid.UUID]) -> list[str]:
+async def _capture_count_sql(
+    entity_ids: list[uuid.UUID], include_unavailable: bool = False
+) -> list[str]:
     """Run get_association_counts with a recording mock; return compiled SQL."""
     session = AsyncMock()
     captured: list[Any] = []
@@ -55,7 +57,9 @@ async def _capture_count_sql(entity_ids: list[uuid.UUID]) -> list[str]:
         return _empty_result()
 
     session.execute = _execute
-    await EntityMentionRepository().get_association_counts(session, entity_ids)
+    await EntityMentionRepository().get_association_counts(
+        session, entity_ids, include_unavailable=include_unavailable
+    )
     return [str(s.compile(compile_kwargs={"literal_binds": False})) for s in captured]
 
 
@@ -122,3 +126,23 @@ class TestCountAggregationShape:
 
     async def test_empty_input_issues_no_count_queries(self) -> None:
         assert await _capture_count_sql([]) == []
+
+    async def test_counts_restrict_to_available_videos_by_default(self) -> None:
+        """#252/FR-004: the count restricts to available videos unless asked not to.
+
+        The availability predicate is applied before the GROUP BY (so it bounds
+        both ``total`` and every ``by_source`` part), and it is dropped when the
+        caller passes ``include_unavailable=True`` (FR-011). Inspected on the
+        compiled count statement -- the one carrying the aggregate GROUP BY.
+        """
+        default_sqls = await _capture_count_sql([uuid.uuid4()])
+        count_sql = next(s for s in default_sqls if "group by" in s.lower())
+        assert (
+            "availability_status" in count_sql.lower()
+        ), "default count must restrict to available videos (#252)"
+
+        all_sqls = await _capture_count_sql([uuid.uuid4()], include_unavailable=True)
+        count_sql_all = next(s for s in all_sqls if "group by" in s.lower())
+        assert (
+            "availability_status" not in count_sql_all.lower()
+        ), "include_unavailable must drop the availability predicate (FR-011)"

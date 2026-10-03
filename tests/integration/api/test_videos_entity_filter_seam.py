@@ -110,11 +110,16 @@ class TestFilterMatchesAssociationCount:
         entity_id = entity.id
 
         async with integration_session_factory() as s:
+            # Feature 080: counts honour availability. The /videos call below asks
+            # for include_unavailable=true, so the count must use the SAME basis to
+            # stay a like-for-like parity check (FR-011). With unavailable included,
+            # total is {m1, m2, v, u}; with the default available-only basis it would
+            # (correctly, #252) be {m1, m2, v} = 3.
             counts = await EntityMentionRepository().get_association_counts(
-                s, [entity_id]
+                s, [entity_id], include_unavailable=True
             )
         expected_total = counts[entity_id].total
-        assert expected_total == 4  # {m1, m2, v, u}
+        assert expected_total == 4  # {m1, m2, v, u} under include_unavailable=True
 
         r = await async_client.get(
             "/api/v1/videos",

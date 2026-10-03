@@ -697,6 +697,19 @@ async def get_entity_detail(
     session: AsyncSession = Depends(get_db),
     entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
     mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
+    # Declared after the injected deps so the existing internal callers
+    # (update_entity / reground_entity / undo_entity_operation) that invoke this
+    # endpoint positionally as (entity_id, session, ...) are unaffected; FastAPI
+    # resolves query params by name, not position. They omit it → default False.
+    include_unavailable: bool = Query(
+        False,
+        description=(
+            "Include unavailable videos in the association count and per-source "
+            "breakdown, mirroring the /videos list parameter. Default (False) "
+            "counts available videos only, so the count equals the default video "
+            "list total for this entity (#252/FR-004)."
+        ),
+    ),
 ) -> dict[str, Any]:
     """Get detail for a single named entity.
 
@@ -748,7 +761,9 @@ async def get_entity_detail(
     # (Feature 066, FR-001/FR-002/FR-004). Supersedes the single-purpose
     # get_combined_video_count.
     association = (
-        await mention_repo.get_association_counts(session, [parsed_entity_id])
+        await mention_repo.get_association_counts(
+            session, [parsed_entity_id], include_unavailable=include_unavailable
+        )
     )[parsed_entity_id]
 
     return {
@@ -794,6 +809,15 @@ async def get_cooccurring_entities(
             "Which mentions count as co-occurrence. Must match the scope of "
             "the surrounding view, or the count shown and the intersection it "
             "opens will disagree (FR-024a)."
+        ),
+    ),
+    include_unavailable: bool = Query(
+        False,
+        description=(
+            "Include unavailable videos when counting shared videos, mirroring "
+            "the /videos list parameter. Default (False) counts available videos "
+            "only, so the shared count equals the intersection total the panel "
+            "links to (FR-024b/FR-011)."
         ),
     ),
     session: AsyncSession = Depends(get_db),
@@ -845,6 +869,7 @@ async def get_cooccurring_entities(
             entity_id=parsed_entity_id,
             limit=limit,
             evidence_scope=min_evidence,
+            include_unavailable=include_unavailable,
         ),
         operation="co-occurring entities",
         session=session,
@@ -936,6 +961,14 @@ async def get_entity_videos(
     ),
     limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    include_unavailable: bool = Query(
+        False,
+        description=(
+            "Include unavailable (e.g. deleted/recovered) videos. Default (False) "
+            "lists available videos only, so the list and its total match the "
+            "entity header count and the /videos list (#252/FR-011)."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
     entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
     mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
@@ -998,6 +1031,7 @@ async def get_entity_videos(
             source_filter=source_filter,
             limit=limit,
             offset=offset,
+            include_unavailable=include_unavailable,
         ),
         operation="entity video list",
         session=session,

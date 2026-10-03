@@ -1032,7 +1032,7 @@ class TestGetEntityVideoListTagIntegration:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=20, offset=0
+                mock_session, entity_id, limit=20, offset=0, include_unavailable=True
             )
 
         assert total == 6
@@ -1095,7 +1095,7 @@ class TestGetEntityVideoListTagIntegration:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=20, offset=0
+                mock_session, entity_id, limit=20, offset=0, include_unavailable=True
             )
 
         assert total == 3
@@ -1160,7 +1160,7 @@ class TestGetEntityVideoListTagIntegration:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=20, offset=0
+                mock_session, entity_id, limit=20, offset=0, include_unavailable=True
             )
 
         # Only one video in results (deduplicated)
@@ -1221,7 +1221,7 @@ class TestGetEntityVideoListTagIntegration:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=20, offset=0
+                mock_session, entity_id, limit=20, offset=0, include_unavailable=True
             )
 
         assert total == 1
@@ -1285,7 +1285,7 @@ class TestGetEntityVideoListTagIntegration:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=20, offset=0
+                mock_session, entity_id, limit=20, offset=0, include_unavailable=True
             )
 
         assert total == 2
@@ -1345,7 +1345,7 @@ class TestGetEntityVideoListTagIntegration:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=20, offset=0
+                mock_session, entity_id, limit=20, offset=0, include_unavailable=True
             )
 
         # 2 transcript + 3 tag - 1 overlap = 4 unique
@@ -1427,7 +1427,7 @@ class TestGetEntityVideoListAliasTagIntegration:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=20, offset=0
+                mock_session, entity_id, limit=20, offset=0, include_unavailable=True
             )
 
         assert total == 2
@@ -1491,7 +1491,7 @@ class TestGetEntityVideoListAliasTagIntegration:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=20, offset=0
+                mock_session, entity_id, limit=20, offset=0, include_unavailable=True
             )
 
         assert total == 4
@@ -1552,7 +1552,7 @@ class TestGetEntityVideoListAliasTagIntegration:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=20, offset=0
+                mock_session, entity_id, limit=20, offset=0, include_unavailable=True
             )
 
         assert total == 1
@@ -1613,7 +1613,7 @@ class TestGetEntityVideoListAliasTagIntegration:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=20, offset=0
+                mock_session, entity_id, limit=20, offset=0, include_unavailable=True
             )
 
         assert total == 1
@@ -1713,7 +1713,7 @@ class TestCombinedVideoCount:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=50, offset=0
+                mock_session, entity_id, limit=50, offset=0, include_unavailable=True
             )
 
         # 5 transcript + 1 tag-only = 6 unique (2 overlap counted once)
@@ -1784,7 +1784,7 @@ class TestCombinedVideoCount:
             ]
 
             results, total = await repository.get_entity_video_list(
-                mock_session, entity_id, limit=50, offset=0
+                mock_session, entity_id, limit=50, offset=0, include_unavailable=True
             )
 
         assert total == 10

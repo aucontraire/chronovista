@@ -21,6 +21,7 @@ from sqlalchemy import (
     Subquery,
     Uuid,
     and_,
+    any_,
     bindparam,
     case,
     cast,
@@ -115,6 +116,23 @@ def _folded(col: ColumnExpressionArgument[str]) -> ColumnElement[str]:
     association (data-model INV-2). Requires the ``unaccent`` extension (enabled by migration).
     """
     return func.lower(func.unaccent(col))
+
+
+def _available_video_id_subquery() -> Select[Any]:
+    """The ONE definition of "available" for association surfaces (Feature 080).
+
+    Returns ``SELECT video_id FROM videos WHERE availability_status = 'available'``
+    — the single availability predicate shared by ``get_association_counts`` and
+    the co-occurrence ranking. Availability is an explicit dimension of the
+    association definition (FR-006), gated by ``include_unavailable``: callers
+    restrict association ``video_id``\\ s to this set unless the caller asked for
+    unavailable videos. The ``/videos`` list applies the same predicate when it
+    joins the association set to ``videos`` (``list_videos_filtered``), so every
+    surface agrees on what "available" means without a second copy of the rule.
+    """
+    return select(VideoDB.video_id).where(
+        VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+    )
 
 
 class EntityMentionRepository(
@@ -1023,6 +1041,7 @@ class EntityMentionRepository(
         source_filter: Sequence[str] | None = None,
         limit: int = 20,
         offset: int = 0,
+        include_unavailable: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
         """Get paginated list of videos associated with an entity.
 
@@ -1065,6 +1084,11 @@ class EntityMentionRepository(
             Maximum results per page.
         offset : int
             Pagination offset.
+        include_unavailable : bool
+            When ``False`` (default) the list and its total cover available videos
+            only, matching the entity header count and the ``/videos`` list; when
+            ``True`` unavailable (e.g. deleted/recovered) videos are included
+            (Feature 080, #252/FR-011).
 
         Returns
         -------
@@ -1143,6 +1167,33 @@ class EntityMentionRepository(
 
         # Deduplicated total count across all sources (T015, T020)
         all_video_ids = transcript_video_ids | tag_video_ids
+
+        # Availability dimension (Feature 080, #252/FR-004): restrict the video set
+        # to available videos unless the caller asked for unavailable, using the ONE
+        # shared predicate. This keeps the entity detail page's list AND its total in
+        # step with the header association count (which is availability-aware) and
+        # with the /videos list. One array bind, bind-ceiling safe.
+        if not include_unavailable and all_video_ids:
+            available_ids = set(
+                (
+                    await session.execute(
+                        select(VideoDB.video_id).where(
+                            VideoDB.video_id
+                            == any_(
+                                bindparam(
+                                    "evl_video_ids",
+                                    value=list(all_video_ids),
+                                    type_=ARRAY(String),
+                                )
+                            ),
+                            VideoDB.availability_status == AvailabilityStatus.AVAILABLE,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            all_video_ids = all_video_ids & available_ids
         total_count = len(all_video_ids)
 
         if total_count == 0:
@@ -1302,6 +1353,16 @@ class EntityMentionRepository(
                     ),
                     "description_context": None,
                 }
+
+        # Availability (Feature 080, #252): drop rows for videos excluded above.
+        # The transcript-detail query (Step 3) is driven by the mention filter, not
+        # the restricted set, so it can populate results_dict with unavailable
+        # videos; keep only those in the availability-restricted `all_video_ids` so
+        # the listed/paginated rows match `total_count`.
+        if not include_unavailable:
+            results_dict = {
+                vid: row for vid, row in results_dict.items() if vid in all_video_ids
+            }
 
         # ------------------------------------------------------------------
         # Step 5: Sort — transcript-mention videos first, then tag-only (T014)
@@ -1652,78 +1713,109 @@ class EntityMentionRepository(
         )
         return select(assoc.c.video_id).distinct().scalar_subquery()
 
-    def build_cooccurrence_query(
+    async def build_cooccurrence_query(
         self,
+        session: AsyncSession,
         entity_id: uuid.UUID,
         limit: int = 12,
         evidence_scope: EvidenceScope = EvidenceScope.ANY,
+        include_unavailable: bool = False,
     ) -> Select[Any]:
         """
-        Return the entities sharing the most videos with ``entity_id``.
+        Return the statement for entities sharing the most videos with ``entity_id``.
 
-        Powers the appears-with panel (US3). Ordered by shared-video count
-        descending, tiebroken by partner id ascending -- the tiebreak makes a
-        bounded list deterministic, so two partners with equal counts cannot
-        swap between requests and make the panel look unstable (R5).
+        Powers the appears-with panel (US3). Computes co-occurrence over the ONE
+        shared association definition — mention (visible-name/manual) ∪
+        canonical-tag ∪ alias-tag — the entity counts and the ``/videos``
+        intersection already use (Feature 080, FR-005), so a partner's
+        ``shared_video_count`` equals the intersection's ``pagination.total`` for
+        the same pair, scope, and availability setting (#321 / FR-024b). Before
+        Feature 080 this read ``entity_mentions`` raw (no tags, no visible-name
+        rule) and diverged.
 
-        **Availability is not incidental here.** The count this returns is
-        promised to equal the videos list's ``pagination.total`` for the same
-        pair (FR-024b), and that list excludes unavailable videos by default.
-        Counting every shared video would inflate this figure -- measured
-        against production, one popular pair differs by nine -- and the user
-        would be shown one number and land on another. The join to ``videos``
-        below is what keeps the promise.
+        Two uses of the one rule: the subject's associated video set comes from
+        :meth:`_subject_video_ids` (the entity-bounded arms for one entity), and
+        the partner set from :meth:`_associations_in_video_set` (the video-set-
+        anchored arms, unbounded by entity). Ranked by distinct shared videos,
+        tiebroken by partner id so a bounded list is deterministic (R5).
+
+        **Availability** is an explicit dimension (FR-006/FR-011): partners are
+        restricted to the shared available-video predicate unless
+        ``include_unavailable``, matching the ``/videos`` list default.
+
+        Async because the subject video set and the inverted alias arm are
+        prepared against the database; the returned statement is unexecuted, so
+        tests can still inspect the tiebreak and the availability predicate
+        (mirrors :meth:`build_entity_qualification_subquery`).
 
         Parameters
         ----------
+        session : AsyncSession
+            Session used to prepare the subject video set and alias pairs.
         entity_id : uuid.UUID
             The subject entity.
         limit : int
             Maximum partners to return.
         evidence_scope : EvidenceScope
-            Which mentions count as co-occurrence. Must match the scope the
-            surrounding view is using, or the panel and the intersection it
-            opens will disagree (FR-024a).
+            Which evidence counts as co-occurrence; must match the scope the
+            surrounding view uses, or the panel and the intersection it opens
+            will disagree (FR-024a).
+        include_unavailable : bool
+            When ``False`` (default) partners are counted over available videos
+            only, matching the default video list; when ``True`` unavailable
+            shared videos are included (FR-011).
 
         Returns
         -------
         Select[Any]
-            The unexecuted statement, so callers and tests can inspect it.
+            The unexecuted ranking statement.
         """
-        # The scope narrows the SUBJECT's videos before the partner select is
-        # built, so both sides of the co-occurrence are computed under one
-        # definition. Chained rather than rebuilt: two copies of this column
-        # list would let the scoped and unscoped forms drift apart silently.
-        subject_videos = select(EntityMentionDB.video_id).where(
-            EntityMentionDB.entity_id == entity_id
+        subject_video_ids = await self._subject_video_ids(
+            session, entity_id, evidence_scope
         )
-        if evidence_scope is EvidenceScope.TRANSCRIPT:
-            subject_videos = subject_videos.where(
-                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
+        if not subject_video_ids:
+            return self._empty_cooccurrence_select()
+        partner_assoc = await self._associations_in_video_set(
+            session, subject_video_ids, evidence_scope
+        )
+        return self._build_cooccurrence_ranking(
+            partner_assoc, entity_id, limit, include_unavailable
+        )
+
+    def _build_cooccurrence_ranking(
+        self,
+        partner_assoc: Subquery,
+        subject_id: uuid.UUID,
+        limit: int,
+        include_unavailable: bool,
+    ) -> Select[Any]:
+        """Rank co-occurrence partners by distinct shared videos.
+
+        Takes the video-set-anchored association relation (partner side),
+        excludes the subject as its own partner, applies the shared availability
+        predicate unless ``include_unavailable``, counts DISTINCT shared videos
+        per partner, and orders by shared count descending with the partner-id
+        tiebreak that makes the bounded list deterministic (R5 / FR-007). Pure
+        statement construction so it stays inspectable without a database.
+        """
+        base = select(
+            partner_assoc.c.entity_id.label("partner_id"),
+            partner_assoc.c.video_id.label("video_id"),
+        ).where(partner_assoc.c.entity_id != subject_id)
+        if not include_unavailable:
+            base = base.where(
+                partner_assoc.c.video_id.in_(_available_video_id_subquery())
             )
-
-        partner = select(
-            EntityMentionDB.entity_id.label("partner_id"),
-            func.count(distinct(EntityMentionDB.video_id)).label("shared"),
-        ).where(
-            EntityMentionDB.entity_id != entity_id,
-            EntityMentionDB.video_id.in_(subject_videos),
-        )
-        if evidence_scope is EvidenceScope.TRANSCRIPT:
-            partner = partner.where(
-                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
+        base_sub = base.subquery()
+        grouped = (
+            select(
+                base_sub.c.partner_id,
+                func.count(distinct(base_sub.c.video_id)).label("shared"),
             )
-
-        # Restrict to the same video population the videos list uses, so the
-        # count shown equals the count landed on (FR-024b).
-        available = select(VideoDB.video_id).where(
-            VideoDB.availability_status == AvailabilityStatus.AVAILABLE
+            .group_by(base_sub.c.partner_id)
+            .subquery()
         )
-        partner = partner.where(EntityMentionDB.video_id.in_(available))
-
-        grouped = partner.group_by(EntityMentionDB.entity_id).subquery()
-
-        stmt = (
+        return (
             select(
                 grouped.c.partner_id,
                 grouped.c.shared,
@@ -1735,7 +1827,19 @@ class EntityMentionRepository(
             .limit(limit)
         )
 
-        return stmt
+    def _empty_cooccurrence_select(self) -> Select[Any]:
+        """A well-formed co-occurrence statement that yields no rows.
+
+        Returned when the subject entity has no associated videos under the
+        scope — "nothing appears alongside this" is an answer, delivered as an
+        empty set rather than a branch the caller must handle.
+        """
+        return select(
+            NamedEntityDB.id.label("partner_id"),
+            literal(0).label("shared"),
+            NamedEntityDB.canonical_name,
+            NamedEntityDB.entity_type,
+        ).where(literal(False))
 
     async def get_cooccurring_entities(
         self,
@@ -1744,16 +1848,16 @@ class EntityMentionRepository(
         entity_id: uuid.UUID,
         limit: int = 12,
         evidence_scope: EvidenceScope = EvidenceScope.ANY,
+        include_unavailable: bool = False,
     ) -> list[dict[str, Any]]:
         """
         Execute :meth:`build_cooccurrence_query` and shape the rows.
 
-        The query is built separately so it can be compiled and inspected
-        without a database. The ordering tiebreak that keeps a bounded list
-        stable (R5) cannot be verified from returned rows -- Postgres happens
-        to return small groups in ascending-id order whether or not the
-        ``ORDER BY`` asks for it -- so the only way to assert it is to look at
-        the statement.
+        The statement is built separately so it can be compiled and inspected;
+        the ordering tiebreak that keeps a bounded list stable (R5) cannot be
+        verified from returned rows -- Postgres happens to return small groups in
+        ascending-id order whether or not the ``ORDER BY`` asks for it -- so the
+        only way to assert it is to look at the statement.
 
         Parameters
         ----------
@@ -1764,7 +1868,9 @@ class EntityMentionRepository(
         limit : int
             Maximum partners to return.
         evidence_scope : EvidenceScope
-            Which mentions count as co-occurrence.
+            Which evidence counts as co-occurrence.
+        include_unavailable : bool
+            Include unavailable shared videos when ``True`` (FR-011).
 
         Returns
         -------
@@ -1772,9 +1878,14 @@ class EntityMentionRepository(
             Dicts with ``entity_id``, ``entity_type``, ``canonical_name``, and
             ``shared_video_count``.
         """
-        result = await session.execute(
-            self.build_cooccurrence_query(entity_id, limit, evidence_scope)
+        stmt = await self.build_cooccurrence_query(
+            session,
+            entity_id,
+            limit=limit,
+            evidence_scope=evidence_scope,
+            include_unavailable=include_unavailable,
         )
+        result = await session.execute(stmt)
         return [
             {
                 "entity_id": row.partner_id,
@@ -1882,7 +1993,11 @@ class EntityMentionRepository(
     # `tag` is a derived label, never a stored mention_source (data-model I4).
     _PROVENANCE_SOURCES = ("manual", "transcript", "title", "description", "tag")
 
-    def _mention_assoc_stmt(self, ids: list[uuid.UUID]) -> Select[Any]:
+    def _mention_assoc_stmt(
+        self,
+        entity_ids: list[uuid.UUID] | None = None,
+        video_ids: Sequence[str] | None = None,
+    ) -> Select[Any]:
         """``(entity_id, video_id, source)`` for the mention associations.
 
         A non-manual mention counts only where its text matches one of the
@@ -1890,29 +2005,38 @@ class EntityMentionRepository(
         mention always counts and is labelled ``manual`` regardless of its
         stored source. One non-correlated relation, no per-row work.
 
-        Shared by ``association_triples`` (which materialises rows) and
-        ``get_association_counts`` (which aggregates in SQL), so the mention
-        rule has a single definition rather than drifting copies.
+        The SAME visible-name/manual rule serves two entry shapes (Feature 080,
+        FR-005); the bounds are parameters, never a second definition:
+
+        - **entity-bounded** (``entity_ids`` given): restricts the visible names
+          and the mentions to those entities — the shape ``association_triples``,
+          ``get_association_counts`` and ``_tag_inclusive_association_arms`` use.
+        - **video-set-anchored** (``entity_ids`` is ``None``, ``video_ids``
+          given): evaluates the visible-name rule for *every* entity over the
+          mentions in that video set — the shape the co-occurrence partner side
+          needs, where the partner entity is unknown in advance. The join stays
+          per-row on ``entity_id`` + folded text, so a wider name set can only
+          ever match a mention to its own entity (data-model INV-2), never a
+          cross-entity association.
         """
-        visible_names = union(
-            select(
-                NamedEntityDB.id.label("entity_id"),
-                _folded(NamedEntityDB.canonical_name).label("name_lower"),
-            ).where(NamedEntityDB.id.in_(ids)),
-            select(
-                EntityAliasDB.entity_id.label("entity_id"),
-                _folded(EntityAliasDB.alias_name).label("name_lower"),
-            ).where(
-                EntityAliasDB.entity_id.in_(ids),
-                EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
-            ),
-        ).subquery()
+        canonical_names = select(
+            NamedEntityDB.id.label("entity_id"),
+            _folded(NamedEntityDB.canonical_name).label("name_lower"),
+        )
+        alias_names = select(
+            EntityAliasDB.entity_id.label("entity_id"),
+            _folded(EntityAliasDB.alias_name).label("name_lower"),
+        ).where(EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR)
+        if entity_ids is not None:
+            canonical_names = canonical_names.where(NamedEntityDB.id.in_(entity_ids))
+            alias_names = alias_names.where(EntityAliasDB.entity_id.in_(entity_ids))
+        visible_names = union(canonical_names, alias_names).subquery()
 
         source_label = case(
             (EntityMentionDB.detection_method == "manual", literal("manual")),
             else_=EntityMentionDB.mention_source,
         )
-        return (
+        stmt = (
             select(
                 EntityMentionDB.entity_id.label("entity_id"),
                 EntityMentionDB.video_id.label("video_id"),
@@ -1926,22 +2050,43 @@ class EntityMentionRepository(
                 ),
             )
             .where(
-                EntityMentionDB.entity_id.in_(ids),
                 or_(
                     visible_names.c.name_lower.is_not(None),
                     EntityMentionDB.detection_method == "manual",
                 ),
             )
         )
+        if entity_ids is not None:
+            stmt = stmt.where(EntityMentionDB.entity_id.in_(entity_ids))
+        if video_ids is not None:
+            # ONE array bind, not one-param-per-id: a heavy subject's video set
+            # must not approach asyncpg's 32,767-bind ceiling, and a constant
+            # statement avoids churning the prepared-statement cache per page size.
+            stmt = stmt.where(
+                EntityMentionDB.video_id
+                == any_(
+                    bindparam(
+                        "mention_video_ids",
+                        value=list(video_ids),
+                        type_=ARRAY(String),
+                    )
+                )
+            )
+        return stmt
 
-    def _canonical_tag_assoc_stmt(self, ids: list[uuid.UUID]) -> Select[Any]:
+    def _canonical_tag_assoc_stmt(
+        self,
+        entity_ids: list[uuid.UUID] | None = None,
+        video_ids: Sequence[str] | None = None,
+    ) -> Select[Any]:
         """``(entity_id, video_id, 'tag')`` for canonical-tag associations.
 
         entity → canonical_tag → tag_alias.raw_form → video_tags, all
-        non-correlated joins. Shared with the count aggregator (single
-        definition of the canonical-tag rule).
+        non-correlated joins. One definition of the canonical-tag rule, with
+        parameterised bounds (Feature 080): ``entity_ids`` for the count/filter
+        shape, ``video_ids`` for the co-occurrence video-set-anchored shape.
         """
-        return (
+        stmt = (
             select(
                 CanonicalTagDB.entity_id.label("entity_id"),
                 VideoTagDB.video_id.label("video_id"),
@@ -1949,8 +2094,22 @@ class EntityMentionRepository(
             )
             .join(TagAliasDB, TagAliasDB.canonical_tag_id == CanonicalTagDB.id)
             .join(VideoTagDB, VideoTagDB.tag == TagAliasDB.raw_form)
-            .where(CanonicalTagDB.entity_id.in_(ids))
         )
+        if entity_ids is not None:
+            stmt = stmt.where(CanonicalTagDB.entity_id.in_(entity_ids))
+        if video_ids is not None:
+            # One array bind (see _mention_assoc_stmt) — bounded binds, stable SQL.
+            stmt = stmt.where(
+                VideoTagDB.video_id
+                == any_(
+                    bindparam(
+                        "canonical_video_ids",
+                        value=list(video_ids),
+                        type_=ARRAY(String),
+                    )
+                )
+            )
+        return stmt
 
     async def _alias_tag_pairs(
         self, session: AsyncSession, ids: list[uuid.UUID]
@@ -1990,6 +2149,161 @@ class EntityMentionRepository(
             for entity_id in form_to_entities.get(norm, set()):
                 pairs.append((entity_id, video_id))
         return pairs
+
+    async def _subject_video_ids(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+        evidence_scope: EvidenceScope,
+    ) -> list[str]:
+        """Distinct video ids the subject entity is associated with (shared rule).
+
+        Reuses :meth:`_tag_inclusive_association_arms` for the single subject
+        entity, so the subject side of co-occurrence uses the SAME association
+        definition as the intersection and the counts (FR-005). Cheap — one
+        entity's arms.
+        """
+        assoc = await self._tag_inclusive_association_arms(
+            session, [entity_id], evidence_scope
+        )
+        rows = (await session.execute(select(assoc.c.video_id).distinct())).all()
+        return [row[0] for row in rows]
+
+    async def _alias_tag_pairs_in_videos(
+        self,
+        session: AsyncSession,
+        video_ids: Sequence[str],
+    ) -> list[tuple[uuid.UUID, str]]:
+        """Inverted alias-tag resolver anchored to a video set (Feature 080).
+
+        The dual of :meth:`_alias_tag_pairs`: that one normalises a *known entity
+        list's* aliases; this one has no entity bound (the co-occurrence partner
+        is unknown in advance), so it inverts the lookup. The normalised tag
+        forms present on the video set come from the DB
+        (``tag_aliases.normalized_form`` is stored), then ALL non-ASR entity
+        aliases are normalised in Python (``TagNormalizationService`` — the #207
+        single-normaliser rule) and kept only where their form is present. One
+        bounded Python pass over the alias table, no per-video work.
+        """
+        ids = list(video_ids)
+        if not ids:
+            return []
+        # One pass over the video set's tags: (normalized_form, video_id). This
+        # yields BOTH the present forms and the form→video mapping, so there is no
+        # second join. One array bind for the video set (bind-ceiling safe).
+        tag_rows = (
+            await session.execute(
+                select(TagAliasDB.normalized_form, VideoTagDB.video_id)
+                .join(VideoTagDB, VideoTagDB.tag == TagAliasDB.raw_form)
+                .where(
+                    VideoTagDB.video_id
+                    == any_(
+                        bindparam(
+                            "alias_scan_video_ids",
+                            value=ids,
+                            type_=ARRAY(String),
+                        )
+                    )
+                )
+                .distinct()
+            )
+        ).all()
+        if not tag_rows:
+            return []
+        present_forms = {norm for norm, _ in tag_rows if norm is not None}
+        # Normalise ALL non-ASR entity aliases in Python (TagNormalizationService,
+        # the #207 single-normaliser rule) and keep those whose form is present.
+        alias_rows = (
+            await session.execute(
+                select(EntityAliasDB.entity_id, EntityAliasDB.alias_name).where(
+                    EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR
+                )
+            )
+        ).all()
+        normalizer = TagNormalizationService()
+        form_to_entities: dict[str, set[uuid.UUID]] = {}
+        for entity_id, alias_name in alias_rows:
+            normalized = normalizer.normalize(alias_name)
+            if normalized is not None and normalized in present_forms:
+                form_to_entities.setdefault(normalized, set()).add(entity_id)
+        if not form_to_entities:
+            return []
+        # Map matched forms back to videos using the rows already fetched.
+        pairs: list[tuple[uuid.UUID, str]] = []
+        for norm, video_id in tag_rows:
+            for entity_id in form_to_entities.get(norm, set()):
+                pairs.append((entity_id, video_id))
+        return pairs
+
+    async def _associations_in_video_set(
+        self,
+        session: AsyncSession,
+        video_ids: Sequence[str],
+        evidence_scope: EvidenceScope,
+    ) -> Subquery:
+        """``(entity_id, video_id)`` for every entity associated with a video in the set.
+
+        The video-set-anchored dual of :meth:`_tag_inclusive_association_arms`
+        (Feature 080): unbounded by entity, bounded by ``video_ids``. Built from
+        the same three rule arms — mention (visible-name/manual), canonical-tag,
+        and the inverted alias-tag resolver — under ``evidence_scope`` (tag arms
+        only at ``ANY``, FR-007). Powers the co-occurrence partner side so it
+        shares the one association definition (FR-005) rather than reading
+        ``entity_mentions`` raw. The alias arm injects its Python-derived pairs
+        via two ``unnest`` array binds, never a row-per-pair ``VALUES`` — two
+        binds regardless of pair count stays under asyncpg's 32,767 ceiling.
+        """
+        ids = list(video_ids)
+        mention_stmt = self._mention_assoc_stmt(video_ids=ids)
+        if evidence_scope is EvidenceScope.TRANSCRIPT:
+            mention_stmt = mention_stmt.where(
+                EntityMentionDB.mention_source.in_(_TRANSCRIPT_SCOPE_SOURCES)
+            )
+        mention_sub = mention_stmt.subquery()
+        arms: list[Any] = [
+            select(
+                mention_sub.c.entity_id.label("entity_id"),
+                mention_sub.c.video_id.label("video_id"),
+            )
+        ]
+
+        # Tag arms qualify only at the default ANY scope (FR-007); a tag is not
+        # transcript-strength evidence. NOTE: this arm-assembly + scope-gating is
+        # the dual of `_tag_inclusive_association_arms` — a 4th arm or a change to
+        # scope-gating must be applied in BOTH (the rule expressions are shared,
+        # but the two assemblers are parallel by construction).
+        if evidence_scope is EvidenceScope.ANY:
+            canonical_sub = self._canonical_tag_assoc_stmt(video_ids=ids).subquery()
+            arms.append(
+                select(
+                    canonical_sub.c.entity_id.label("entity_id"),
+                    canonical_sub.c.video_id.label("video_id"),
+                )
+            )
+            alias_pairs = await self._alias_tag_pairs_in_videos(session, ids)
+            if alias_pairs:
+                arms.append(
+                    text(
+                        "SELECT e AS entity_id, v AS video_id "
+                        "FROM unnest(:assoc_alias_entity_ids, :assoc_alias_video_ids) "
+                        "AS t(e, v)"
+                    )
+                    .bindparams(
+                        bindparam(
+                            "assoc_alias_entity_ids",
+                            value=[eid for eid, _ in alias_pairs],
+                            type_=ARRAY(Uuid),
+                        ),
+                        bindparam(
+                            "assoc_alias_video_ids",
+                            value=[vid for _, vid in alias_pairs],
+                            type_=ARRAY(String),
+                        ),
+                    )
+                    .columns(entity_id=Uuid, video_id=String)
+                )
+
+        return union_all(*arms).subquery("assoc_in_videos")
 
     async def association_triples(
         self,
@@ -2051,6 +2365,7 @@ class EntityMentionRepository(
         self,
         session: AsyncSession,
         entity_ids: Sequence[uuid.UUID],
+        include_unavailable: bool = False,
     ) -> dict[uuid.UUID, AssociationCount]:
         """Distinct-video association count + per-source breakdown, per entity.
 
@@ -2061,6 +2376,12 @@ class EntityMentionRepository(
         video reached through two sources counts once in ``total`` and in each
         contributing source.
 
+        **Availability** (Feature 080, #252/FR-004): counts are restricted to the
+        shared available-video predicate unless ``include_unavailable``, so a
+        count never exceeds the default (available-only) video list for the same
+        entity. The restriction is applied to both ``total`` and every
+        ``by_source`` part. Default ``False`` matches the video list default.
+
         Every requested entity is present in the result, all-zero when it has no
         associations, so a caller iterating a page never hits a missing key.
 
@@ -2070,6 +2391,9 @@ class EntityMentionRepository(
             The database session.
         entity_ids : Sequence[uuid.UUID]
             The page of entities to count.
+        include_unavailable : bool
+            When ``False`` (default) count available videos only; when ``True``
+            include unavailable associated videos (FR-011).
 
         Returns
         -------
@@ -2144,6 +2468,14 @@ class EntityMentionRepository(
             ],
         ).group_by(assoc.c.entity_id)
 
+        # Availability dimension (#252/FR-004): count available videos only unless
+        # the caller asked for unavailable, using the ONE shared predicate. Applied
+        # before the GROUP BY, so it restricts `total` and every `by_source` part.
+        if not include_unavailable:
+            count_stmt = count_stmt.where(
+                assoc.c.video_id.in_(_available_video_id_subquery())
+            )
+
         for row in (await session.execute(count_stmt)).all():
             counts[row.entity_id] = AssociationCount(
                 total=row.total,
@@ -2175,10 +2507,14 @@ class EntityMentionRepository(
         visible-name / manual rule, #89) or a tag (canonical-tag or alias-tag) at
         ``ANY`` scope. Both the channel count and the corpus denominator are
         derived from that one definition — the shared association arms
-        (:meth:`_tag_inclusive_association_arms`) — so the corpus denominator
-        equals ``get_association_counts(...).total`` by construction and the panel
-        cannot drift from the pinned ``/videos?channel_id=&entity_id=`` filter
-        (which reuses the same arms since #260) (FR-004/FR-007).
+        (:meth:`_tag_inclusive_association_arms`). The corpus denominator counts
+        association videos regardless of availability, so it equals the
+        **all-videos basis** ``get_association_counts(..., include_unavailable=True).total``
+        by construction. (Feature 080 made ``get_association_counts`` default to
+        available-only for #252, so the *default* count is ≤ this corpus for an
+        entity with unavailable videos; the corpus and the pinned
+        ``/videos?channel_id=&entity_id=&include_unavailable=true`` filter stay in
+        step because both use the same arms and the same all-videos basis.)
 
         Query shape (research R2): channel video ids are resolved once; a superset
         of candidate entity ids is discovered through the three association paths
@@ -2317,9 +2653,11 @@ class EntityMentionRepository(
         #    associations corpus-wide (they are filtered by entity_id, NOT by
         #    channel), so a conditional aggregate yields the channel count (rows
         #    restricted to the channel's videos) and the corpus count (all rows) at
-        #    once — the corpus count equals ``get_association_counts(...).total`` by
-        #    construction (same arms, same COUNT(DISTINCT video_id)), so FR-004 and
-        #    the ``corpus >= channel`` invariant hold, and the separate, corpus-wide
+        #    once — the corpus count equals the all-videos basis
+        #    ``get_association_counts(..., include_unavailable=True).total`` by
+        #    construction (same arms, same COUNT(DISTINCT video_id); the default
+        #    count is available-only since Feature 080/#252), so FR-004 and the
+        #    ``corpus >= channel`` invariant hold, and the separate, corpus-wide
         #    counts query is avoided (it dominated the latency on large channels).
         assoc = await self._tag_inclusive_association_arms(
             session, list(candidate_ids), EvidenceScope.ANY

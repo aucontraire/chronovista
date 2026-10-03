@@ -175,6 +175,7 @@ export function useEntityVideos(
       entityId,
       params.language_code ?? null,
       [...(params.source ?? [])].sort().join(","),
+      params.includeUnavailable ?? false,
       limit,
     ],
     // FR-004/FR-005: TanStack Query provides signal; cancelled on key change or unmount.

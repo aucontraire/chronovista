@@ -451,7 +451,12 @@ class TestAliasUndo:
                     segment_id=seg_ids[0],  # type: ignore[index]
                     video_id=_VIDEO_ID,
                     language_code=_LANG,
-                    mention_text="Partner",
+                    # Must match the partner's visible name (canonical/alias) to
+                    # qualify under the shared association rule the co-occurrence
+                    # panel now uses (Feature 080 / #321, visible-name rule #89).
+                    # Pre-080 the panel counted any mention text; a non-matching
+                    # "Partner" no longer associates the partner with the video.
+                    mention_text="Aundo298 Partner",
                     detection_method="rule_match",
                     confidence=1.0,
                 )

@@ -21,6 +21,7 @@ from typing import Any, cast
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from sqlalchemy import literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.models.enums import EvidenceScope
@@ -150,10 +151,27 @@ def test_qualification_never_joins_transcript_segments(
     assert "transcript_segments" not in sql
 
 
+def _cooccurrence_ranking_sql(include_unavailable: bool = False) -> str:
+    """Compile the co-occurrence ranking over a synthetic partner relation.
+
+    The ranking shape (tiebreak, availability predicate) is independent of how
+    the association relation was built, so a two-column stand-in subquery is
+    enough to inspect it — and it keeps the test pure/synchronous (Feature 080).
+    """
+    partner_assoc = select(
+        literal(uuid.UUID(int=2)).label("entity_id"),
+        literal("video-placeholder").label("video_id"),
+    ).subquery()
+    stmt = _REPO._build_cooccurrence_ranking(
+        partner_assoc, uuid.UUID(int=1), 12, include_unavailable
+    )
+    return str(stmt.compile(compile_kwargs={"literal_binds": True})).lower()
+
+
 def test_cooccurrence_ordering_carries_the_id_tiebreak() -> None:
     """The appears-with ordering must be total, not merely count-descending.
 
-    R5 makes the ``entity_id`` tiebreak contractual: without it, two partners
+    R5 makes the ``partner_id`` tiebreak contractual: without it, two partners
     with equal shared counts may swap between requests, so a bounded list looks
     unstable and a reveal-more page can repeat or skip a partner.
 
@@ -163,13 +181,10 @@ def test_cooccurrence_ordering_carries_the_id_tiebreak() -> None:
     integration test passes either way. Same class of problem as R1's two query
     shapes returning identical output: only inspecting the query separates them.
     """
-    stmt = _REPO.build_cooccurrence_query(uuid.UUID(int=1), 12, EvidenceScope.ANY)
-    sql = str(stmt.compile(compile_kwargs={"literal_binds": True})).lower()
-
-    order_clause = sql.split("order by", 1)[1]
+    order_clause = _cooccurrence_ranking_sql().split("order by", 1)[1]
     assert "desc" in order_clause, "partners must be ranked by shared count"
     assert "asc" in order_clause, (
-        "ordering must carry the entity_id tiebreak (R5); count DESC alone is "
+        "ordering must carry the partner_id tiebreak (R5); count DESC alone is "
         "not a total order and leaves tied partners free to swap"
     )
 
@@ -179,8 +194,53 @@ def test_cooccurrence_restricts_to_the_available_video_population() -> None:
 
     The videos list excludes unavailable videos by default. A co-occurrence
     count over every shared video would be inflated, and the user would be
-    shown one number and land on another.
+    shown one number and land on another. The shared availability predicate
+    (``videos.availability_status``) is present by default and absent when the
+    caller opts into unavailable videos (FR-011).
     """
-    stmt = _REPO.build_cooccurrence_query(uuid.UUID(int=1), 12, EvidenceScope.ANY)
-    sql = str(stmt.compile(compile_kwargs={"literal_binds": True})).lower()
-    assert "videos" in sql and "availability_status" in sql
+    sql_default = _cooccurrence_ranking_sql(include_unavailable=False)
+    assert "videos" in sql_default and "availability_status" in sql_default
+
+    sql_all = _cooccurrence_ranking_sql(include_unavailable=True)
+    assert "availability_status" not in sql_all, (
+        "include_unavailable must drop the availability predicate so the panel "
+        "matches a list toggled to include unavailable videos (FR-011)"
+    )
+
+
+def test_cooccurrence_tag_arms_present_only_at_any_scope() -> None:
+    """The co-occurrence partner relation shares the ONE association rule.
+
+    At ANY scope the partner side includes the canonical-tag arm (tag_aliases /
+    video_tags); at TRANSCRIPT scope tags are not transcript-strength evidence,
+    so the arm is absent (FR-002/FR-007). A ``_NoAliasSession`` yields no
+    alias-tag pairs, so the statement compiles without an un-inlined array bind
+    while still exercising the mention and canonical-tag arms.
+    """
+    session = cast(AsyncSession, _NoAliasSession())
+
+    any_assoc = asyncio.run(
+        _REPO._associations_in_video_set(
+            session, ["video-placeholder"], EvidenceScope.ANY
+        )
+    )
+    any_sql = str(
+        select(any_assoc).compile(compile_kwargs={"literal_binds": True})
+    ).lower()
+    assert "tag_aliases" in any_sql and "video_tags" in any_sql, (
+        "ANY scope must include the canonical-tag arm so a tag-only co-occurrence "
+        "is counted (converges on the shared arms, #321/FR-002)"
+    )
+
+    transcript_assoc = asyncio.run(
+        _REPO._associations_in_video_set(
+            session, ["video-placeholder"], EvidenceScope.TRANSCRIPT
+        )
+    )
+    transcript_sql = str(
+        select(transcript_assoc).compile(compile_kwargs={"literal_binds": True})
+    ).lower()
+    assert "tag_aliases" not in transcript_sql, (
+        "TRANSCRIPT scope must exclude tag arms (tags are not transcript-strength "
+        "evidence, FR-007)"
+    )

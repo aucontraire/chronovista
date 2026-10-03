@@ -239,6 +239,8 @@ export interface FetchEntityVideosParams {
    * title, description, tag, manual.
    */
   source?: string[];
+  /** When true, also include unavailable/deleted videos (default: available only). */
+  includeUnavailable?: boolean;
   /** Max results per page (1-100, default 20) */
   limit?: number;
   /** Offset for pagination (>=0) */
@@ -595,6 +597,9 @@ export async function fetchEntityVideos(
   }
   for (const s of params.source ?? []) {
     qs.append("source", s);
+  }
+  if (params.includeUnavailable) {
+    qs.set("include_unavailable", "true");
   }
   if (params.limit !== undefined) {
     qs.set("limit", String(params.limit));

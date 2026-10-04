@@ -27,7 +27,10 @@ from chronovista.db.models import (
     UserVideo,
     Video,
 )
-from chronovista.repositories.playlist_repository import get_library_overview
+from chronovista.repositories.playlist_repository import (
+    get_library_overview,
+    saved_forgotten_video_ids,
+)
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
@@ -176,6 +179,7 @@ async def _independent_saved_forgotten(session: AsyncSession) -> int:
             FROM playlist_memberships pm
             JOIN playlists p ON p.playlist_id = pm.playlist_id
             WHERE p.playlist_type = 'regular'
+              AND p.deleted_flag = false
               AND NOT EXISTS (
                 SELECT 1 FROM user_videos uv
                 WHERE uv.video_id = pm.video_id AND uv.watched_at IS NOT NULL
@@ -195,6 +199,7 @@ async def _is_counted(session: AsyncSession, video_id: str) -> bool:
             FROM playlist_memberships pm
             JOIN playlists p ON p.playlist_id = pm.playlist_id
             WHERE p.playlist_type = 'regular'
+              AND p.deleted_flag = false
               AND pm.video_id = :vid
               AND NOT EXISTS (
                 SELECT 1 FROM user_videos uv
@@ -240,6 +245,83 @@ async def test_system_lists_are_excluded_from_saved_and_forgotten(
         # Unwatched and saved, but in system lists rather than curated ones.
         assert await _is_counted(session, "ov_wlonly") is False
         assert await _is_counted(session, "ov_histonly") is False
+        expected = await _independent_saved_forgotten(session)
+
+    data = await _overview(async_client)
+    assert data["saved_and_forgotten"] == expected
+
+
+_DELETED_PL = "PLov235deleted"
+_DELETED_PL_VID = "ov235_deleted_only"
+
+
+async def test_deleted_playlist_excluded_from_saved_and_forgotten(
+    async_client: AsyncClient, integration_db_session
+) -> None:
+    """#235 — a video saved only in a DELETED curated playlist (unwatched) must not
+    count as Saved & Forgotten. The playlist is hidden everywhere else in the UI,
+    so the Overview aggregate must hide it too (via the shared visible-playlists
+    predicate)."""
+    async with integration_db_session() as session:
+        await _add_if_absent(
+            session,
+            Channel.channel_id,
+            Channel(channel_id=CHANNEL, title="T", description="d"),
+        )
+        await _add_if_absent(
+            session,
+            Video.video_id,
+            Video(
+                video_id=_DELETED_PL_VID,
+                channel_id=CHANNEL,
+                title=_DELETED_PL_VID,
+                description="d",
+                upload_date=T0,
+                duration=60,
+            ),
+        )
+        await _add_if_absent(
+            session,
+            Playlist.playlist_id,
+            Playlist(
+                playlist_id=_DELETED_PL,
+                title=_DELETED_PL,
+                description="d",
+                video_count=0,
+                privacy_status="private",
+                playlist_type="regular",
+                deleted_flag=True,
+            ),
+        )
+        await session.flush()
+        found = await session.execute(
+            select(PlaylistMembership.playlist_id).where(
+                PlaylistMembership.playlist_id == _DELETED_PL,
+                PlaylistMembership.video_id == _DELETED_PL_VID,
+            )
+        )
+        if found.scalars().first() is None:
+            session.add(
+                PlaylistMembership(
+                    playlist_id=_DELETED_PL, video_id=_DELETED_PL_VID, position=0
+                )
+            )
+        await session.commit()
+
+    # The video meets "saved in a regular playlist + unwatched" — the only reason
+    # it must NOT be counted is that its playlist is deleted (#235).
+    async with integration_db_session() as session:
+        assert await _is_counted(session, _DELETED_PL_VID) is False
+        forgotten = set(
+            (
+                await session.execute(
+                    select(saved_forgotten_video_ids().subquery().c.video_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert _DELETED_PL_VID not in forgotten
         expected = await _independent_saved_forgotten(session)
 
     data = await _overview(async_client)

@@ -49,7 +49,10 @@ from chronovista.models.enums import AvailabilityStatus
 from chronovista.models.recovery_provenance import RecoverySourceRecord
 from chronovista.repositories.app_identity_repository import AppIdentityRepository
 from chronovista.repositories.channel_repository import ChannelRepository
-from chronovista.repositories.playlist_repository import PlaylistRepository
+from chronovista.repositories.playlist_repository import (
+    PlaylistRepository,
+    visible_playlists_filter,
+)
 from chronovista.repositories.recovery_provenance_repository import (
     RecoveryProvenanceRepository,
 )
@@ -2714,7 +2717,9 @@ class EnrichmentService:
         # Query playlists that need enrichment
         # Include playlists that haven't been fully enriched (missing published_at)
         # or have placeholder-like titles
-        query = select(PlaylistDB).where(PlaylistDB.deleted_flag == False)  # noqa: E712
+        # Only visible (non-deleted) playlists — the ONE shared predicate (#235),
+        # so the enrichment candidate set matches the list and the aggregates.
+        query = select(PlaylistDB).where(visible_playlists_filter())
 
         if limit:
             query = query.limit(limit)

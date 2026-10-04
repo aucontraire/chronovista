@@ -118,6 +118,35 @@ def _folded(col: ColumnExpressionArgument[str]) -> ColumnElement[str]:
     return func.lower(func.unaccent(col))
 
 
+def _visible_names_subquery(entity_ids: list[uuid.UUID] | None) -> Subquery:
+    """The folded "visible names" (canonical name + non-ASR aliases) for the
+    visible-name mention rule (#89).
+
+    The ONE definition shared by every mention-qualification site —
+    :meth:`EntityMentionRepository._mention_assoc_stmt`,
+    :meth:`EntityMentionRepository.get_entity_video_list`, and
+    :meth:`EntityMentionRepository.get_page_entity_matches` — so a mention that
+    counts on one surface counts on all of them (the #262 class of bug: a surface
+    counting raw ``entity_mentions`` instead of visible-name-matched ones).
+
+    ``entity_ids=None`` covers ALL entities (the video-set-anchored co-occurrence
+    shape); a list bounds it. Exposes ``entity_id`` and ``name_lower``; a
+    single-entity caller may ignore the ``entity_id`` column.
+    """
+    canonical = select(
+        NamedEntityDB.id.label("entity_id"),
+        _folded(NamedEntityDB.canonical_name).label("name_lower"),
+    )
+    alias = select(
+        EntityAliasDB.entity_id.label("entity_id"),
+        _folded(EntityAliasDB.alias_name).label("name_lower"),
+    ).where(EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR)
+    if entity_ids is not None:
+        canonical = canonical.where(NamedEntityDB.id.in_(entity_ids))
+        alias = alias.where(EntityAliasDB.entity_id.in_(entity_ids))
+    return union(canonical, alias).subquery()
+
+
 def _available_video_id_subquery() -> Select[Any]:
     """The ONE definition of "available" for association surfaces (Feature 080).
 
@@ -728,23 +757,10 @@ class EntityMentionRepository(
         if not entity_ids:
             return
 
-        # Build a subquery of "visible names" per entity: canonical names
-        # plus non-ASR-error aliases.  Only mentions matching these names
-        # should be counted, so that ASR-error alias mentions are excluded.
-        canonical_names = select(
-            NamedEntityDB.id.label("entity_id"),
-            _folded(NamedEntityDB.canonical_name).label("name_lower"),
-        ).where(NamedEntityDB.id.in_(entity_ids))
-
-        non_asr_aliases = select(
-            EntityAliasDB.entity_id,
-            _folded(EntityAliasDB.alias_name).label("name_lower"),
-        ).where(
-            EntityAliasDB.entity_id.in_(entity_ids),
-            EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
-        )
-
-        visible_names = union(canonical_names, non_asr_aliases).subquery()
+        # Visible names (canonical + non-ASR aliases) from the ONE shared builder,
+        # so the stored counters are recomputed under the exact rule the counts,
+        # the filter, and the page matches use (the #262 single-definition rule).
+        visible_names = _visible_names_subquery(list(entity_ids))
 
         # Count only mentions whose mention_text matches a visible name
         agg_subq = (
@@ -1096,22 +1112,11 @@ class EntityMentionRepository(
             Tuple of (results list, total deduplicated count of distinct
             videos across transcript mentions and tag associations).
         """
-        # Build "visible names" subquery: canonical name + non-ASR-error
-        # aliases.  This keeps video/mention counts consistent with the
-        # counters stored on named_entities (which also exclude ASR-error
-        # alias mentions).
-        canonical_names = select(
-            _folded(NamedEntityDB.canonical_name).label("name_lower"),
-        ).where(NamedEntityDB.id == entity_id)
-
-        non_asr_aliases = select(
-            _folded(EntityAliasDB.alias_name).label("name_lower"),
-        ).where(
-            EntityAliasDB.entity_id == entity_id,
-            EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
-        )
-
-        visible_names = union(canonical_names, non_asr_aliases).subquery()
+        # Visible names (canonical + non-ASR aliases) from the ONE shared builder,
+        # so this list's mention qualification matches the counts and the filter
+        # (the #262 single-definition rule). Single entity here; the extra
+        # entity_id column on the subquery is unused by the name-only joins below.
+        visible_names = _visible_names_subquery([entity_id])
 
         # Mention filter: visible-name match OR manual detection method.
         # Manual mentions always use mention_text=canonical_name which is
@@ -1935,6 +1940,16 @@ class EntityMentionRepository(
         if not video_ids or not entity_ids:
             return {}
 
+        ids = list(dict.fromkeys(entity_ids))
+
+        # Count only mentions that qualify under the shared visible-name / manual
+        # rule (#89), the SAME rule the relevance sort key uses
+        # (``build_entity_qualification_subquery`` → ``_mention_assoc_stmt``). Before
+        # this (#262), the displayed per-video ``mention_count`` counted *every*
+        # ``entity_mentions`` row, so a video whose only mention was a non-visible-name
+        # (ASR-noise) form displayed a higher count than its relevance contribution.
+        visible_names = _visible_names_subquery(ids)
+
         stmt = (
             select(
                 EntityMentionDB.video_id,
@@ -1951,9 +1966,21 @@ class EntityMentionRepository(
                 TranscriptSegmentDB,
                 TranscriptSegmentDB.id == EntityMentionDB.segment_id,
             )
+            .outerjoin(
+                visible_names,
+                and_(
+                    visible_names.c.entity_id == EntityMentionDB.entity_id,
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                ),
+            )
             .where(
                 EntityMentionDB.video_id.in_(list(video_ids)),
-                EntityMentionDB.entity_id.in_(list(dict.fromkeys(entity_ids))),
+                EntityMentionDB.entity_id.in_(ids),
+                # Visible-name match OR manual — the qualifying-mention rule (#262).
+                or_(
+                    visible_names.c.name_lower.is_not(None),
+                    EntityMentionDB.detection_method == "manual",
+                ),
             )
             .group_by(
                 EntityMentionDB.video_id,
@@ -2019,18 +2046,7 @@ class EntityMentionRepository(
           ever match a mention to its own entity (data-model INV-2), never a
           cross-entity association.
         """
-        canonical_names = select(
-            NamedEntityDB.id.label("entity_id"),
-            _folded(NamedEntityDB.canonical_name).label("name_lower"),
-        )
-        alias_names = select(
-            EntityAliasDB.entity_id.label("entity_id"),
-            _folded(EntityAliasDB.alias_name).label("name_lower"),
-        ).where(EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR)
-        if entity_ids is not None:
-            canonical_names = canonical_names.where(NamedEntityDB.id.in_(entity_ids))
-            alias_names = alias_names.where(EntityAliasDB.entity_id.in_(entity_ids))
-        visible_names = union(canonical_names, alias_names).subquery()
+        visible_names = _visible_names_subquery(entity_ids)
 
         source_label = case(
             (EntityMentionDB.detection_method == "manual", literal("manual")),
@@ -2745,16 +2761,9 @@ class EntityMentionRepository(
         transcript-derived mentions; manual mentions (``language_code`` NULL)
         always pass, exactly as on the entity side.
         """
-        visible_names = union(
-            select(
-                NamedEntityDB.id.label("entity_id"),
-                _folded(NamedEntityDB.canonical_name).label("name_lower"),
-            ),
-            select(
-                EntityAliasDB.entity_id.label("entity_id"),
-                _folded(EntityAliasDB.alias_name).label("name_lower"),
-            ).where(EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR),
-        ).subquery()
+        # The ONE shared visible-names builder (all entities), so the video panel
+        # and the entity detail agree on membership by construction (FR-006).
+        visible_names = _visible_names_subquery(None)
 
         stmt = (
             select(distinct(EntityMentionDB.entity_id))
@@ -2957,20 +2966,11 @@ class EntityMentionRepository(
         int
             The deduplicated count of distinct video IDs from all sources.
         """
-        # Step 1: Fetch transcript-mention video IDs (no language filter —
-        # the header count should reflect all languages).
-        canonical_names = select(
-            _folded(NamedEntityDB.canonical_name).label("name_lower"),
-        ).where(NamedEntityDB.id == entity_id)
-
-        non_asr_aliases = select(
-            _folded(EntityAliasDB.alias_name).label("name_lower"),
-        ).where(
-            EntityAliasDB.entity_id == entity_id,
-            EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
-        )
-
-        visible_names = union(canonical_names, non_asr_aliases).subquery()
+        # Step 1: Fetch transcript-mention video IDs (no language filter — the
+        # header count should reflect all languages). Visible names from the ONE
+        # shared builder; single entity, so the name-only joins below ignore the
+        # extra entity_id column (the #262 single-definition rule).
+        visible_names = _visible_names_subquery([entity_id])
 
         mention_filter = and_(
             EntityMentionDB.entity_id == entity_id,

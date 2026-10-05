@@ -369,15 +369,22 @@ export const WikidataGroundingPicker = forwardRef<
                           <span className="text-xs text-gray-400">
                             {candidate.qid}
                           </span>
-                          {candidate.type_matches ? (
+                          {/*
+                            Tri-state (#271): corroborated -> green badge;
+                            a corroboration set exists but doesn't match -> the
+                            "Type may differ" badge; null (no corroboration set for
+                            this type) -> no badge at all, since there is nothing to
+                            differ from. "not auto-verified" must never read as doubt.
+                          */}
+                          {candidate.type_matches === true ? (
                             <span className="text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
                               Type match
                             </span>
-                          ) : (
+                          ) : candidate.type_matches === false ? (
                             <span className="text-xs font-medium text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">
                               Type may differ
                             </span>
-                          )}
+                          ) : null}
                         </div>
                         {candidate.description !== null && (
                           <p className="mt-0.5 text-xs text-gray-500">

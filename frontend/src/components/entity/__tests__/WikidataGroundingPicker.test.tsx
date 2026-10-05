@@ -185,6 +185,16 @@ describe('WikidataGroundingPicker', () => {
       expect(screen.queryByText(/^type match$/i)).not.toBeInTheDocument();
     });
 
+    it('shows NO type badge when type_matches is null (unverifiable, #271)', () => {
+      // A type with no corroboration set returns null — "can't auto-verify" must
+      // read as neutral/absent, never as the misleading "type may differ".
+      mockWikidata({ hasSearched: true, candidates: [makeCandidate({ type_matches: null })] });
+      renderPicker();
+
+      expect(screen.queryByText(/type may differ/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/^type match$/i)).not.toBeInTheDocument();
+    });
+
     it('never checks a radio unless selectedCandidate matches its qid — the caller controls selection', () => {
       mockWikidata({ hasSearched: true, candidates: [makeCandidate()] });
       renderPicker({ selectedCandidate: null });

@@ -41,7 +41,14 @@ class WikidataCandidate(BaseModel):
             "or the author-stub signal (an ORCID with little else) — ADR-010 D5."
         ),
     )
-    type_matches: bool = Field(
-        default=False,
-        description="Whether instance_of corroborates the entity type being assigned (FR-013)",
+    type_matches: bool | None = Field(
+        default=None,
+        description=(
+            "Tri-state type corroboration (FR-013, #271): True = instance_of "
+            "corroborates the assigned entity type; False = the type has a "
+            "corroboration set but instance_of does NOT match it (a genuine "
+            "'may differ'); None = no corroboration set exists for this entity "
+            "type, so the type simply can't be auto-verified (NOT a doubt signal — "
+            "the UI must render None as neutral/absent, never as 'Type may differ')."
+        ),
     )

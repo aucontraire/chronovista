@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.85.1] - 2026-10-04
+
+### Fixed
+- **The co-occurrence panel count and the video it's ranked by now agree (#262).** The `/videos` relevance sort key ranks by visible-name mention volume, but the per-video count shown in the list counted *every* mention row (including ASR-noise forms that don't match the entity's visible names), so a video could be ranked lower than the number it displayed. The displayed count now applies the same visible-name/manual rule as the sort key.
+- **Overview aggregates no longer count playlists the rest of the app hides (#235).** The Overview dashboard's "saved & forgotten" figure, its playlist inventory, and the saved-&-forgotten video filter ignored `deleted_flag` while the playlist list hides it, so a video saved only in a deleted playlist could be counted and deleted playlists inflated the inventory. All now exclude deleted playlists, via one shared predicate. (The reclassify CLI also no longer offers deleted playlists as promotion candidates.)
+- **The "Type may differ" badge in Wikidata grounding no longer over-fires (#271).** Candidates whose entity type has no corroboration set (event, work, concept, technical term, other) always showed "Type may differ", conflating "we can't auto-verify the type" with "you may have picked the wrong category". Type corroboration is now tri-state: a match shows "Type match", a real mismatch shows "Type may differ", and an unverifiable type shows no badge at all.
+
+### Internal
+- Consolidated the entity↔video "visible-name" mention rule and the "playlist is visible" predicate each to a single shared definition, so a new surface can't silently diverge again (the class of bug behind #262/#235).
+
 ## [0.85.0] - 2026-10-03
 
 ### Fixed

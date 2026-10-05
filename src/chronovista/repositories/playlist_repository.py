@@ -30,6 +30,18 @@ from chronovista.repositories.base import BaseSQLAlchemyRepository
 from chronovista.repositories.user_video_repository import watched_video_ids
 
 
+def visible_playlists_filter() -> ColumnElement[bool]:
+    """The ONE "playlist is visible" predicate (#235).
+
+    Excludes soft-deleted playlists, matching the playlist list endpoint
+    (``api/routers/playlists.py``). Every aggregate or filter over playlists MUST
+    apply this, or it counts playlists the rest of the UI hides — which is exactly
+    the #235 defect (Overview aggregates diverging from the list). Single-sourced
+    so a new aggregate cannot silently forget it.
+    """
+    return PlaylistDB.deleted_flag.is_(False)
+
+
 def saved_forgotten_video_ids() -> Any:
     """Return a subquery of every distinct "saved & forgotten" video id.
 
@@ -66,6 +78,10 @@ def saved_forgotten_video_ids() -> Any:
         .join(PlaylistDB, PlaylistDB.playlist_id == PlaylistMembershipDB.playlist_id)
         .where(
             PlaylistDB.playlist_type == PlaylistType.REGULAR.value,
+            # #235: only visible (non-deleted) playlists, via the shared predicate.
+            # Both the dashboard headline and the videos-list filter consume this
+            # one derivation, so both stay consistent.
+            visible_playlists_filter(),
             PlaylistMembershipDB.video_id.not_in(watched_video_ids()),
         )
         .distinct()
@@ -122,6 +138,9 @@ async def get_library_overview(session: AsyncSession) -> dict[str, Any]:
             PlaylistMembershipDB.video_id.label("video_id"),
         )
         .join(PlaylistDB, PlaylistDB.playlist_id == PlaylistMembershipDB.playlist_id)
+        # #235: only visible playlists (shared predicate), so every figure derived
+        # from this CTE counts only playlists the rest of the UI shows.
+        .where(visible_playlists_filter())
         .distinct()
         .cte("membership")
     )
@@ -168,6 +187,8 @@ async def get_library_overview(session: AsyncSession) -> dict[str, Any]:
                 func.count(),
                 func.min(PlaylistDB.playlist_id),
             )
+            # #235: the inventory counts only visible playlists (shared predicate).
+            .where(visible_playlists_filter())
             .group_by(PlaylistDB.playlist_type)
             .order_by(PlaylistDB.playlist_type)
         )
@@ -278,10 +299,16 @@ class PlaylistRepository(
     async def get_playlists_by_type(
         self, session: AsyncSession, playlist_type: PlaylistType
     ) -> list[PlaylistDB]:
-        """Return all playlists of a given ``playlist_type``, ordered by title.
+        """Return all **visible** playlists of a given ``playlist_type``, ordered by title.
 
         Used by the reclassify CLI (Feature 058) to load the ``regular``
         playlists that are candidates for promotion.
+
+        Excludes soft-deleted playlists via the shared ``visible_playlists_filter()``
+        (#235), so the reclassify CLI never offers a hidden/deleted playlist as a
+        promotion candidate — matching every other visible-playlist read. If a
+        future caller needs deleted playlists of a type, add a dedicated method
+        rather than dropping this filter (see ``list_deleted_playlists``).
 
         Parameters
         ----------
@@ -293,11 +320,14 @@ class PlaylistRepository(
         Returns
         -------
         list[PlaylistDB]
-            Matching playlists.
+            Matching non-deleted playlists.
         """
         result = await session.execute(
             select(PlaylistDB)
-            .where(PlaylistDB.playlist_type == playlist_type.value)
+            .where(
+                PlaylistDB.playlist_type == playlist_type.value,
+                visible_playlists_filter(),
+            )
             .order_by(PlaylistDB.title)
         )
         return list(result.scalars().all())
@@ -326,7 +356,7 @@ class PlaylistRepository(
         result = await session.execute(
             select(PlaylistDB)
             .where(PlaylistDB.playlist_id == playlist_id)
-            .where(PlaylistDB.deleted_flag.is_(False))
+            .where(visible_playlists_filter())
         )
         return result.scalar_one_or_none()
 
@@ -382,7 +412,7 @@ class PlaylistRepository(
             PlaylistDB.playlist_id.like("HL%"),
         )
 
-        query = select(PlaylistDB).where(PlaylistDB.deleted_flag.is_(False))
+        query = select(PlaylistDB).where(visible_playlists_filter())
 
         # Precedence is load-bearing: `linked is False` means "show internal"
         # and MUST be tested before `unlinked is False` means "show linked".

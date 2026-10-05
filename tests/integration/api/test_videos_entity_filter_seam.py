@@ -34,6 +34,7 @@ from chronovista.db.models import Video as VideoDB
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from tests.factories.entity_association_orm_factory import (
+    EntityMentionDBFactory,
     seed_alias_tag_association,
     seed_mention_association,
     seed_tag_only_association,
@@ -616,3 +617,39 @@ class TestRelevanceOrdersTagOnlyLast:
         # The tag-only video is last and scores 0.
         assert order1[-1] == tag
         assert mentions[tag] == 0
+
+
+async def test_displayed_count_excludes_non_visible_name_mentions(
+    async_client: AsyncClient,
+    integration_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """#262 — the displayed per-video ``total_mentions`` counts only visible-name /
+    manual mentions, matching the relevance sort key. An ASR-noise mention (text that
+    is not one of the entity's visible names) no longer inflates the displayed count,
+    so the number shown can't diverge from the number the video is ranked by."""
+    v = f"{_PFX}262v"[:20]
+    await _seed_videos(integration_session_factory, available=[v], unavailable=[])
+    async with integration_session_factory() as s:
+        # One visible-name mention (mention_text == canonical name, #89 — qualifies).
+        entity = await seed_mention_association(s, video_ids=[v])
+        # One ASR-noise mention on the SAME video/entity: non-matching text, non-manual.
+        s.add(
+            EntityMentionDBFactory.build(
+                entity_id=entity.id,
+                video_id=v,
+                mention_text="zzz s262 asr noise",
+                detection_method="spacy_ner",
+                mention_source="transcript",
+            )
+        )
+        await s.commit()
+    entity_id = entity.id
+
+    r = await async_client.get(
+        "/api/v1/videos", params={"entity_id": str(entity_id), "limit": 100}
+    )
+    assert r.status_code == 200, r.text
+    row = next(x for x in r.json()["data"] if x["video_id"] == v)
+    # Two mention rows exist; only the visible-name one qualifies -> count is 1,
+    # matching the relevance sort key (pre-#262 the display showed 2).
+    assert row["total_mentions"] == 1

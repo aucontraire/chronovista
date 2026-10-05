@@ -52,6 +52,28 @@ EXPECTED_INSTANCE_OF: dict[str, set[str]] = {
     },
 }
 
+
+def _type_verification(entity_type: str, instance_of: list[str]) -> bool | None:
+    """Tri-state type corroboration for a Wikidata candidate (#271).
+
+    The ONE definition of the corroboration rule, shared by both candidate paths
+    (search + paste-a-QID) so they cannot drift.
+
+    - ``True``  — the entity type has an expected ``P31`` set AND the candidate's
+      ``instance_of`` corroborates it.
+    - ``False`` — the type has an expected set but ``instance_of`` does not match
+      it: a genuine "type may differ".
+    - ``None``  — the type has no expected set (e.g. ``event``, ``work``,
+      ``concept``, ``technical_term``), so corroboration is simply unavailable.
+      This is NOT a doubt signal; callers must render it as neutral/absent, never
+      as "type may differ" (that conflation is the #271 bug).
+    """
+    expected = EXPECTED_INSTANCE_OF.get(entity_type, set())
+    if not expected:
+        return None
+    return bool(expected & set(instance_of))
+
+
 # Thin + sitelink-less + ORCID-only is the signature of an item auto-generated from a
 # publication author list (ADR-010 D5 / FR-013).
 _STUB_MAX_STATEMENTS = 10
@@ -144,7 +166,6 @@ class WikidataClient:
             if owns:
                 await http.aclose()
 
-        expected = EXPECTED_INSTANCE_OF.get(entity_type, set())
         candidates: list[WikidataCandidate] = []
         for hit in hits:
             qid = str(hit["id"])
@@ -159,9 +180,7 @@ class WikidataClient:
                     statement_count=det.get("statements", 0),
                     sitelink_count=det.get("sitelinks", 0),
                     is_stub=bool(det.get("looks_like_author_stub", False)),
-                    type_matches=(
-                        bool(expected & set(instance_of)) if expected else False
-                    ),
+                    type_matches=_type_verification(entity_type, instance_of),
                 )
             )
         return candidates
@@ -189,7 +208,6 @@ class WikidataClient:
         det = details.get(q)
         if det is None:
             return None
-        expected = EXPECTED_INSTANCE_OF.get(entity_type, set())
         instance_of = det.get("instance_of", [])
         return WikidataCandidate(
             qid=q,
@@ -199,7 +217,7 @@ class WikidataClient:
             statement_count=det.get("statements", 0),
             sitelink_count=det.get("sitelinks", 0),
             is_stub=bool(det.get("looks_like_author_stub", False)),
-            type_matches=(bool(expected & set(instance_of)) if expected else False),
+            type_matches=_type_verification(entity_type, instance_of),
         )
 
     async def fetch_properties(self, qid: str) -> dict[str, Any]:

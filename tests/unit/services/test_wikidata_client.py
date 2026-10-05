@@ -18,9 +18,34 @@ from chronovista.services.wikidata_client import (
     USER_AGENT,
     WikidataClient,
     WikidataUnavailable,
+    _type_verification,
 )
 
 pytestmark = pytest.mark.asyncio
+
+
+class TestTypeVerification:
+    """Tri-state type corroboration (#271): match / mismatch / unverifiable."""
+
+    def test_match_when_instance_of_corroborates(self) -> None:
+        # person expects Q5; a Q5 instance_of corroborates -> True.
+        assert _type_verification("person", ["Q5"]) is True
+
+    def test_mismatch_when_corroboration_set_exists_but_differs(self) -> None:
+        # person has a corroboration set, but this instance_of is not in it -> a
+        # genuine "type may differ" (False, not None).
+        assert _type_verification("person", ["Q999999"]) is False
+
+    def test_none_when_no_corroboration_set_for_type(self) -> None:
+        # Types with no expected set (event/work/concept/technical_term/other) can't
+        # be auto-verified. MUST be None (unverifiable), NOT False (#271) — False
+        # would render the misleading "type may differ" badge.
+        for entity_type in ("event", "work", "concept", "technical_term", "other"):
+            assert _type_verification(entity_type, ["Q1"]) is None, entity_type
+
+    def test_none_is_independent_of_instance_of_for_uncovered_types(self) -> None:
+        # Even an empty instance_of on an uncovered type is None, not False.
+        assert _type_verification("concept", []) is None
 
 
 class TestUserAgentPolicy:

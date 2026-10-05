@@ -1062,8 +1062,14 @@ export interface WikidataCandidate {
   sitelink_count: number;
   /** True when Wikidata holds only minimal data for this item. */
   is_stub: boolean;
-  /** True when the candidate's Wikidata type is compatible with the entity_type searched for. */
-  type_matches: boolean;
+  /**
+   * Tri-state type corroboration (#271): `true` = Wikidata `instance_of`
+   * corroborates the searched entity type; `false` = a corroboration set exists
+   * but does not match (a genuine "type may differ"); `null` = no corroboration
+   * set for this type, so it can't be auto-verified — render as neutral/absent,
+   * never as "type may differ".
+   */
+  type_matches: boolean | null;
 }
 
 /**

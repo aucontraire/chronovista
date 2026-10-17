@@ -1578,6 +1578,9 @@ class EntityMention(Base):
     __table_args__ = (
         # Alias→mention provenance lookup (#298), matching the migration's name.
         Index("idx_entity_mentions_alias_id", "alias_id"),
+        # Cross-segment span end-anchor lookup (081), matching the migration's
+        # name (c081e5e9a1b2) so `alembic check` sees model and migration agree.
+        Index("idx_entity_mentions_end_segment_id", "end_segment_id"),
         # Partial unique index for segment-bound (automated) mentions.
         # Replaces the former uq_entity_mention_entity_segment_position
         # unique constraint so that NULL segment_id rows (manual mentions)

@@ -594,6 +594,7 @@ Entity mention records linking named entities to transcript segments.
 **Indexes:**
 
 - INDEX `idx_entity_mentions_alias_id` on `alias_id`
+- INDEX `idx_entity_mentions_end_segment_id` on `end_segment_id`
 - INDEX `ix_entity_mentions_correction_id` on `correction_id`
 - INDEX `ix_entity_mentions_detection_method` on `detection_method`
 - INDEX `ix_entity_mentions_entity_id` on `entity_id`

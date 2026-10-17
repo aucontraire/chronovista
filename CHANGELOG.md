@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-10-17
+
+### Added
+- **Entity mention detection now finds names that span transcript segment boundaries.** The scanner previously matched only within a single segment, so a name broken across a segment break — the common case for auto-generated transcripts — went undetected. Detection now assembles each transcript's segments in order and resolves a boundary-crossing match to a single spanning mention, anchored at the first segment and counted once, including names split across three segments. A new nullable `end_segment_id` column on `entity_mentions` records the span's end; every existing single-segment mention is unchanged (`end_segment_id` is NULL).
+- **Boundary-spanning transcript corrections.** A correction whose replacement has two or more tokens now distributes whole tokens across the segment pair (a single-token replacement keeps the absorb-into-one-segment behavior), and the corrected occurrence is recorded as one `user_correction` spanning mention through the same span-resolution primitive the detector uses.
+
+### Changed
+- **`POST /api/v1/batch-corrections/apply` with `cross_segment=true` now applies boundary-spanning corrections.** Previously that combination was a silent no-op for a name split across a segment break; it now distributes the corrected name across the pair, scoped to the segments the caller selected (an unselected neighbouring pair is never touched). This applies whether or not an `entity_id` is given — the spanning mention is recorded only when an entity is provided. Single-segment corrections are unchanged.
+
+### Internal
+- Detection and corrections share one span-resolution primitive, so both anchor spans identically and a single occurrence counts exactly once on every surface (denormalized counters, per-video summaries, the association arms) — never double-counted across the two segments it touches.
+- Candidate-token pre-filter for the cross-segment scan: entities are indexed by the word tokens of their name forms, and each transcript runs only the patterns of entities sharing at least one token with its text, cutting a full-corpus scan from roughly 53 minutes to about 13 with byte-identical output. The single-space segment separator is load-bearing for the pre-filter's safety and is guarded at runtime.
+
 ## [0.85.1] - 2026-10-04
 
 ### Fixed

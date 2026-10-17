@@ -180,3 +180,40 @@ class TestCrossSegmentDetection:
         pat = _pattern("Alfa Bravo")
         captured, _result, _repo = await _run([_seg(1, "Alfa Bravo")], [pat])
         assert captured == []
+
+    async def test_prefilter_prunes_absent_entity_without_running_its_regex(
+        self,
+    ) -> None:
+        # Pruning proof: a "ghost" entity whose index tokens are ABSENT from the
+        # transcript, but whose regex WOULD match the present span if it ran.
+        # The candidate-token pre-filter indexes it by its name tokens
+        # ("Zulu Xray"), which are not in the text, so its regex is never run and
+        # it yields no match — even though `\b(alfa bravo)\b` would have hit.
+        ghost = _EntityPattern(
+            entity_id=uuid.uuid4(),
+            canonical_name="Zulu Xray",  # indexed tokens: {zulu, xray} — absent
+            entity_type="person",
+            pg_pattern=re.escape("Alfa Bravo"),  # would match the present span
+            alias_names=["Zulu Xray"],
+        )
+        present = _pattern("Alfa Bravo")  # indexed {alfa, bravo} — present
+        captured, _result, _repo = await _run(
+            [_seg(1, "the name is Alfa"), _seg(2, "Bravo speaking")],
+            [ghost, present],
+        )
+        # Exactly one span, from the present entity — the ghost was pruned, not
+        # merely non-matching (its regex would have matched the same span).
+        assert len(captured) == 1
+        assert captured[0].entity_id == present.entity_id
+
+    async def test_mid_token_split_not_matched_space_separator(self) -> None:
+        # The separator invariant: a name split MID-token ("Fox" | "trot") joins
+        # as "fox trot", which the \b-anchored regex cannot match — so nothing is
+        # detected (and the prefilter is consistent: "foxtrot" is not a present
+        # token). This is WHY token-presence pruning is safe under the
+        # single-space SEGMENT_SEPARATOR.
+        pat = _pattern("Foxtrot")
+        captured, _result, _repo = await _run(
+            [_seg(1, "call sign Fox"), _seg(2, "trot over")], [pat]
+        )
+        assert captured == []

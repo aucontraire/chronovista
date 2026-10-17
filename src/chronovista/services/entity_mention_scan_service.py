@@ -35,6 +35,7 @@ from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
 )
 from chronovista.services.transcript_text_index import (
+    SEGMENT_SEPARATOR,
     SegmentInput,
     TranscriptTextIndex,
 )
@@ -53,6 +54,14 @@ _MAX_FETCH_RETRIES = 3
 # are not whitespace (so ``str.isspace()`` misses them) but would break a
 # contiguous match. Zero-width space, ZWNJ, ZWJ, BOM/ZWNBSP, and soft hyphen.
 _MATCH_INVISIBLE_CPS = frozenset({0x200B, 0x200C, 0x200D, 0xFEFF, 0x00AD})
+
+
+# Word-run tokenizer for the cross-segment candidate pre-filter. Matches how the
+# ``\b``-anchored entity regex delimits a token (a maximal run of word chars),
+# so a transcript word carrying adjacent punctuation ("bravo,") still yields
+# the bare token ("bravo") the regex would match — a plain whitespace split
+# would not, and would wrongly prune the entity.
+_TOKEN_RE = re.compile(r"\w+")
 
 
 def _fold_diacritics(raw: str) -> tuple[str, list[int]]:
@@ -642,6 +651,48 @@ class EntityMentionScanService:
             return
         pattern_by_entity = {p.entity_id: p for p in patterns}
 
+        # Candidate-token pre-filter (perf). Running every entity's regex over
+        # every transcript's full text is O(transcripts x patterns x len) and
+        # dominates the scan (~53 min on the full corpus). Instead, index each
+        # entity by the word tokens of its name forms; per transcript, run only
+        # the regexes of entities sharing at least one token with the text. An
+        # entity sharing no token cannot match (every token of a matched form
+        # must appear for the \b-anchored regex to hit), so this skips only
+        # guaranteed non-matches and leaves the spanning-match set byte-identical.
+        #
+        # LOAD-BEARING INVARIANT: ``TranscriptTextIndex.SEGMENT_SEPARATOR`` is a
+        # single space. A name split at a token boundary across segments
+        # ("Alfa" | "Bravo") joins to "alfa bravo" with both tokens whole,
+        # so the present-token test keeps the entity. A name split MID-token
+        # ("Fox" | "trot") joins to "fox trot", which the \b regex cannot match
+        # anyway, so pruning it loses nothing. If SEGMENT_SEPARATOR is ever
+        # changed to join WITHOUT a space (to catch mid-token breaks), a real
+        # match could have an absent token and this pre-filter would wrongly
+        # prune it — this code MUST be revisited if that constant changes.
+        if SEGMENT_SEPARATOR != " ":  # pragma: no cover - guards the invariant
+            raise RuntimeError(
+                "cross-segment token pre-filter assumes a single-space segment "
+                "separator; revisit it before changing SEGMENT_SEPARATOR"
+            )
+        token_to_entities: dict[str, set[uuid.UUID]] = {}
+        always_run: set[uuid.UUID] = set()
+        for pattern in patterns:
+            form_tokens: set[str] = set()
+            tokenless_form = False
+            for form in (pattern.canonical_name, *pattern.alias_names):
+                toks = _TOKEN_RE.findall(_fold_diacritics(form)[0].casefold())
+                if toks:
+                    form_tokens.update(toks)
+                else:
+                    tokenless_form = True
+            # A form with no word tokens (e.g. a punctuation-only alias) can't be
+            # gated by token presence, so such an entity always runs.
+            if tokenless_form or not form_tokens:
+                always_run.add(pattern.entity_id)
+            else:
+                for tok in form_tokens:
+                    token_to_entities.setdefault(tok, set()).add(pattern.entity_id)
+
         for video_id, lang in await self._fetch_transcripts_in_scope(
             session, video_ids, language_code
         ):
@@ -660,8 +711,17 @@ class EntityMentionScanService:
                 ]
             )
             folded_text, offset_map = _fold_diacritics(index.text)
+            # Only entities sharing a token with this transcript can match.
+            present_tokens = set(_TOKEN_RE.findall(folded_text.casefold()))
+            candidates = set(always_run)
+            for tok in present_tokens:
+                ents = token_to_entities.get(tok)
+                if ents:
+                    candidates.update(ents)
             raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
             for pattern, py_regex in compiled_patterns:
+                if pattern.entity_id not in candidates:
+                    continue
                 for match in py_regex.finditer(folded_text):
                     f_start, f_end = match.start(), match.end()
                     if f_end <= f_start:

@@ -468,9 +468,19 @@ class TestCrossSegmentMatchBasic:
         corrected_a: str = (refreshed_a.corrected_text or refreshed_a.text) or ""
         corrected_b: str = (refreshed_b.corrected_text or refreshed_b.text) or ""
 
-        assert "Katherine Johnson" in corrected_a, (
-            f"Segment 155 must contain 'Katherine Johnson' after cross-segment "
-            f"replacement. Got: {corrected_a!r}"
+        # Feature 081 (T026): a multi-token name is distributed across the boundary
+        # — seg 155 keeps the leading token, seg 156 the trailing token — so the full
+        # name reconstructs across the pair rather than being absorbed into seg 155.
+        assert (
+            corrected_a == "Katherine"
+        ), f"Segment 155 must keep the leading token 'Katherine'. Got: {corrected_a!r}"
+        assert corrected_b.startswith("Johnson"), (
+            f"Segment 156 must lead with the trailing token 'Johnson'. "
+            f"Got: {corrected_b!r}"
+        )
+        assert "Katherine Johnson" in f"{corrected_a} {corrected_b}", (
+            f"The corrected name must reconstruct across the boundary. "
+            f"Got A={corrected_a!r}, B={corrected_b!r}"
         )
         assert "Johnsen" not in corrected_a, (
             f"ASR artefact 'Johnsen' must be removed from segment 155. "
@@ -1033,9 +1043,16 @@ class TestRegexCrossSegment:
         corrected_a: str = (refreshed_a.corrected_text or refreshed_a.text) or ""
         corrected_b: str = (refreshed_b.corrected_text or refreshed_b.text) or ""
 
-        assert "Katherine Johnson" in corrected_a, (
-            f"Segment 20 must contain 'Katherine Johnson' after regex cross-segment "
-            f"replacement. Got: {corrected_a!r}"
+        # Feature 081 (T026): the name is distributed across the boundary.
+        assert (
+            corrected_a == "Katherine"
+        ), f"Segment 20 must keep the leading token 'Katherine'. Got: {corrected_a!r}"
+        assert corrected_b.startswith(
+            "Johnson"
+        ), f"Segment 21 must lead with the trailing token 'Johnson'. Got: {corrected_b!r}"
+        assert "Katherine Johnson" in f"{corrected_a} {corrected_b}", (
+            f"The corrected name must reconstruct across the boundary. "
+            f"Got A={corrected_a!r}, B={corrected_b!r}"
         )
         assert not corrected_b.startswith(
             "Bound"
@@ -1133,9 +1150,17 @@ class TestCaseInsensitiveCrossSegment:
         corrected_a: str = (refreshed_a.corrected_text or refreshed_a.text) or ""
         corrected_b: str = (refreshed_b.corrected_text or refreshed_b.text) or ""
 
+        # Feature 081 (T026): the name is distributed across the boundary.
         assert (
-            "Katherine Johnson" in corrected_a
-        ), f"Segment 30 must contain 'Katherine Johnson'. Got: {corrected_a!r}"
+            corrected_a == "Katherine"
+        ), f"Segment 30 must keep the leading token 'Katherine'. Got: {corrected_a!r}"
+        assert corrected_b.startswith(
+            "Johnson"
+        ), f"Segment 31 must lead with the trailing token 'Johnson'. Got: {corrected_b!r}"
+        assert "Katherine Johnson" in f"{corrected_a} {corrected_b}", (
+            f"The corrected name must reconstruct across the boundary. "
+            f"Got A={corrected_a!r}, B={corrected_b!r}"
+        )
         assert not corrected_b.lower().startswith(
             "bound"
         ), f"'BOUND' (any case) must be removed from segment 31. Got: {corrected_b!r}"
@@ -1439,11 +1464,14 @@ class TestEmptySegmentAfterCorrection:
 
         await db_session.commit()
 
+        # Feature 081 (T026): only a SINGLE-token replacement is absorbed whole into
+        # seg A, which is the one case that can still empty seg B (FR-008). A
+        # multi-token replacement would distribute a token into B and never empty it.
         service = _make_batch_service()
         result = await service.find_and_replace(
             db_session,
             pattern="Katherine Johnsen Bound",
-            replacement="Katherine Johnson",
+            replacement="KatherineJohnson",
             cross_segment=True,  # TDD: parameter does not yet exist
         )
 
@@ -1473,8 +1501,8 @@ class TestEmptySegmentAfterCorrection:
         corrected_b: str = (refreshed_b.corrected_text or refreshed_b.text) or ""
 
         assert (
-            "Katherine Johnson" in corrected_a
-        ), f"Segment 40 must contain 'Katherine Johnson'. Got: {corrected_a!r}"
+            "KatherineJohnson" in corrected_a
+        ), f"Segment 40 must contain the single-token replacement. Got: {corrected_a!r}"
 
         # Segment B must be empty or whitespace-only after correction.
         assert corrected_b.strip() == "", (
@@ -1548,10 +1576,14 @@ class TestBasicCrossSegmentRevert:
         assert refreshed_a is not None
         assert refreshed_a.has_correction is True
 
-        # Step 2: Revert using batch_revert matching the corrected text
+        # Step 2: Revert using batch_revert. Feature 081 (T026) distributes the name
+        # across the boundary (A="Katherine", B="Johnson is a word"), so no single
+        # segment holds the full name — match seg A's leading token and let the
+        # partner cascade pull in seg B.
         revert_result = await service.batch_revert(
             db_session,
-            pattern="Katherine Johnson",
+            pattern="Katherine",
+            video_ids=[vid_id],
         )
 
         assert isinstance(revert_result, BatchCorrectionResult)
@@ -1648,17 +1680,19 @@ class TestPartnerCascadeRevert:
         assert isinstance(result, BatchCorrectionResult)
         assert result.total_applied >= 1
 
-        # Verify seg B is empty/whitespace after correction
+        # Feature 081 (T026): the two-token name is distributed, so seg B keeps its
+        # trailing token ("Johnson") rather than being emptied — it still carries a
+        # correction.
         refreshed_b = await db_session.get(TranscriptSegmentDB, seg_b.id)
         assert refreshed_b is not None
         assert refreshed_b.has_correction is True
-        # seg B has " " (single space, FR-008 preservation)
 
-        # batch_revert with pattern "Katherine Johnson" — only matches seg A.
-        # seg B has " " which doesn't match, but should be reverted via cascade.
+        # batch_revert with "Katherine" matches only seg A (B now leads with
+        # "Johnson"); seg B is reverted via the partner cascade.
         revert_result = await service.batch_revert(
             db_session,
-            pattern="Katherine Johnson",
+            pattern="Katherine",
+            video_ids=[vid_id],
         )
 
         assert isinstance(revert_result, BatchCorrectionResult)
@@ -1734,11 +1768,12 @@ class TestRevertOfEmptiedSegment:
 
         service = _make_batch_service()
 
-        # Apply cross-segment correction
+        # Feature 081 (T026): only a SINGLE-token replacement empties seg B (the
+        # absorb-into-A case); a multi-token name would distribute a token into B.
         result = await service.find_and_replace(
             db_session,
             pattern="Katherine Johnsen Bound",
-            replacement="Katherine Johnson",
+            replacement="KatherineJohnson",
             cross_segment=True,
         )
 
@@ -1756,10 +1791,12 @@ class TestRevertOfEmptiedSegment:
             effective_b_after == ""
         ), f"Seg B should be empty after correction. Got: {effective_b_after!r}"
 
-        # Revert via batch_revert matching seg A's corrected text
+        # Revert via batch_revert matching seg A's corrected text (the whole
+        # single-token name sits in seg A); seg B (" ") is reverted via cascade.
         revert_result = await service.batch_revert(
             db_session,
-            pattern="Katherine Johnson",
+            pattern="KatherineJohnson",
+            video_ids=[vid_id],
         )
 
         assert isinstance(revert_result, BatchCorrectionResult)
@@ -1867,10 +1904,12 @@ class TestMissingPartnerOnRevert:
         deleted_seg = await db_session.get(TranscriptSegmentDB, partner_id)
         assert deleted_seg is None, "Partner segment should be deleted"
 
-        # Revert via batch_revert — surviving segment should still be reverted
+        # Revert via batch_revert — surviving segment should still be reverted.
+        # Feature 081 (T026) distributes the name, so match seg A's leading token.
         revert_result = await service.batch_revert(
             db_session,
-            pattern="Katherine Johnson",
+            pattern="Katherine",
+            video_ids=[vid_id],
         )
 
         assert isinstance(revert_result, BatchCorrectionResult)

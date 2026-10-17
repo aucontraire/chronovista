@@ -17,6 +17,7 @@ import unicodedata
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import Select, func, literal_column, select, text
@@ -27,10 +28,15 @@ from chronovista.db.models import EntityMention as EntityMentionDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
+from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.enums import DetectionMethod, MentionSource
 from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
+)
+from chronovista.services.transcript_text_index import (
+    SegmentInput,
+    TranscriptTextIndex,
 )
 
 logger = logging.getLogger(__name__)
@@ -492,6 +498,24 @@ class EntityMentionScanService:
             result.unique_entities = len(matched_entity_ids)
             result.unique_videos = len(matched_video_ids)
 
+            # Feature 081: additive per-transcript cross-segment pass. Detects names
+            # split across segment boundaries and writes ONE spanning mention per
+            # occurrence (segment_id=first, end_segment_id=last). It owns spanning
+            # mentions end-to-end (its own per-transcript --full delete/reinsert), so
+            # the per-segment path above is untouched (FR-006). Runs before the final
+            # --full recompute below so that covers spanning changes too.
+            await self._scan_cross_segment(
+                session,
+                patterns,
+                video_ids=video_ids,
+                language_code=language_code,
+                scoped_entity_ids=scoped_entity_ids,
+                full_rescan=full_rescan,
+                dry_run=dry_run,
+                limit=limit,
+                result=result,
+            )
+
             # 4/5. (#291) Counter recompute and commit are now per batch (see the
             # loop). Under --full, each batch recomputes counters for the entities
             # it matched OR whose mentions it deleted, so an entity that loses all
@@ -538,6 +562,219 @@ class EntityMentionScanService:
             )
 
             return result
+
+    async def _fetch_transcripts_in_scope(
+        self,
+        session: AsyncSession,
+        video_ids: list[str] | None,
+        language_code: str | None,
+    ) -> list[tuple[str, str]]:
+        """List the ``(video_id, language_code)`` transcripts to cross-segment scan."""
+        stmt: Select[tuple[str, str]] = select(
+            VideoTranscriptDB.video_id, VideoTranscriptDB.language_code
+        )
+        if video_ids is not None:
+            stmt = stmt.where(VideoTranscriptDB.video_id.in_(video_ids))
+        if language_code is not None:
+            stmt = stmt.where(VideoTranscriptDB.language_code == language_code)
+        stmt = stmt.order_by(
+            VideoTranscriptDB.video_id.asc(), VideoTranscriptDB.language_code.asc()
+        )
+        result = await session.execute(stmt)
+        return [(r.video_id, r.language_code) for r in result.all()]
+
+    async def _fetch_transcript_segments(
+        self, session: AsyncSession, video_id: str, language_code: str
+    ) -> list[Any]:
+        """Fetch one transcript's segments ordered by ``sequence_number``.
+
+        Returns raw ``text``/``corrected_text``/``has_correction`` so the shared
+        ``TranscriptTextIndex`` applies the single effective-text rule; ordered by
+        ``sequence_number`` so the assembled text matches playback order.
+        """
+        stmt: Select[tuple[Any, ...]] = (
+            select(
+                TranscriptSegmentDB.id,
+                TranscriptSegmentDB.text,
+                TranscriptSegmentDB.corrected_text,
+                TranscriptSegmentDB.has_correction,
+                TranscriptSegmentDB.start_time,
+            )
+            .where(
+                TranscriptSegmentDB.video_id == video_id,
+                TranscriptSegmentDB.language_code == language_code,
+            )
+            .order_by(TranscriptSegmentDB.sequence_number.asc())
+        )
+        result = await session.execute(stmt)
+        return list(result.all())
+
+    async def _scan_cross_segment(
+        self,
+        session: AsyncSession,
+        patterns: list[_EntityPattern],
+        *,
+        video_ids: list[str] | None,
+        language_code: str | None,
+        scoped_entity_ids: list[uuid.UUID],
+        full_rescan: bool,
+        dry_run: bool,
+        limit: int | None,
+        result: ScanResult,
+    ) -> None:
+        """Additive per-transcript pass detecting names split across segments (081).
+
+        Assembles each transcript's segments into one string via the shared
+        ``TranscriptTextIndex``, runs the same entity patterns over it, and keeps
+        ONLY matches that cross a boundary — writing one spanning mention per
+        occurrence (anchor at the first segment, ``end_segment_id`` at the last).
+        Single-segment matches are discarded (the per-segment pass owns those), so
+        this never alters existing single-segment mentions. Under ``full_rescan`` it
+        deletes and re-inserts spanning mentions per transcript (FR-012 scoping).
+        """
+        compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]] = []
+        for pattern in patterns:
+            try:
+                compiled_patterns.append((pattern, _compile_entity_regex(pattern)))
+            except re.error:
+                continue
+        if not compiled_patterns:
+            return
+        pattern_by_entity = {p.entity_id: p for p in patterns}
+
+        for video_id, lang in await self._fetch_transcripts_in_scope(
+            session, video_ids, language_code
+        ):
+            segs = await self._fetch_transcript_segments(session, video_id, lang)
+            if len(segs) < 2:
+                continue  # no boundary to span
+            index = TranscriptTextIndex.from_segments(
+                [
+                    SegmentInput(
+                        segment_id=s.id,
+                        text=s.text,
+                        corrected_text=s.corrected_text,
+                        has_correction=s.has_correction,
+                    )
+                    for s in segs
+                ]
+            )
+            folded_text, offset_map = _fold_diacritics(index.text)
+            raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
+            for pattern, py_regex in compiled_patterns:
+                for match in py_regex.finditer(folded_text):
+                    f_start, f_end = match.start(), match.end()
+                    if f_end <= f_start:
+                        continue
+                    raw_start = offset_map[f_start]
+                    raw_end = offset_map[f_end - 1] + 1
+                    raw_matches.append(
+                        (
+                            pattern.entity_id,
+                            raw_start,
+                            raw_end,
+                            index.text[raw_start:raw_end],
+                            pattern,
+                        )
+                    )
+            if not raw_matches:
+                # A transcript that matches NOTHING skips the per-transcript --full
+                # delete below. A spanning mention only disappears here if its
+                # transcript now matches no entity at all (rare); such a stale span
+                # is cleared by the next rescan where the transcript matches. Running
+                # a delete+recount on every empty transcript would not be worth the
+                # per-transcript cost. (The common disappear case — the transcript
+                # still matches something — IS handled, via delete_affected below.)
+                continue
+
+            log_row = SimpleNamespace(
+                id=segs[0].id,
+                video_id=video_id,
+                language_code=lang,
+                start_time=segs[0].start_time,
+            )
+            surviving, lmw_skips = self._apply_longest_match_wins(
+                raw_matches, log_row, dry_run
+            )
+            result.skipped_longest_match += lmw_skips
+            final_matches, ep_skips = self._apply_exclusion_patterns(
+                surviving, index.text, pattern_by_entity, log_row, dry_run
+            )
+            result.skipped_exclusion_pattern += ep_skips
+
+            mentions: list[EntityMentionCreate] = []
+            for entity_id, m_start, m_end, matched_text, pat in final_matches:
+                anchor = index.resolve_span(m_start, m_end)
+                if anchor.end_segment_id is None:
+                    continue  # single-segment; owned by the per-segment pass
+                mentions.append(
+                    EntityMentionCreate(
+                        entity_id=entity_id,
+                        segment_id=anchor.segment_id,
+                        end_segment_id=anchor.end_segment_id,
+                        video_id=video_id,
+                        language_code=lang,
+                        mention_text=matched_text,
+                        detection_method=DetectionMethod.RULE_MATCH,
+                        confidence=1.0,
+                        match_start=anchor.match_start,
+                        match_end=anchor.match_end,
+                        mention_context=self._extract_context_snippet(
+                            index.text, m_start, m_end
+                        ),
+                        alias_id=pat.alias_id_by_fold.get(
+                            _fold_diacritics(matched_text)[0].casefold()
+                        ),
+                    )
+                )
+                if dry_run and result.dry_run_matches is not None:
+                    if limit is None or len(result.dry_run_matches) < limit:
+                        result.dry_run_matches.append(
+                            {
+                                "video_id": video_id,
+                                "segment_id": anchor.segment_id,
+                                "start_time": segs[0].start_time,
+                                "entity_name": pat.canonical_name,
+                                "entity_type": pat.entity_type,
+                                "matched_text": matched_text,
+                                "match_start": anchor.match_start,
+                                "match_end": anchor.match_end,
+                                "context": self._extract_context_snippet(
+                                    index.text, m_start, m_end
+                                ),
+                            }
+                        )
+
+            if dry_run:
+                result.mentions_found += len(mentions)
+                continue
+            if not mentions and not full_rescan:
+                continue
+
+            seg_ids = [s.id for s in segs]
+            touched: set[uuid.UUID] = {m.entity_id for m in mentions}
+            if full_rescan:
+                # An entity whose spanning mention this delete removes must be
+                # recomputed even if nothing new was detected for it — otherwise a
+                # disappeared span leaves a stale count. Mirrors the per-segment
+                # path's delete_affected handling (SC-007 convergence invariant).
+                delete_affected = await self._mention_repo.entities_with_transcript_mentions_in_segments(
+                    session, segment_ids=seg_ids, entity_ids=scoped_entity_ids
+                )
+                touched.update(delete_affected)
+                await self._mention_repo.delete_spanning_mentions_by_segments(
+                    session, segment_ids=seg_ids, entity_ids=scoped_entity_ids
+                )
+            if mentions:
+                inserted = await self._mention_repo.bulk_create_with_conflict_skip(
+                    session, mentions
+                )
+                result.mentions_found += inserted
+                result.mentions_skipped += len(mentions) - inserted
+            if touched:
+                await self._mention_repo.update_entity_counters(session, list(touched))
+                await self._mention_repo.update_alias_counters(session, list(touched))
+            await session.commit()
 
     async def audit_unregistered_mentions(
         self,

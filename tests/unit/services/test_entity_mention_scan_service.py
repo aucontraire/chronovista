@@ -34,6 +34,22 @@ import pytest
 # CRITICAL: Module-level asyncio marker ensures async tests run properly
 # with coverage tools, avoiding silent test-skipping (see CLAUDE.md).
 
+
+@pytest.fixture(autouse=True)
+def _noop_cross_segment_pass() -> Any:
+    """Feature 081: these tests exercise the per-segment scan path in isolation.
+
+    The additive cross-segment pass is covered by its own tests, so no-op it here
+    so the mock session isn't asked to satisfy its per-transcript queries.
+    """
+    with patch(
+        "chronovista.services.entity_mention_scan_service."
+        "EntityMentionScanService._scan_cross_segment",
+        new=AsyncMock(),
+    ):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Helper factories
 # ---------------------------------------------------------------------------

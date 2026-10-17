@@ -571,6 +571,7 @@ Entity mention records linking named entities to transcript segments.
 | `id` | UUID | no |  | **PK** |
 | `entity_id` | UUID | no |  | FK → `named_entities.id` |
 | `segment_id` | INTEGER | yes |  | FK → `transcript_segments.id` |
+| `end_segment_id` | INTEGER | yes |  | FK → `transcript_segments.id` |
 | `video_id` | VARCHAR(20) | no |  |  |
 | `language_code` | VARCHAR(10) | yes |  |  |
 | `mention_text` | VARCHAR(500) | no |  |  |
@@ -593,6 +594,7 @@ Entity mention records linking named entities to transcript segments.
 **Indexes:**
 
 - INDEX `idx_entity_mentions_alias_id` on `alias_id`
+- INDEX `idx_entity_mentions_end_segment_id` on `end_segment_id`
 - INDEX `ix_entity_mentions_correction_id` on `correction_id`
 - INDEX `ix_entity_mentions_detection_method` on `detection_method`
 - INDEX `ix_entity_mentions_entity_id` on `entity_id`

@@ -133,6 +133,9 @@ class MentionSnapshot(BaseModel):
     confidence: float | None = Field(default=None, description="Detection confidence")
     match_start: int | None = Field(default=None, description="Match start offset")
     match_end: int | None = Field(default=None, description="Match end offset")
+    end_segment_id: int | None = Field(
+        default=None, description="End segment of a cross-segment mention (Feature 081)"
+    )
     correction_id: uuid.UUID | None = Field(
         default=None, description="Correction link, if any"
     )

@@ -16,6 +16,21 @@ import pytest
 pytestmark = pytest.mark.asyncio
 
 
+@pytest.fixture(autouse=True)
+def _noop_cross_segment_pass() -> Any:
+    """Feature 081: these tests exercise the per-segment loop spine in isolation.
+
+    The additive cross-segment pass is covered by its own tests, so no-op it here
+    so the mock session isn't asked to satisfy its per-transcript queries.
+    """
+    with patch(
+        "chronovista.services.entity_mention_scan_service."
+        "EntityMentionScanService._scan_cross_segment",
+        new=AsyncMock(),
+    ):
+        yield
+
+
 def _service() -> Any:
     from chronovista.services.entity_mention_scan_service import (
         EntityMentionScanService,

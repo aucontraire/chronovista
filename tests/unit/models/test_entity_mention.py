@@ -511,6 +511,7 @@ class TestEntityMentionBase:
             "confidence",
             "match_start",
             "match_end",
+            "end_segment_id",
             "correction_id",
             "alias_id",
             "mention_source",

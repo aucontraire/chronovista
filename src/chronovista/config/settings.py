@@ -183,6 +183,10 @@ class Settings(BaseSettings):
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": False,
+        # .env also carries credentials for adjacent tooling (Neo4j graph export,
+        # GraphRAG) that this model does not declare; ignore unmodeled vars instead
+        # of rejecting them so app settings load alongside them.
+        "extra": "ignore",
     }
 
 

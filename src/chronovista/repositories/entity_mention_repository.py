@@ -371,6 +371,14 @@ class EntityMentionRepository(
         correction-derived mentions (other detection methods / sources) are never
         touched.
 
+        **Cross-segment (Feature 081):** only NON-spanning mentions
+        (``end_segment_id IS NULL``) are deleted here. A spanning mention is
+        anchored at its first segment but derived from adjacent segments that may
+        fall in a different per-``id`` batch, so the per-segment batch delete would
+        drop it without re-detecting it. Spanning mentions are owned by the
+        per-transcript cross-segment pass, which deletes and re-inserts them under
+        its own transcript-scoped unit.
+
         Parameters
         ----------
         session : AsyncSession
@@ -392,6 +400,53 @@ class EntityMentionRepository(
             EntityMentionDB.segment_id.in_(segment_ids),
             EntityMentionDB.detection_method == "rule_match",
             EntityMentionDB.mention_source == "transcript",
+            # Spanning mentions are owned by the per-transcript cross-segment pass.
+            EntityMentionDB.end_segment_id.is_(None),
+        )
+        if entity_ids is not None:
+            stmt = stmt.where(EntityMentionDB.entity_id.in_(entity_ids))
+        result = await session.execute(stmt)
+        return int(result.rowcount)
+
+    async def delete_spanning_mentions_by_segments(
+        self,
+        session: AsyncSession,
+        *,
+        segment_ids: list[int],
+        entity_ids: list[uuid.UUID] | None = None,
+    ) -> int:
+        """Delete SPANNING ``rule_match``/``transcript`` mentions for these segments.
+
+        The cross-segment counterpart of ``delete_transcript_mentions_by_segments``
+        (Feature 081): the per-transcript cross-segment pass owns spanning mentions
+        (``end_segment_id IS NOT NULL``), deleting and re-inserting them under a
+        transcript-scoped ``--full`` unit so a span anchored in one per-``id`` batch
+        but derived from adjacent segments is never dropped without being
+        re-detected. A spanning mention's anchor ``segment_id`` is always one of the
+        transcript's segments, so scoping by ``segment_id`` covers it.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active async session.
+        segment_ids : list[int]
+            The transcript's segment ids. Empty ``→`` no-op.
+        entity_ids : list[uuid.UUID] | None, optional
+            Restrict the delete to these entities. ``None`` applies no restriction;
+            an empty list deletes nothing.
+
+        Returns
+        -------
+        int
+            Number of spanning mention rows deleted.
+        """
+        if not segment_ids:
+            return 0
+        stmt = delete(EntityMentionDB).where(
+            EntityMentionDB.segment_id.in_(segment_ids),
+            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.mention_source == "transcript",
+            EntityMentionDB.end_segment_id.is_not(None),
         )
         if entity_ids is not None:
             stmt = stmt.where(EntityMentionDB.entity_id.in_(entity_ids))
@@ -531,7 +586,10 @@ class EntityMentionRepository(
         """
         if not snapshots:
             return (0, 0)
+        # Both segment_id and end_segment_id carry a transcript_segments FK (Feature 081),
+        # so the since-deleted-segment guard must cover the end segment too.
         seg_ids = {s.segment_id for s in snapshots if s.segment_id is not None}
+        seg_ids |= {s.end_segment_id for s in snapshots if s.end_segment_id is not None}
         existing: set[int] = set()
         if seg_ids:
             rows = await session.execute(
@@ -543,7 +601,9 @@ class EntityMentionRepository(
         restored = 0
         skipped = 0
         for s in snapshots:
-            if s.segment_id is not None and s.segment_id not in existing:
+            if (s.segment_id is not None and s.segment_id not in existing) or (
+                s.end_segment_id is not None and s.end_segment_id not in existing
+            ):
                 skipped += 1
                 continue
             session.add(
@@ -551,6 +611,7 @@ class EntityMentionRepository(
                     id=s.id,
                     entity_id=s.entity_id,
                     segment_id=s.segment_id,
+                    end_segment_id=s.end_segment_id,
                     video_id=s.video_id,
                     language_code=s.language_code,
                     mention_text=s.mention_text,

@@ -64,6 +64,10 @@ from chronovista.repositories.transcript_segment_repository import (
 from chronovista.services.transcript_correction_service import (
     TranscriptCorrectionService,
 )
+from chronovista.services.transcript_text_index import (
+    SegmentInput,
+    TranscriptTextIndex,
+)
 from chronovista.utils.text import normalize_segment_text
 
 logger = logging.getLogger(__name__)
@@ -677,6 +681,12 @@ class BatchCorrectionService:
         failed_segment_ids: list[int] = []
         affected_video_ids: set[str] = set()
         matched_form_counts: dict[str, int] = {}
+        # Feature 081: segments the pattern matched on their own (excluded from
+        # cross-segment pairing so a span never double-counts text already
+        # corrected single-segment) vs. those it did not (candidates whose only
+        # occurrence may span the boundary into a neighbour).
+        single_matched_ids: set[int] = set()
+        no_single_match_ids: set[int] = set()
 
         # Step 3: Process each segment
         for seg_id in segment_ids:
@@ -705,12 +715,15 @@ class BatchCorrectionService:
 
             if not match:
                 total_skipped += 1
+                no_single_match_ids.add(seg_id)
                 logger.debug(
                     "apply_to_segments: pattern no longer matches "
                     "segment %d, skipping",
                     seg_id,
                 )
                 continue
+
+            single_matched_ids.add(seg_id)
 
             # Compute replacement
             if regex:
@@ -775,6 +788,91 @@ class BatchCorrectionService:
                     seg_id,
                     exc_info=True,
                 )
+
+        # Step 3b (Feature 081): apply boundary-spanning corrections.
+        #
+        # A name split across a segment boundary is absent from every single
+        # segment, so the per-segment loop above skips it. Detect spanning
+        # matches in the selected segments' videos, scope them to the anchor
+        # segments the caller actually selected, and route them through the
+        # shared cross-segment path — which distributes the name across the
+        # pair (T026) and, when an entity is set, records ONE user_correction
+        # spanning mention (T027). Runs before alias registration (Step 4) and
+        # counter recompute (Step 5) so both account for the span.
+        if cross_segment and replacement:
+            scope_video_ids = sorted({seg.video_id for seg in segments})
+            if scope_video_ids:
+                cross_matches = await self._find_cross_segment_matches(
+                    session,
+                    pattern=pattern,
+                    replacement=replacement,
+                    regex=regex,
+                    case_insensitive=case_insensitive,
+                    re_flags=re_flags,
+                    language=None,
+                    channel=None,
+                    video_ids=scope_video_ids,
+                    single_segment_ids=single_matched_ids,
+                )
+                # Selection-scoping: only correct a pair whose FIRST (anchor)
+                # segment the caller selected — never a sibling pair elsewhere
+                # in the same video that the user did not choose.
+                requested_ids = set(segment_ids)
+                cross_matches = [
+                    m for m in cross_matches if m.pair.segment_a.id in requested_ids
+                ]
+                if cross_matches:
+                    cs_applied, _cs_skipped, cs_failed, _cs_failed_batches = (
+                        await self._apply_cross_segment_corrections(
+                            session,
+                            cross_matches,
+                            correction_type=correction_type,
+                            correction_note=correction_note,
+                            # One chunk → the apply is all-or-nothing (a hard
+                            # error rolls the whole chunk back).
+                            batch_size=len(cross_matches),
+                            entity=entity,
+                            replacement=replacement,
+                            batch_id=batch_id,
+                        )
+                    )
+                    # Re-classify only the REQUESTED segments that take part in a
+                    # span. The per-segment loop booked each as skipped (a
+                    # boundary-spanning name matches no single segment). A span's
+                    # non-requested partner segment is collateral — never part of
+                    # the caller's per-requested-segment tally — so the helper's
+                    # per-physical-segment counts are NOT folded in directly;
+                    # doing so is what made applied+skipped+failed drift from
+                    # len(segment_ids). Moving only the requested segments keeps
+                    # that invariant.
+                    requested_span_segments = {
+                        sid
+                        for m in cross_matches
+                        for sid in (m.pair.segment_a.id, m.pair.segment_b.id)
+                        if sid in requested_ids
+                    } & no_single_match_ids
+                    if cs_failed > 0:
+                        # All-or-nothing rollback: nothing committed, so the
+                        # requested span segments genuinely failed.
+                        total_skipped -= len(requested_span_segments)
+                        total_failed += len(requested_span_segments)
+                    else:
+                        # ``cs_applied`` counts applied PHYSICAL segments (incl. a
+                        # span's non-requested partner); capping to the requested
+                        # ones moves exactly the requested segments that were
+                        # corrected, leaving any no-op pair's segments skipped.
+                        moved = min(len(requested_span_segments), cs_applied)
+                        total_skipped -= moved
+                        total_applied += moved
+                        # Register matched forms / mark videos for rebuild only
+                        # for spans that actually applied (the commit succeeded).
+                        for m in cross_matches:
+                            affected_video_ids.add(m.pair.segment_a.video_id)
+                            combined = m.pair.combined_text
+                            matched_text = combined[m.match_start : m.match_end]
+                            matched_form_counts[matched_text] = (
+                                matched_form_counts.get(matched_text, 0) + 1
+                            )
 
         # Step 4: Register ASR aliases
         if total_applied > 0:
@@ -2518,21 +2616,39 @@ class BatchCorrectionService:
             # For regex with backreferences, use match.expand()
             actual_replacement = match.expand(replacement) if regex else replacement
 
-            # Decompose: replacement goes entirely into seg A,
-            # matched fragment removed from seg B
             eff_a_stripped = combined[:boundary]
             eff_b_stripped = combined[boundary + 1 :]  # skip the space
 
-            new_a = eff_a_stripped[:ms] + actual_replacement
+            a_prefix = eff_a_stripped[:ms]  # seg A text before the match
             b_consumed = me - (boundary + 1)  # chars of seg B consumed by match
-            new_b = eff_b_stripped[b_consumed:]
+            b_suffix = eff_b_stripped[b_consumed:]  # seg B text after the match
+
+            # T026: Distribute the corrected name across the boundary when it has
+            # two or more whole tokens, so neither segment is forced to hold the
+            # entire name. Segment A keeps the leading token(s), segment B the
+            # trailing token(s), split at the point the original match crossed the
+            # boundary (``n_a`` = whole matched tokens that sat on A's side, clamped
+            # so each side keeps at least one token). A single-token replacement has
+            # no interior split point, so it is absorbed into A (today's behavior)
+            # and seg B may be emptied — the only case the FR-008 warning fires.
+            repl_tokens = actual_replacement.split()
+            if len(repl_tokens) >= 2:
+                a_match_token_count = len(combined[ms:boundary].split())
+                n_a = min(max(a_match_token_count, 1), len(repl_tokens) - 1)
+                new_a = a_prefix + " " + " ".join(repl_tokens[:n_a])
+                new_b = " ".join(repl_tokens[n_a:]) + " " + b_suffix
+            else:
+                new_a = a_prefix + actual_replacement
+                new_b = b_suffix
 
             # Whitespace normalize
             new_a = " ".join(new_a.split()).strip()
             new_b = " ".join(new_b.split()).strip()
 
-            # Warn if seg B becomes empty (FR-008)
-            if not new_b.strip():
+            # Warn if seg B becomes empty (FR-008). Only reachable for the
+            # single-token absorb path; a multi-token split always leaves B
+            # with at least its trailing token.
+            if len(repl_tokens) < 2 and not new_b.strip():
                 logger.warning(
                     "Cross-segment correction left segment %d "
                     "(seq %d) empty or whitespace-only (FR-008)",
@@ -2684,7 +2800,15 @@ class BatchCorrectionService:
                         # No-op: text unchanged
                         pass
 
-                    # T030: Create entity mentions on each corrected segment
+                    # T030: Create entity mentions on each corrected segment.
+                    # For a multi-token name distributed across the boundary (T026)
+                    # neither segment alone contains the full replacement, so these
+                    # per-segment calls no-op and the span is recorded once by
+                    # ``_create_cross_segment_entity_mention`` below. For a
+                    # single-token absorb the full name sits in seg A and the
+                    # per-segment call records it as an ordinary (single-segment)
+                    # mention — the spanning helper then finds no boundary-crossing
+                    # occurrence and adds nothing, so there is never a double count.
                     if entity is not None and replacement:
                         if a_applied and correction_record_a is not None:
                             await self._create_entity_mentions_for_segment(
@@ -2703,6 +2827,22 @@ class BatchCorrectionService:
                                 corrected_text=b_corrected_text,
                                 replacement=replacement,
                                 correction_id=correction_record_b.id,
+                            )
+                        # T027 (FR-016): record the boundary-crossing occurrence as
+                        # ONE spanning mention anchored at seg A, via the shared
+                        # span-resolution primitive — the same component the
+                        # detection scanner uses, so corrections and detection
+                        # anchor spans identically (FR-013).
+                        if a_applied and correction_record_a is not None:
+                            await self._create_cross_segment_entity_mention(
+                                session,
+                                entity=entity,
+                                segment_a=seg_a,
+                                segment_b=seg_b,
+                                text_for_seg_a=csm.text_for_seg_a,
+                                text_for_seg_b=b_corrected_text,
+                                replacement=replacement,
+                                correction_id=correction_record_a.id,
                             )
 
                     if a_applied or b_applied:
@@ -2984,6 +3124,114 @@ class BatchCorrectionService:
                 entity.id,
                 segment.id,
                 "see traceback below",
+                exc_info=True,
+            )
+
+    async def _create_cross_segment_entity_mention(
+        self,
+        session: AsyncSession,
+        *,
+        entity: NamedEntityDB,
+        segment_a: Any,
+        segment_b: Any,
+        text_for_seg_a: str,
+        text_for_seg_b: str,
+        replacement: str,
+        correction_id: UUID,
+    ) -> None:
+        """Record a boundary-crossing correction as one spanning mention (T027).
+
+        When a correction distributes a multi-token name across two adjacent
+        segments (T026), the full name exists only in the two segments read
+        together. This assembles their corrected effective texts with the shared
+        :class:`~chronovista.services.transcript_text_index.TranscriptTextIndex`
+        — the same primitive the detection scanner uses (FR-013) — finds the
+        corrected name across the boundary, and writes a single
+        ``user_correction`` mention anchored at ``segment_a`` with
+        ``end_segment_id`` at ``segment_b``. Occurrences wholly inside one
+        segment are left to :meth:`_create_entity_mentions_for_segment`, so a
+        single-token absorb is never double-counted.
+
+        The mention is linked to ``segment_a``'s correction record so the
+        bidirectional revert cascade (FR-009) removes it when either paired
+        segment is reverted.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        entity : NamedEntityDB
+            The validated named entity.
+        segment_a : Any
+            The first (anchor) transcript segment ORM object.
+        segment_b : Any
+            The second transcript segment ORM object.
+        text_for_seg_a : str
+            Segment A's corrected effective text.
+        text_for_seg_b : str
+            Segment B's corrected effective text.
+        replacement : str
+            The replacement (corrected name) text to locate across the boundary.
+        correction_id : UUID
+            Segment A's correction record ID, linking the mention for revert.
+        """
+        try:
+            index = TranscriptTextIndex.from_segments(
+                [
+                    SegmentInput(segment_id=segment_a.id, text=text_for_seg_a),
+                    SegmentInput(segment_id=segment_b.id, text=text_for_seg_b),
+                ]
+            )
+            positions = self._find_all_occurrences(index.text, replacement)
+            if not positions:
+                return
+
+            exclusion_patterns: list[Any] = entity.exclusion_patterns or []
+            mentions_to_create: list[EntityMentionCreate] = []
+            for match_start, match_end in positions:
+                anchor = index.resolve_span(match_start, match_end)
+                # Occurrences inside a single segment belong to the per-segment
+                # path; only the boundary-crossing span is recorded here.
+                if anchor.end_segment_id is None:
+                    continue
+                if exclusion_patterns and self._is_excluded_by_patterns(
+                    match_start, match_end, index.text, exclusion_patterns
+                ):
+                    continue
+                mentions_to_create.append(
+                    EntityMentionCreate(
+                        entity_id=entity.id,
+                        segment_id=anchor.segment_id,
+                        end_segment_id=anchor.end_segment_id,
+                        video_id=segment_a.video_id,
+                        language_code=segment_a.language_code,
+                        mention_text=index.text[match_start:match_end],
+                        detection_method=DetectionMethod.USER_CORRECTION,
+                        confidence=1.0,
+                        match_start=anchor.match_start,
+                        match_end=anchor.match_end,
+                        mention_context=index.text,
+                        correction_id=correction_id,
+                    )
+                )
+
+            if not mentions_to_create:
+                return
+
+            # Use a savepoint so failures don't roll back the correction
+            async with session.begin_nested():
+                mention_repo = EntityMentionRepository()
+                await mention_repo.bulk_create_with_conflict_skip(
+                    session, mentions_to_create
+                )
+
+        except Exception:
+            logger.warning(
+                "Failed to create cross-segment entity mention for entity_id=%s, "
+                "segments=(%s, %s): see traceback below",
+                entity.id,
+                segment_a.id,
+                segment_b.id,
                 exc_info=True,
             )
 

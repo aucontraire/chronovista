@@ -55,6 +55,15 @@ class EntityMentionBase(BaseModel):
         default=None,
         description="Character offset where the mention ends in segment text",
     )
+    end_segment_id: int | None = Field(
+        default=None,
+        description=(
+            "End segment of a cross-segment mention (Feature 081). NULL means the mention "
+            "lies wholly within segment_id and match_end indexes segment_id's text (today's "
+            "semantics). When set, the name spans segment_id (first) through end_segment_id "
+            "(last), and match_end indexes end_segment_id's text."
+        ),
+    )
     correction_id: uuid.UUID | None = Field(
         default=None,
         description="UUID of the correction that created or updated this mention",
@@ -140,6 +149,8 @@ class EntityMentionCreate(EntityMentionBase):
                 raise ValueError("confidence must be None for manual mentions")
             if self.language_code is not None:
                 raise ValueError("language_code must be None for manual mentions")
+            if self.end_segment_id is not None:
+                raise ValueError("end_segment_id must be None for manual mentions")
         else:
             # Title and description mentions are not segment-bound
             if (
@@ -147,6 +158,21 @@ class EntityMentionCreate(EntityMentionBase):
                 and self.segment_id is None
             ):
                 raise ValueError("segment_id is required for transcript mentions")
+        # A cross-segment span (Feature 081) must anchor on a start segment, be
+        # transcript-sourced, and come from a transcript writer (rule_match or
+        # user_correction) — never title/description/manual.
+        if self.end_segment_id is not None:
+            if self.segment_id is None:
+                raise ValueError("end_segment_id requires a non-NULL segment_id")
+            if self.mention_source != MentionSource.TRANSCRIPT:
+                raise ValueError("end_segment_id is only valid for transcript mentions")
+            if self.detection_method not in (
+                DetectionMethod.RULE_MATCH,
+                DetectionMethod.USER_CORRECTION,
+            ):
+                raise ValueError(
+                    "end_segment_id is only valid for rule_match or user_correction mentions"
+                )
         # alias provenance (#298) is only meaningful for auto-detected mentions;
         # manual and correction-derived mentions must never carry a link.
         if (

@@ -507,7 +507,10 @@ class TranscriptSegment(Base):
         "VideoTranscript", back_populates="segments"
     )
     entity_mentions: Mapped[list[EntityMention]] = relationship(
-        "EntityMention", back_populates="segment", lazy="select"
+        "EntityMention",
+        back_populates="segment",
+        lazy="select",
+        foreign_keys="EntityMention.segment_id",
     )
 
 
@@ -1510,6 +1513,14 @@ class EntityMention(Base):
         nullable=True,
     )
 
+    # Last segment of a cross-segment mention (Feature 081). NULL = the mention
+    # lies entirely within segment_id.
+    end_segment_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("transcript_segments.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
     # Denormalized for direct querying without segment join
     video_id: Mapped[str] = mapped_column(String(20), nullable=False)
     # nullable for manual mentions that lack a specific language context
@@ -1632,7 +1643,9 @@ class EntityMention(Base):
     # Relationships
     entity: Mapped[NamedEntity] = relationship("NamedEntity", back_populates="mentions")
     segment: Mapped[TranscriptSegment] = relationship(
-        "TranscriptSegment", back_populates="entity_mentions"
+        "TranscriptSegment",
+        back_populates="entity_mentions",
+        foreign_keys=[segment_id],
     )
     correction: Mapped[TranscriptCorrection | None] = relationship(
         "TranscriptCorrection", foreign_keys=[correction_id]

@@ -531,7 +531,10 @@ class EntityMentionRepository(
         """
         if not snapshots:
             return (0, 0)
+        # Both segment_id and end_segment_id carry a transcript_segments FK (Feature 081),
+        # so the since-deleted-segment guard must cover the end segment too.
         seg_ids = {s.segment_id for s in snapshots if s.segment_id is not None}
+        seg_ids |= {s.end_segment_id for s in snapshots if s.end_segment_id is not None}
         existing: set[int] = set()
         if seg_ids:
             rows = await session.execute(
@@ -543,7 +546,9 @@ class EntityMentionRepository(
         restored = 0
         skipped = 0
         for s in snapshots:
-            if s.segment_id is not None and s.segment_id not in existing:
+            if (s.segment_id is not None and s.segment_id not in existing) or (
+                s.end_segment_id is not None and s.end_segment_id not in existing
+            ):
                 skipped += 1
                 continue
             session.add(
@@ -551,6 +556,7 @@ class EntityMentionRepository(
                     id=s.id,
                     entity_id=s.entity_id,
                     segment_id=s.segment_id,
+                    end_segment_id=s.end_segment_id,
                     video_id=s.video_id,
                     language_code=s.language_code,
                     mention_text=s.mention_text,

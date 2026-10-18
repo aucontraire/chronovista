@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.87.0] - 2026-10-18
+
+### Added
+- **Typed entity relationships are now navigable in the enrichment panel.** An entity's stored Wikidata relationships — employer, educated at, country, member of, political party, place of birth, position held, and subclass of — now render as links: an in-app link to the related entity's page when that entity is in your library, or an outbound Wikidata link when it is not. (A handful of relations such as family ties were already linked; this extends the set to the item-valued relations that were previously shown as plain text.)
+
+### Internal
+- Entity relation links resolve only to **active** entities: a relationship whose target has been merged, deleted, or marked inactive now falls back to an outbound Wikidata link rather than an in-app link to a hidden page. No effect on current data — it makes that behavior a property of the code rather than of the data.
+- `make pre-push` now runs `alembic check` (model/migration drift) against a throwaway database migrated to head, reproducing that CI step locally so drift is caught before it reaches CI.
+
 ## [0.86.0] - 2026-10-17
 
 ### Added

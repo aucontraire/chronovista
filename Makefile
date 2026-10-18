@@ -304,11 +304,17 @@ pre-push:
 	NO_COLOR=1 $(POETRY_RUN) pytest $(TEST_DIR)/unit/ -x -q -o "addopts=-v --strict-markers --strict-config" -m "not db"
 	@echo "==> [5/6] frontend type check + tests"
 	cd frontend && npm run typecheck && npx vitest run
-	@echo "==> [6/6] backend integration tests"
+	@echo "==> [6/6] backend integration tests + alembic drift check"
 	@docker exec chronovista-postgres-dev pg_isready -U dev_user -d chronovista_integration_test -q 2>/dev/null || \
 		(echo "❌ Integration database unreachable. Start it with 'make dev-db-up'." && \
 		 echo "   Not skipping: CI runs this job, so passing without it would be a false green." && \
 		 exit 1)
+	@echo "    alembic check (model vs migrations): migrate a throwaway DB to head, then detect drift — this CI step lives in the integration job and is NOT otherwise reproduced locally"
+	@docker exec chronovista-postgres-dev psql -U dev_user -d chronovista_dev -c "DROP DATABASE IF EXISTS chronovista_alembic_check;" >/dev/null 2>&1 || true
+	@docker exec chronovista-postgres-dev psql -U dev_user -d chronovista_dev -c "CREATE DATABASE chronovista_alembic_check;" >/dev/null
+	@NO_COLOR=1 $(POETRY_RUN) alembic -x database_url="postgresql://dev_user:dev_password@localhost:5434/chronovista_alembic_check" upgrade head >/dev/null
+	@NO_COLOR=1 $(POETRY_RUN) alembic -x database_url="postgresql://dev_user:dev_password@localhost:5434/chronovista_alembic_check" check
+	@docker exec chronovista-postgres-dev psql -U dev_user -d chronovista_dev -c "DROP DATABASE IF EXISTS chronovista_alembic_check;" >/dev/null 2>&1 || true
 	NO_COLOR=1 $(POETRY_RUN) pytest $(TEST_DIR)/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow and not auth and not db"
 	@echo ""
 	@echo "✅ pre-push passed — all four CI jobs reproduced locally"

@@ -102,6 +102,18 @@ const RELATION_KEYS = new Set([
   "part_of",
   "unmarried_partner",
   "significant_person",
+  // Feature 082: additional item-valued Wikidata relations. These are stored with
+  // aligned `qids` (verified in prod), so routing them through RelationsBlock gives
+  // the same in-app link (library entity) / external Wikidata link / plain-text
+  // behavior; previously they fell through to genericEntries as comma-joined text.
+  "employer",
+  "educated_at",
+  "country",
+  "member_of",
+  "political_party",
+  "place_of_birth",
+  "position_held",
+  "subclass_of",
 ]);
 
 /** Social/web properties (Feature 079): a single handle value, linked via a fixed URL pattern. */

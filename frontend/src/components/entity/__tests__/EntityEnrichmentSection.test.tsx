@@ -542,6 +542,36 @@ describe('EntityEnrichmentSection — property rendering (Feature 079, US3)', ()
         'https://www.wikidata.org/wiki/Q00000302'
       );
     });
+
+    it('links Feature 082 relation keys (e.g. employer, country) as in-app links', () => {
+      // Regression guard: these keys route through RelationsBlock only because Feature
+      // 082 added them to RELATION_KEYS. If they fell back to genericEntries they would
+      // render as plain comma-joined text with no link, so asserting the in-app link
+      // proves allow-list membership.
+      mockWikidataEntityMap({
+        data: {
+          Q00000401: { entity_id: 'ent-employer', canonical_name: 'Placeholder Employer' },
+          Q00000402: { entity_id: 'ent-country', canonical_name: 'Placeholder Country' },
+        },
+      });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            employer: propBlock(['Placeholder Employer'], { qids: ['Q00000401'] }),
+            country: propBlock(['Placeholder Country'], { qids: ['Q00000402'] }),
+          },
+        }),
+      });
+
+      expect(screen.getByRole('link', { name: 'Placeholder Employer' })).toHaveAttribute(
+        'href',
+        '/entities/ent-employer'
+      );
+      expect(screen.getByRole('link', { name: 'Placeholder Country' })).toHaveAttribute(
+        'href',
+        '/entities/ent-country'
+      );
+    });
   });
 
   describe('social/web properties', () => {

@@ -29,6 +29,16 @@ import type { EntityEnrichment } from "../../api/entityMentions";
 
 vi.mock("../../hooks/useEntityMentions", () => ({
   useEntityVideos: vi.fn(),
+  // Relation properties (Feature 079/082) resolve target QIDs via this hook; the
+  // enrichment fixture includes `country` (a relation), so it must be mocked here
+  // or RelationsBlock would attempt a real fetch. Empty map → relation targets
+  // with a QID render as external Wikidata links.
+  useWikidataEntityMap: vi.fn(() => ({
+    data: {},
+    isLoading: false,
+    isError: false,
+    error: null,
+  })),
   useVideoEntities: vi.fn(() => ({
     entities: [],
     isLoading: false,
@@ -208,10 +218,22 @@ describe("EntityDetailPage — enrichment section (Feature 067, US2)", () => {
 
     renderPage();
 
+    // occupation is NOT a relation key, so it still renders as a generic property
+    // (humanized key + value).
     expect(screen.getByText("Occupation")).toBeInTheDocument();
     expect(screen.getByText("journalist")).toBeInTheDocument();
+    // country IS a relation key (Feature 082), so it renders via RelationsBlock —
+    // each value is an individual link (external Wikidata here, since the mocked
+    // entity map is empty and the QIDs are present), not comma-joined text.
     expect(screen.getByText("Country")).toBeInTheDocument();
-    expect(screen.getByText("Testland, Exampleland")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Testland" })).toHaveAttribute(
+      "href",
+      "https://www.wikidata.org/wiki/Q1",
+    );
+    expect(screen.getByRole("link", { name: "Exampleland" })).toHaveAttribute(
+      "href",
+      "https://www.wikidata.org/wiki/Q2",
+    );
   });
 
   it("renders an identifier link per identifier for a grounded entity", () => {

@@ -24,15 +24,20 @@ pytestmark = pytest.mark.asyncio
 
 _SEEDED_QID = "Q900301"
 _UNKNOWN_QID = "Q900999"  # syntactically valid, matches no local entity
+_NONACTIVE_QID = "Q900302"  # grounds only to a non-active (merged) entity
 
 
 async def _seed_grounded(
-    factory: async_sessionmaker[AsyncSession], qid: str, canonical_name: str
+    factory: async_sessionmaker[AsyncSession],
+    qid: str,
+    canonical_name: str,
+    status: str = "active",
 ) -> uuid.UUID:
     entity = create_named_entity_db(
         canonical_name=canonical_name,
         canonical_name_normalized=canonical_name.lower(),
         entity_type="person",
+        status=status,
         external_ids={"wikidata": {"id": qid, "verified": True, "status": "verified"}},
     )
     async with factory() as s:
@@ -63,6 +68,31 @@ async def test_only_matched_qid_present_unknown_and_garbage_ignored(
     assert set(data) == {_SEEDED_QID}
     assert data[_SEEDED_QID]["entity_id"] == str(entity_id)
     assert data[_SEEDED_QID]["canonical_name"] == canonical_name
+
+
+async def test_non_active_grounded_entity_is_not_resolved(
+    async_client: AsyncClient,
+    integration_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Feature 082 / clarification Q1: a QID that grounds only to a NON-active entity
+    (e.g. merged) must not resolve, so its relation renders as an external Wikidata link
+    rather than an in-app link to a hidden entity. Guards against correctness resting on
+    the data merely happening to hold no non-active grounded entities.
+    """
+    canonical_name = f"Placeholder Merged {uuid.uuid4().hex[:8]}"
+    await _seed_grounded(
+        integration_session_factory,
+        _NONACTIVE_QID,
+        canonical_name,
+        status="merged",
+    )
+
+    resp = await async_client.get(
+        "/api/v1/entities/wikidata-map", params={"qids": _NONACTIVE_QID}
+    )
+    assert resp.status_code == 200, resp.text
+    # The qid grounds only to a non-active entity, so it is absent from the resolver map.
+    assert _NONACTIVE_QID not in resp.json()["data"]
 
 
 async def test_fully_garbage_or_empty_qids_returns_empty_map(

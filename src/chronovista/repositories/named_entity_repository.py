@@ -431,8 +431,9 @@ class NamedEntityRepository(
         Returns
         -------
         dict[str, tuple[uuid.UUID, str]]
-            ``{qid: (entity_id, canonical_name)}`` for QIDs matching a local entity; unmatched QIDs
-            are absent. Empty when ``qids`` is empty.
+            ``{qid: (entity_id, canonical_name)}`` for QIDs matching an **active** local entity;
+            unmatched QIDs (including those grounding only to a non-active entity) are absent. Empty
+            when ``qids`` is empty.
         """
         qid_list = list(qids)
         if not qid_list:
@@ -442,7 +443,15 @@ class NamedEntityRepository(
             wikidata_id.label("qid"),
             NamedEntityDB.id,
             NamedEntityDB.canonical_name,
-        ).where(wikidata_id.in_(qid_list))
+        ).where(
+            wikidata_id.in_(qid_list),
+            # Resolve only to ACTIVE entities (Feature 082): a relation target that
+            # grounds to a merged/deleted/inactive entity must NOT become an in-app
+            # link — it falls back to its external Wikidata link instead. Without
+            # this, correctness would rest only on the data happening to hold no
+            # non-active grounded entities.
+            NamedEntityDB.status == "active",
+        )
         result = await session.execute(stmt)
         return {row.qid: (row.id, row.canonical_name) for row in result.all()}
 

@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**27 tables.** For the reasoning behind the design, see
+**29 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -495,7 +495,7 @@ Audit log for tag normalization and management operations.
 
 ## Named Entities
 
-Curated entities, their aliases, and every place they are mentioned.
+Curated entities, their aliases, every place they are mentioned, and their normalized Wikipedia categories.
 
 ### `named_entities`
 
@@ -630,6 +630,39 @@ Audit log for named-entity curation edits (name/description) — Feature 057.
 
 - INDEX `idx_entity_operation_logs_entity_id` on `entity_id`
 - INDEX `idx_entity_operation_logs_performed_at` on `performed_at`
+
+### `wikipedia_categories`
+
+A Wikipedia category (Feature 083).
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `name` | VARCHAR(500) | no |  | unique |
+| `global_size` | INTEGER | yes |  |  |
+| `global_size_fetched_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Indexes:**
+
+- INDEX `idx_wikipedia_categories_global_size` on `global_size`
+
+### `entity_categories`
+
+Entity-to-category assignment (Feature 083).
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `entity_id` | UUID | no |  | **PK**, FK → `named_entities.id` |
+| `category_id` | UUID | no |  | **PK**, FK → `wikipedia_categories.id` |
+| `source` | VARCHAR(50) | no |  |  |
+| `set_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+
+**Composite primary key:** `entity_id`, `category_id`
+
+**Indexes:**
+
+- INDEX `idx_entity_categories_category_id` on `category_id`
 
 ## Recovery Provenance
 

@@ -1741,6 +1741,60 @@ class ChannelRecoverySource(Base):
     )
 
 
+class WikipediaCategory(Base):
+    """A Wikipedia category (Feature 083).
+
+    One row per distinct category; the single home for ``global_size`` (the category's
+    Wikipedia-wide member count), the stable specificity measure the shared-category
+    bridge ranks by. Category names arrive via DBpedia ``dct:subject``; identity is the
+    exact stored name (no normalization — current data has zero case/whitespace variants).
+    """
+
+    __tablename__ = "wikipedia_categories"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    name: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
+    global_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    global_size_fetched_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (Index("idx_wikipedia_categories_global_size", "global_size"),)
+
+
+class EntityCategory(Base):
+    """Entity-to-category assignment (Feature 083).
+
+    The normalized many-to-many between ``named_entities`` and ``wikipedia_categories``.
+    Carries the assignment's provenance (``source``, ``set_at``) but no category
+    attributes. The shared-category bridge self-joins this table on ``category_id``.
+    """
+
+    __tablename__ = "entity_categories"
+
+    entity_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    category_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("wikipedia_categories.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    set_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (Index("idx_entity_categories_category_id", "category_id"),)
+
+
 # Export all models
 __all__ = [
     "Base",
@@ -1769,4 +1823,6 @@ __all__ = [
     "EntityMention",
     "VideoRecoverySource",
     "ChannelRecoverySource",
+    "WikipediaCategory",
+    "EntityCategory",
 ]

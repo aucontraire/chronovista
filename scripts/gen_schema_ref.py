@@ -67,12 +67,15 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     ),
     (
         "Named Entities",
-        "Curated entities, their aliases, and every place they are mentioned.",
+        "Curated entities, their aliases, every place they are mentioned, and their "
+        "normalized Wikipedia categories.",
         [
             "named_entities",
             "entity_aliases",
             "entity_mentions",
             "entity_operation_logs",
+            "wikipedia_categories",
+            "entity_categories",
         ],
     ),
     (

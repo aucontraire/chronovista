@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.89.0] - 2026-10-21
+
+### Internal
+- **Entity category coverage expansion (backend only).** A dry-run-by-default, target-confirming backfill brings grounded entities from roughly one-fifth to ~95% category coverage by fetching each entity's categories from the live Wikipedia API (`prop=categories`, maintenance/hidden categories excluded) and recording them in Feature 083's tables — so the shared-category bridge now reaches the whole library instead of the small subset that previously had categories. No CLI/API/UI surface.
+- **New entities are categorized automatically.** The on-approval enrichment seam gained a best-effort, add-only category step that reuses the *same* fetch/store pipeline as the backfill (never a parallel path). A fetch failure leaves the entity grounded with its other enrichment intact.
+- **One uniform category namespace.** The categories previously loaded from a secondary source are re-fetched and replaced with the live-Wikipedia namespace (delete-then-add), so every entity's categories are drawn from one source and the bridge compares like with like. The rewrite is measured (an aggregate added/removed/unchanged diff is reported) and fully reversible (the backfill's gitignored capture records each affected entity's before/after, including the removed rows). A replace whose fetch comes back empty is skipped — an entity's categories are never deleted down to nothing.
+- On-approval enrichment now runs its secondary best-effort steps (the knowledge-base identifier link and the new category fetch) only after the primary properties write succeeds; a failed or absent primary write defers all enrichment to the next backfill, keeping the "no further work on a failed fetch" behavior.
+- Reuses Feature 083's tables, repositories, and global-size service unchanged — **no schema migration**.
+
 ## [0.88.0] - 2026-10-21
 
 ### Added

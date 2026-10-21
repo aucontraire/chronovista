@@ -42,6 +42,13 @@ class _LinkDbpedia:
         return "http://dbpedia.org/resource/Placeholder", "owl:sameAs from wikidata"
 
 
+class _NoCategoryFetch:
+    """Keeps the Feature 084 on-approval category step off the live Wikipedia API in tests."""
+
+    async def categories_for_titles(self, titles: Any) -> dict[str, list[str]]:
+        return {}
+
+
 async def _insert_grounded_entity(session: AsyncSession, qid: str) -> uuid.UUID:
     entity = NamedEntityDB(
         canonical_name=f"Placeholder {uuid.uuid4().hex[:8]}",
@@ -77,6 +84,7 @@ class TestAntiClobber:
             factory,
             client_factory=lambda: _FakeClient(fetched),
             dbpedia_factory=lambda: _NoDbpedia(),
+            category_fetch_factory=lambda: _NoCategoryFetch(),
         )
         await service.enrich_on_approval(entity_id, qid)
 
@@ -108,6 +116,7 @@ class TestAntiClobber:
                 {"country": {"values": ["X"], "qids": [], "source": "wikidata"}}
             ),
             dbpedia_factory=lambda: _LinkDbpedia(),
+            category_fetch_factory=lambda: _NoCategoryFetch(),
         )
         await service.enrich_on_approval(entity_id, qid)
 

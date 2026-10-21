@@ -33,9 +33,18 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from chronovista.models.entity_enrichment import ExternalIdentifier
+from chronovista.repositories.entity_category_repository import (
+    EntityCategoryRepository,
+)
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
+from chronovista.repositories.wikipedia_category_repository import (
+    WikipediaCategoryRepository,
+)
 from chronovista.services import wikidata_properties as wp
+from chronovista.services.category_coverage import categorize_entity
+from chronovista.services.category_size import CategorySizeService
 from chronovista.services.dbpedia_resolver import DbpediaResolver
+from chronovista.services.entity_category_fetch import EntityCategoryFetchService
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
 
 logger = logging.getLogger(__name__)
@@ -49,6 +58,10 @@ class EntityEnrichmentService:
         session_factory: async_sessionmaker[AsyncSession],
         client_factory: Callable[[], WikidataClient] = WikidataClient,
         dbpedia_factory: Callable[[], DbpediaResolver] = DbpediaResolver,
+        category_fetch_factory: Callable[
+            [], EntityCategoryFetchService
+        ] = EntityCategoryFetchService,
+        size_factory: Callable[[], CategorySizeService] = CategorySizeService,
     ) -> None:
         """Initialise the service.
 
@@ -60,11 +73,19 @@ class EntityEnrichmentService:
             Returns a Wikidata client. Overridable in tests with a ``MockTransport``-backed client.
         dbpedia_factory : Callable[[], DbpediaResolver]
             Returns a DBpedia resolver. Overridable in tests.
+        category_fetch_factory : Callable[[], EntityCategoryFetchService]
+            Returns the entity→categories fetch service (Feature 084). Overridable in tests.
+        size_factory : Callable[[], CategorySizeService]
+            Returns the category global-size service (Feature 083). Overridable in tests.
         """
         self._session_factory = session_factory
         self._client_factory = client_factory
         self._dbpedia_factory = dbpedia_factory
+        self._category_fetch_factory = category_fetch_factory
+        self._size_factory = size_factory
         self._repo = NamedEntityRepository()
+        self._cat_repo = WikipediaCategoryRepository()
+        self._assign_repo = EntityCategoryRepository()
 
     async def enrich_on_approval(
         self, entity_id: uuid.UUID, qid: str, source: str = "wikidata"
@@ -90,14 +111,20 @@ class EntityEnrichmentService:
         grounded and its properties to be filled by the next batch run. The done-callback that retires
         the task handle must therefore never need to inspect an exception.
 
-        Two independent best-effort steps: the Wikidata **properties** write (primary), then a DBpedia
-        **identifier** merge. The DBpedia step is separate on purpose — its public endpoint is
-        unreliable, so a DBpedia failure must not affect the properties that already landed.
+        Three independent best-effort steps: the Wikidata **properties** write (primary), then a
+        DBpedia **identifier** merge, then the Wikipedia **category** fetch (Feature 084). Each later
+        step is separate on purpose — its external endpoint is unreliable, so its failure must not
+        affect what already landed. The category step is add-only (FR-004).
         """
         entity_present = await self._write_properties(entity_id, qid)
-        if entity_present is False:
-            return  # entity absent — nothing to attach a DBpedia link to either
+        if entity_present is not True:
+            # Entity absent (False), or the primary properties fetch failed (None): skip the two
+            # secondary best-effort steps. They enrich an entity we have just confirmed and
+            # written; on a failed/absent run a later batch retries all three. This also keeps the
+            # invariant that a fetch failure opens no further DB sessions.
+            return
         await self._store_dbpedia(entity_id, qid)
+        await self._store_categories(entity_id, qid)
 
     async def _write_properties(self, entity_id: uuid.UUID, qid: str) -> bool | None:
         """Fetch + persist properties. Returns False if the entity is absent, else True/None."""
@@ -177,6 +204,48 @@ class EntityEnrichmentService:
         except Exception as exc:  # noqa: BLE001 (detached task must not surface)
             logger.warning(
                 "on-approval DBpedia resolution failed for entity %s (qid=%s): %s",
+                entity_id,
+                qid,
+                exc,
+            )
+
+    async def _store_categories(self, entity_id: uuid.UUID, qid: str) -> None:
+        """Best-effort (Feature 084): fetch the entity's Wikipedia categories and record them.
+
+        Runs after ``_store_dbpedia`` so it can reuse the DBpedia IRI just stored (the article
+        title is derived from it; a QID→title fallback covers entities without one). Uses the same
+        shared ``categorize_entity`` pipeline the backfill batch uses — never a parallel path
+        (FR-003).
+
+        **Add-only** (``replace=False``): it only ever adds assignments (ON CONFLICT DO NOTHING),
+        so for an already-categorized entity it is effectively a no-op and it never deletes or
+        replaces an entity's existing categories — only the batch's 373 path does that (FR-004).
+
+        Never raises and never blocks the entity's creation/grounding or its other enrichment: any
+        failure (no resolvable article, a fetch error, a DB error) is caught and logged, leaving the
+        entity grounded and its categories to be filled by a later batch run.
+        """
+        try:
+            async with self._session_factory() as session:
+                existing = await self._repo.get(session, entity_id)
+                if existing is None:
+                    return
+                await categorize_entity(
+                    session,
+                    entity_id,
+                    qid,
+                    existing.external_ids or {},
+                    fetch_service=self._category_fetch_factory(),
+                    resolver=self._dbpedia_factory(),
+                    cat_repo=self._cat_repo,
+                    assign_repo=self._assign_repo,
+                    size_service=self._size_factory(),
+                    replace=False,
+                )
+                await session.commit()
+        except Exception as exc:  # noqa: BLE001 (detached task must not surface)
+            logger.warning(
+                "on-approval category enrichment failed for entity %s (qid=%s): %s",
                 entity_id,
                 qid,
                 exc,

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-10-21
+
+### Added
+- **Normalized storage for entity categories.** Two new tables — `wikipedia_categories` (one row per distinct category, carrying its Wikipedia-wide `global_size`) and `entity_categories` (the entity↔category assignment) — make "which entities share a category" answerable by an indexed self-join instead of a per-entity JSONB scan. Categories were previously reachable only inside each entity's `properties` bag.
+
+### Internal
+- A shared-category **bridge** query (async repository) returns an entity's category co-members, optionally capped by category specificity (`global_size`); a category of unknown size is excluded under a cap, and an entity never appears in its own bridge. Exposed as a repository method only — no CLI/API/UI surface yet.
+- A tracked, name-free service fetches a category's global member count from the live Wikipedia API (`categoryinfo`), with a Wikimedia contact User-Agent and graceful degradation (an unreachable category is left with a NULL size to fill later).
+- A dry-run-by-default, target-confirming backfill migrates the existing categories out of `properties->'category'` into the tables **non-destructively** — the JSONB block is left untouched, so existing readers are unaffected — and writes a reversible capture of exactly what it inserts.
+- Amends ADR-010 D3 (JSONB enrichment persistence) with a now-named failing consumer: the category pair-bridge self-join, which a JSONB inverted index cannot serve.
+
 ## [0.87.0] - 2026-10-18
 
 ### Added

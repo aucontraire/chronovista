@@ -39,6 +39,8 @@ erDiagram
     named_entities ||--o{ entity_mentions : "mentioned in"
     named_entities ||--o{ canonical_tags : "promoted from"
     named_entities ||--o{ entity_operation_logs : "audited by"
+    named_entities ||--o{ entity_categories : "categorized as"
+    wikipedia_categories ||--o{ entity_categories : "groups"
 
     playlists ||--o{ playlist_memberships : contains
 ```
@@ -60,7 +62,7 @@ erDiagram
 | **Playlists** | `playlists`, `playlist_memberships` | Playlists, including Takeout-imported system playlists |
 | **Topics** | `topic_categories`, `topic_aliases`, `video_topics`, `channel_topics` | YouTube's topic taxonomy and its associations |
 | **Tags and Normalization** | `video_tags`, `channel_keywords`, `canonical_tags`, `tag_aliases`, `tag_operation_logs` | Raw tags plus the canonical layer that collapses spelling variants |
-| **Named Entities** | `named_entities`, `entity_aliases`, `entity_mentions`, `entity_operation_logs` | Curated entities, their aliases, and their video associations — text mentions plus hand-asserted manual links |
+| **Named Entities** | `named_entities`, `entity_aliases`, `entity_mentions`, `entity_operation_logs`, `wikipedia_categories`, `entity_categories` | Curated entities, their aliases, their video associations (text mentions plus hand-asserted manual links), and their normalized Wikipedia categories (one row per category with its global size; a self-join on the assignment table gives the shared-category bridge) |
 | **Recovery Provenance** | `video_recovery_sources`, `channel_recovery_sources` | Which archive sources contributed metadata to a deleted video or channel — append-only, so one pass cannot erase another's attribution ([why](recovery-provenance.md)) |
 
 ## Design Decisions

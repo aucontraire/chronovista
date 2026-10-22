@@ -1296,3 +1296,38 @@ class CooccurringEntitiesResponse(BaseModel):
     model_config = ConfigDict(strict=True)
 
     data: list[CooccurringEntity]
+
+
+class SharedCategoryNeighbour(BaseModel):
+    """An entity that shares one or more Wikipedia categories with the subject (Feature 085).
+
+    Attributes
+    ----------
+    entity_id : UUID
+        The neighbour.
+    entity_type : str
+        Carried so the type badge renders without a second lookup.
+    canonical_name : str
+        Display name.
+    shared_categories : list[str]
+        The category names in common, most-specific first (the evidence shown per row).
+    shared_category_count : int
+        Number of shared categories — the ranking primary key. A topical-grouping signal,
+        NOT an asserted relationship (measured only among co-occurring pairs).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    entity_id: UUID
+    entity_type: str
+    canonical_name: str
+    shared_categories: list[str]
+    shared_category_count: int
+
+
+class SharedCategoryNeighboursResponse(BaseModel):
+    """Response envelope for the shares-categories-with panel."""
+
+    model_config = ConfigDict(strict=True)
+
+    data: list[SharedCategoryNeighbour]

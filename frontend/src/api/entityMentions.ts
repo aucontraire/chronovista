@@ -1374,6 +1374,42 @@ export async function fetchCooccurringEntities(
   return res.data;
 }
 
+/** An entity sharing one or more Wikipedia categories with the subject. */
+export interface SharedCategoryNeighbour {
+  entity_id: string;
+  entity_type: string;
+  canonical_name: string;
+  /** Names of the categories shared with the subject. */
+  shared_categories: string[];
+  shared_category_count: number;
+}
+
+/**
+ * Fetch entities sharing categories with a subject entity, in server order
+ * (already ranked; callers must not re-sort).
+ *
+ * @param entityId - UUID of the subject entity
+ * @param limit - Maximum neighbours to return (server-bounded)
+ * @param offset - Pagination offset
+ * @param signal - Abort signal
+ */
+export async function fetchSharedCategoryNeighbours(
+  entityId: string,
+  limit: number,
+  offset: number = 0,
+  signal?: AbortSignal
+): Promise<SharedCategoryNeighbour[]> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  const res = await apiFetch<{ data: SharedCategoryNeighbour[] }>(
+    `/entities/${entityId}/shared-categories?${params.toString()}`,
+    signal ? { externalSignal: signal } : {}
+  );
+  return res.data;
+}
+
 /** A canonical tag folded into the entity's tag by a curator's merge. */
 export interface MergedTagSummary {
   canonical_form: string;

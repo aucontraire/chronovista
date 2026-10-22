@@ -30,6 +30,9 @@ from chronovista.repositories import (
     VideoRepository,
     VideoTranscriptRepository,
 )
+from chronovista.repositories.entity_category_repository import (
+    EntityCategoryRepository,
+)
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
@@ -276,6 +279,13 @@ def get_named_entity_repository() -> NamedEntityRepository:
     from chronovista.container import container
 
     return container.create_named_entity_repository()
+
+
+def get_entity_category_repository() -> EntityCategoryRepository:
+    """Dependency providing an EntityCategoryRepository via the container (Feature 085)."""
+    from chronovista.container import container
+
+    return container.create_entity_category_repository()
 
 
 def get_batch_correction_service() -> "BatchCorrectionService":

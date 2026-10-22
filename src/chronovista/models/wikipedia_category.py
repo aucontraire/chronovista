@@ -69,3 +69,25 @@ class BridgeNeighbor(BaseModel):
     )
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SharedCategoryNeighbour(BaseModel):
+    """An aggregated shared-category neighbour (Feature 085): one row per neighbour entity.
+
+    Distinct from :class:`BridgeNeighbor` (one row per shared category), this is the
+    aggregate the entity-page surface consumes — one neighbour, the categories it shares, and
+    the shared-category count that is the ranking primary key.
+    """
+
+    entity_id: uuid.UUID = Field(..., description="The neighbour entity")
+    entity_type: str = Field(..., description="The neighbour's entity type")
+    canonical_name: str = Field(..., description="The neighbour's display name")
+    shared_categories: list[str] = Field(
+        default_factory=list,
+        description="Category names shared with the queried entity, most-specific first",
+    )
+    shared_category_count: int = Field(
+        ..., ge=1, description="Number of shared categories (the ranking primary key)"
+    )
+
+    model_config = ConfigDict(from_attributes=True)

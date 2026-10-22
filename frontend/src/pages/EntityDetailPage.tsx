@@ -18,6 +18,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { CooccurringPanel } from "../components/entity/CooccurringPanel";
+import { SharedCategoriesPanel } from "../components/entity/SharedCategoriesPanel";
 import { EntityEnrichmentSection } from "../components/entity/EntityEnrichmentSection";
 import { EntityPortrait } from "../components/entity/EntityPortrait";
 import { EntityTagSection } from "../components/entity/EntityTagSection";
@@ -2225,6 +2226,14 @@ export function EntityDetailPage() {
         {entityId && (
           <div className="mb-6">
             <CooccurringPanel entityId={entityId} />
+          </div>
+        )}
+
+        {/* Shared-category panel (Feature 085). Topical grouping, not an
+            asserted relationship; fetches independently like the panel above. */}
+        {entityId && (
+          <div className="mb-6">
+            <SharedCategoriesPanel entityId={entityId} />
           </div>
         )}
 

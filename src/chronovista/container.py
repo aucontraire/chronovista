@@ -61,6 +61,9 @@ from chronovista.repositories import (
     VideoTopicRepository,
     VideoTranscriptRepository,
 )
+from chronovista.repositories.entity_category_repository import (
+    EntityCategoryRepository,
+)
 from chronovista.repositories.entity_operation_log_repository import (
     EntityOperationLogRepository,
 )
@@ -434,6 +437,10 @@ class Container:
         True
         """
         return EntityMentionRepository()
+
+    def create_entity_category_repository(self) -> EntityCategoryRepository:
+        """Create a new EntityCategoryRepository (transient) for the shared-category bridge."""
+        return EntityCategoryRepository()
 
     def create_named_entity_repository(self) -> NamedEntityRepository:
         """

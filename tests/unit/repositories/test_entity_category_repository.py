@@ -197,3 +197,88 @@ class TestSharedCategoryNeighboursSql:
         # exactly one SELECT, no writes
         session.execute.assert_awaited_once()
         assert str(_compile(_captured(session))).lstrip().upper().startswith("SELECT")
+
+    async def test_aggregates_ids_aligned_with_names(self) -> None:
+        """086: two array_aggs (names + ids) under one total ORDER BY so refs pair 1:1."""
+        sql, _ = await self._sql()
+        low = sql.lower()
+        # both the name array and the id array are aggregated (so the endpoint can emit {id,name})
+        assert low.count("array_agg") == 2
+        # a secondary id key makes the aggregate order total → names[i] and ids[i] align
+        # (global_size alone ties on NULLs / equal sizes). Both array_aggs carry this ORDER BY.
+        assert "global_size" in low
+        assert ".id" in low
+
+
+class TestEntitiesInCategorySql:
+    """Feature 086: the member list — active-only, total order (name, id), bounded."""
+
+    async def _sql(self) -> tuple[str, Any]:
+        session = AsyncMock(spec=AsyncSession)
+        result = MagicMock()
+        result.all.return_value = []
+        session.execute.return_value = result
+        out = await EntityCategoryRepository().entities_in_category(
+            session, uuid.uuid4(), limit=25, offset=50
+        )
+        assert out == []
+        compiled = _compile(_captured(session))
+        return str(compiled), compiled
+
+    async def test_active_only_total_order_bounded(self) -> None:
+        sql, compiled = await self._sql()
+        order = sql.split("ORDER BY", 1)[1].lower()
+        # active-only join predicate
+        assert "status" in sql.lower()
+        # total order: lower(canonical_name) then id — so paging never skips/repeats on a tie
+        assert "lower(" in order and "canonical_name" in order
+        assert "id" in order
+        # bounded
+        assert "LIMIT" in sql and "OFFSET" in sql
+        assert 25 in compiled.params.values()  # limit
+        assert 50 in compiled.params.values()  # offset
+
+    async def test_read_only_single_select(self) -> None:
+        sql, _ = await self._sql()
+        assert sql.lstrip().upper().startswith("SELECT")
+
+
+class TestCountActiveMembersSql:
+    """Feature 086: the member count — a single count(*) over the same active-only join."""
+
+    async def _run(self) -> tuple[str, Any]:
+        session = AsyncMock(spec=AsyncSession)
+        result = MagicMock()
+        result.scalar_one.return_value = 7
+        session.execute.return_value = result
+        out = await EntityCategoryRepository().count_active_members(
+            session, uuid.uuid4()
+        )
+        assert out == 7
+        compiled = _compile(_captured(session))
+        return str(compiled), compiled
+
+    async def test_counts_active_members_only(self) -> None:
+        sql, _ = await self._run()
+        low = sql.lower()
+        assert "count(" in low
+        assert "status" in low  # same active-only filter as the member list
+        assert "limit" not in low  # a count is unbounded by design
+
+
+class TestWikipediaCategoryGetByIdSql:
+    """Feature 086: get_by_id selects by the UUID primary key."""
+
+    async def test_selects_by_id(self) -> None:
+        session = AsyncMock(spec=AsyncSession)
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        session.execute.return_value = result
+        cid = uuid.uuid4()
+        out = await WikipediaCategoryRepository().get_by_id(session, cid)
+        assert out is None
+        compiled = _compile(_captured(session))
+        sql = str(compiled)
+        assert sql.lstrip().upper().startswith("SELECT")
+        assert "wikipedia_categories.id =" in sql
+        assert cid in compiled.params.values()

@@ -137,10 +137,15 @@ class TestSharedCategoryNeighbours:
         assert ids.index(seed["a"]) < ids.index(seed["b"])
         a_row = next(r for r in data if _u(r["entity_id"]) == seed["a"])
         assert a_row["shared_category_count"] == 2
-        assert set(a_row["shared_categories"]) == {
+        # Feature 086: each shared category is now an {id, name} ref (so a chip can link by id),
+        # not a bare name string.
+        assert {c["name"] for c in a_row["shared_categories"]} == {
             f"{_PREFIX}-spec1",
             f"{_PREFIX}-spec2",
         }
+        assert all(
+            c["id"] for c in a_row["shared_categories"]
+        )  # id present for linking
 
     async def test_pagination_bounds_results(
         self, async_client: AsyncClient, seed: dict[str, Any]

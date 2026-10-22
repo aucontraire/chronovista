@@ -1298,6 +1298,30 @@ class CooccurringEntitiesResponse(BaseModel):
     data: list[CooccurringEntity]
 
 
+class SharedCategoryRef(BaseModel):
+    """A shared category identified by id + name (Feature 086).
+
+    Feature 085 originally returned bare category names; the category detail page (086) is
+    addressed by id, so each shared category now carries its id alongside the display name so
+    a chip can link to that page. This is a **breaking** element-shape change to this shipped
+    field (``list[str]`` → ``list[{id, name}]``) — a string-reading client would now receive an
+    object — and is safe only because the field's sole consumer, the 085 panel, moves in lockstep
+    in this same change. Not additive; coordinated.
+
+    Attributes
+    ----------
+    id : UUID
+        Category UUID (the link target).
+    name : str
+        Category display name (shown on the chip).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    id: UUID
+    name: str
+
+
 class SharedCategoryNeighbour(BaseModel):
     """An entity that shares one or more Wikipedia categories with the subject (Feature 085).
 
@@ -1309,8 +1333,9 @@ class SharedCategoryNeighbour(BaseModel):
         Carried so the type badge renders without a second lookup.
     canonical_name : str
         Display name.
-    shared_categories : list[str]
-        The category names in common, most-specific first (the evidence shown per row).
+    shared_categories : list[SharedCategoryRef]
+        The categories in common, most-specific first (the evidence shown per row), each as an
+        ``{id, name}`` ref so the chip can link to the category detail page (Feature 086).
     shared_category_count : int
         Number of shared categories — the ranking primary key. A topical-grouping signal,
         NOT an asserted relationship (measured only among co-occurring pairs).
@@ -1321,7 +1346,7 @@ class SharedCategoryNeighbour(BaseModel):
     entity_id: UUID
     entity_type: str
     canonical_name: str
-    shared_categories: list[str]
+    shared_categories: list[SharedCategoryRef]
     shared_category_count: int
 
 

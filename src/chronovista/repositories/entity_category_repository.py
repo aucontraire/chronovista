@@ -21,7 +21,9 @@ from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import WikipediaCategory as WikipediaCategoryDB
 from chronovista.models.wikipedia_category import (
     BridgeNeighbor,
+    CategoryMember,
     SharedCategoryNeighbour,
+    SharedCategoryRef,
     WikipediaCategory,
 )
 
@@ -147,7 +149,8 @@ class EntityCategoryRepository:
           contributes nothing and does not appear (hub suppression);
         - ranked by **shared-category count descending**, ties broken by **specificity** (the
           smallest shared category's ``global_size`` ascending, NULLs last);
-        - ``shared_categories`` lists the matched names most-specific-first;
+        - ``shared_categories`` lists the matched categories most-specific-first, each as an
+          ``{id, name}`` ref (Feature 086 — the id lets a chip link to the category page);
         - bounded by ``limit``/``offset``.
 
         Read-only. ``shared_category_bridge`` is unchanged.
@@ -155,6 +158,13 @@ class EntityCategoryRepository:
         ec1 = aliased(EntityCategoryDB)
         ec2 = aliased(EntityCategoryDB)
         min_size = func.min(WikipediaCategoryDB.global_size)
+        # Both array_aggs share this ORDER BY. global_size alone is not a total order (ties, and
+        # NULLs), so a second `id` key makes it total — guaranteeing names[i] and ids[i] are the
+        # SAME category when we zip them into {id, name} refs below (Feature 086).
+        _cat_order = (
+            WikipediaCategoryDB.global_size.asc().nullslast(),
+            WikipediaCategoryDB.id.asc(),
+        )
         stmt = (
             select(
                 ec2.entity_id.label("entity_id"),
@@ -162,11 +172,11 @@ class EntityCategoryRepository:
                 NamedEntityDB.canonical_name.label("canonical_name"),
                 func.count().label("shared_category_count"),
                 func.array_agg(
-                    aggregate_order_by(
-                        WikipediaCategoryDB.name,
-                        WikipediaCategoryDB.global_size.asc().nullslast(),
-                    )
-                ).label("shared_categories"),
+                    aggregate_order_by(WikipediaCategoryDB.name, *_cat_order)
+                ).label("shared_category_names"),
+                func.array_agg(
+                    aggregate_order_by(WikipediaCategoryDB.id, *_cat_order)
+                ).label("shared_category_ids"),
             )
             .select_from(ec1)
             .join(
@@ -212,8 +222,92 @@ class EntityCategoryRepository:
                 entity_id=row.entity_id,
                 entity_type=row.entity_type,
                 canonical_name=row.canonical_name,
-                shared_categories=list(row.shared_categories),
+                shared_categories=[
+                    SharedCategoryRef(id=cat_id, name=cat_name)
+                    # strict=True: the aligned total ORDER BY guarantees equal lengths today, so
+                    # this never trips in correct operation — but it turns any FUTURE desync (one
+                    # array_agg's ORDER BY changed without the other) into a loud error instead of
+                    # a silent mispairing that zip() would otherwise truncate past.
+                    for cat_id, cat_name in zip(
+                        row.shared_category_ids,
+                        row.shared_category_names,
+                        strict=True,
+                    )
+                ],
                 shared_category_count=row.shared_category_count,
             )
             for row in result.all()
         ]
+
+    async def entities_in_category(
+        self,
+        session: AsyncSession,
+        category_id: uuid.UUID,
+        *,
+        limit: int,
+        offset: int,
+    ) -> list[CategoryMember]:
+        """Active library entities assigned to ``category_id`` (Feature 086).
+
+        The inverse of the shared-category bridge: given a category, list its members. One
+        indexed join ``entity_categories → named_entities`` (served by
+        ``idx_entity_categories_category_id``), **active only**
+        (``named_entities.status = 'active'``, mirroring Feature 085), ordered by a **total**
+        key — ``lower(canonical_name)`` then ``id`` — so ``LIMIT``/``OFFSET`` paging never skips
+        or repeats a member when two names collide case-insensitively. Read-only.
+        """
+        stmt = (
+            select(
+                NamedEntityDB.id.label("entity_id"),
+                NamedEntityDB.entity_type.label("entity_type"),
+                NamedEntityDB.canonical_name.label("canonical_name"),
+            )
+            .select_from(EntityCategoryDB)
+            .join(
+                NamedEntityDB,
+                and_(
+                    NamedEntityDB.id == EntityCategoryDB.entity_id,
+                    NamedEntityDB.status == "active",
+                ),
+            )
+            .where(EntityCategoryDB.category_id == category_id)
+            .order_by(
+                func.lower(NamedEntityDB.canonical_name).asc(),
+                NamedEntityDB.id.asc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await session.execute(stmt)
+        return [
+            CategoryMember(
+                entity_id=row.entity_id,
+                entity_type=row.entity_type,
+                canonical_name=row.canonical_name,
+            )
+            for row in result.all()
+        ]
+
+    async def count_active_members(
+        self, session: AsyncSession, category_id: uuid.UUID
+    ) -> int:
+        """Count the active library entities assigned to ``category_id`` (Feature 086).
+
+        The total behind the member list's pagination and the page's member count. Same
+        active-only filter as :meth:`entities_in_category`; a single ``count(*)`` over the
+        indexed join, no row materialisation.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(EntityCategoryDB)
+            .join(
+                NamedEntityDB,
+                and_(
+                    NamedEntityDB.id == EntityCategoryDB.entity_id,
+                    NamedEntityDB.status == "active",
+                ),
+            )
+            .where(EntityCategoryDB.category_id == category_id)
+        )
+        result = await session.execute(stmt)
+        return int(result.scalar_one())

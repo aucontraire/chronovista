@@ -30,6 +30,20 @@ class WikipediaCategoryRepository:
         row = result.scalar_one_or_none()
         return WikipediaCategory.model_validate(row) if row is not None else None
 
+    async def get_by_id(
+        self, session: AsyncSession, category_id: uuid.UUID
+    ) -> WikipediaCategory | None:
+        """Return the category with this UUID primary key, or None (Feature 086).
+
+        The category detail page is addressed by id (stable across renames; names are
+        library content kept out of URLs), so the meta lookup is by ``id`` rather than name.
+        """
+        result = await session.execute(
+            select(WikipediaCategoryDB).where(WikipediaCategoryDB.id == category_id)
+        )
+        row = result.scalar_one_or_none()
+        return WikipediaCategory.model_validate(row) if row is not None else None
+
     async def upsert(self, session: AsyncSession, name: str) -> WikipediaCategory:
         """Insert the category if absent, else return the existing one (idempotent).
 

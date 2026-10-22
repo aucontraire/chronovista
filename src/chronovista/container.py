@@ -73,6 +73,9 @@ from chronovista.repositories.playlist_membership_repository import (
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
+from chronovista.repositories.wikipedia_category_repository import (
+    WikipediaCategoryRepository,
+)
 from chronovista.services import YouTubeService
 from chronovista.services.enrichment.enrichment_service import EnrichmentService
 from chronovista.services.enrichment.seeders import CategorySeeder, TopicSeeder
@@ -441,6 +444,10 @@ class Container:
     def create_entity_category_repository(self) -> EntityCategoryRepository:
         """Create a new EntityCategoryRepository (transient) for the shared-category bridge."""
         return EntityCategoryRepository()
+
+    def create_wikipedia_category_repository(self) -> WikipediaCategoryRepository:
+        """Create a new WikipediaCategoryRepository (transient) for category meta (Feature 086)."""
+        return WikipediaCategoryRepository()
 
     def create_named_entity_repository(self) -> NamedEntityRepository:
         """

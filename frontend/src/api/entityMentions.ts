@@ -1379,8 +1379,8 @@ export interface SharedCategoryNeighbour {
   entity_id: string;
   entity_type: string;
   canonical_name: string;
-  /** Names of the categories shared with the subject. */
-  shared_categories: string[];
+  /** Categories shared with the subject (id links to the category page). */
+  shared_categories: { id: string; name: string }[];
   shared_category_count: number;
 }
 

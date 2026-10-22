@@ -42,6 +42,7 @@ from chronovista.api.routers import (
     transcript_corrections,
     transcripts,
     videos,
+    wikipedia_categories,
 )
 
 # Ensure application-level logs (chronovista.*) reach stdout/stderr.
@@ -263,6 +264,9 @@ app.include_router(sync.router, prefix="/api/v1", tags=["sync"])
 app.include_router(sidebar.router, prefix="/api/v1", tags=["sidebar"])
 app.include_router(images.router, prefix="/api/v1", tags=["images"])
 app.include_router(entity_mentions.router, prefix="/api/v1", tags=["entity-mentions"])
+app.include_router(
+    wikipedia_categories.router, prefix="/api/v1", tags=["wikipedia-categories"]
+)
 app.include_router(
     batch_corrections.router,
     prefix="/api/v1/corrections/batch",

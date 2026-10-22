@@ -62,6 +62,11 @@ const EntityDetailPage = lazy(() =>
     default: m.EntityDetailPage,
   })),
 );
+const CategoryDetailPage = lazy(() =>
+  import("../pages/CategoryDetailPage").then((m) => ({
+    default: m.CategoryDetailPage,
+  })),
+);
 const BatchCorrectionsPage = lazy(() =>
   import("../pages/BatchCorrectionsPage").then((m) => ({
     default: m.BatchCorrectionsPage,
@@ -192,6 +197,10 @@ export const router = createBrowserRouter([
       {
         path: "entities/:entityId",
         element: lazySuspense(<EntityDetailPage />),
+      },
+      {
+        path: "wikipedia-categories/:categoryId",
+        element: lazySuspense(<CategoryDetailPage />),
       },
       {
         path: "corrections/batch",

@@ -66,6 +66,7 @@ from chronovista.api.schemas.entity_mentions import (
     ScanResultData,
     SharedCategoryNeighbour,
     SharedCategoryNeighboursResponse,
+    SharedCategoryRef,
     UnlinkResponse,
     UnlinkResult,
     UnMergeRequest,
@@ -986,7 +987,9 @@ async def get_shared_category_neighbours(
                 entity_id=n.entity_id,
                 entity_type=n.entity_type,
                 canonical_name=n.canonical_name,
-                shared_categories=n.shared_categories,
+                shared_categories=[
+                    SharedCategoryRef(id=c.id, name=c.name) for c in n.shared_categories
+                ],
                 shared_category_count=n.shared_category_count,
             )
             for n in neighbours

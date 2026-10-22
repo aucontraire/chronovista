@@ -45,6 +45,9 @@ from chronovista.repositories.user_language_preference_repository import (
 )
 from chronovista.repositories.video_category_repository import VideoCategoryRepository
 from chronovista.repositories.video_tag_repository import VideoTagRepository
+from chronovista.repositories.wikipedia_category_repository import (
+    WikipediaCategoryRepository,
+)
 from chronovista.services.recovery.cdx_client import CDXClient, RateLimiter
 from chronovista.services.recovery.page_parser import PageParser
 
@@ -286,6 +289,13 @@ def get_entity_category_repository() -> EntityCategoryRepository:
     from chronovista.container import container
 
     return container.create_entity_category_repository()
+
+
+def get_wikipedia_category_repository() -> WikipediaCategoryRepository:
+    """Dependency providing a WikipediaCategoryRepository via the container (Feature 086)."""
+    from chronovista.container import container
+
+    return container.create_wikipedia_category_repository()
 
 
 def get_batch_correction_service() -> "BatchCorrectionService":

@@ -29,7 +29,10 @@ function neighbour(overrides: Record<string, unknown> = {}) {
     entity_id: NEIGHBOUR,
     entity_type: 'organization',
     canonical_name: 'Analytical Engine',
-    shared_categories: ['Sample Category A', 'Sample Category B'],
+    shared_categories: [
+      { id: 'cat-1', name: 'Sample Category A' },
+      { id: 'cat-2', name: 'Sample Category B' },
+    ],
     shared_category_count: 2,
     ...overrides,
   };
@@ -111,10 +114,21 @@ describe('SharedCategoriesPanel (Feature 085)', () => {
       hookMock.mockReturnValue(state({ neighbours: [neighbour()] }));
       renderPanel();
 
-      expect(screen.getByRole('link')).toHaveAttribute(
-        'href',
-        `/entities/${NEIGHBOUR}`
-      );
+      expect(
+        screen.getByRole('link', { name: /Analytical Engine/ })
+      ).toHaveAttribute('href', `/entities/${NEIGHBOUR}`);
+    });
+
+    it('links each category chip to its category page', () => {
+      hookMock.mockReturnValue(state({ neighbours: [neighbour()] }));
+      renderPanel();
+
+      expect(
+        screen.getByRole('link', { name: 'Sample Category A' })
+      ).toHaveAttribute('href', '/wikipedia-categories/cat-1');
+      expect(
+        screen.getByRole('link', { name: 'Sample Category B' })
+      ).toHaveAttribute('href', '/wikipedia-categories/cat-2');
     });
 
     it('shows the shared category names and count', () => {
@@ -130,7 +144,7 @@ describe('SharedCategoriesPanel (Feature 085)', () => {
       hookMock.mockReturnValue(
         state({
           neighbours: [
-            neighbour({ shared_categories: ['Sample Category A'], shared_category_count: 1 }),
+            neighbour({ shared_categories: [{ id: 'cat-1', name: 'Sample Category A' }], shared_category_count: 1 }),
           ],
         })
       );
@@ -151,7 +165,9 @@ describe('SharedCategoriesPanel (Feature 085)', () => {
       );
       renderPanel();
 
-      const links = within(screen.getByRole('list')).getAllByRole('link');
+      const links = within(screen.getByRole('list'))
+        .getAllByRole('link')
+        .filter((l) => l.getAttribute('href')?.startsWith('/entities/'));
       expect(links.map((l) => l.getAttribute('href'))).toEqual([
         '/entities/z',
         '/entities/a',

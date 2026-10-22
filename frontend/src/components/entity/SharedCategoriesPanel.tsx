@@ -86,10 +86,12 @@ export function SharedCategoriesPanel({
         <>
           <ul className="flex flex-col gap-1">
             {neighbours.map((n) => (
-              <li key={n.entity_id}>
+              <li key={n.entity_id} className="rounded px-2 py-1.5 text-sm hover:bg-slate-50">
+                {/* Chips are links too, and anchors cannot nest, so the entity
+                    link wraps only the name row. */}
                 <Link
                   to={`/entities/${n.entity_id}`}
-                  className="block rounded px-2 py-1.5 text-sm hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+                  className="block rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
                 >
                   <span className="flex items-center justify-between gap-2">
                     <EntityName
@@ -102,20 +104,21 @@ export function SharedCategoriesPanel({
                       {n.shared_category_count === 1 ? "category" : "categories"}
                     </span>
                   </span>
-                  <span
-                    className="mt-1 flex flex-wrap gap-1"
-                    data-testid="shared-category-names"
-                  >
-                    {n.shared_categories.map((category) => (
-                      <span
-                        key={category}
-                        className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700"
-                      >
-                        {category}
-                      </span>
-                    ))}
-                  </span>
                 </Link>
+                <span
+                  className="mt-1 flex flex-wrap gap-1"
+                  data-testid="shared-category-names"
+                >
+                  {n.shared_categories.map((category) => (
+                    <Link
+                      key={category.id}
+                      to={`/wikipedia-categories/${category.id}`}
+                      className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700 hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+                    >
+                      {category.name}
+                    </Link>
+                  ))}
+                </span>
               </li>
             ))}
           </ul>

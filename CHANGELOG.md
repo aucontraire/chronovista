@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.91.0] - 2026-10-22
+
+### Added
+- **Category detail page.** Clicking a category chip in the "Shares categories with" panel now opens a page listing the active library entities assigned to that Wikipedia category, each linking to its own detail page. This is the inverse of the shared-category panel: that answers "which categories does this entity share?", this answers "which entities are in this category?". Because category membership is an editorial fact (an entity is or is not assigned to a category), the page states it plainly ("Entities in this category") rather than hedging it as a signal. The page shows the category's name and active-member count, flags a broad/generic grouping, loads members a page at a time (so even a large category stays responsive), and shows distinct empty / not-found / recoverable-error states.
+- The category detail page links out to the category's page on Wikipedia, so a viewer can see the full Wikipedia listing and follow it for further research.
+
+### Internal
+- Two new additive, read-only endpoints under a new `/wikipedia-categories` resource (the bare `/categories` path belongs to the YouTube video-category router): category meta (identity, breadth flag, active-member count) and the paginated member list. Members are returned in a stable total order (case-insensitive name, then id) so paging never skips or repeats, active entities only, bounded by an explicit page-size maximum. No schema change, no migration — reads the existing Feature 083/084 tables.
+- The shared-category response now carries each shared category as an id+name object instead of a bare name — a breaking element-shape change to the just-shipped response, safe only because its sole consumer, the shared-category panel, moves in lockstep in this same change — so the chips can link to the new page by id; the aggregate query builds the id/name pairs from two identically, totally ordered aggregates.
+- A category's "broad" flag reuses the same Wikipedia-wide size ceiling the shared-category surface uses to suppress hubs, kept as a separate, independently tunable constant.
+- Frontend: a category-detail fetcher pair, its query hooks (one for meta, one infinite-scroll for members), and the page, mirroring the existing list-page pattern; the shared-category chips became links and the panel row was restructured so chip links are not nested inside the row link.
+
 ## [0.90.0] - 2026-10-22
 
 ### Added

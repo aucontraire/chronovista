@@ -71,6 +71,37 @@ class BridgeNeighbor(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SharedCategoryRef(BaseModel):
+    """A shared category identified by ``id`` + ``name`` (Feature 086).
+
+    Feature 085 originally exposed shared categories as bare name strings. The category
+    detail page (086) is addressed by category **id**, so the shared-category chips must
+    carry the id to link there — this ref is the honest model for "a category, by id and
+    display name". This is a breaking element-shape change to 085's shipped response
+    (``list[str]`` → ``list[SharedCategoryRef]``), coordinated in the same change with its
+    sole consumer (the 085 panel); not additive.
+    """
+
+    id: uuid.UUID = Field(..., description="Category UUID")
+    name: str = Field(..., description="Category display name")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CategoryMember(BaseModel):
+    """One active library entity assigned to a category (Feature 086).
+
+    The row the category detail page lists. Carries the entity's display fields so the list
+    renders (name + type badge) and links to the entity page without a second lookup.
+    """
+
+    entity_id: uuid.UUID = Field(..., description="The member entity")
+    entity_type: str = Field(..., description="The member's entity type")
+    canonical_name: str = Field(..., description="The member's display name")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SharedCategoryNeighbour(BaseModel):
     """An aggregated shared-category neighbour (Feature 085): one row per neighbour entity.
 
@@ -82,9 +113,12 @@ class SharedCategoryNeighbour(BaseModel):
     entity_id: uuid.UUID = Field(..., description="The neighbour entity")
     entity_type: str = Field(..., description="The neighbour's entity type")
     canonical_name: str = Field(..., description="The neighbour's display name")
-    shared_categories: list[str] = Field(
+    shared_categories: list[SharedCategoryRef] = Field(
         default_factory=list,
-        description="Category names shared with the queried entity, most-specific first",
+        description=(
+            "Categories shared with the queried entity, most-specific first, each as an "
+            "{id, name} ref so a chip can link to the category detail page (Feature 086)"
+        ),
     )
     shared_category_count: int = Field(
         ..., ge=1, description="Number of shared categories (the ranking primary key)"

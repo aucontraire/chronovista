@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
+from chronovista.models.entity_relations import InboundRelationMatch
 from chronovista.models.named_entity import NamedEntityCreate, NamedEntityUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 from chronovista.repositories.entity_mention_repository import _folded
@@ -496,3 +497,107 @@ class NamedEntityRepository(
         )
         result = await session.execute(stmt)
         return result.rowcount
+
+    async def merge_properties(
+        self, session: AsyncSession, entity_id: uuid.UUID, patch: dict[str, Any]
+    ) -> int:
+        """Shallow-merge ``patch`` into ``properties`` without disturbing the other fields (087).
+
+        Uses a JSONB **merge** (``properties = properties || :patch``), NOT a full replacement — so a
+        backfill that adds ``founder`` / ``significant_person`` keeps every other stored property
+        intact (the full-replace trap in :meth:`replace_properties`). ``||`` is a shallow top-level
+        merge, which is exactly right: each ``patch`` key is a whole per-field block. An empty patch is
+        a no-op (returns 0 without a write).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        entity_id : uuid.UUID
+            The entity to update.
+        patch : dict[str, Any]
+            The per-field blocks to add/refresh, e.g. ``{"founder": {"values": [...], "qids": [...]}}``.
+
+        Returns
+        -------
+        int
+            Number of rows updated: 1 if the entity existed, 0 if absent or ``patch`` was empty.
+        """
+        if not patch:
+            return 0
+        merge = bindparam("patch", value=patch, type_=JSONB())
+        stmt = (
+            update(NamedEntityDB)
+            .where(NamedEntityDB.id == entity_id)
+            .values(properties=NamedEntityDB.properties.op("||")(merge))
+        )
+        result = await session.execute(stmt)
+        return result.rowcount
+
+    async def inbound_relations(
+        self, session: AsyncSession, target_qid: str, fields: Sequence[str]
+    ) -> list[InboundRelationMatch]:
+        """Active entities whose relation ``qids`` arrays contain ``target_qid`` (Feature 087).
+
+        The inverse of the stored forward relations: for each requested ``WANTED`` field, an entity
+        matches when ``properties->'<field>'->'qids'`` (a JSONB array) **contains** ``target_qid``
+        (``@>`` — unambiguous array containment; ``?`` is avoided for its placeholder clash). Returns
+        one row per matching **active** entity with the list of fields that matched; the caller folds
+        these into display groups (the repository holds no grouping semantics). One statement; a
+        missing field is NULL and simply does not match. The result set is small (a highly-referenced
+        entity has a few dozen), so there is no DB-side paging.
+
+        Performance: a **path** containment (`(properties->'f'->'qids') @> …`) cannot use a GIN index
+        on the whole ``properties`` column, so this seq-scans — fine at the current ~1,900-row scale.
+        If a measurement (T020) ever shows it too slow, rewrite to whole-column containment
+        (`properties @> '{"f":{"qids":[…]}}'`) which a ``jsonb_path_ops`` GIN can serve.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        target_qid : str
+            The viewed entity's Wikidata QID; referencing entities point at it.
+        fields : Sequence[str]
+            The ``WANTED`` field names to search (e.g. ``INBOUND_FIELDS``).
+
+        Returns
+        -------
+        list[InboundRelationMatch]
+            One per active referencing entity, with ``matched_fields``. Empty when either input is
+            empty.
+        """
+        if not target_qid or not fields:
+            return []
+        # One JSONB containment predicate per field; labelled in SELECT, OR-ed in WHERE.
+        match_exprs = {
+            f: NamedEntityDB.properties[f]["qids"].contains([target_qid])
+            for f in fields
+        }
+        stmt = (
+            select(
+                NamedEntityDB.id,
+                NamedEntityDB.entity_type,
+                NamedEntityDB.canonical_name,
+                *[expr.label(f) for f, expr in match_exprs.items()],
+            )
+            .where(NamedEntityDB.status == "active")
+            .where(or_(*match_exprs.values()))
+            .order_by(func.lower(NamedEntityDB.canonical_name), NamedEntityDB.id)
+        )
+        result = await session.execute(stmt)
+        out: list[InboundRelationMatch] = []
+        for row in result.all():
+            # Read by key via _mapping (not getattr) so a future field named like a Row tuple
+            # method (count/index) or a base column can't masquerade as a match.
+            matched = [f for f in fields if row._mapping[f]]
+            if matched:
+                out.append(
+                    InboundRelationMatch(
+                        entity_id=row.id,
+                        entity_type=row.entity_type,
+                        canonical_name=row.canonical_name,
+                        matched_fields=matched,
+                    )
+                )
+        return out

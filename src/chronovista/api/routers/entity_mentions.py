@@ -60,6 +60,9 @@ from chronovista.api.schemas.entity_mentions import (
     MentionPreview,
     MergedTagSummary,
     PhoneticMatchResponse,
+    ReferencedByEntity,
+    ReferencedByGroup,
+    ReferencedByResponse,
     ScanJobData,
     ScanJobResponse,
     ScanRequest,
@@ -125,9 +128,11 @@ from chronovista.services.entity_mention_scan_service import (
     ScanResult,
 )
 from chronovista.services.phonetic_matcher import PhoneticMatcher
+from chronovista.services.relation_groups import INBOUND_FIELDS, RELATION_GROUPS
 from chronovista.services.tag_management import TagManagementService
 from chronovista.services.tag_normalization import TagNormalizationService
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
+from chronovista.services.wikidata_properties import wikidata_qid
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -995,6 +1000,96 @@ async def get_shared_category_neighbours(
             for n in neighbours
         ]
     )
+
+
+# Feature 087: a defensive per-group cap so a pathologically-referenced entity never dumps an
+# unbounded list (FR-006). Real targets have a few dozen; this only bites a degenerate case.
+MAX_REFERENCED_BY_PER_GROUP = 200
+
+
+@router.get(
+    "/entities/{entity_id}/referenced-by",
+    response_model=ReferencedByResponse,
+    status_code=200,
+    summary="Active library entities whose relations point to this entity",
+)
+async def get_referenced_by(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+) -> ReferencedByResponse:
+    """The reverse of an entity's stored relations (Feature 087).
+
+    Lists the active library entities whose knowledge-base relations point TO this entity, grouped by
+    relationship. Synonymous source fields are unioned into one group (so membership counts
+    ``member_of`` AND ``part_of`` together — never an under-report), and each group is labelled with
+    its specific relationship, attributed to Wikidata (never a generic "related to" — an inverted
+    vague relation must read as a reported, sourced claim about a named individual, not our assertion).
+    Read-only. An entity with no Wikidata identity (nothing can reference it by id) returns an empty
+    list, as does an entity nothing references — both the clear empty state, never an error.
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (string form; a malformed value is a 404).
+
+    Returns
+    -------
+    ReferencedByResponse
+        One group per relationship that has at least one active referencing entity.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist (404).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    entity = await entity_repo.get_with_aliases(session, parsed_entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    qid = wikidata_qid(entity.external_ids)
+    if qid is None:
+        return ReferencedByResponse(data=[])
+
+    matches = await run_with_timeout(
+        entity_repo.inbound_relations(session, qid, INBOUND_FIELDS),
+        operation="referenced-by relations",
+        session=session,
+    )
+
+    # Fold the raw per-entity field matches into display groups (the canonical grouping lives in
+    # RELATION_GROUPS; the repository stayed grouping-agnostic). Matches are already name-ordered.
+    data: list[ReferencedByGroup] = []
+    for group in RELATION_GROUPS:
+        group_fields = set(group.member_fields)
+        members = [
+            ReferencedByEntity(
+                entity_id=m.entity_id,
+                entity_type=m.entity_type,
+                canonical_name=m.canonical_name,
+            )
+            for m in matches
+            # Exclude the entity from its own "referenced by" (a self-referential relation or data
+            # quirk would otherwise list it on its own page).
+            if m.entity_id != parsed_entity_id
+            and group_fields.intersection(m.matched_fields)
+        ]
+        if members:
+            data.append(
+                ReferencedByGroup(
+                    key=group.key,
+                    label=group.label,
+                    attribution=group.attribution,
+                    members=members[:MAX_REFERENCED_BY_PER_GROUP],
+                    member_count=len(members),
+                )
+            )
+    return ReferencedByResponse(data=data)
 
 
 # Provenance values the association filter accepts (FR-007) — the

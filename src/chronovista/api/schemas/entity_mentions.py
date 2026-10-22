@@ -1356,3 +1356,38 @@ class SharedCategoryNeighboursResponse(BaseModel):
     model_config = ConfigDict(strict=True)
 
     data: list[SharedCategoryNeighbour]
+
+
+class ReferencedByEntity(BaseModel):
+    """One active library entity that references the viewed entity via a relation (Feature 087)."""
+
+    model_config = ConfigDict(strict=True)
+
+    entity_id: UUID
+    entity_type: str
+    canonical_name: str
+
+
+class ReferencedByGroup(BaseModel):
+    """Referencing entities sharing one relationship (synonymous source fields unioned, Feature 087).
+
+    ``member_count`` is the TRUE total for this relationship (never under-reported by keying a single
+    field); ``members`` may be a defensively-capped slice. ``label``/``attribution`` present it as
+    Wikidata's specific, attributed statement — never a generic connection.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    key: str
+    label: str
+    attribution: str
+    members: list[ReferencedByEntity]
+    member_count: int
+
+
+class ReferencedByResponse(BaseModel):
+    """Response envelope for the 'Referenced by' section."""
+
+    model_config = ConfigDict(strict=True)
+
+    data: list[ReferencedByGroup]

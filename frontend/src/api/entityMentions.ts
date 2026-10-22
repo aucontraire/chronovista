@@ -1410,6 +1410,43 @@ export async function fetchSharedCategoryNeighbours(
   return res.data;
 }
 
+/** An entity that references the subject through a Wikidata relation. */
+export interface ReferencedByEntity {
+  entity_id: string;
+  entity_type: string;
+  canonical_name: string;
+}
+
+/** Referencing entities grouped by relationship (Feature 087). */
+export interface ReferencedByGroup {
+  key: string;
+  /** Backend-supplied specific relationship label. */
+  label: string;
+  /** Backend-supplied Wikidata-attributed phrasing; must be shown with the group. */
+  attribution: string;
+  members: ReferencedByEntity[];
+  /** Total referencing entities in the group (may exceed `members.length`). */
+  member_count: number;
+}
+
+/**
+ * Fetch the entities that reference a subject entity, grouped by relationship.
+ * Not paginated; the backend returns all groups.
+ *
+ * @param entityId - UUID of the subject entity
+ * @param signal - Abort signal
+ */
+export async function fetchReferencedBy(
+  entityId: string,
+  signal?: AbortSignal
+): Promise<ReferencedByGroup[]> {
+  const res = await apiFetch<{ data: ReferencedByGroup[] }>(
+    `/entities/${entityId}/referenced-by`,
+    signal ? { externalSignal: signal } : {}
+  );
+  return res.data;
+}
+
 /** A canonical tag folded into the entity's tag by a curator's merge. */
 export interface MergedTagSummary {
   canonical_form: string;

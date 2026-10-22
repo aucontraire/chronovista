@@ -19,6 +19,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { CooccurringPanel } from "../components/entity/CooccurringPanel";
 import { SharedCategoriesPanel } from "../components/entity/SharedCategoriesPanel";
+import { ReferencedByPanel } from "../components/entity/ReferencedByPanel";
 import { EntityEnrichmentSection } from "../components/entity/EntityEnrichmentSection";
 import { EntityPortrait } from "../components/entity/EntityPortrait";
 import { EntityTagSection } from "../components/entity/EntityTagSection";
@@ -2234,6 +2235,14 @@ export function EntityDetailPage() {
         {entityId && (
           <div className="mb-6">
             <SharedCategoriesPanel entityId={entityId} />
+          </div>
+        )}
+
+        {/* Referenced-by panel (Feature 087). Sourced Wikidata relations pointing
+            at this entity; distinct from co-occurrence and shared categories. */}
+        {entityId && (
+          <div className="mb-6">
+            <ReferencedByPanel entityId={entityId} />
           </div>
         )}
 

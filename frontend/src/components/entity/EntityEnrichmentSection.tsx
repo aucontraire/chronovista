@@ -54,6 +54,7 @@ import { socialProfileUrl } from "../../api/entityMentions";
 import { useRegroundEntity } from "../../hooks/useRegroundEntity";
 import { useWikidataEntityMap } from "../../hooks/useEntityMentions";
 import { WikidataGroundingPicker } from "./WikidataGroundingPicker";
+import { relationGroupForField } from "./relationGroups";
 
 export interface EntityEnrichmentSectionProps {
   /** UUID of the named entity — required to submit a re-link. */
@@ -114,6 +115,8 @@ const RELATION_KEYS = new Set([
   "place_of_birth",
   "position_held",
   "subclass_of",
+  // Feature 087: founder (P112) — newly captured; render it as a forward relation too.
+  "founder",
 ]);
 
 /** Social/web properties (Feature 079): a single handle value, linked via a fixed URL pattern. */
@@ -172,52 +175,75 @@ function RelationsBlock({
   const qids = Array.from(new Set(entries.flatMap(([, value]) => getQids(value))));
   const wikidataMap = useWikidataEntityMap(qids);
 
+  // Feature 087: synonymous keys (member_of + part_of) render as ONE group with a specific,
+  // Wikidata-attributed label. Ungrouped keys keep their per-key humanized heading.
+  const groups: Array<{
+    id: string;
+    label: string;
+    attribution?: string;
+    items: Array<{ label: string; qid: string | undefined }>;
+  }> = [];
+  for (const [key, value] of entries) {
+    const def = relationGroupForField(key);
+    const id = def?.key ?? key;
+    let group = groups.find((g) => g.id === id);
+    if (!group) {
+      group = {
+        id,
+        label: def?.label ?? humanizePropertyKey(key),
+        ...(def ? { attribution: def.attribution } : {}),
+        items: [],
+      };
+      groups.push(group);
+    }
+    const qidsForKey = getQids(value);
+    (value.values ?? []).forEach((label, i) => {
+      group.items.push({ label, qid: qidsForKey[i] });
+    });
+  }
+
   return (
     <div className={bordered ? "pt-3 border-t border-slate-100" : ""}>
       <h3 className="text-xs font-medium text-gray-500 mb-2">Relations</h3>
       <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-        {entries.map(([key, value]) => {
-          const values = value.values ?? [];
-          const qidsForKey = getQids(value);
-          return (
-            <div key={key} className="flex flex-col">
-              <dt className="text-xs font-medium text-gray-500">
-                {humanizePropertyKey(key)}
-              </dt>
-              <dd className="text-sm text-gray-800">
-                <ul>
-                  {values.map((label, i) => {
-                    const qid = qidsForKey[i];
-                    const match = qid ? wikidataMap.data[qid] : undefined;
-                    return (
-                      <li key={`${key}-${i}`}>
-                        {match ? (
-                          <Link
-                            to={`/entities/${match.entity_id}`}
-                            className="text-indigo-700 hover:underline"
-                          >
-                            {label}
-                          </Link>
-                        ) : qid ? (
-                          <a
-                            href={`https://www.wikidata.org/wiki/${qid}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-indigo-700 hover:underline"
-                          >
-                            {label}
-                          </a>
-                        ) : (
-                          <span>{label}</span>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </dd>
-            </div>
-          );
-        })}
+        {groups.map((group) => (
+          <div key={group.id} className="flex flex-col" data-testid={`relation-group-${group.id}`}>
+            <dt className="text-xs font-medium text-gray-500">{group.label}</dt>
+            {group.attribution && (
+              <dd className="text-[11px] text-gray-400">{group.attribution}</dd>
+            )}
+            <dd className="text-sm text-gray-800">
+              <ul>
+                {group.items.map(({ label, qid }, i) => {
+                  const match = qid ? wikidataMap.data[qid] : undefined;
+                  return (
+                    <li key={`${group.id}-${i}`}>
+                      {match ? (
+                        <Link
+                          to={`/entities/${match.entity_id}`}
+                          className="text-indigo-700 hover:underline"
+                        >
+                          {label}
+                        </Link>
+                      ) : qid ? (
+                        <a
+                          href={`https://www.wikidata.org/wiki/${qid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-700 hover:underline"
+                        >
+                          {label}
+                        </a>
+                      ) : (
+                        <span>{label}</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </dd>
+          </div>
+        ))}
       </dl>
     </div>
   );

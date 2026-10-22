@@ -64,6 +64,13 @@ class _LinkDbpedia:
         return "http://dbpedia.org/resource/Placeholder", "owl:sameAs from wikidata"
 
 
+class _NoCategoryFetch:
+    """Keeps the Feature 084 on-approval category step off the live Wikipedia API in tests."""
+
+    async def categories_for_titles(self, titles: Any) -> dict[str, list[str]]:
+        return {}
+
+
 def _install_service(
     factory: async_sessionmaker[AsyncSession], client: Any, dbpedia: Any = None
 ) -> None:
@@ -72,6 +79,7 @@ def _install_service(
         factory,
         client_factory=lambda: client,
         dbpedia_factory=lambda: resolver,
+        category_fetch_factory=lambda: _NoCategoryFetch(),
     )
     app.dependency_overrides[get_enrichment_service] = lambda: service
 

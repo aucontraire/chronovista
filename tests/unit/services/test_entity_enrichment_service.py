@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import logging
 import uuid
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from chronovista.services import entity_enrichment_service as ees
 from chronovista.services.entity_enrichment_service import EntityEnrichmentService
 from chronovista.services.wikidata_client import WikidataUnavailable
 
@@ -137,3 +139,66 @@ class TestDegradation:
         assert session.commit.await_count == 1
         joined = " ".join(r.getMessage() for r in caplog.records).lower()
         assert "dbpedia" in joined  # the DBpedia failure was logged, not raised
+
+
+class TestStoreCategories:
+    """The Feature 084 on-approval category step: add-only, best-effort, entity-guarded (FR-004)."""
+
+    async def test_store_categories_is_add_only(self) -> None:
+        session = MagicMock()
+        session.commit = AsyncMock()
+        entity = SimpleNamespace(
+            external_ids={"dbpedia": {"id": "http://dbpedia.org/resource/Placeholder"}}
+        )
+        service = EntityEnrichmentService(_factory_yielding(session))
+        service._repo = MagicMock()
+        service._repo.get = AsyncMock(return_value=entity)
+
+        with patch.object(ees, "categorize_entity", AsyncMock()) as categorize:
+            await service._store_categories(uuid.uuid4(), "Q000001")
+
+        categorize.assert_awaited_once()
+        # Add-only: the on-approval path must never replace an entity's categories (FR-004).
+        assert categorize.await_args.kwargs["replace"] is False
+        session.commit.assert_awaited_once()
+
+    async def test_store_categories_swallows_failure(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        session = MagicMock()
+        session.commit = AsyncMock()
+        entity = SimpleNamespace(external_ids={})
+        service = EntityEnrichmentService(_factory_yielding(session))
+        service._repo = MagicMock()
+        service._repo.get = AsyncMock(return_value=entity)
+        entity_id = uuid.uuid4()
+
+        with (
+            patch.object(
+                ees,
+                "categorize_entity",
+                AsyncMock(side_effect=RuntimeError("fetch down")),
+            ),
+            caplog.at_level(logging.WARNING),
+        ):
+            # Must NOT raise — a detached-task exception would surface as an ugly traceback.
+            await service._store_categories(entity_id, "Q000001")
+
+        joined = " ".join(r.getMessage() for r in caplog.records)
+        assert (
+            "categor" in joined.lower()
+        )  # the category failure was logged, not raised
+        assert str(entity_id) in joined
+
+    async def test_store_categories_absent_entity_is_noop(self) -> None:
+        session = MagicMock()
+        session.commit = AsyncMock()
+        service = EntityEnrichmentService(_factory_yielding(session))
+        service._repo = MagicMock()
+        service._repo.get = AsyncMock(return_value=None)
+
+        with patch.object(ees, "categorize_entity", AsyncMock()) as categorize:
+            await service._store_categories(uuid.uuid4(), "Q000001")
+
+        categorize.assert_not_awaited()  # no entity → nothing to categorize
+        session.commit.assert_not_awaited()

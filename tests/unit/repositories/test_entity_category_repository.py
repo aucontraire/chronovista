@@ -65,6 +65,37 @@ class TestEntityCategoryAddSql:
         assert _compile(_captured(session)).params["set_at"] is None
 
 
+class TestDeleteForEntitySql:
+    """Feature 084 replace path: the DELETE must be scoped to the one entity (Cross-Feature)."""
+
+    async def test_delete_is_scoped_to_entity_id(self) -> None:
+        session = AsyncMock(spec=AsyncSession)
+        result = MagicMock()
+        result.rowcount = 3
+        session.execute.return_value = result
+        entity_id = uuid.uuid4()
+
+        removed = await EntityCategoryRepository().delete_for_entity(session, entity_id)
+
+        compiled = _compile(_captured(session))
+        sql = str(compiled)
+        assert sql.startswith("DELETE FROM entity_categories")
+        # Scoped by entity_id — it must never remove another entity's rows.
+        assert "WHERE entity_categories.entity_id =" in sql
+        assert entity_id in compiled.params.values()
+        assert removed == 3  # returns the row count removed
+
+    async def test_null_rowcount_returns_zero(self) -> None:
+        session = AsyncMock(spec=AsyncSession)
+        result = MagicMock()
+        result.rowcount = None
+        session.execute.return_value = result
+        removed = await EntityCategoryRepository().delete_for_entity(
+            session, uuid.uuid4()
+        )
+        assert removed == 0
+
+
 class TestBridgeSql:
     async def _bridge_sql(self, cap: int | None) -> tuple[str, Any]:
         session = AsyncMock(spec=AsyncSession)

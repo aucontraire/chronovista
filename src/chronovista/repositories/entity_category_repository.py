@@ -10,7 +10,7 @@ from __future__ import annotations
 import datetime
 import uuid
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -42,6 +42,22 @@ class EntityCategoryRepository:
             )
             .on_conflict_do_nothing(index_elements=["entity_id", "category_id"])
         )
+
+    async def delete_for_entity(
+        self, session: AsyncSession, entity_id: uuid.UUID
+    ) -> int:
+        """Remove all of ``entity_id``'s category assignments; return the count removed.
+
+        Enables the Feature 084 **replace** (delete-then-add) for the existing DBpedia-sourced
+        373: the batch deletes their assignments, then re-adds the Wikipedia namespace. Scoped to
+        the one entity by ``entity_id`` — it never touches another entity's rows (the SET/WHERE
+        the mock test asserts). Add-only callers (the 1,441 and the on-approval seam) keep using
+        :meth:`add` and never call this.
+        """
+        result = await session.execute(
+            delete(EntityCategoryDB).where(EntityCategoryDB.entity_id == entity_id)
+        )
+        return result.rowcount or 0
 
     async def categories_for(
         self, session: AsyncSession, entity_id: uuid.UUID

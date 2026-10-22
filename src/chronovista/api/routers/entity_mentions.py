@@ -23,6 +23,7 @@ from chronovista.api.deps import (
     get_canonical_tag_repository,
     get_db,
     get_entity_alias_repository,
+    get_entity_category_repository,
     get_entity_curation_service,
     get_entity_mention_repository,
     get_named_entity_repository,
@@ -63,6 +64,8 @@ from chronovista.api.schemas.entity_mentions import (
     ScanJobResponse,
     ScanRequest,
     ScanResultData,
+    SharedCategoryNeighbour,
+    SharedCategoryNeighboursResponse,
     UnlinkResponse,
     UnlinkResult,
     UnMergeRequest,
@@ -98,6 +101,9 @@ from chronovista.models.enums import (
 from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
+from chronovista.repositories.entity_category_repository import (
+    EntityCategoryRepository,
+)
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.video_repository import VideoRepository
@@ -879,6 +885,112 @@ async def get_cooccurring_entities(
     # (FR-024): "nothing appears alongside this" is an answer, not a failure.
     return CooccurringEntitiesResponse(
         data=[CooccurringEntity(**partner) for partner in partners]
+    )
+
+
+# Feature 085: a shared category whose Wikipedia-wide size exceeds this is a library-generic
+# mega-hub and is suppressed; specific categories are always surfaced (rank by specificity, do not
+# filter them). Adjustable via the query param; this is the default ceiling.
+DEFAULT_MAX_CATEGORY_SIZE = 20_000
+MAX_SHARED_CATEGORY_LIMIT = 50
+
+
+@router.get(
+    "/entities/{entity_id}/shared-categories",
+    response_model=SharedCategoryNeighboursResponse,
+    status_code=200,
+    summary="Entities that share a Wikipedia category with this entity",
+)
+async def get_shared_category_neighbours(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    limit: int = Query(
+        default=12,
+        ge=1,
+        le=MAX_SHARED_CATEGORY_LIMIT,
+        description=(
+            "Maximum neighbours to return. Bounded: a popular entity shares "
+            "categories with hundreds of others, so an unbounded list would be "
+            "slow and unusable (FR-008)."
+        ),
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+        description="Pagination offset for incremental 'show more' loading (FR-008).",
+    ),
+    max_category_size: int = Query(
+        default=DEFAULT_MAX_CATEGORY_SIZE,
+        ge=1,
+        description=(
+            "Suppress a shared category whose Wikipedia-wide size exceeds this "
+            "(mega-hub suppression, FR-004); unknown-size categories are kept."
+        ),
+    ),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    category_repo: EntityCategoryRepository = Depends(get_entity_category_repository),
+) -> SharedCategoryNeighboursResponse:
+    """Neighbours that share a Wikipedia category with this entity (Feature 085).
+
+    Powers the "shares categories with" panel on the entity detail page. This is a **topical
+    grouping**, not an asserted relationship — the signal was measured only among co-occurring
+    pairs. One row per neighbour, ranked by shared-category count then specificity; a neighbour
+    whose only shared categories are mega-hubs is suppressed; only active neighbours; the entity
+    never appears in its own list.
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (string representation).
+    limit, offset : int
+        Pagination, bounded by ``MAX_SHARED_CATEGORY_LIMIT``.
+    max_category_size : int
+        Mega-hub suppression ceiling (FR-004).
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    SharedCategoryNeighboursResponse
+        Neighbours ordered by shared-category count descending, tiebroken by specificity.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist (404).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    if not await entity_repo.exists(session, parsed_entity_id):
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    neighbours = await run_with_timeout(
+        category_repo.shared_category_neighbours(
+            session,
+            parsed_entity_id,
+            limit=limit,
+            offset=offset,
+            max_category_size=max_category_size,
+        ),
+        operation="shared-category neighbours",
+        session=session,
+    )
+
+    # No qualifying neighbours is an answer, not an error: empty data, status 200.
+    return SharedCategoryNeighboursResponse(
+        data=[
+            SharedCategoryNeighbour(
+                entity_id=n.entity_id,
+                entity_type=n.entity_type,
+                canonical_name=n.canonical_name,
+                shared_categories=n.shared_categories,
+                shared_category_count=n.shared_category_count,
+            )
+            for n in neighbours
+        ]
     )
 
 

@@ -145,3 +145,55 @@ class TestWikipediaCategorySql:
         assert "name" not in set_clause
         assert 42 in compiled.params.values()
         assert cid in compiled.params.values()
+
+
+class TestSharedCategoryNeighboursSql:
+    """Feature 085: the aggregate-by-neighbour query — group/order/filter/bound asserted in SQL."""
+
+    async def _sql(self) -> tuple[str, Any]:
+        session = AsyncMock(spec=AsyncSession)
+        result = MagicMock()
+        result.all.return_value = []
+        session.execute.return_value = result
+        out = await EntityCategoryRepository().shared_category_neighbours(
+            session, uuid.uuid4(), limit=12, offset=3, max_category_size=20000
+        )
+        assert out == []
+        compiled = _compile(_captured(session))
+        return str(compiled), compiled
+
+    async def test_group_order_filter_bound(self) -> None:
+        sql, compiled = await self._sql()
+        low = sql.lower()
+        # one row per neighbour entity
+        assert "GROUP BY" in sql
+        assert "array_agg" in low  # the shared-category names
+        # ranking: count desc primary, specificity (min global_size) asc secondary
+        assert "ORDER BY" in sql
+        assert "DESC" in sql and "ASC" in sql
+        assert "min(" in low
+        # active-only neighbour join
+        assert "status" in low
+        # hub suppression: global_size <= :cap OR IS NULL
+        assert "global_size <=" in sql
+        assert "IS NULL" in sql
+        # bounded
+        assert "LIMIT" in sql and "OFFSET" in sql
+        # bound params carried
+        assert 12 in compiled.params.values()  # limit
+        assert 3 in compiled.params.values()  # offset
+        assert 20000 in compiled.params.values()  # hub ceiling
+        # total order: a final entity_id tiebreak so LIMIT/OFFSET paging is stable under ties
+        assert "entity_id" in sql.split("ORDER BY", 1)[1]
+
+    async def test_read_only_single_statement(self) -> None:
+        session = AsyncMock(spec=AsyncSession)
+        result = MagicMock()
+        result.all.return_value = []
+        session.execute.return_value = result
+        await EntityCategoryRepository().shared_category_neighbours(
+            session, uuid.uuid4(), limit=5, offset=0, max_category_size=100
+        )
+        # exactly one SELECT, no writes
+        session.execute.assert_awaited_once()
+        assert str(_compile(_captured(session))).lstrip().upper().startswith("SELECT")

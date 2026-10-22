@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.90.0] - 2026-10-22
+
+### Added
+- **"Shares categories with" on the entity detail page.** A new read-only panel lists the other library entities that sit under the same Wikipedia categories as the one you're viewing — surfacing, in the app, the shared-category bridge that Features 083/084 built and populated but kept backend-only. Neighbours are ranked by how many categories they share (then by how specific those categories are), over-broad "hub" categories are suppressed so coincidental groupings don't drown the meaningful ones, and each neighbour links to its own page. It is framed as a topical grouping, not an asserted relationship.
+
+### Internal
+- New additive, read-only endpoint returning an entity's shared-category neighbours — one row per neighbour, aggregated, ranked, hub-suppressed, active-only, and paginated by a single grouped query in the repository layer (the existing per-category bridge query is unchanged). No schema change, no migration.
+- The ordering carries a final stable tiebreak so pagination cannot skip or repeat a neighbour when counts and specificity tie.
+- Frontend: a shared-category fetcher, its query hook, and the panel, mirroring the existing "appears with" surface; wording is topical throughout and the panel degrades to a non-blocking, recoverable state on failure.
+
 ## [0.89.0] - 2026-10-21
 
 ### Internal

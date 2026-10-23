@@ -1358,6 +1358,37 @@ class SharedCategoryNeighboursResponse(BaseModel):
     data: list[SharedCategoryNeighbour]
 
 
+class DistinctiveCategory(BaseModel):
+    """A Wikipedia category whose sole active member is the subject entity (Feature 089).
+
+    The "Distinctive — only this entity" surface: a category this entity is the ONLY
+    active member of (member count == 1), contrasting the shared-category surface
+    (≥2 members, Feature 085). Carries ``id`` + ``name`` so a chip links to the
+    category detail page (``/wikipedia-categories/{id}``), exactly like
+    :class:`SharedCategoryRef` — the two category surfaces stay shape-consistent.
+
+    Attributes
+    ----------
+    id : UUID
+        Category UUID (the link target).
+    name : str
+        Category display name (shown on the chip).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    id: UUID
+    name: str
+
+
+class DistinctiveCategoriesResponse(BaseModel):
+    """Response envelope for the distinctive-categories sub-section."""
+
+    model_config = ConfigDict(strict=True)
+
+    data: list[DistinctiveCategory]
+
+
 class ReferencedByEntity(BaseModel):
     """One active library entity that references the viewed entity via a relation (Feature 087)."""
 

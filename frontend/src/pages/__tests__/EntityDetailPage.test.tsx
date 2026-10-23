@@ -25,7 +25,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -74,12 +75,34 @@ vi.mock("../../hooks/useEntityMentions", () => ({
 // Mock PhoneticVariantsSection to avoid it calling useQuery independently,
 // which would conflict with the global useQuery mock below.
 vi.mock("../../components/corrections/PhoneticVariantsSection", () => ({
-  PhoneticVariantsSection: () => null,
+  PhoneticVariantsSection: () => <div data-testid="phonetic-variants-stub" />,
 }));
 
 // Mock ExclusionPatternsSection to keep tests focused on EntityDetailPage.
 vi.mock("../../components/corrections/ExclusionPatternsSection", () => ({
-  ExclusionPatternsSection: () => null,
+  ExclusionPatternsSection: () => <div data-testid="exclusion-patterns-stub" />,
+}));
+
+// Stub the two category panels' hooks so the Categories group framing can be
+// asserted deterministically (the global useQuery mock below would otherwise
+// feed them the entity payload).
+vi.mock("../../hooks/useDistinctiveCategories", () => ({
+  DISTINCTIVE_CATEGORY_PAGE_SIZE: 50,
+  useDistinctiveCategories: vi.fn(() => ({
+    categories: [{ id: "cat-1", name: "Sample Category A" }],
+    isLoading: false,
+    isError: false,
+    error: null,
+  })),
+}));
+vi.mock("../../hooks/useSharedCategoryNeighbours", () => ({
+  SHARED_CATEGORY_PAGE_SIZE: 12,
+  useSharedCategoryNeighbours: vi.fn(() => ({
+    neighbours: [],
+    isLoading: false,
+    isError: false,
+    error: null,
+  })),
 }));
 
 // We need to mock the TanStack Query useQuery to control entity detail fetch
@@ -93,6 +116,8 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 
 import { useQuery } from "@tanstack/react-query";
 import { useEntityVideos, useScanEntity } from "../../hooks/useEntityMentions";
+import { useDistinctiveCategories } from "../../hooks/useDistinctiveCategories";
+import { useSharedCategoryNeighbours } from "../../hooks/useSharedCategoryNeighbours";
 import type { EntityVideoResult } from "../../api/entityMentions";
 
 // ---------------------------------------------------------------------------
@@ -1130,6 +1155,311 @@ describe("EntityDetailPage", () => {
       expect(
         screen.getByText(/scanning.*this can take a few minutes/i)
       ).toBeInTheDocument();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Feature 089: accordion grouping
+  // -------------------------------------------------------------------------
+
+  describe("Accordion groups (Feature 089)", () => {
+    const GROUPS = [
+      { id: "knowledge-base", title: "Knowledge base", open: true },
+      { id: "mention-matching", title: "Mention matching", open: false },
+      { id: "categories", title: "Categories", open: true },
+      { id: "appears-with", title: "Appears with", open: true },
+      { id: "videos", title: "Videos", open: true },
+    ] as const;
+
+    function getGroup(id: string): HTMLElement {
+      return screen.getByTestId(`entity-group-${id}`);
+    }
+
+    function headerOf(group: HTMLElement): HTMLElement {
+      // The header is the group's first button.
+      const header = group.querySelector<HTMLElement>(":scope > button");
+      if (header === null) throw new Error("accordion header not found");
+      return header;
+    }
+
+    function expandAll() {
+      for (const g of GROUPS) {
+        const header = headerOf(getGroup(g.id));
+        if (header.getAttribute("aria-expanded") === "false") {
+          fireEvent.click(header);
+        }
+      }
+    }
+
+    describe("zero-regression guard (FR-002 / SC-001)", () => {
+      it("keeps every pre-reorg capability reachable inside exactly one group", () => {
+        vi.mocked(useEntityVideos).mockReturnValue({
+          ...defaultUseEntityVideos,
+          videos: [createMockVideo()],
+        });
+        renderPage();
+        expandAll();
+
+        // Header card (not a group): name editor.
+        expect(
+          screen.getByRole("button", {
+            name: /edit name and description for ada lovelace/i,
+          })
+        ).toBeInTheDocument();
+
+        const knowledge = within(getGroup("knowledge-base"));
+        expect(knowledge.getByRole("heading", { name: "Enrichment" })).toBeInTheDocument();
+        expect(knowledge.getByRole("heading", { name: "Referenced by" })).toBeInTheDocument();
+
+        const matching = within(getGroup("mention-matching"));
+        expect(matching.getByRole("heading", { name: "Aliases" })).toBeInTheDocument();
+        expect(matching.getByRole("textbox", { name: "Alias name" })).toBeInTheDocument();
+        expect(matching.getByRole("button", { name: "Add" })).toBeInTheDocument();
+        expect(matching.getByTestId("phonetic-variants-stub")).toBeInTheDocument();
+        expect(matching.getByTestId("exclusion-patterns-stub")).toBeInTheDocument();
+        expect(matching.getByRole("heading", { name: "Tags" })).toBeInTheDocument();
+
+        const categories = within(getGroup("categories"));
+        expect(
+          categories.getByRole("heading", { name: "Distinctive — only this entity" })
+        ).toBeInTheDocument();
+        expect(
+          categories.getByRole("heading", { name: "Shares categories with" })
+        ).toBeInTheDocument();
+
+        const appearsWith = within(getGroup("appears-with"));
+        expect(appearsWith.getByRole("heading", { name: "Appears with" })).toBeInTheDocument();
+        expect(appearsWith.queryByRole("heading", { name: "Referenced by" })).not.toBeInTheDocument();
+
+        const videos = within(getGroup("videos"));
+        expect(videos.getByRole("heading", { name: "Videos" })).toBeInTheDocument();
+        expect(videos.getByLabelText("Include unavailable videos")).toBeInTheDocument();
+        expect(videos.getByText("Lovelace on Language")).toBeInTheDocument();
+      });
+    });
+
+    describe("grouping", () => {
+      it("renders the five named groups with the expected default state", () => {
+        renderPage();
+        for (const g of GROUPS) {
+          const header = headerOf(getGroup(g.id));
+          expect(header).toHaveTextContent(g.title);
+          expect(header).toHaveAttribute("aria-expanded", String(g.open));
+        }
+      });
+
+      it("keeps the header card outside the accordion groups", () => {
+        renderPage();
+        const nameEditor = screen.getByRole("heading", { name: "Ada Lovelace", level: 1 });
+        for (const g of GROUPS) {
+          expect(getGroup(g.id)).not.toContainElement(nameEditor);
+        }
+      });
+
+      it("collapses and expands each group independently", () => {
+        renderPage();
+        const appearsWith = headerOf(getGroup("appears-with"));
+        const categories = headerOf(getGroup("categories"));
+
+        fireEvent.click(appearsWith);
+        expect(appearsWith).toHaveAttribute("aria-expanded", "false");
+        expect(categories).toHaveAttribute("aria-expanded", "true");
+        expect(headerOf(getGroup("videos"))).toHaveAttribute("aria-expanded", "true");
+
+        fireEvent.click(appearsWith);
+        expect(appearsWith).toHaveAttribute("aria-expanded", "true");
+      });
+
+      it("shows each section's own empty state inside its open group for a sparse entity", () => {
+        renderPage();
+        expect(
+          within(getGroup("mention-matching")).getByText("No aliases registered.")
+        ).toBeInTheDocument();
+        expect(
+          within(getGroup("videos")).getByText("No videos found for this entity.")
+        ).toBeInTheDocument();
+        // Mention matching (low-frequency knobs) stays collapsed.
+        expect(headerOf(getGroup("mention-matching"))).toHaveAttribute(
+          "aria-expanded",
+          "false"
+        );
+      });
+
+      it("renders content in every group for a maximal entity", () => {
+        vi.mocked(useQuery).mockReturnValue({
+          ...({} as ReturnType<typeof useQuery>),
+          data: {
+            ...mockEntity,
+            aliases: [
+              {
+                id: "alias-1",
+                alias_name: "Countess Ada",
+                alias_type: "name_variant",
+                occurrence_count: 2,
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+          error: null,
+          status: "success",
+          isPending: false,
+          isSuccess: true,
+          isFetching: false,
+          fetchStatus: "idle" as const,
+        } as ReturnType<typeof useQuery>);
+        vi.mocked(useEntityVideos).mockReturnValue({
+          ...defaultUseEntityVideos,
+          videos: [createMockVideo()],
+        });
+        renderPage();
+        expandAll();
+
+        expect(within(getGroup("mention-matching")).getByText("Countess Ada")).toBeInTheDocument();
+        expect(
+          within(getGroup("videos")).getByText("Lovelace on Language")
+        ).toBeInTheDocument();
+        for (const g of GROUPS) {
+          const region = document.getElementById(
+            headerOf(getGroup(g.id)).getAttribute("aria-controls") ?? ""
+          );
+          expect(region).not.toBeNull();
+          expect(region).toBeVisible();
+        }
+      });
+    });
+
+    describe("accessibility (FR-006 / SC-006)", () => {
+      it("exposes every group header as a focusable button in document order", () => {
+        renderPage();
+        const headers = GROUPS.map((g) => headerOf(getGroup(g.id)));
+        for (const h of headers) {
+          expect(h.tagName).toBe("BUTTON");
+          expect(h).toHaveAttribute("type", "button");
+          expect(h).not.toHaveAttribute("tabindex", "-1");
+        }
+        for (let i = 1; i < headers.length; i++) {
+          const prev = headers[i - 1];
+          const cur = headers[i];
+          if (prev === undefined || cur === undefined) throw new Error("missing header");
+          expect(
+            prev.compareDocumentPosition(cur) & Node.DOCUMENT_POSITION_FOLLOWING
+          ).toBeTruthy();
+        }
+      });
+
+      it("reaches each header with Tab and toggles it with Enter and Spacebar", async () => {
+        const user = userEvent.setup();
+        renderPage();
+        const matching = headerOf(getGroup("mention-matching"));
+        const appearsWith = headerOf(getGroup("appears-with"));
+
+        // Tab forward until the Mention matching header is focused.
+        for (let i = 0; i < 200 && document.activeElement !== matching; i++) {
+          await user.tab();
+        }
+        expect(matching).toHaveFocus();
+
+        await user.keyboard("{Enter}");
+        expect(matching).toHaveAttribute("aria-expanded", "true");
+        await user.keyboard(" ");
+        expect(matching).toHaveAttribute("aria-expanded", "false");
+
+        for (let i = 0; i < 200 && document.activeElement !== appearsWith; i++) {
+          await user.tab();
+        }
+        expect(appearsWith).toHaveFocus();
+        await user.keyboard("{Enter}");
+        expect(appearsWith).toHaveAttribute("aria-expanded", "false");
+      });
+
+      it("links each header to a labelled region via aria-controls", () => {
+        renderPage();
+        for (const g of GROUPS) {
+          const header = headerOf(getGroup(g.id));
+          const controlsId = header.getAttribute("aria-controls");
+          expect(controlsId).toBeTruthy();
+          const region = document.getElementById(controlsId ?? "");
+          expect(region).not.toBeNull();
+          expect(region).toHaveAttribute("aria-labelledby", header.id);
+        }
+      });
+    });
+  });
+  describe("Categories group framing (Feature 089, SC-004)", () => {
+    // Known state for every test: distinctive has content (so its heading
+    // renders), shared is empty. Error tests override locally; this reset
+    // stops that state leaking into the next test.
+    beforeEach(() => {
+      vi.mocked(useDistinctiveCategories).mockReturnValue({
+        categories: [{ id: "cat-1", name: "Sample Category A" }],
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
+      vi.mocked(useSharedCategoryNeighbours).mockReturnValue({
+        neighbours: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
+    });
+
+    it("shows distinctive and shared panels as peers under the Categories group", () => {
+      renderPage();
+      const group = screen.getByTestId("entity-group-categories");
+      expect(
+        within(group).getByRole("button", { name: "Categories" })
+      ).toBeInTheDocument();
+      expect(
+        within(group).getByRole("heading", { name: "Distinctive — only this entity" })
+      ).toBeInTheDocument();
+      expect(
+        within(group).getByRole("heading", { name: "Shares categories with" })
+      ).toBeInTheDocument();
+    });
+
+    it("lists the distinctive panel before the shared panel", () => {
+      renderPage();
+      const distinctive = screen.getByRole("heading", {
+        name: "Distinctive — only this entity",
+      });
+      const shared = screen.getByRole("heading", { name: "Shares categories with" });
+      expect(
+        distinctive.compareDocumentPosition(shared) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    });
+
+    it("distinctive panel errors, shared panel still renders", () => {
+      vi.mocked(useDistinctiveCategories).mockReturnValue({
+        categories: [],
+        isLoading: false,
+        isError: true,
+        error: new Error("boom"),
+      });
+      vi.mocked(useSharedCategoryNeighbours).mockReturnValue({
+        neighbours: [],
+        isLoading: false,
+        isError: false,
+        error: null,
+      });
+      renderPage();
+      const group = screen.getByTestId("entity-group-categories");
+      expect(
+        within(group).getByTestId("distinctive-categories-error")
+      ).toHaveAttribute("role", "alert");
+      expect(
+        within(group).getByTestId("shared-categories-panel")
+      ).toBeInTheDocument();
+    });
+
+    it("has no category panel heading outside the Categories group", () => {
+      renderPage();
+      const group = screen.getByTestId("entity-group-categories");
+      for (const name of ["Distinctive — only this entity", "Shares categories with"]) {
+        const heading = screen.getByRole("heading", { name });
+        expect(group.contains(heading)).toBe(true);
+      }
     });
   });
 });

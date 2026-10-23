@@ -19,9 +19,11 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { CooccurringPanel } from "../components/entity/CooccurringPanel";
 import { SharedCategoriesPanel } from "../components/entity/SharedCategoriesPanel";
+import { DistinctiveCategoriesPanel } from "../components/entity/DistinctiveCategoriesPanel";
 import { ReferencedByPanel } from "../components/entity/ReferencedByPanel";
 import { EntityEnrichmentSection } from "../components/entity/EntityEnrichmentSection";
 import { EntityPortrait } from "../components/entity/EntityPortrait";
+import { EntityAccordionGroup } from "../components/entity/EntityAccordionGroup";
 import { EntityTagSection } from "../components/entity/EntityTagSection";
 import { EntityTypeBadge } from "../components/EntityTypeBadge";
 import { AssociationBreakdown } from "../components/AssociationBreakdown";
@@ -2085,137 +2087,127 @@ export function EntityDetailPage() {
         </div>
       )}
 
-      {/* Aliases section */}
-      <section aria-labelledby="entity-aliases-heading" className="mb-6">
-        <h2
-          id="entity-aliases-heading"
-          className="text-lg font-semibold text-gray-900 mb-3"
-        >
-          Aliases
-        </h2>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          {entity.aliases.length > 0 ? (
-            <div className="divide-y divide-slate-100">
-              {entity.aliases.map((alias) => (
-                <AliasRow
-                  key={alias.id}
-                  alias={alias}
-                  entityId={entityId ?? ""}
-                  // Primary = the entity's own name: this alias folds (case/accent-
-                  // insensitive) to the entity's canonical name. Derived at render
-                  // time — no stored flag (Feature 075 / #301).
-                  isPrimary={
-                    foldName(alias.alias_name) === foldName(entity.canonical_name)
-                  }
-                  // Changing the flag, or renaming the alias text, changes
-                  // nothing until mentions are rebuilt: an incremental scan
-                  // only adds, so it would never retract what the previous
-                  // rule matched. Firing the rescan here is what makes either
-                  // change mean something.
-                  onMatchingChanged={handleScanClick}
-                  // Editing only the alias's type doesn't change what text
-                  // matches — just refresh the list.
-                  onAliasListChanged={refreshEntityDetail}
-                  // Deleting an alias now also retracts its auto-detected
-                  // mentions on the backend — an association-level change,
-                  // not just a list refresh — and offers Undo (#298).
-                  onAliasDeleted={handleAliasDeleted}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400 italic">No aliases registered.</p>
-          )}
-          {entityId && (
-            <AddAliasForm entityId={entityId} onCreated={refreshEntityDetail} />
-          )}
-        </div>
-      </section>
+      <EntityAccordionGroup
+        title="Knowledge base"
+        data-testid="entity-group-knowledge-base"
+      >
+        {/* Enrichment section (Feature 067, US2; "Change link" — Feature 073, US1) */}
+        {entityId && (
+          <EntityEnrichmentSection
+            entityId={entityId}
+            entityType={entity.entity_type}
+            canonicalName={entity.canonical_name}
+            onEnrichmentMutationStart={handleEnrichmentMutationStart}
+            {...(entity.enrichment !== undefined
+              ? { enrichment: entity.enrichment }
+              : {})}
+          />
+        )}
 
-      {/* Tags section (Feature 064) */}
-      {entityId && (
-        <EntityTagSection entityId={entityId} entityName={entity.canonical_name} />
-      )}
+        {/* Referenced-by panel (Feature 087). Sourced Wikidata relations pointing
+            at this entity; the inverse of the forward relations above. */}
+        {entityId && (
+          <div className="mb-6">
+            <ReferencedByPanel entityId={entityId} />
+          </div>
+        )}
+      </EntityAccordionGroup>
 
-      {/* Enrichment section (Feature 067, US2; "Change link" — Feature 073, US1) */}
-      {entityId && (
-        <EntityEnrichmentSection
-          entityId={entityId}
-          entityType={entity.entity_type}
-          canonicalName={entity.canonical_name}
-          onEnrichmentMutationStart={handleEnrichmentMutationStart}
-          {...(entity.enrichment !== undefined
-            ? { enrichment: entity.enrichment }
-            : {})}
-        />
-      )}
-
-      {/* Exclusion Patterns section */}
-      {entityId && (
-        <ExclusionPatternsSection
-          entityId={entityId}
-          patterns={entity.exclusion_patterns ?? []}
-        />
-      )}
-
-      {/* Suspected ASR Variants section */}
-      {entityId && <PhoneticVariantsSection entityId={entityId} />}
-
-      {/* Video list section */}
-      <section aria-labelledby="entity-videos-heading">
-        {/* Section header + source filter dropdown */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <EntityAccordionGroup
+        title="Mention matching"
+        defaultOpen={false}
+        data-testid="entity-group-mention-matching"
+      >
+        {/* Aliases section */}
+        <section aria-labelledby="entity-aliases-heading" className="mb-6">
           <h2
-            id="entity-videos-heading"
-            className="text-lg font-semibold text-gray-900"
+            id="entity-aliases-heading"
+            className="text-lg font-semibold text-gray-900 mb-3"
           >
-            Videos
+            Aliases
           </h2>
-
-          {/* T065/T019: Source filter — multi-select checkboxes (union) */}
-          <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <legend className="text-sm text-gray-600 whitespace-nowrap mb-1 sm:mb-0">
-              Filter videos by source:
-            </legend>
-            {SOURCE_FILTER_VALUES.map((value) => {
-              const inputId = `source-filter-${value}`;
-              return (
-                <span key={value} className="flex items-center gap-1.5">
-                  <input
-                    id={inputId}
-                    type="checkbox"
-                    checked={selectedSources.includes(value)}
-                    onChange={(e) => handleSourceToggle(value, e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            {entity.aliases.length > 0 ? (
+              <div className="divide-y divide-slate-100">
+                {entity.aliases.map((alias) => (
+                  <AliasRow
+                    key={alias.id}
+                    alias={alias}
+                    entityId={entityId ?? ""}
+                    // Primary = the entity's own name: this alias folds (case/accent-
+                    // insensitive) to the entity's canonical name. Derived at render
+                    // time — no stored flag (Feature 075 / #301).
+                    isPrimary={
+                      foldName(alias.alias_name) === foldName(entity.canonical_name)
+                    }
+                    // Changing the flag, or renaming the alias text, changes
+                    // nothing until mentions are rebuilt: an incremental scan
+                    // only adds, so it would never retract what the previous
+                    // rule matched. Firing the rescan here is what makes either
+                    // change mean something.
+                    onMatchingChanged={handleScanClick}
+                    // Editing only the alias's type doesn't change what text
+                    // matches — just refresh the list.
+                    onAliasListChanged={refreshEntityDetail}
+                    // Deleting an alias now also retracts its auto-detected
+                    // mentions on the backend — an association-level change,
+                    // not just a list refresh — and offers Undo (#298).
+                    onAliasDeleted={handleAliasDeleted}
                   />
-                  <label
-                    htmlFor={inputId}
-                    className="text-sm text-gray-700 whitespace-nowrap"
-                  >
-                    {SOURCE_FILTER_LABELS[value]}
-                  </label>
-                </span>
-              );
-            })}
-          </fieldset>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400 italic">No aliases registered.</p>
+            )}
+            {entityId && (
+              <AddAliasForm entityId={entityId} onCreated={refreshEntityDetail} />
+            )}
+          </div>
+        </section>
 
-          <span className="flex items-center gap-1.5">
-            <input
-              id="include-unavailable-videos"
-              type="checkbox"
-              checked={includeUnavailable}
-              onChange={(e) => setIncludeUnavailable(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-            />
-            <label
-              htmlFor="include-unavailable-videos"
-              className="text-sm text-gray-700 whitespace-nowrap"
-            >
-              Include unavailable videos
-            </label>
-          </span>
-        </div>
+        {/* Suspected ASR Variants section */}
+        {entityId && <PhoneticVariantsSection entityId={entityId} />}
 
+        {/* Exclusion Patterns section */}
+        {entityId && (
+          <ExclusionPatternsSection
+            entityId={entityId}
+            patterns={entity.exclusion_patterns ?? []}
+          />
+        )}
+
+        {/* Tags section (Feature 064) */}
+        {entityId && (
+          <EntityTagSection entityId={entityId} entityName={entity.canonical_name} />
+        )}
+      </EntityAccordionGroup>
+
+      <EntityAccordionGroup
+        title="Categories"
+        data-testid="entity-group-categories"
+      >
+        {/* Distinctive-categories panel (Feature 089). Peer of the shared panel:
+            what is unique to this entity vs what it has in common. Renders
+            nothing when empty, so the wrapper collapses. */}
+        {entityId && (
+          <div className="mb-6 empty:hidden">
+            <DistinctiveCategoriesPanel entityId={entityId} />
+          </div>
+        )}
+
+        {/* Shared-category panel (Feature 085). Topical grouping, not an
+            asserted relationship; fetches independently like the panel above. */}
+        {entityId && (
+          <div className="mb-6">
+            <SharedCategoriesPanel entityId={entityId} />
+          </div>
+        )}
+      </EntityAccordionGroup>
+
+      <EntityAccordionGroup
+        title="Appears with"
+        data-testid="entity-group-appears-with"
+      >
         {/* Appears-with panel (Feature 062, US3).
 
             Rendered unconditionally rather than gated on the video list's
@@ -2229,116 +2221,161 @@ export function EntityDetailPage() {
             <CooccurringPanel entityId={entityId} />
           </div>
         )}
+      </EntityAccordionGroup>
 
-        {/* Shared-category panel (Feature 085). Topical grouping, not an
-            asserted relationship; fetches independently like the panel above. */}
-        {entityId && (
-          <div className="mb-6">
-            <SharedCategoriesPanel entityId={entityId} />
-          </div>
-        )}
+      <EntityAccordionGroup
+        title="Videos"
+        data-testid="entity-group-videos"
+      >
+        {/* Video list section */}
+        <section aria-labelledby="entity-videos-heading">
+          {/* Section header + source filter dropdown */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h2
+              id="entity-videos-heading"
+              className="text-lg font-semibold text-gray-900"
+            >
+              Videos
+            </h2>
 
-        {/* Referenced-by panel (Feature 087). Sourced Wikidata relations pointing
-            at this entity; distinct from co-occurrence and shared categories. */}
-        {entityId && (
-          <div className="mb-6">
-            <ReferencedByPanel entityId={entityId} />
-          </div>
-        )}
+            {/* T065/T019: Source filter — multi-select checkboxes (union) */}
+            <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <legend className="text-sm text-gray-600 whitespace-nowrap mb-1 sm:mb-0">
+                Filter videos by source:
+              </legend>
+              {SOURCE_FILTER_VALUES.map((value) => {
+                const inputId = `source-filter-${value}`;
+                return (
+                  <span key={value} className="flex items-center gap-1.5">
+                    <input
+                      id={inputId}
+                      type="checkbox"
+                      checked={selectedSources.includes(value)}
+                      onChange={(e) => handleSourceToggle(value, e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                    />
+                    <label
+                      htmlFor={inputId}
+                      className="text-sm text-gray-700 whitespace-nowrap"
+                    >
+                      {SOURCE_FILTER_LABELS[value]}
+                    </label>
+                  </span>
+                );
+              })}
+            </fieldset>
 
-        {/* Loading skeleton for video list — T067: dropdown stays interactive */}
-        {videosLoading && (
-          <div className="space-y-4 animate-pulse">
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="bg-white rounded-xl border border-gray-100 p-4 space-y-2"
+            <span className="flex items-center gap-1.5">
+              <input
+                id="include-unavailable-videos"
+                type="checkbox"
+                checked={includeUnavailable}
+                onChange={(e) => setIncludeUnavailable(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              />
+              <label
+                htmlFor="include-unavailable-videos"
+                className="text-sm text-gray-700 whitespace-nowrap"
               >
-                <div className="h-5 w-3/4 rounded bg-slate-200" />
-                <div className="h-4 w-1/2 rounded bg-slate-200" />
-              </div>
-            ))}
+                Include unavailable videos
+              </label>
+            </span>
           </div>
-        )}
 
-        {/* Video cards */}
-        {!videosLoading && videos.length > 0 && (
-          <div className="space-y-4">
-            {videos.map((v) => {
-              const firstMention = v.mentions[0];
-              return (
-                <EntityVideoCard
-                  key={v.video_id}
-                  video_id={v.video_id}
-                  video_title={v.video_title}
-                  channel_name={v.channel_name}
-                  mention_count={v.mention_count}
-                  first_mention_time={v.first_mention_time ?? firstMention?.start_time ?? null}
-                  first_segment_id={firstMention?.segment_id ?? 0}
-                  sources={v.sources ?? []}
-                  has_manual={v.has_manual ?? false}
-                  description_context={v.description_context ?? null}
-                  entityName={entity.canonical_name}
-                  entityId={entityId ?? ""}
-                  isUnlinking={unlinkingVideoId === v.video_id}
-                  isDeletePending={
-                    deleteMutation.isPending && unlinkingVideoId === v.video_id
-                  }
-                  onUnlinkClick={() => setUnlinkingVideoId(v.video_id)}
-                  onUnlinkCancel={() => setUnlinkingVideoId(null)}
-                  onUnlinkConfirm={() => {
-                    if (entityId) {
-                      deleteMutation.mutate({
-                        videoId: v.video_id,
-                        entityId,
-                      });
-                    }
-                  }}
-                />
-              );
-            })}
-          </div>
-        )}
-
-        {/* Empty state — T066/T019: source-filtered empty state */}
-        {!videosLoading && videos.length === 0 && (
-          <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-            {selectedSources.length > 0 ? (
-              <>
-                <p className="text-gray-500 mb-2">
-                  No videos found for the selected source(s).
-                </p>
-                <button
-                  type="button"
-                  onClick={handleClearSourceFilter}
-                  className="text-sm text-indigo-600 hover:text-indigo-800 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          {/* Loading skeleton for video list — T067: dropdown stays interactive */}
+          {videosLoading && (
+            <div className="space-y-4 animate-pulse">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="bg-white rounded-xl border border-gray-100 p-4 space-y-2"
                 >
-                  Try all sources
-                </button>
-              </>
-            ) : (
-              <p className="text-gray-500">No videos found for this entity.</p>
-            )}
-          </div>
-        )}
+                  <div className="h-5 w-3/4 rounded bg-slate-200" />
+                  <div className="h-4 w-1/2 rounded bg-slate-200" />
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* Infinite scroll sentinel */}
-        <div ref={loadMoreRef} className="py-2" aria-hidden="true" />
+          {/* Video cards */}
+          {!videosLoading && videos.length > 0 && (
+            <div className="space-y-4">
+              {videos.map((v) => {
+                const firstMention = v.mentions[0];
+                return (
+                  <EntityVideoCard
+                    key={v.video_id}
+                    video_id={v.video_id}
+                    video_title={v.video_title}
+                    channel_name={v.channel_name}
+                    mention_count={v.mention_count}
+                    first_mention_time={v.first_mention_time ?? firstMention?.start_time ?? null}
+                    first_segment_id={firstMention?.segment_id ?? 0}
+                    sources={v.sources ?? []}
+                    has_manual={v.has_manual ?? false}
+                    description_context={v.description_context ?? null}
+                    entityName={entity.canonical_name}
+                    entityId={entityId ?? ""}
+                    isUnlinking={unlinkingVideoId === v.video_id}
+                    isDeletePending={
+                      deleteMutation.isPending && unlinkingVideoId === v.video_id
+                    }
+                    onUnlinkClick={() => setUnlinkingVideoId(v.video_id)}
+                    onUnlinkCancel={() => setUnlinkingVideoId(null)}
+                    onUnlinkConfirm={() => {
+                      if (entityId) {
+                        deleteMutation.mutate({
+                          videoId: v.video_id,
+                          entityId,
+                        });
+                      }
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
 
-        {/* Loading more indicator */}
-        {isFetchingNextPage && (
-          <div className="text-center py-4 text-sm text-gray-500">
-            Loading more videos…
-          </div>
-        )}
+          {/* Empty state — T066/T019: source-filtered empty state */}
+          {!videosLoading && videos.length === 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+              {selectedSources.length > 0 ? (
+                <>
+                  <p className="text-gray-500 mb-2">
+                    No videos found for the selected source(s).
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleClearSourceFilter}
+                    className="text-sm text-indigo-600 hover:text-indigo-800 underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  >
+                    Try all sources
+                  </button>
+                </>
+              ) : (
+                <p className="text-gray-500">No videos found for this entity.</p>
+              )}
+            </div>
+          )}
 
-        {/* End of list */}
-        {!hasNextPage && videos.length > 0 && (
-          <p className="text-center text-sm text-gray-400 py-4">
-            All {videos.length} video{videos.length === 1 ? "" : "s"} loaded.
-          </p>
-        )}
-      </section>
+          {/* Infinite scroll sentinel */}
+          <div ref={loadMoreRef} className="py-2" aria-hidden="true" />
+
+          {/* Loading more indicator */}
+          {isFetchingNextPage && (
+            <div className="text-center py-4 text-sm text-gray-500">
+              Loading more videos…
+            </div>
+          )}
+
+          {/* End of list */}
+          {!hasNextPage && videos.length > 0 && (
+            <p className="text-center text-sm text-gray-400 py-4">
+              All {videos.length} video{videos.length === 1 ? "" : "s"} loaded.
+            </p>
+          )}
+        </section>
+      </EntityAccordionGroup>
     </div>
   );
 }

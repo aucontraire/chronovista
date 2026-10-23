@@ -1410,6 +1410,38 @@ export async function fetchSharedCategoryNeighbours(
   return res.data;
 }
 
+/** A Wikipedia category whose only active member is the subject entity. */
+export interface DistinctiveCategory {
+  id: string;
+  name: string;
+}
+
+/**
+ * Fetch the categories the subject entity is the sole active member of
+ * (Feature 089) — the complement of shared categories.
+ *
+ * @param entityId - UUID of the subject entity
+ * @param limit - Maximum categories to return (server max 200)
+ * @param offset - Pagination offset
+ * @param signal - Abort signal
+ */
+export async function fetchDistinctiveCategories(
+  entityId: string,
+  limit: number,
+  offset: number = 0,
+  signal?: AbortSignal
+): Promise<DistinctiveCategory[]> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  const res = await apiFetch<{ data: DistinctiveCategory[] }>(
+    `/entities/${entityId}/distinctive-categories?${params.toString()}`,
+    signal ? { externalSignal: signal } : {}
+  );
+  return res.data;
+}
+
 /** An entity that references the subject through a Wikidata relation. */
 export interface ReferencedByEntity {
   entity_id: string;

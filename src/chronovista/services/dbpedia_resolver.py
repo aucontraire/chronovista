@@ -33,7 +33,11 @@ import httpx
 
 DBPEDIA_SPARQL = "https://dbpedia.org/sparql"
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
-USER_AGENT = "chronovista/1.0 (local personal library tooling)"
+# Wikimedia's User-Agent policy denies (HTTP 403) requests whose UA carries no contact. The
+# enwiki-sitelink fallback (`_enwiki_title`) hits the Wikidata API, so a contactless UA silently
+# 403s there and `resolve()` returns None for every entity DBpedia's SPARQL does not already know
+# (recent/niche subjects) — leaving no DBpedia link and no categories. The contact URL is required.
+USER_AGENT = "chronovista/1.0 (https://github.com/aucontraire/chronovista; dbpedia/sitelink resolver)"
 _DEFAULT_TIMEOUT = 8.0
 
 # Provenance labels stored in the identifier's link_provenance (backend-only; not rendered).

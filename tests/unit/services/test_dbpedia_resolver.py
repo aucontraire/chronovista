@@ -16,10 +16,35 @@ import pytest
 from chronovista.services.dbpedia_resolver import (
     PROV_SAMEAS,
     PROV_SITELINK,
+    USER_AGENT,
     DbpediaResolver,
 )
 
 pytestmark = pytest.mark.asyncio
+
+
+class TestUserAgent:
+    """Wikimedia denies (403) a UA with no contact — the enwiki-sitelink fallback hits the
+    Wikidata API through this client, so the UA MUST identify the tool AND a contact."""
+
+    async def test_user_agent_identifies_tool_and_contact(self) -> None:
+        # Names the tool...
+        assert "chronovista" in USER_AGENT
+        # ...and carries a contact (URL or email) — the missing piece that caused the 403.
+        # A UA like "chronovista/1.0 (local personal library tooling)" passes a naive
+        # "chronovista in UA" check yet is blocked; this asserts the policy-required contact.
+        assert (
+            ("http://" in USER_AGENT)
+            or ("https://" in USER_AGENT)
+            or ("@" in USER_AGENT)
+        ), "Wikimedia User-Agent policy requires a contact URL or email"
+
+    async def test_new_client_sends_the_user_agent(self) -> None:
+        client = DbpediaResolver()._new_client()
+        try:
+            assert client.headers["User-Agent"] == USER_AGENT
+        finally:
+            await client.aclose()
 
 
 def _transport(

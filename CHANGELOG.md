@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-10-23
+
+### Changed
+- **The entity page's Categories section is now a tabbed control.** The two stacked category panels ("shares categories with" and "distinctive") are gathered into one accessible, keyboard-operable tabbed control, alongside two new views — so the four ways of looking at an entity's Wikipedia categories live in one place rather than a growing stack. Only the active view loads, so opening the page runs just the default view's query.
+
+### Added
+- **"All categories" view.** A direct, complete list of every Wikipedia category an entity belongs to — ordered most-specific-first, each showing its member count and linking to its category page. This closes a real gap: the "shares categories with" view ranks neighbour entities and is capped, so a category whose co-members each share only it with the entity could be omitted even though the entity is genuinely a member; "All categories" shows every membership unconditionally.
+- **"Category members" view.** Choose one of the entity's categories and see its other members in context, without leaving the entity page.
+- **Wikipedia article link in the entity's External identifiers.** Alongside the Wikidata and DBpedia chips, the entity page now offers a direct link to the subject's English Wikipedia article. It is derived from the DBpedia identifier the entity already carries (a DBpedia resource is the Wikipedia article title), so it needs no extra lookup and appears automatically wherever a DBpedia link is present.
+
+### Internal
+- New read-only endpoint returning an entity's categories with active member counts, ordered most-specific-first: a single grouped join — the distinctive-categories query generalized by dropping its sole-member filter — active-only and including the subject, so a sole-member category reads as one member (exactly the distinctive case). Paginated (default 50, ceiling 200). No schema change, no migration.
+- A new accessible tab-panel container (ARIA tablist, lazy-mounting the active panel); the two existing category panels are reused unchanged as tab panels, guarded by a zero-regression test that asserts both remain reachable after the reorganization.
+
+### Fixed
+- **Recently-created entities now get their Wikipedia categories and DBpedia link.** The DBpedia resolver's User-Agent carried no contact, so Wikimedia's API returned 403 to the article-title lookup it falls back on for entities DBpedia doesn't already know (recent or niche subjects) — silently leaving them with no categories and no DBpedia identifier. The User-Agent now includes a contact URL, so the fallback succeeds and re-enriching such an entity populates both. (Established entities were unaffected, as their DBpedia lookup never reached the blocked call.)
+
 ## [0.94.0] - 2026-10-23
 
 ### Changed

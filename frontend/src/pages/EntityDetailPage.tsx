@@ -20,6 +20,9 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { CooccurringPanel } from "../components/entity/CooccurringPanel";
 import { SharedCategoriesPanel } from "../components/entity/SharedCategoriesPanel";
 import { DistinctiveCategoriesPanel } from "../components/entity/DistinctiveCategoriesPanel";
+import { AllCategoriesPanel } from "../components/entity/AllCategoriesPanel";
+import { CategoryMembersPanel } from "../components/entity/CategoryMembersPanel";
+import { EntityCategoryTabs } from "../components/entity/EntityCategoryTabs";
 import { ReferencedByPanel } from "../components/entity/ReferencedByPanel";
 import { EntityEnrichmentSection } from "../components/entity/EntityEnrichmentSection";
 import { EntityPortrait } from "../components/entity/EntityPortrait";
@@ -2186,21 +2189,33 @@ export function EntityDetailPage() {
         title="Categories"
         data-testid="entity-group-categories"
       >
-        {/* Distinctive-categories panel (Feature 089). Peer of the shared panel:
-            what is unique to this entity vs what it has in common. Renders
-            nothing when empty, so the wrapper collapses. */}
+        {/* Category views (Feature 090). Panels are lazy-mounted: only the
+            active tab's queries run. */}
         {entityId && (
-          <div className="mb-6 empty:hidden">
-            <DistinctiveCategoriesPanel entityId={entityId} />
-          </div>
-        )}
-
-        {/* Shared-category panel (Feature 085). Topical grouping, not an
-            asserted relationship; fetches independently like the panel above. */}
-        {entityId && (
-          <div className="mb-6">
-            <SharedCategoriesPanel entityId={entityId} />
-          </div>
+          <EntityCategoryTabs
+            tabs={[
+              {
+                key: "all",
+                label: "All categories",
+                panel: <AllCategoriesPanel entityId={entityId} />,
+              },
+              {
+                key: "shared",
+                label: "Shares categories with",
+                panel: <SharedCategoriesPanel entityId={entityId} />,
+              },
+              {
+                key: "members",
+                label: "Category members",
+                panel: <CategoryMembersPanel entityId={entityId} />,
+              },
+              {
+                key: "distinctive",
+                label: "Distinctive — only this entity",
+                panel: <DistinctiveCategoriesPanel entityId={entityId} />,
+              },
+            ]}
+          />
         )}
       </EntityAccordionGroup>
 

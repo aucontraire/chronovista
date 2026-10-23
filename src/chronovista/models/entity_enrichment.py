@@ -70,7 +70,10 @@ class EntityIdentifierView(BaseModel):
 
     model_config = ConfigDict(validate_assignment=True)
 
-    source: str = Field(..., description="Knowledge base, e.g. 'wikidata' / 'dbpedia'")
+    source: str = Field(
+        ...,
+        description="Knowledge base, e.g. 'wikidata' / 'dbpedia' / 'wikipedia'",
+    )
     id: str = Field(..., description="The identifier value")
     url: str = Field(
         ..., description="Link to the identifier on the public knowledge base"

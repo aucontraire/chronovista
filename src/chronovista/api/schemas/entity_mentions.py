@@ -1366,6 +1366,10 @@ class ReferencedByEntity(BaseModel):
     entity_id: UUID
     entity_type: str
     canonical_name: str
+    instance_of: list[str] = Field(
+        default_factory=list,
+        description="Resolved instance_of labels of this entity (de-duplicated; [] if absent) — Feature 088 type filter",
+    )
 
 
 class ReferencedByGroup(BaseModel):

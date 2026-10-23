@@ -1,9 +1,10 @@
-"""Backfill ``founder`` + ``significant_person`` onto already-grounded entities (Feature 087).
+"""Backfill curated item-valued relations onto already-grounded entities (Features 087 + 088).
 
-``founder`` (P112) was not captured before this feature, and ``significant_person`` (P3342) was
-captured only on entities enriched after it was added. This re-fetches each grounded entity's curated
-Wikidata properties and **merges** the two relation fields in, so existing orgs show their founders
-and significant people (forward, and in reverse on the referenced entities' pages).
+The backfilled fields are ``_FIELDS``: ``founder`` (P112) + ``significant_person`` (P3342) from 087,
+and the creative-work credit family (``cast_member`` P161, ``director`` P57, ``producer`` P162,
+``screenwriter`` P58, ``composer`` P86) from 088 — relations that were not captured (or only partially)
+before. This re-fetches each grounded entity's curated Wikidata properties and **merges** those fields
+in, so existing entities show them forward and in reverse (on the referenced entities' pages).
 
 Safety (mirrors Feature 084):
 - **Default is dry-run.** Writes happen only with ``--apply``.
@@ -47,24 +48,41 @@ from chronovista.services.wikidata_client import (  # noqa: E402
 )
 from chronovista.services.wikidata_properties import SOURCE, wikidata_qid  # noqa: E402
 
-_FIELDS = ("founder", "significant_person")
+_FIELDS = (
+    "founder",
+    "significant_person",
+    # Feature 088 — creative-work credits (stored on works). Re-fetches ALL grounded entities: an
+    # entity the source asserts none of these for yields an empty no-op; any item that DOES carry a
+    # credit property (incl. a work mistyped in entity_type, or an event/org that carries one) gets it
+    # — legitimate source data. `_patch_for` never touches a field outside `_FIELDS`.
+    "cast_member",
+    "director",
+    "producer",
+    "screenwriter",
+    "composer",
+)
 _CAPTURE_DIR = Path(__file__).resolve().parents[1] / "entity_resolution"
 
 
 def _substantive(block: Any) -> tuple[Any, Any]:
-    """The comparable content of a relation block: ``(values, qids)``, ignoring volatile provenance.
+    """The comparable content of a relation block, ignoring volatile provenance AND statement order.
 
     ``set_at`` is stamped fresh on every fetch (``assemble_block``), so a whole-block ``!=`` reports a
     change on every re-run — which would make the backfill rewrite every entity forever. Idempotency
-    must compare only the substantive payload, not the provenance timestamp.
+    compares only the substantive payload. Values/qids are compared **order-insensitively** (sorted):
+    a large credit list (e.g. cast) whose source statements Wikidata reorders must not re-patch.
     """
     if not isinstance(block, dict):
         return (None, None)
-    return (block.get("values"), block.get("qids"))
+
+    def _norm(x: Any) -> Any:
+        return sorted(x) if isinstance(x, list) else x
+
+    return (_norm(block.get("values")), _norm(block.get("qids")))
 
 
 def _patch_for(current: dict[str, Any], fetched: dict[str, Any]) -> dict[str, Any]:
-    """The founder/significant_person blocks to merge in.
+    """The ``_FIELDS`` blocks (founder/significant_person + the credit family) to merge in.
 
     A field is included only when ALL of:
     - the source asserts a non-empty block (so a genuine *absence* is left alone);
@@ -80,7 +98,11 @@ def _patch_for(current: dict[str, Any], fetched: dict[str, Any]) -> dict[str, An
         if not (isinstance(incoming, dict) and incoming):
             continue
         existing = current.get(f)
-        if isinstance(existing, dict) and existing.get("source") not in (None, SOURCE):
+        # Only overwrite a block we provably wrote (a wikidata-sourced dict). A manual/other-pipeline
+        # curation, a dict with no `source`, or a non-dict value all "own" the key and are untouched.
+        if existing is not None and not (
+            isinstance(existing, dict) and existing.get("source") == SOURCE
+        ):
             continue
         if _substantive(existing) == _substantive(incoming):
             continue
@@ -89,7 +111,7 @@ def _patch_for(current: dict[str, Any], fetched: dict[str, Any]) -> dict[str, An
 
 
 async def build_plan(client: WikidataClient) -> dict[uuid.UUID, dict[str, Any]]:
-    """{entity_id: patch} — the founder/significant_person blocks to merge in, per entity.
+    """{entity_id: patch} — the _FIELDS blocks (founder/significant_person + credits) to merge in, per entity.
 
     A field is included only when the source asserts it AND the stored value differs (so the plan is
     empty on a second run — idempotent). Fetch failures are skipped and counted, not fatal.
@@ -153,12 +175,14 @@ async def build_plan(client: WikidataClient) -> dict[uuid.UUID, dict[str, Any]]:
 
 
 def _report(plan: dict[uuid.UUID, dict[str, Any]], grounded: int) -> None:
-    founder = sum(1 for p in plan.values() if "founder" in p)
-    sig = sum(1 for p in plan.values() if "significant_person" in p)
     print(f"Grounded entities scanned: {grounded}")
     print(f"Entities that would gain/refresh a field: {len(plan)}")
-    print(f"  + founder: {founder}")
-    print(f"  + significant_person: {sig}")
+    # Per-field breakdown over ALL backfilled fields (operator sees each credit field, not just the
+    # two 087 fields) — the honest "what would --apply do" view before writing.
+    for field in _FIELDS:
+        count = sum(1 for p in plan.values() if field in p)
+        if count:
+            print(f"  + {field}: {count}")
 
 
 async def _apply(plan: dict[uuid.UUID, dict[str, Any]], dbname: str) -> None:

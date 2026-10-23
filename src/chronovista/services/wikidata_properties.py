@@ -61,6 +61,14 @@ WANTED: dict[str, str] = {
     # Feature 087 — organization founders (item-valued). Captured going forward here; a backfill
     # populates existing grounded entities. Reaches both writers via the #258 single source.
     "P112": "founder",
+    # Feature 088 — creative-work credit family (item-valued; stored on the work, pointing at people).
+    # Surfaced on both ends via 087's reverse "Referenced by" + the forward display; a backfill
+    # populates existing grounded works. Reaches both writers via the #258 single source.
+    "P161": "cast_member",
+    "P57": "director",
+    "P162": "producer",
+    "P58": "screenwriter",
+    "P86": "composer",
 }
 
 # Literal-valued: strings, URLs and dates that ARE the value (no label round needed).

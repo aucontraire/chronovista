@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import { ReferencedByPanel } from '../ReferencedByPanel';
@@ -23,8 +24,8 @@ function group(overrides: Record<string, unknown> = {}) {
     label: 'Member',
     attribution: 'Listed by Wikidata as a member or part of this entity',
     members: [
-      { entity_id: MEMBER_A, entity_type: 'person', canonical_name: 'Placeholder Person A' },
-      { entity_id: MEMBER_B, entity_type: 'person', canonical_name: 'Placeholder Person B' },
+      { entity_id: MEMBER_A, entity_type: 'person', canonical_name: 'Placeholder Person A', instance_of: [] },
+      { entity_id: MEMBER_B, entity_type: 'person', canonical_name: 'Placeholder Person B', instance_of: [] },
     ],
     member_count: 2,
     ...overrides,
@@ -116,5 +117,139 @@ describe('ReferencedByPanel', () => {
     renderPanel();
     expect(screen.getByTestId('referenced-by-empty')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  describe('type filter', () => {
+    const member = (id: string, name: string, instance_of: string[]) => ({
+      entity_id: id,
+      entity_type: 'organization',
+      canonical_name: name,
+      instance_of,
+    });
+    const typedGroups = () => [
+      group({
+        members: [
+          member('a', 'Placeholder Alpha', ['band']),
+          member('b', 'Placeholder Beta', ['company']),
+          member('c', 'Placeholder Gamma', ['band', 'company']),
+          member('d', 'Placeholder Delta', []),
+        ],
+        member_count: 4,
+      }),
+      group({
+        key: 'founder',
+        label: 'Founder',
+        members: [member('e', 'Placeholder Epsilon', ['school'])],
+        member_count: 1,
+      }),
+    ];
+    const filterGroup = () => within(screen.getByTestId('referenced-by-type-filter'));
+
+    it('offers exactly the distinct present types plus All', () => {
+      hookMock.mockReturnValue(state({ groups: typedGroups() }));
+      renderPanel();
+      const names = filterGroup()
+        .getAllByRole('button')
+        .map((b) => b.textContent);
+      expect(names).toEqual(['All', 'band', 'company', 'school']);
+    });
+
+    it('narrows to a type, hides emptied groups, and restores on clear', async () => {
+      const user = userEvent.setup();
+      hookMock.mockReturnValue(state({ groups: typedGroups() }));
+      renderPanel();
+
+      await user.click(filterGroup().getByRole('button', { name: 'school' }));
+      expect(filterGroup().getByRole('button', { name: 'school' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('Placeholder Epsilon')).toBeInTheDocument();
+      expect(screen.queryByText('Placeholder Alpha')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('referenced-by-group-membership')).not.toBeInTheDocument();
+
+      await user.click(filterGroup().getByRole('button', { name: 'All' }));
+      expect(screen.getByText('Placeholder Alpha')).toBeInTheDocument();
+      expect(screen.getByText('Placeholder Epsilon')).toBeInTheDocument();
+      expect(screen.getByTestId('referenced-by-group-membership')).toBeInTheDocument();
+    });
+
+    it('matches a multi-valued member when any of its types is selected', async () => {
+      const user = userEvent.setup();
+      hookMock.mockReturnValue(state({ groups: typedGroups() }));
+      renderPanel();
+
+      await user.click(filterGroup().getByRole('button', { name: 'band' }));
+      expect(screen.getByText('Placeholder Alpha')).toBeInTheDocument();
+      expect(screen.getByText('Placeholder Gamma')).toBeInTheDocument();
+      expect(screen.queryByText('Placeholder Beta')).not.toBeInTheDocument();
+
+      await user.click(filterGroup().getByRole('button', { name: 'company' }));
+      expect(screen.getByText('Placeholder Beta')).toBeInTheDocument();
+      expect(screen.getByText('Placeholder Gamma')).toBeInTheDocument();
+      expect(screen.queryByText('Placeholder Alpha')).not.toBeInTheDocument();
+    });
+
+    it('shows an untyped member unfiltered and excludes it under a filter', async () => {
+      const user = userEvent.setup();
+      hookMock.mockReturnValue(state({ groups: typedGroups() }));
+      renderPanel();
+
+      expect(screen.getByText('Placeholder Delta')).toBeInTheDocument();
+      await user.click(filterGroup().getByRole('button', { name: 'band' }));
+      expect(screen.queryByText('Placeholder Delta')).not.toBeInTheDocument();
+    });
+
+    it('omits the control when fewer than two distinct types are present', () => {
+      hookMock.mockReturnValue(
+        state({
+          groups: [
+            group({
+              members: [member('a', 'Placeholder Alpha', ['band']), member('b', 'Placeholder Beta', ['band'])],
+            }),
+          ],
+        })
+      );
+      renderPanel();
+      expect(screen.queryByTestId('referenced-by-type-filter')).not.toBeInTheDocument();
+      expect(screen.getByText('Placeholder Alpha')).toBeInTheDocument();
+    });
+
+    it('omits the control when no member has a type', () => {
+      hookMock.mockReturnValue(state({ groups: [group()] }));
+      renderPanel();
+      expect(screen.queryByTestId('referenced-by-type-filter')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('malformed hook state', () => {
+    it.each([
+      ['undefined', undefined],
+      ['null', null],
+      ['a non-array object', {}],
+    ])('does not crash when groups is %s', (_label, groups) => {
+      hookMock.mockReturnValue(state({ groups }));
+      renderPanel();
+      expect(screen.getByTestId('referenced-by-empty')).toBeInTheDocument();
+      expect(screen.queryByTestId('referenced-by-type-filter')).not.toBeInTheDocument();
+    });
+
+    it('does not crash while loading with non-array groups', () => {
+      hookMock.mockReturnValue(state({ isLoading: true, groups: undefined }));
+      renderPanel();
+      expect(screen.getByTestId('referenced-by-loading')).toBeInTheDocument();
+      expect(screen.queryByTestId('referenced-by-type-filter')).not.toBeInTheDocument();
+    });
+
+    it('tolerates members without instance_of', () => {
+      hookMock.mockReturnValue(
+        state({
+          groups: [
+            group({
+              members: [{ entity_id: MEMBER_A, entity_type: 'person', canonical_name: 'Placeholder Person A' }],
+            }),
+          ],
+        })
+      );
+      renderPanel();
+      expect(screen.getByText('Placeholder Person A')).toBeInTheDocument();
+    });
   });
 });

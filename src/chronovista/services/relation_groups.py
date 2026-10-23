@@ -32,7 +32,14 @@ class RelationGroup(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    key: str = Field(..., description="Stable group key, e.g. 'membership'")
+    key: str = Field(
+        ...,
+        description=(
+            "Stable OPAQUE group identifier, e.g. 'membership'. Carries NO directional guarantee — "
+            "the key's wording (noun vs verb) is not a contract; the subject/direction live in "
+            "`label`/`attribution`. Consumers must treat it as an opaque id."
+        ),
+    )
     member_fields: tuple[str, ...] = Field(
         ...,
         description="The WANTED field name(s) this group unions (e.g. member_of + part_of)",
@@ -104,6 +111,42 @@ RELATION_GROUPS: tuple[RelationGroup, ...] = (
         member_fields=("sibling",),
         label="Sibling",
         attribution="Listed by Wikidata as a sibling of this entity",
+    ),
+    # Feature 088 — creative-work credits. The field is stored on the WORK and names a person, so the
+    # referencing entity X is the work and the viewed entity T is the person: X is directed/produced/
+    # written/scored BY T, or HAS T in its cast. Labels are X-centric ("… by this entity"), mirroring
+    # `founded` — never "Director of" etc., which attached to the work would read backwards.
+    RelationGroup(
+        # X.cast_member == T  →  the work X has person T in its cast.
+        key="cast_of",
+        member_fields=("cast_member",),
+        label="Has this entity in its cast",
+        attribution="Listed by Wikidata with this entity in its cast",
+    ),
+    RelationGroup(
+        # X.director == T  →  the work X is directed by person T.
+        key="directed",
+        member_fields=("director",),
+        label="Directed by this entity",
+        attribution="Listed by Wikidata as directed by this entity",
+    ),
+    RelationGroup(
+        key="produced",
+        member_fields=("producer",),
+        label="Produced by this entity",
+        attribution="Listed by Wikidata as produced by this entity",
+    ),
+    RelationGroup(
+        key="wrote",
+        member_fields=("screenwriter",),
+        label="Written by this entity",
+        attribution="Listed by Wikidata as written by this entity",
+    ),
+    RelationGroup(
+        key="scored",
+        member_fields=("composer",),
+        label="Scored by this entity",
+        attribution="Listed by Wikidata as having its score composed by this entity",
     ),
 )
 

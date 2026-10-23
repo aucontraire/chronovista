@@ -968,7 +968,10 @@ describe("EntityDetailPage", () => {
 
       fireEvent.click(screen.getByRole("button", { name: /rescan mentions/i }));
 
-      const statusEl = screen.getByRole("status");
+      // Other panels on the page (e.g. "Referenced by" empty state) also use role=status.
+      const statusEl = screen
+        .getAllByRole("status")
+        .find((el) => /rebuilt/i.test(el.textContent ?? ""));
       expect(statusEl).toBeInTheDocument();
     });
 

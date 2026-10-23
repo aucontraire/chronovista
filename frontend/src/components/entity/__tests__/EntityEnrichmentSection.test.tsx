@@ -513,6 +513,33 @@ describe('EntityEnrichmentSection — property rendering (Feature 079, US3)', ()
       expect(screen.queryByText(/related to/i)).not.toBeInTheDocument();
     });
 
+    it('renders work credits under specific, attributed forward groups (Feature 088)', () => {
+      mockWikidataEntityMap({ data: {} });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            cast_member: propBlock(['Placeholder Person A', 'Placeholder Person B'], {
+              qids: ['Q00000601', 'Q00000602'],
+            }),
+            director: propBlock(['Placeholder Person C'], { qids: ['Q00000603'] }),
+          },
+        }),
+      });
+
+      const cast = screen.getByTestId('relation-group-cast');
+      expect(cast).toHaveTextContent('Cast');
+      expect(cast).toHaveTextContent('Listed by Wikidata as a cast member of this work');
+      expect(cast).toHaveTextContent('Placeholder Person A');
+      expect(cast).toHaveTextContent('Placeholder Person B');
+
+      const director = screen.getByTestId('relation-group-director');
+      expect(director).toHaveTextContent('Listed by Wikidata as a director of this work');
+      expect(director).toHaveTextContent('Placeholder Person C');
+
+      expect(screen.queryByText('Cast Member')).not.toBeInTheDocument();
+      expect(screen.queryByText(/related to/i)).not.toBeInTheDocument();
+    });
+
     it('labels grouped relations specifically and attributes them to Wikidata', () => {
       mockWikidataEntityMap({ data: {} });
       renderSection({

@@ -23,5 +23,5 @@ export function useReferencedBy(entityId: string | undefined): UseReferencedByRe
     staleTime: 60 * 1000,
   });
 
-  return { groups: data ?? [], isLoading, isError, error };
+  return { groups: Array.isArray(data) ? data : [], isLoading, isError, error };
 }

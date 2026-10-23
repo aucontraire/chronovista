@@ -24,6 +24,10 @@ class InboundRelationMatch(BaseModel):
     matched_fields: list[str] = Field(
         ..., description="WANTED field names whose qids contained the target"
     )
+    instance_of: list[str] = Field(
+        default_factory=list,
+        description="Resolved instance_of labels (de-duplicated; [] if absent) — Feature 088 type filter",
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

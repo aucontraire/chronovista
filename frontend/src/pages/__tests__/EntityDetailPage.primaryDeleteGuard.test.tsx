@@ -98,6 +98,16 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 import { useQuery } from "@tanstack/react-query";
 import { deleteEntityAlias } from "../../api/entityMentions";
 
+/** The page also renders the "Referenced by" empty state as a status region; target the other one. */
+function getActionStatus(): HTMLElement {
+  const el = screen
+    .getAllByRole("status")
+    .find((e) => !e.closest('[data-testid="referenced-by-panel"]'));
+  if (!el) throw new Error("No action status region found");
+  return el;
+}
+
+
 const ENTITY_ID = "entity-uuid-075b";
 const PRIMARY_ALIAS_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const ORDINARY_ALIAS_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -227,7 +237,7 @@ describe("EntityDetailPage — Primary alias delete guard (#301)", () => {
       expect(deleteEntityAlias).toHaveBeenCalledWith(ENTITY_ID, PRIMARY_ALIAS_ID);
     });
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent(/deleted/i);
+      expect(getActionStatus()).toHaveTextContent(/deleted/i);
     });
     expect(screen.getByRole("button", { name: /^undo$/i })).toBeInTheDocument();
   });

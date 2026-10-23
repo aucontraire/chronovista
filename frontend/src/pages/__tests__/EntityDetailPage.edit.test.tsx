@@ -88,6 +88,16 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 import { useQuery } from "@tanstack/react-query";
 import { useEntityVideos, useUpdateEntity } from "../../hooks/useEntityMentions";
 
+/** The page also renders the "Referenced by" empty state as a status region; target the other one. */
+function getActionStatus(): HTMLElement {
+  const el = screen
+    .getAllByRole("status")
+    .find((e) => !e.closest('[data-testid="referenced-by-panel"]'));
+  if (!el) throw new Error("No action status region found");
+  return el;
+}
+
+
 // ---------------------------------------------------------------------------
 // Test data
 // ---------------------------------------------------------------------------
@@ -470,7 +480,7 @@ describe("EntityNameEditor (inside EntityDetailPage)", () => {
         ).not.toBeInTheDocument();
       });
 
-      const status = screen.getByRole("status");
+      const status = getActionStatus();
       expect(status).toHaveAttribute("aria-live", "polite");
       expect(status).toHaveTextContent(/saved/i);
     });
@@ -495,7 +505,7 @@ describe("EntityNameEditor (inside EntityDetailPage)", () => {
       expect(screen.getByRole("textbox", { name: /^name$/i })).toBeDisabled();
       expect(screen.getByRole("textbox", { name: /^description$/i })).toBeDisabled();
 
-      const status = screen.getByRole("status");
+      const status = getActionStatus();
       expect(status).toHaveAttribute("aria-live", "polite");
       expect(status).toHaveTextContent(/saving/i);
     });

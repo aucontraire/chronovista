@@ -23,8 +23,9 @@ describe('forward relationGroups invariants', () => {
   it('encodes the expected forward group keys', () => {
     expect(RELATION_GROUPS.map((g) => g.key).sort()).toEqual(
       [
-        'child', 'employment', 'father', 'founder', 'membership',
-        'mother', 'sibling', 'significant_person', 'spouse',
+        'cast', 'child', 'composer', 'director', 'employment', 'father', 'founder',
+        'membership', 'mother', 'producer', 'screenwriter', 'sibling',
+        'significant_person', 'spouse',
       ].sort()
     );
     expect(relationGroupForField('employer')?.key).toBe('employment');
@@ -43,6 +44,22 @@ describe('forward relationGroups invariants', () => {
       expect(`${group.label} ${group.attribution}`).not.toMatch(
         /related to|connected with/i
       );
+    }
+  });
+
+  it('has forward credit groups whose field-sets are the five credit fields (Feature 088)', () => {
+    const expected: Record<string, string> = {
+      cast: 'cast_member',
+      director: 'director',
+      producer: 'producer',
+      screenwriter: 'screenwriter',
+      composer: 'composer',
+    };
+    for (const [key, field] of Object.entries(expected)) {
+      const group = RELATION_GROUPS.find((g) => g.key === key);
+      expect(group?.fields).toEqual([field]);
+      expect(relationGroupForField(field)?.key).toBe(key);
+      expect(group?.attribution).toMatch(/this work/);
     }
   });
 });

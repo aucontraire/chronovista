@@ -7,6 +7,7 @@
  * of this app, so it is content, not decoration.
  */
 
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { EntityName } from "../EntityName";
@@ -19,7 +20,29 @@ interface ReferencedByPanelProps {
 }
 
 export function ReferencedByPanel({ entityId, className = "" }: ReferencedByPanelProps) {
-  const { groups, isLoading, isError } = useReferencedBy(entityId);
+  const { groups: rawGroups, isLoading, isError } = useReferencedBy(entityId);
+  const groups = Array.isArray(rawGroups) ? rawGroups : [];
+  const [selectedType, setSelectedType] = useState<string | null>(null);
+
+  // Only types present on at least one member are offered, so no option is dead.
+  const typeOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const g of groups) {
+      for (const m of g.members ?? []) for (const t of m.instance_of ?? []) seen.add(t);
+    }
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [rawGroups]);
+
+  const showFilter = typeOptions.length >= 2;
+  // A stale selection (data refetched without that type) falls back to unfiltered.
+  const activeType = showFilter && selectedType && typeOptions.includes(selectedType) ? selectedType : null;
+
+  const visibleGroups = useMemo(() => {
+    if (activeType === null) return groups;
+    return groups
+      .map((g) => ({ ...g, members: (g.members ?? []).filter((m) => (m.instance_of ?? []).includes(activeType)) }))
+      .filter((g) => g.members.length > 0);
+  }, [rawGroups, activeType]);
 
   return (
     <section
@@ -51,7 +74,44 @@ export function ReferencedByPanel({ entityId, className = "" }: ReferencedByPane
 
       {!isLoading && !isError && groups.length > 0 && (
         <div className="flex flex-col gap-4">
-          {groups.map((group) => {
+          {showFilter && (
+            <div
+              role="group"
+              aria-labelledby="referenced-by-filter-label"
+              className="flex flex-wrap items-center gap-1.5"
+              data-testid="referenced-by-type-filter"
+            >
+              <span id="referenced-by-filter-label" className="text-xs text-slate-500">
+                Filter by type
+              </span>
+              {[null, ...typeOptions].map((type) => {
+                const pressed = type === activeType;
+                return (
+                  <button
+                    key={type ?? "__all__"}
+                    type="button"
+                    aria-pressed={pressed}
+                    onClick={() => setSelectedType(type)}
+                    className={`rounded-full border px-2.5 py-0.5 text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600 ${
+                      pressed
+                        ? "border-indigo-600 bg-indigo-600 text-white"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {type ?? "All"}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {showFilter && (
+            <p role="status" className="sr-only">
+              {activeType === null
+                ? "Showing all types"
+                : `Filtered to ${activeType}: ${visibleGroups.reduce((n, g) => n + g.members.length, 0)} shown`}
+            </p>
+          )}
+          {visibleGroups.map((group) => {
             const headingId = `referenced-by-group-${group.key}`;
             const attributionId = `${headingId}-attribution`;
             return (

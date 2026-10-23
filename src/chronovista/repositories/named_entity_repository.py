@@ -564,8 +564,8 @@ class NamedEntityRepository(
         Returns
         -------
         list[InboundRelationMatch]
-            One per active referencing entity, with ``matched_fields``. Empty when either input is
-            empty.
+            One per active referencing entity, with ``matched_fields`` and its resolved
+            ``instance_of`` labels (de-duplicated; ``[]`` if absent). Empty when either input is empty.
         """
         if not target_qid or not fields:
             return []
@@ -579,6 +579,11 @@ class NamedEntityRepository(
                 NamedEntityDB.id,
                 NamedEntityDB.entity_type,
                 NamedEntityDB.canonical_name,
+                # Feature 088: the referencing entity's instance_of labels, for the type filter.
+                # A path NULL (entity has no instance_of) yields None → coerced to [] below.
+                NamedEntityDB.properties["instance_of"]["values"].label(
+                    "instance_of_values"
+                ),
                 *[expr.label(f) for f, expr in match_exprs.items()],
             )
             .where(NamedEntityDB.status == "active")
@@ -592,12 +597,21 @@ class NamedEntityRepository(
             # method (count/index) or a base column can't masquerade as a match.
             matched = [f for f in fields if row._mapping[f]]
             if matched:
+                raw_iof = row._mapping["instance_of_values"]
+                # Filter to strings before de-duplicating: `properties` is an open JSONB bag, so a
+                # stray non-string (or unhashable nested value) must not 500 the endpoint.
+                instance_of = (
+                    list(dict.fromkeys(v for v in raw_iof if isinstance(v, str)))
+                    if isinstance(raw_iof, list)
+                    else []
+                )
                 out.append(
                     InboundRelationMatch(
                         entity_id=row.id,
                         entity_type=row.entity_type,
                         canonical_name=row.canonical_name,
                         matched_fields=matched,
+                        instance_of=instance_of,
                     )
                 )
         return out

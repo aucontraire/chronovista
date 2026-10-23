@@ -110,6 +110,16 @@ import { useQuery } from "@tanstack/react-query";
 import { useEntityVideos } from "../../hooks/useEntityMentions";
 import { createEntityAlias } from "../../api/entityMentions";
 
+/** The page also renders the "Referenced by" empty state as a status region; target the other one. */
+function getActionStatus(): HTMLElement {
+  const el = screen
+    .getAllByRole("status")
+    .find((e) => !e.closest('[data-testid="referenced-by-panel"]'));
+  if (!el) throw new Error("No action status region found");
+  return el;
+}
+
+
 // ---------------------------------------------------------------------------
 // Test data
 // ---------------------------------------------------------------------------
@@ -339,10 +349,10 @@ describe("AddAliasForm (inside EntityDetailPage)", () => {
       await user.click(screen.getByRole("button", { name: /^add$/i }));
 
       await waitFor(() => {
-        expect(screen.getByRole("status")).toBeInTheDocument();
+        expect(getActionStatus()).toBeInTheDocument();
       });
 
-      const statusEl = screen.getByRole("status");
+      const statusEl = getActionStatus();
       expect(statusEl).toHaveAttribute("aria-live", "polite");
     });
   });

@@ -117,6 +117,12 @@ const RELATION_KEYS = new Set([
   "subclass_of",
   // Feature 087: founder (P112) — newly captured; render it as a forward relation too.
   "founder",
+  // Feature 088: creative-work credits (P161/P57/P162/P58/P86), forward on a work's page.
+  "cast_member",
+  "director",
+  "producer",
+  "screenwriter",
+  "composer",
 ]);
 
 /** Social/web properties (Feature 079): a single handle value, linked via a fixed URL pattern. */

@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from chronovista.services.wikidata_properties import (
+    WANTED,
     assemble_block,
     assemble_properties,
     assemble_reference_block,
@@ -171,6 +172,29 @@ class TestExtractClaims:
     def test_unwanted_property_ignored(self) -> None:
         out = extract_claims({"P9999": [_item_snak("Q1")]})
         assert out == {}
+
+
+class TestCreditFamily:
+    """Feature 088 — the five creative-work credit properties are in the curated set."""
+
+    _CREDITS = {
+        "P161": "cast_member",
+        "P57": "director",
+        "P162": "producer",
+        "P58": "screenwriter",
+        "P86": "composer",
+    }
+
+    def test_credit_properties_are_wanted(self) -> None:
+        for pnum, alias in self._CREDITS.items():
+            assert WANTED.get(pnum) == alias, f"{pnum} should map to {alias}"
+
+    def test_credits_extract_as_item_valued_with_unchanged_shape(self) -> None:
+        # Each credit P-number must extract to its alias key as item-valued (qids), shape unchanged.
+        claims = {pnum: [_item_snak("Q1"), _item_snak("Q2")] for pnum in self._CREDITS}
+        out = extract_claims(claims)
+        for alias in self._CREDITS.values():
+            assert out[alias] == {"qids": ["Q1", "Q2"], "literals": []}
 
 
 class TestPickLabel:

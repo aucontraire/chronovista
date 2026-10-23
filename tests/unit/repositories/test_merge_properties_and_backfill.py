@@ -114,3 +114,24 @@ class TestPatchFilter:
         }
         fetched = {"founder": _block(["auto"], ["Q2"], "T1")}
         assert backfill._patch_for({"founder": manual}, fetched) == {}
+
+    def test_credit_fields_merged_additively(self) -> None:
+        # Feature 088 — credit fields are picked up by the backfill; a pre-existing unrelated block
+        # is NOT in the patch (the merge preserves it via `||`; the patch carries only new/changed).
+        current = {"instance_of": _block(["film"], ["Q11424"], "T0")}
+        fetched = {
+            "cast_member": _block(["Placeholder A"], ["Q1"], "T1"),
+            "director": _block(["Placeholder B"], ["Q2"], "T1"),
+        }
+        patch = backfill._patch_for(current, fetched)
+        assert set(patch) == {"cast_member", "director"}
+        assert "instance_of" not in patch  # preserved by the merge, not re-written
+
+    def test_credit_fresh_set_at_is_idempotent(self) -> None:
+        # A credit re-fetch differing only in set_at writes nothing (the finding-1 fix covers credits).
+        stored = _block(["Placeholder A"], ["Q1"], "2026-01-01T00:00:00")
+        refetched = _block(["Placeholder A"], ["Q1"], "2026-10-23T00:00:00")
+        assert (
+            backfill._patch_for({"cast_member": stored}, {"cast_member": refetched})
+            == {}
+        )

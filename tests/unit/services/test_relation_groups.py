@@ -47,6 +47,41 @@ def test_founder_is_captured() -> None:
     assert "founder" in INBOUND_FIELDS
 
 
+def test_credit_groups_present_with_their_fields() -> None:
+    # Feature 088 — one group per credit kind, each over its single WANTED field.
+    expected = {
+        "cast_of": "cast_member",
+        "directed": "director",
+        "produced": "producer",
+        "wrote": "screenwriter",
+        "scored": "composer",
+    }
+    for key, field in expected.items():
+        assert _group(key).member_fields == (field,), key
+        assert field in INBOUND_FIELDS
+
+
+def test_credit_labels_are_inverse_directional_not_forward() -> None:
+    # The field is stored on the WORK; the label describes the work relative to the viewed person
+    # (X-centric, "… by this entity" / "in its cast"), never the forward word that would read as if
+    # the work were the director/cast-member (the 087 directional trap).
+    credit_keys = {"cast_of", "directed", "produced", "wrote", "scored"}
+    labels = {g.label for g in RELATION_GROUPS if g.key in credit_keys}
+    # no forward-worded credit label leaks onto the inverse surface
+    forward_words = (
+        "Director of",
+        "Producer of",
+        "Writer of",
+        "Screenwriter of",
+        "Cast member of",
+    )
+    for fw in forward_words:
+        assert not any(fw in lab for lab in labels), fw
+    # each credit label frames the work as the subject ("by this entity" or "in its cast")
+    for lab in labels:
+        assert ("by this entity" in lab) or ("in its cast" in lab), lab
+
+
 def test_attribute_hub_fields_excluded() -> None:
     # country/place fields are the largest supply but weakest signal — excluded by design.
     for excluded in (

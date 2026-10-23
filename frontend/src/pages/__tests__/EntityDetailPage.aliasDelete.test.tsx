@@ -106,6 +106,16 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 import { useQuery } from "@tanstack/react-query";
 import { deleteEntityAlias, undoAliasDeletion } from "../../api/entityMentions";
 
+/** The page also renders the "Referenced by" empty state as a status region; target the other one. */
+function getActionStatus(): HTMLElement {
+  const el = screen
+    .getAllByRole("status")
+    .find((e) => !e.closest('[data-testid="referenced-by-panel"]'));
+  if (!el) throw new Error("No action status region found");
+  return el;
+}
+
+
 const ALIAS_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const ENTITY_ID = "entity-uuid-002";
 const OPERATION_ID = "op-dddddddd-dddd-4ddd-8ddd-dddddddddddd";
@@ -365,7 +375,7 @@ describe("EntityDetailPage — alias delete Undo banner (#298)", () => {
     await deleteAlias(user);
 
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent(/alias "test alias" deleted/i);
+      expect(getActionStatus()).toHaveTextContent(/alias "test alias" deleted/i);
     });
     expect(screen.getByRole("button", { name: /^undo$/i })).toBeInTheDocument();
   });

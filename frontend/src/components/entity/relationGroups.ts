@@ -76,6 +76,37 @@ export const RELATION_GROUPS: readonly RelationGroupDef[] = [
     label: "Sibling",
     attribution: "Listed by Wikidata as a sibling of this entity",
   },
+  // Feature 088: creative-work credits. FORWARD wording — the work's own page lists its people.
+  {
+    key: "cast",
+    fields: ["cast_member"],
+    label: "Cast",
+    attribution: "Listed by Wikidata as a cast member of this work",
+  },
+  {
+    key: "director",
+    fields: ["director"],
+    label: "Director",
+    attribution: "Listed by Wikidata as a director of this work",
+  },
+  {
+    key: "producer",
+    fields: ["producer"],
+    label: "Producer",
+    attribution: "Listed by Wikidata as a producer of this work",
+  },
+  {
+    key: "screenwriter",
+    fields: ["screenwriter"],
+    label: "Writer",
+    attribution: "Listed by Wikidata as a screenwriter of this work",
+  },
+  {
+    key: "composer",
+    fields: ["composer"],
+    label: "Composer",
+    attribution: "Listed by Wikidata as a composer of this work",
+  },
 ];
 
 const GROUP_BY_FIELD: ReadonlyMap<string, RelationGroupDef> = new Map(

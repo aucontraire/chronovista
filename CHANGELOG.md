@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.93.0] - 2026-10-23
+
+### Added
+- **Creative-work credits on the entity page, both directions.** The app now captures the creative-work credit family — cast member, director, producer, screenwriter, composer — so a work's page lists its credited people (forward), and a person's "Referenced by" section lists the works that credit them (inverse), each navigable. The inverse labels are directionally correct (a work is "Directed by this entity" / "Has this entity in its cast" relative to the viewed person), reusing the Feature 087 reverse-relations machinery — no new panel.
+- **Type filter on "Referenced by".** The reverse-relations panel can now be narrowed by the type of the referencing entity (its knowledge-base `instance_of`), so a prolific person's page can be filtered to just their films or series. The filter offers only the types actually present (no empty options), matches an entity that has several types if any matches, and is omitted when there is nothing to filter. Filtering is client-side over the already-loaded, bounded list.
+
+### Internal
+- Five creative-work credit properties added to the curated capture set (reaching both enrichment writers via the single source), with matching inverse groups in the shared relation-grouping definition and forward groups in the frontend mirror; the inverse reverse-relations query is unchanged (it spans whatever fields the grouping names). No schema change, no migration — the reverse query stays well inside its latency budget with the added fields.
+- The reverse-relations response now carries each referencing entity's resolved `instance_of` labels (additive, backward-compatible on every response variant); the type filter consumes them client-side with no new endpoint or query parameter.
+- The existing dry-run-default, target-confirmed, additive-merge, idempotent, reversible relations backfill was extended to populate the credit fields on already-grounded entities (its idempotency now compares statement content order-insensitively so a source re-ordering does not re-write); plus a read-only, advisory per-type field-prevalence measurement script.
+
 ## [0.92.0] - 2026-10-22
 
 ### Added

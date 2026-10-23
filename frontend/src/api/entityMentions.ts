@@ -1415,6 +1415,8 @@ export interface ReferencedByEntity {
   entity_id: string;
   entity_type: string;
   canonical_name: string;
+  /** Resolved instance_of labels of this entity (de-duplicated; [] if absent) — Feature 088 type filter. */
+  instance_of: string[];
 }
 
 /** Referencing entities grouped by relationship (Feature 087). */

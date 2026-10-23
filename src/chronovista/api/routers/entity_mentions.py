@@ -1072,6 +1072,7 @@ async def get_referenced_by(
                 entity_id=m.entity_id,
                 entity_type=m.entity_type,
                 canonical_name=m.canonical_name,
+                instance_of=m.instance_of,
             )
             for m in matches
             # Exclude the entity from its own "referenced by" (a self-referential relation or data

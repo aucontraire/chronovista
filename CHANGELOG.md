@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New read-only endpoint returning an entity's categories with active member counts, ordered most-specific-first: a single grouped join — the distinctive-categories query generalized by dropping its sole-member filter — active-only and including the subject, so a sole-member category reads as one member (exactly the distinctive case). Paginated (default 50, ceiling 200). No schema change, no migration.
 - A new accessible tab-panel container (ARIA tablist, lazy-mounting the active panel); the two existing category panels are reused unchanged as tab panels, guarded by a zero-regression test that asserts both remain reachable after the reorganization.
 
+### Fixed
+- **Recently-created entities now get their Wikipedia categories and DBpedia link.** The DBpedia resolver's User-Agent carried no contact, so Wikimedia's API returned 403 to the article-title lookup it falls back on for entities DBpedia doesn't already know (recent or niche subjects) — silently leaving them with no categories and no DBpedia identifier. The User-Agent now includes a contact URL, so the fallback succeeds and re-enriching such an entity populates both. (Established entities were unaffected, as their DBpedia lookup never reached the blocked call.)
+
 ## [0.94.0] - 2026-10-23
 
 ### Changed

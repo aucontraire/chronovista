@@ -492,6 +492,42 @@ describe('EntityEnrichmentSection — property rendering (Feature 079, US3)', ()
       expect(link).toHaveAttribute('href', '/entities/ent-local-match');
     });
 
+    it('renders member_of and part_of under ONE attributed membership group', () => {
+      mockWikidataEntityMap({ data: {} });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            member_of: propBlock(['Placeholder Group A'], { qids: ['Q00000501'] }),
+            part_of: propBlock(['Placeholder Group B'], { qids: ['Q00000502'] }),
+          },
+        }),
+      });
+
+      const group = screen.getByTestId('relation-group-membership');
+      expect(group).toHaveTextContent('Member of');
+      expect(group).toHaveTextContent('Listed by Wikidata as a group this entity is a member or part of');
+      expect(group).toHaveTextContent('Placeholder Group A');
+      expect(group).toHaveTextContent('Placeholder Group B');
+      expect(screen.getAllByTestId(/^relation-group-/)).toHaveLength(1);
+      expect(screen.queryByText('Part Of')).not.toBeInTheDocument();
+      expect(screen.queryByText(/related to/i)).not.toBeInTheDocument();
+    });
+
+    it('labels grouped relations specifically and attributes them to Wikidata', () => {
+      mockWikidataEntityMap({ data: {} });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            employer: propBlock(['Placeholder Employer'], { qids: ['Q00000401'] }),
+          },
+        }),
+      });
+
+      const group = screen.getByTestId('relation-group-employment');
+      expect(group).toHaveTextContent('Employer');
+      expect(group).toHaveTextContent('Listed by Wikidata');
+    });
+
     it('links a relation value to wikidata.org when the QID does not resolve locally', () => {
       mockWikidataEntityMap({ data: {} });
       renderSection({

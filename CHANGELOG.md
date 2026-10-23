@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-10-22
+
+### Added
+- **"Referenced by" on the entity detail page.** A new read-only panel shows the inverse of an entity's outgoing relations: the other library entities whose stored Wikidata relations point *at* the one you're viewing, grouped by relationship — members, employees, entities it founded, entities that name it as a significant person, and family ties. Each referencing entity links to its own page. Because the relationship is inverted, the groupings and labels are inverse-specific: an entity recorded as a relative of the viewed one is captioned by its own role toward the viewer (a descendant is shown as a descendant, never relabelled with the forward term), so the panel never asserts a backwards claim. Synonymous relations are unioned into a single group (membership covers both "member of" and "is part of"), so a highly-referenced entity reports its full count instead of a partial one. Attribute-like fields (country, place of birth or death) are excluded, because their inverse is a hub list rather than a relationship.
+
+### Internal
+- New additive, read-only endpoint returning an entity's inbound relations — grouped, source-attributed, active entities only, bounded per group. One statement over the existing `named_entities.properties` JSONB via array containment; no schema change, no migration. Measured at ~84 ms on the highest-inbound-degree entity in production, well inside budget, so no index was added.
+- `founder` (Wikidata P112) is now captured in the curated property set, reaching both the batch and on-approval enrichment writers through their single shared source.
+- A one-off, dry-run-by-default backfill merges `founder` and `significant_person` onto already-grounded entities: additive (never a full-replace that would wipe sibling blocks), idempotent (a re-fetch whose only difference is a fresh provenance timestamp writes nothing), target-confirmed before any write, and with a reversible before/after capture that is renamed into place only once the commit succeeds.
+- The forward outgoing-relations display now unions synonymous relations the same way the inverse surface does. The two grouping definitions are kept separate — forward and inverse labels and family groupings genuinely differ — with a parity test pinning the invariants they must share (the synonym union and the field exclusions).
+
 ## [0.91.0] - 2026-10-22
 
 ### Added

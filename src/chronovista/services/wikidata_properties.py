@@ -58,6 +58,9 @@ WANTED: dict[str, str] = {
     "P361": "part_of",
     "P451": "unmarried_partner",
     "P3342": "significant_person",
+    # Feature 087 — organization founders (item-valued). Captured going forward here; a backfill
+    # populates existing grounded entities. Reaches both writers via the #258 single source.
+    "P112": "founder",
 }
 
 # Literal-valued: strings, URLs and dates that ARE the value (no label round needed).
@@ -84,6 +87,26 @@ WANTED_LITERAL: dict[str, str] = {
 # a chain that asks for ``en`` alone. Order defines resolution preference.
 LABEL_LANGS = "mul|en|en-gb|en-ca|es|fr|de|it|pt|nl"
 LABEL_ORDER = ("mul", "en", "en-gb", "en-ca", "es", "fr", "de", "it", "pt", "nl")
+
+
+def wikidata_qid(external_ids: Any) -> str | None:
+    """Extract an entity's Wikidata QID from its ``external_ids`` bag, or ``None``.
+
+    Tolerates BOTH shapes the column has carried: the legacy bare string
+    (``{"wikidata": "Q42"}``, pre-Feature 067) and the structured dict
+    (``{"wikidata": {"id": "Q42", ...}}``). The single source of this parse — three one-off copies
+    (the referenced-by endpoint, both relation/category backfills) previously diverged, the oldest
+    silently missing the bare-string case.
+    """
+    if not isinstance(external_ids, dict):
+        return None
+    value = external_ids.get("wikidata")
+    if isinstance(value, str):
+        return value or None
+    if isinstance(value, dict):
+        raw = value.get("id")
+        return raw if isinstance(raw, str) and raw else None
+    return None
 
 
 def format_time(value: dict[str, Any]) -> str | None:

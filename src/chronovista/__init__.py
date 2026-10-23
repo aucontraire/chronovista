@@ -7,7 +7,7 @@ their personal YouTube account data using the YouTube Data API.
 
 from __future__ import annotations
 
-__version__ = "0.93.0"
+__version__ = "0.94.0"
 __author__ = "chronovista"
 __email__ = "noreply@chronovista.dev"
 __license__ = "AGPL-3.0-or-later"

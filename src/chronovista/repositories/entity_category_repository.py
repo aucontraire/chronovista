@@ -239,6 +239,69 @@ class EntityCategoryRepository:
             for row in result.all()
         ]
 
+    async def distinctive_categories(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+        *,
+        limit: int,
+        offset: int,
+    ) -> list[WikipediaCategory]:
+        """Categories whose sole active member is ``entity_id`` (Feature 089).
+
+        The entity-page "Distinctive — only this entity" surface: the categories for
+        which this entity is the **only** active member (active member count == 1) —
+        the complement of :meth:`shared_category_neighbours` (categories with ≥2
+        active members). What makes the entity unique, not what it has in common.
+
+        A single **grouped self-join** (same shape as ``shared_category_neighbours``,
+        no correlated subquery): start from the viewed entity's category memberships,
+        join **all** active members of those categories, group by category, and keep
+        ``HAVING count(*) = 1``. The viewed entity is itself required to be active
+        (``ne_self.status = 'active'``) so an inactive entity whose category happens to
+        have one *other* active member is never mis-reported as distinctive. Active-only
+        throughout, consistent with the shared-category surface. Ordered by
+        ``lower(name)`` then ``id`` — a **total** key, so ``LIMIT``/``OFFSET`` paging
+        never skips or repeats a category when two names collide case-insensitively.
+
+        Bounded by ``limit``/``offset``: most entities have a handful of distinctive
+        categories (prod median 6), but the tail is real (observed max ~218), so the
+        surface paginates like its shared-category sibling rather than dumping an
+        unbounded list. Read-only.
+        """
+        ec_self = aliased(EntityCategoryDB)
+        ec_member = aliased(EntityCategoryDB)
+        ne_self = aliased(NamedEntityDB)
+        ne_member = aliased(NamedEntityDB)
+        stmt = (
+            select(WikipediaCategoryDB)
+            .select_from(ec_self)
+            .join(WikipediaCategoryDB, WikipediaCategoryDB.id == ec_self.category_id)
+            .join(
+                ne_self,
+                and_(ne_self.id == ec_self.entity_id, ne_self.status == "active"),
+            )
+            .join(ec_member, ec_member.category_id == ec_self.category_id)
+            .join(
+                ne_member,
+                and_(
+                    ne_member.id == ec_member.entity_id,
+                    ne_member.status == "active",
+                ),
+            )
+            .where(ec_self.entity_id == entity_id)
+            .group_by(WikipediaCategoryDB.id)
+            .having(func.count() == 1)
+            .order_by(
+                func.lower(WikipediaCategoryDB.name).asc(),
+                WikipediaCategoryDB.id.asc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await session.execute(stmt)
+        return [WikipediaCategory.model_validate(r) for r in result.scalars().all()]
+
     async def entities_in_category(
         self,
         session: AsyncSession,

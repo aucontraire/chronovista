@@ -210,6 +210,61 @@ class TestSharedCategoryNeighboursSql:
         assert ".id" in low
 
 
+class TestDistinctiveCategoriesSql:
+    """Feature 089: sole-active-member categories — group/having/active/order asserted in SQL."""
+
+    async def _sql(self) -> tuple[str, Any]:
+        session = AsyncMock(spec=AsyncSession)
+        result = MagicMock()
+        # distinctive_categories reads ORM rows via .scalars().all()
+        result.scalars.return_value.all.return_value = []
+        session.execute.return_value = result
+        out = await EntityCategoryRepository().distinctive_categories(
+            session, uuid.uuid4(), limit=50, offset=10
+        )
+        assert out == []
+        compiled = _compile(_captured(session))
+        return str(compiled), compiled
+
+    async def test_group_by_category_having_single_active_member(self) -> None:
+        sql, compiled = await self._sql()
+        low = sql.lower()
+        # grouped self-join (not a correlated subquery), one row per category
+        assert "GROUP BY" in sql
+        # the defining predicate: the category has exactly ONE active member
+        assert "HAVING" in sql
+        assert "count(" in low
+        assert 1 in compiled.params.values()  # the HAVING count == 1 bind
+        # active-only on BOTH the viewed entity AND the member being counted — this
+        # is the guard that stops an INACTIVE subject (whose category has one OTHER
+        # active member) being mis-reported as distinctive. Prove it is on two
+        # distinct named_entities aliases, not just that the word "status" appears
+        # once: the statement must carry two separate `status = :param` predicates,
+        # each binding "active". Removing the ne_self join would drop one of them.
+        assert (
+            low.count("status =") >= 2
+        ), "need an active-status filter on BOTH aliases"
+        assert list(compiled.params.values()).count("active") >= 2
+        # the viewed entity anchors the query
+        assert "entity_categories.entity_id =" in sql or "entity_id =" in sql
+
+    async def test_stable_order_by_name_then_id(self) -> None:
+        sql, _ = await self._sql()
+        order = sql.split("ORDER BY", 1)[1].lower()
+        # lower(name) then id → a TOTAL order, so LIMIT/OFFSET paging never
+        # skips/repeats a category when two names collide case-insensitively
+        assert "lower(" in order and "name" in order
+        assert "id" in order
+
+    async def test_read_only_bounded_single_select(self) -> None:
+        sql, compiled = await self._sql()
+        # exactly one SELECT, no writes, bounded like its shared-category sibling
+        assert sql.lstrip().upper().startswith("SELECT")
+        assert "LIMIT" in sql.upper() and "OFFSET" in sql.upper()
+        assert 50 in compiled.params.values()  # limit
+        assert 10 in compiled.params.values()  # offset
+
+
 class TestEntitiesInCategorySql:
     """Feature 086: the member list — active-only, total order (name, id), bounded."""
 

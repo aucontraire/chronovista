@@ -45,6 +45,8 @@ from chronovista.api.schemas.entity_mentions import (
     CooccurringEntity,
     CreateEntityAliasRequest,
     CreateEntityRequest,
+    DistinctiveCategoriesResponse,
+    DistinctiveCategory,
     DuplicateCheckResponse,
     EntityAliasSummary,
     EntitySearchResult,
@@ -900,6 +902,13 @@ async def get_cooccurring_entities(
 DEFAULT_MAX_CATEGORY_SIZE = 20_000
 MAX_SHARED_CATEGORY_LIMIT = 50
 
+# Feature 089: the distinctive-categories surface paginates like its shared-category sibling.
+# Prod distribution is median 6 / p99 42 (so the default page of 50 shows everything for ~99%
+# of entities in one load), but the tail reaches ~218, so a hard ceiling bounds the rare case
+# instead of dumping an unbounded list — mirroring the defensive caps the sibling surfaces adopt.
+DEFAULT_DISTINCTIVE_CATEGORY_LIMIT = 50
+MAX_DISTINCTIVE_CATEGORY_LIMIT = 200
+
 
 @router.get(
     "/entities/{entity_id}/shared-categories",
@@ -999,6 +1008,82 @@ async def get_shared_category_neighbours(
             )
             for n in neighbours
         ]
+    )
+
+
+@router.get(
+    "/entities/{entity_id}/distinctive-categories",
+    response_model=DistinctiveCategoriesResponse,
+    status_code=200,
+    summary="Categories this entity is the sole active member of",
+)
+async def get_distinctive_categories(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    limit: int = Query(
+        default=DEFAULT_DISTINCTIVE_CATEGORY_LIMIT,
+        ge=1,
+        le=MAX_DISTINCTIVE_CATEGORY_LIMIT,
+        description=(
+            "Maximum distinctive categories to return. Bounded: most entities have a "
+            "handful, but the tail is real, so the surface paginates rather than "
+            "dumping an unbounded list (mirrors /shared-categories)."
+        ),
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+        description="Pagination offset for incremental 'show more' loading.",
+    ),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    category_repo: EntityCategoryRepository = Depends(get_entity_category_repository),
+) -> DistinctiveCategoriesResponse:
+    """Categories whose sole active member is this entity (Feature 089).
+
+    Powers the "Distinctive — only this entity" sub-section of the entity page's
+    Categories group — the categories that set this entity apart (it is the ONLY
+    active member), the complement of the shared-categories surface (Feature 085).
+    Read-only; paginated like its sibling (most entities have a handful, but the
+    tail reaches the low hundreds, so the response is bounded).
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (string representation).
+    limit, offset : int
+        Pagination, bounded by ``MAX_DISTINCTIVE_CATEGORY_LIMIT``.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    DistinctiveCategoriesResponse
+        Categories with exactly one active member (this entity), ordered by name.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist (404).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    if not await entity_repo.exists(session, parsed_entity_id):
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    categories = await run_with_timeout(
+        category_repo.distinctive_categories(
+            session, parsed_entity_id, limit=limit, offset=offset
+        ),
+        operation="distinctive categories",
+        session=session,
+    )
+
+    # No distinctive categories is an answer, not an error: empty data, status 200.
+    return DistinctiveCategoriesResponse(
+        data=[DistinctiveCategory(id=c.id, name=c.name) for c in categories]
     )
 
 

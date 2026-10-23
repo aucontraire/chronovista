@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-10-23
+
+### Changed
+- **The entity detail page is reorganized into collapsible groups.** Its roughly ten stacked sections are now gathered into five named, independently-collapsible groups — Knowledge base, Mention matching, Categories, Appears with, and Videos — so a given kind of information is easy to find without scrolling past everything else. Knowledge base sits directly beneath the entity's name and portrait as an at-a-glance dossier and gathers both directions of the entity's asserted relations (its outgoing Wikidata statements and the "Referenced by" inverse); the controls that decide what gets attributed to the entity (aliases, phonetic variants, exclusion patterns, tags) are consolidated under Mention matching; co-occurrence stands on its own under Appears with as the transcript-derived signal it is. Every section that was on the page before is still present and reachable, and all editing stays inline exactly as it was. The mention-matching controls start collapsed; the content-bearing groups start open. The layout is desktop-first.
+
+### Added
+- **"Distinctive — only this entity" categories.** The Categories group now shows, beside the existing "shares categories with" surface, the Wikipedia categories this entity is the *sole* member of — what sets it apart rather than what it has in common. Each links to its category page, and the sub-section is simply absent when the entity has no distinctive categories.
+
+### Internal
+- New read-only endpoint returning an entity's sole-active-member categories: a single grouped self-join with `HAVING count(*) = 1`, active-only on both the subject and the counted members (so an inactive subject is never mis-reported as distinctive), stably ordered, and paginated like its shared-category sibling (default page of 50, hard ceiling of 200) rather than returning an unbounded tail. No schema change, no migration.
+- A new reusable accordion-group component — keyboard-operable, with screen-reader expand/collapse semantics — groups the existing section components unchanged; this is information architecture only, with no section internals or styling altered. A zero-regression guard test enumerates every pre-existing section and asserts each stays reachable within exactly one group after the reorganization.
+
 ## [0.93.0] - 2026-10-23
 
 ### Added

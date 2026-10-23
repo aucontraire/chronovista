@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -176,6 +176,8 @@ beforeEach(() => {
 describe("EntityDetailPage — PhoneticVariantsSection integration", () => {
   it("renders the PhoneticVariantsSection disclosure button when entity is loaded", () => {
     renderPage();
+    // Mention matching group is collapsed by default (Feature 089).
+    fireEvent.click(screen.getByRole("button", { name: "Mention matching" }));
     expect(
       screen.getByRole("button", { name: /suspected asr variants/i })
     ).toBeInTheDocument();
@@ -183,6 +185,8 @@ describe("EntityDetailPage — PhoneticVariantsSection integration", () => {
 
   it("renders the PhoneticVariantsSection between Aliases and Videos sections", () => {
     renderPage();
+    // Mention matching group is collapsed by default (Feature 089).
+    fireEvent.click(screen.getByRole("button", { name: "Mention matching" }));
 
     // Get key landmarks by their headings.
     const aliasesHeading = screen.getByRole("heading", { name: /aliases/i });

@@ -24,7 +24,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -193,7 +193,7 @@ function renderPage(entityId = "entity-uuid-001") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const result = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[`/entities/${entityId}`]}>
         <Routes>
@@ -202,6 +202,10 @@ function renderPage(entityId = "entity-uuid-001") {
       </MemoryRouter>
     </QueryClientProvider>
   );
+  // Mention matching is collapsed by default (Feature 089); expand it so its
+  // role/label queries can see the aliases, tags and patterns inside.
+  fireEvent.click(screen.getByRole("button", { name: "Mention matching" }));
+  return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,7 @@ from chronovista.db.models import WikipediaCategory as WikipediaCategoryDB
 from chronovista.models.wikipedia_category import (
     BridgeNeighbor,
     CategoryMember,
+    CategoryWithMemberCount,
     SharedCategoryNeighbour,
     SharedCategoryRef,
     WikipediaCategory,
@@ -301,6 +302,74 @@ class EntityCategoryRepository:
         )
         result = await session.execute(stmt)
         return [WikipediaCategory.model_validate(r) for r in result.scalars().all()]
+
+    async def categories_with_member_counts(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+        *,
+        limit: int,
+        offset: int,
+    ) -> list[CategoryWithMemberCount]:
+        """Every category the entity belongs to, with its active member count (Feature 090).
+
+        The entity page's **"All categories"** surface — the complete, uncapped (but
+        bounded) list of the subject's category memberships, the answer the capped
+        neighbour-overlap "shares categories with" view structurally cannot give (a
+        category whose co-members each share only it ranks past that view's cap and
+        vanishes). This is :meth:`distinctive_categories` **without** the
+        ``HAVING count(*) = 1`` filter: the same grouped self-join (no correlated
+        subquery), returning each category plus its active member count.
+
+        ``member_count`` counts **active** members including the subject (so a sole-member
+        category reads ``1`` — exactly the Distinctive case). The subject is itself required
+        active (``ne_self.status = 'active'``), consistent with ``distinctive_categories``.
+        Ordered by **member count ascending** (most specific/distinctive first) then
+        ``lower(name)``, ``id`` — a total key, so ``LIMIT``/``OFFSET`` paging never skips or
+        repeats. Bounded by ``limit``/``offset``. Read-only.
+        """
+        ec_self = aliased(EntityCategoryDB)
+        ec_member = aliased(EntityCategoryDB)
+        ne_self = aliased(NamedEntityDB)
+        ne_member = aliased(NamedEntityDB)
+        member_count = func.count()
+        stmt = (
+            select(
+                WikipediaCategoryDB.id.label("id"),
+                WikipediaCategoryDB.name.label("name"),
+                member_count.label("member_count"),
+            )
+            .select_from(ec_self)
+            .join(WikipediaCategoryDB, WikipediaCategoryDB.id == ec_self.category_id)
+            .join(
+                ne_self,
+                and_(ne_self.id == ec_self.entity_id, ne_self.status == "active"),
+            )
+            .join(ec_member, ec_member.category_id == ec_self.category_id)
+            .join(
+                ne_member,
+                and_(
+                    ne_member.id == ec_member.entity_id,
+                    ne_member.status == "active",
+                ),
+            )
+            .where(ec_self.entity_id == entity_id)
+            .group_by(WikipediaCategoryDB.id, WikipediaCategoryDB.name)
+            .order_by(
+                member_count.asc(),
+                func.lower(WikipediaCategoryDB.name).asc(),
+                WikipediaCategoryDB.id.asc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await session.execute(stmt)
+        return [
+            CategoryWithMemberCount(
+                id=row.id, name=row.name, member_count=row.member_count
+            )
+            for row in result.all()
+        ]
 
     async def entities_in_category(
         self,

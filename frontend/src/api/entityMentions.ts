@@ -1442,6 +1442,39 @@ export async function fetchDistinctiveCategories(
   return res.data;
 }
 
+/** A Wikipedia category an entity belongs to, with its active member count. */
+export interface EntityCategoryWithCount {
+  id: string;
+  name: string;
+  member_count: number;
+}
+
+/**
+ * Fetch every category the entity belongs to (Feature 090), ordered by
+ * member count ascending (most specific first).
+ *
+ * @param entityId - UUID of the subject entity
+ * @param limit - Maximum categories to return (server max 200)
+ * @param offset - Pagination offset
+ * @param signal - Abort signal
+ */
+export async function fetchEntityCategories(
+  entityId: string,
+  limit: number,
+  offset: number = 0,
+  signal?: AbortSignal
+): Promise<EntityCategoryWithCount[]> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  const res = await apiFetch<{ data: EntityCategoryWithCount[] }>(
+    `/entities/${entityId}/categories?${params.toString()}`,
+    signal ? { externalSignal: signal } : {}
+  );
+  return res.data;
+}
+
 /** An entity that references the subject through a Wikidata relation. */
 export interface ReferencedByEntity {
   entity_id: string;

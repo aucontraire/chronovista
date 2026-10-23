@@ -49,6 +49,8 @@ from chronovista.api.schemas.entity_mentions import (
     DistinctiveCategory,
     DuplicateCheckResponse,
     EntityAliasSummary,
+    EntityCategoriesResponse,
+    EntityCategoryWithCount,
     EntitySearchResult,
     EntityTagsResponse,
     EntityTagsResult,
@@ -909,6 +911,12 @@ MAX_SHARED_CATEGORY_LIMIT = 50
 DEFAULT_DISTINCTIVE_CATEGORY_LIMIT = 50
 MAX_DISTINCTIVE_CATEGORY_LIMIT = 200
 
+# Feature 090: the "All categories" tab paginates like the distinctive/shared surfaces —
+# default page of 50 covers virtually every entity in one load, hard ceiling 200 bounds the
+# rare heavily-categorized entity instead of dumping an unbounded list.
+DEFAULT_ENTITY_CATEGORIES_LIMIT = 50
+MAX_ENTITY_CATEGORIES_LIMIT = 200
+
 
 @router.get(
     "/entities/{entity_id}/shared-categories",
@@ -1084,6 +1092,86 @@ async def get_distinctive_categories(
     # No distinctive categories is an answer, not an error: empty data, status 200.
     return DistinctiveCategoriesResponse(
         data=[DistinctiveCategory(id=c.id, name=c.name) for c in categories]
+    )
+
+
+@router.get(
+    "/entities/{entity_id}/categories",
+    response_model=EntityCategoriesResponse,
+    status_code=200,
+    summary="All Wikipedia categories this entity belongs to, with member counts",
+)
+async def get_entity_categories(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    limit: int = Query(
+        default=DEFAULT_ENTITY_CATEGORIES_LIMIT,
+        ge=1,
+        le=MAX_ENTITY_CATEGORIES_LIMIT,
+        description=(
+            "Maximum categories to return. Bounded: most entities have a handful, but "
+            "the tail is real, so the surface paginates rather than dumping an unbounded "
+            "list (mirrors /distinctive-categories)."
+        ),
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+        description="Pagination offset for incremental 'show more' loading.",
+    ),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    category_repo: EntityCategoryRepository = Depends(get_entity_category_repository),
+) -> EntityCategoriesResponse:
+    """Every Wikipedia category this entity belongs to, with member counts (Feature 090).
+
+    Powers the entity page's "All categories" tab — the complete, uncapped (but bounded)
+    list of the entity's category memberships, the answer the capped "shares categories
+    with" view structurally cannot give (a category whose co-members each share only it
+    ranks past that view's cap and never appears). Each category carries its active member
+    count (including the subject), so a sole-member category reads "1 member" — exactly the
+    Distinctive case. Ordered most-specific-first (member count ascending). Read-only.
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (string representation).
+    limit, offset : int
+        Pagination, bounded by ``MAX_ENTITY_CATEGORIES_LIMIT``.
+    session : AsyncSession
+        Database session (injected).
+
+    Returns
+    -------
+    EntityCategoriesResponse
+        The entity's categories with member counts, ordered by member count ascending.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist (404).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    if not await entity_repo.exists(session, parsed_entity_id):
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    categories = await run_with_timeout(
+        category_repo.categories_with_member_counts(
+            session, parsed_entity_id, limit=limit, offset=offset
+        ),
+        operation="entity categories",
+        session=session,
+    )
+
+    # No categories is an answer, not an error: empty data, status 200.
+    return EntityCategoriesResponse(
+        data=[
+            EntityCategoryWithCount(id=c.id, name=c.name, member_count=c.member_count)
+            for c in categories
+        ]
     )
 
 

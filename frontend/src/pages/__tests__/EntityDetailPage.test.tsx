@@ -95,6 +95,17 @@ vi.mock("../../hooks/useDistinctiveCategories", () => ({
     error: null,
   })),
 }));
+vi.mock("../../hooks/useAllCategories", () => ({
+  DEFAULT_ENTITY_CATEGORIES_PAGE_SIZE: 50,
+  useAllCategories: vi.fn(() => ({
+    categories: [
+      { id: "cat-all-1", name: "Sample Category B", member_count: 3 },
+    ],
+    isLoading: false,
+    isError: false,
+    error: null,
+  })),
+}));
 vi.mock("../../hooks/useSharedCategoryNeighbours", () => ({
   SHARED_CATEGORY_PAGE_SIZE: 12,
   useSharedCategoryNeighbours: vi.fn(() => ({
@@ -1221,8 +1232,14 @@ describe("EntityDetailPage", () => {
 
         const categories = within(getGroup("categories"));
         expect(
+          categories.getByRole("heading", { name: "All categories" })
+        ).toBeInTheDocument();
+        // Non-default views are behind lazy-mounted tabs (Feature 090).
+        fireEvent.click(categories.getByTestId("category-tab-distinctive"));
+        expect(
           categories.getByRole("heading", { name: "Distinctive — only this entity" })
         ).toBeInTheDocument();
+        fireEvent.click(categories.getByTestId("category-tab-shared"));
         expect(
           categories.getByRole("heading", { name: "Shares categories with" })
         ).toBeInTheDocument();
@@ -1405,58 +1422,95 @@ describe("EntityDetailPage", () => {
       });
     });
 
-    it("shows distinctive and shared panels as peers under the Categories group", () => {
+    function activate(key: string) {
+      fireEvent.click(screen.getByTestId(`category-tab-${key}`));
+    }
+
+    it("renders a tablist defaulting to All categories with its panel shown", () => {
       renderPage();
       const group = screen.getByTestId("entity-group-categories");
       expect(
         within(group).getByRole("button", { name: "Categories" })
       ).toBeInTheDocument();
-      expect(
-        within(group).getByRole("heading", { name: "Distinctive — only this entity" })
-      ).toBeInTheDocument();
-      expect(
-        within(group).getByRole("heading", { name: "Shares categories with" })
-      ).toBeInTheDocument();
+      expect(within(group).getByTestId("entity-category-tabs")).toBeInTheDocument();
+      expect(within(group).getByRole("tablist")).toBeInTheDocument();
+      expect(screen.getByTestId("category-tab-all")).toHaveAttribute(
+        "aria-selected",
+        "true"
+      );
+      expect(within(group).getByTestId("all-categories-panel")).toBeInTheDocument();
     });
 
-    it("lists the distinctive panel before the shared panel", () => {
+    it("orders the tabs All, Shares, Category members, Distinctive", () => {
       renderPage();
-      const distinctive = screen.getByRole("heading", {
-        name: "Distinctive — only this entity",
-      });
-      const shared = screen.getByRole("heading", { name: "Shares categories with" });
-      expect(
-        distinctive.compareDocumentPosition(shared) & Node.DOCUMENT_POSITION_FOLLOWING
-      ).toBeTruthy();
+      expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+        "All categories",
+        "Shares categories with",
+        "Category members",
+        "Distinctive — only this entity",
+      ]);
     });
 
-    it("distinctive panel errors, shared panel still renders", () => {
+    it("shows one panel at a time and keeps the others unmounted (SC-002)", () => {
+      renderPage();
+      expect(screen.queryByTestId("shared-categories-panel")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("distinctive-categories-panel")
+      ).not.toBeInTheDocument();
+
+      activate("shared");
+      expect(screen.getByTestId("shared-categories-panel")).toBeInTheDocument();
+      expect(screen.queryByTestId("all-categories-panel")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("distinctive-categories-panel")
+      ).not.toBeInTheDocument();
+
+      activate("distinctive");
+      expect(
+        screen.getByTestId("distinctive-categories-panel")
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId("shared-categories-panel")).not.toBeInTheDocument();
+    });
+
+    it("reaches the shared and distinctive panels by tab (SC-003)", () => {
+      renderPage();
+      activate("shared");
+      expect(
+        screen.getByRole("heading", { name: "Shares categories with" })
+      ).toBeInTheDocument();
+      activate("distinctive");
+      expect(
+        screen.getByRole("heading", { name: "Distinctive — only this entity" })
+      ).toBeInTheDocument();
+    });
+
+    it("distinctive panel errors inside its tab without affecting the others", () => {
       vi.mocked(useDistinctiveCategories).mockReturnValue({
         categories: [],
         isLoading: false,
         isError: true,
         error: new Error("boom"),
       });
-      vi.mocked(useSharedCategoryNeighbours).mockReturnValue({
-        neighbours: [],
-        isLoading: false,
-        isError: false,
-        error: null,
-      });
       renderPage();
-      const group = screen.getByTestId("entity-group-categories");
-      expect(
-        within(group).getByTestId("distinctive-categories-error")
-      ).toHaveAttribute("role", "alert");
-      expect(
-        within(group).getByTestId("shared-categories-panel")
-      ).toBeInTheDocument();
+      activate("distinctive");
+      expect(screen.getByTestId("distinctive-categories-error")).toHaveAttribute(
+        "role",
+        "alert"
+      );
+      activate("shared");
+      expect(screen.getByTestId("shared-categories-panel")).toBeInTheDocument();
     });
 
-    it("has no category panel heading outside the Categories group", () => {
+    it("keeps every category panel inside the Categories group", () => {
       renderPage();
       const group = screen.getByTestId("entity-group-categories");
-      for (const name of ["Distinctive — only this entity", "Shares categories with"]) {
+      const views: ReadonlyArray<readonly [string, string]> = [
+        ["all", "All categories"],
+        ["shared", "Shares categories with"],
+        ["distinctive", "Distinctive — only this entity"],
+      ];
+      for (const [key, name] of views) {
+        activate(key);
         const heading = screen.getByRole("heading", { name });
         expect(group.contains(heading)).toBe(true);
       }

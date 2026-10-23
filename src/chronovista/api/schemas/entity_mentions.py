@@ -1389,6 +1389,38 @@ class DistinctiveCategoriesResponse(BaseModel):
     data: list[DistinctiveCategory]
 
 
+class EntityCategoryWithCount(BaseModel):
+    """A category the entity belongs to, with its active member count (Feature 090).
+
+    Powers the entity page's "All categories" tab — every category the viewed entity is
+    in, each linking to its category detail page (``/wikipedia-categories/{id}``), with the
+    active member count (including the subject) so "1 member" marks the Distinctive case.
+
+    Attributes
+    ----------
+    id : UUID
+        Category UUID (the link target).
+    name : str
+        Category display name.
+    member_count : int
+        Active members of the category, including the subject.
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    id: UUID
+    name: str
+    member_count: int
+
+
+class EntityCategoriesResponse(BaseModel):
+    """Response envelope for the entity's "All categories" tab."""
+
+    model_config = ConfigDict(strict=True)
+
+    data: list[EntityCategoryWithCount]
+
+
 class ReferencedByEntity(BaseModel):
     """One active library entity that references the viewed entity via a relation (Feature 087)."""
 

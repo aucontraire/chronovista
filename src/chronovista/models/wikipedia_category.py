@@ -102,6 +102,24 @@ class CategoryMember(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class CategoryWithMemberCount(BaseModel):
+    """A category an entity belongs to, with its active member count (Feature 090).
+
+    Powers the entity page's "All categories" surface: every category the viewed entity
+    is in, plus how many **active** entities are in that category (including the subject),
+    so a sole-member category reads "1 member" — exactly the Distinctive case. The complete,
+    uncapped answer the capped neighbour-overlap "shares categories with" view cannot give.
+    """
+
+    id: uuid.UUID = Field(..., description="Category UUID (links to the category page)")
+    name: str = Field(..., description="Category display name")
+    member_count: int = Field(
+        ..., ge=1, description="Active members of the category, including the subject"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SharedCategoryNeighbour(BaseModel):
     """An aggregated shared-category neighbour (Feature 085): one row per neighbour entity.
 

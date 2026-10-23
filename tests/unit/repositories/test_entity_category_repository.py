@@ -7,6 +7,7 @@ and bound parameters rather than the mock's return value.
 from __future__ import annotations
 
 import datetime
+import re
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -259,6 +260,63 @@ class TestDistinctiveCategoriesSql:
     async def test_read_only_bounded_single_select(self) -> None:
         sql, compiled = await self._sql()
         # exactly one SELECT, no writes, bounded like its shared-category sibling
+        assert sql.lstrip().upper().startswith("SELECT")
+        assert "LIMIT" in sql.upper() and "OFFSET" in sql.upper()
+        assert 50 in compiled.params.values()  # limit
+        assert 10 in compiled.params.values()  # offset
+
+
+class TestCategoriesWithMemberCountsSql:
+    """Feature 090: all of an entity's categories + active member count — group/count/order/bound."""
+
+    async def _sql(self) -> tuple[str, Any]:
+        session = AsyncMock(spec=AsyncSession)
+        result = MagicMock()
+        result.all.return_value = (
+            []
+        )  # categories_with_member_counts reads Rows via .all()
+        session.execute.return_value = result
+        out = await EntityCategoryRepository().categories_with_member_counts(
+            session, uuid.uuid4(), limit=50, offset=10
+        )
+        assert out == []
+        compiled = _compile(_captured(session))
+        return str(compiled), compiled
+
+    async def test_group_count_no_having_active_both_aliases(self) -> None:
+        sql, compiled = await self._sql()
+        low = sql.lower()
+        # grouped self-join returning each category + its member count
+        assert "GROUP BY" in sql
+        assert "count(" in low
+        # it is "distinctive minus the HAVING" — this is ALL categories, so NO HAVING filter
+        assert "HAVING" not in sql
+        # active-only on BOTH the subject and the counted members — prove the two status
+        # predicates sit on TWO DISTINCT named_entities aliases (not both on one, which would
+        # drop the subject-active guard and still satisfy a naive count-based check).
+        alias_status = set(re.findall(r"(\w+)\.status =", sql))
+        assert (
+            len(alias_status) >= 2
+        ), f"active filter must be on two aliases, got {alias_status}"
+        assert list(compiled.params.values()).count("active") >= 2
+        # anchored on the viewed entity
+        assert "entity_categories.entity_id =" in sql or "entity_id =" in sql
+
+    async def test_order_by_count_then_name_then_id(self) -> None:
+        sql, _ = await self._sql()
+        # isolate the ORDER BY clause (between ORDER BY and LIMIT) and split into its keys
+        order = sql.split("ORDER BY", 1)[1].split("LIMIT")[0].lower()
+        terms = [t.strip() for t in order.split(",")]
+        # most-specific-first: member count ascending is the PRIMARY key,
+        # then lower(name), then id as the FINAL key — a total, stable order for safe paging
+        assert "count(" in terms[0]
+        assert "lower(" in terms[1] and "name" in terms[1]
+        assert (
+            terms[-1].split()[0].endswith(".id")
+        ), f"id must be the final sort key, got {terms[-1]}"
+
+    async def test_read_only_bounded_single_select(self) -> None:
+        sql, compiled = await self._sql()
         assert sql.lstrip().upper().startswith("SELECT")
         assert "LIMIT" in sql.upper() and "OFFSET" in sql.upper()
         assert 50 in compiled.params.values()  # limit

@@ -3,8 +3,8 @@
  * detail page (Feature 089).
  *
  * Categories whose sole active member is the subject: the complement of the
- * shared-categories panel. Renders nothing while loading or when there are
- * none, so no empty sub-section appears or flashes.
+ * shared-categories panel. Lives in a tab panel, so loading and empty states
+ * are rendered explicitly rather than hidden.
  */
 
 import { useState } from "react";
@@ -34,12 +34,6 @@ export function DistinctiveCategoriesPanel({
     limit
   );
 
-  // Absent while loading and when empty (the common case), so nothing flashes
-  // in and out; a real failure is still surfaced.
-  if (!isError && (isLoading || categories.length === 0)) {
-    return null;
-  }
-
   return (
     <section
       className={`rounded-lg border border-slate-200 bg-white p-4 ${className}`.trim()}
@@ -61,6 +55,25 @@ export function DistinctiveCategoriesPanel({
         >
           Couldn&apos;t load distinctive categories. The rest of this page is
           unaffected.
+        </p>
+      )}
+
+      {!isError && isLoading && categories.length === 0 && (
+        <p
+          role="status"
+          className="text-sm text-slate-600"
+          data-testid="distinctive-categories-loading"
+        >
+          Loading distinctive categories…
+        </p>
+      )}
+
+      {!isError && !isLoading && categories.length === 0 && (
+        <p
+          className="text-sm text-slate-600"
+          data-testid="distinctive-categories-empty"
+        >
+          No categories are unique to this entity.
         </p>
       )}
 

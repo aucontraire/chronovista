@@ -67,42 +67,23 @@ describe('DistinctiveCategoriesPanel (Feature 089)', () => {
     ).toHaveAttribute('href', '/wikipedia-categories/cat-2');
   });
 
-  it('renders nothing when there are no distinctive categories', () => {
+  it('shows an empty message when there are no distinctive categories', () => {
     hookMock.mockReturnValue(state());
-    const { container } = renderPanel();
+    renderPanel();
 
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByTestId('distinctive-categories-empty')).toHaveTextContent(
+      'No categories are unique to this entity.'
+    );
+  });
+
+  it('shows a loading status while loading', () => {
+    hookMock.mockReturnValue(state({ isLoading: true }));
+    renderPanel();
+
+    expect(screen.getByRole('status')).toHaveTextContent(/loading/i);
     expect(
-      screen.queryByTestId('distinctive-categories-panel')
+      screen.queryByTestId('distinctive-categories-empty')
     ).not.toBeInTheDocument();
-  });
-
-  it('renders nothing while loading (no flash)', () => {
-    hookMock.mockReturnValue(state({ isLoading: true }));
-    const { container } = renderPanel();
-
-    expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
-  });
-
-  it('pops in once data arrives after loading', () => {
-    hookMock.mockReturnValue(state({ isLoading: true }));
-    const { container, rerender } = renderPanel();
-    expect(container).toBeEmptyDOMElement();
-
-    hookMock.mockReturnValue(
-      state({ categories: [{ id: 'cat-1', name: 'Sample Category A' }] })
-    );
-    rerender(
-      <MemoryRouter>
-        <DistinctiveCategoriesPanel entityId={SUBJECT} />
-      </MemoryRouter>
-    );
-
-    expect(screen.getByTestId('distinctive-categories-panel')).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'Sample Category A' })
-    ).toBeInTheDocument();
   });
 
   it('shows a recoverable error alert and keeps the heading', () => {

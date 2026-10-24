@@ -26,6 +26,8 @@ from chronovista.api.deps import (
     get_entity_category_repository,
     get_entity_curation_service,
     get_entity_mention_repository,
+    get_entity_operation_log_repository,
+    get_entity_video_exclusion_repository,
     get_named_entity_repository,
     get_tag_management_service,
     get_video_repository,
@@ -54,6 +56,8 @@ from chronovista.api.schemas.entity_mentions import (
     EntitySearchResult,
     EntityTagsResponse,
     EntityTagsResult,
+    EntityVideoExclusionCreateResponse,
+    EntityVideoExclusionListResponse,
     EntityVideoResponse,
     EntityVideoResult,
     ExclusionPatternRequest,
@@ -99,6 +103,11 @@ from chronovista.models.entity_enrichment import (
     EntityIdentifierView,
     ExternalIdentifier,
 )
+from chronovista.models.entity_operation_log import (
+    AssociationExclusionRollback,
+    EntityOperationLogCreate,
+)
+from chronovista.models.entity_video_exclusion import EntityVideoExclusionCreate
 from chronovista.models.enums import (
     DiscoveryMethod,
     EntityAliasType,
@@ -113,6 +122,12 @@ from chronovista.repositories.entity_category_repository import (
     EntityCategoryRepository,
 )
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+from chronovista.repositories.entity_operation_log_repository import (
+    EntityOperationLogRepository,
+)
+from chronovista.repositories.entity_video_exclusion_repository import (
+    EntityVideoExclusionRepository,
+)
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.category_coverage import title_from_dbpedia_iri
@@ -2127,6 +2142,164 @@ async def delete_manual_association(
     )
     await session.commit()
     return Response(status_code=204)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Entity↔video exclusions (manual association unlink, Feature 091)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/entities/{entity_id}/excluded-videos",
+    status_code=200,
+    summary="Exclude (unlink) a video from an entity",
+)
+async def exclude_entity_video(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    body: EntityVideoExclusionCreate = Body(...),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    exclusion_repo: EntityVideoExclusionRepository = Depends(
+        get_entity_video_exclusion_repository
+    ),
+    op_log_repo: EntityOperationLogRepository = Depends(
+        get_entity_operation_log_repository
+    ),
+) -> dict[str, Any]:
+    """Unlink a video from an entity by recording a per-(entity, video) exclusion (FR-001/002).
+
+    The exclusion is subtracted everywhere the entity's associations are read, so
+    the video drops from the list, the counts, and every other surface in lockstep
+    (FR-003/004). Idempotent: re-excluding an already-excluded pair is a reported
+    no-op (``already_excluded=True``), not an error (FR-006). Each new exclusion
+    writes an ``association_exclude`` operation-log row with rollback data (FR-007).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    if not await entity_repo.exists(session, parsed_entity_id):
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    if not await video_repo.exists_by_video_id(session, body.video_id):
+        raise NotFoundError(resource_type="Video", identifier=body.video_id)
+
+    created = await exclusion_repo.add(
+        session,
+        entity_id=parsed_entity_id,
+        video_id=body.video_id,
+        excluded_by=ACTOR_USER_LOCAL,
+        reason=body.reason,
+    )
+    if created:
+        await op_log_repo.create(
+            session,
+            obj_in=EntityOperationLogCreate(
+                entity_id=parsed_entity_id,
+                operation_type="association_exclude",
+                rollback_data=AssociationExclusionRollback(video_id=body.video_id),
+                performed_by=ACTOR_USER_LOCAL,
+            ),
+        )
+    await session.commit()
+
+    exclusion = await exclusion_repo.get(session, parsed_entity_id, body.video_id)
+    if exclusion is None:  # pragma: no cover - just written/confirmed present
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    return {
+        "data": EntityVideoExclusionCreateResponse(
+            exclusion=exclusion,
+            already_excluded=not created,
+        ).model_dump(mode="json")
+    }
+
+
+@router.delete(
+    "/entities/{entity_id}/excluded-videos/{video_id}",
+    status_code=204,
+    response_class=Response,
+    summary="Restore (re-link) a video previously excluded from an entity",
+)
+async def restore_entity_video(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    video_id: str = Path(..., description="YouTube video ID"),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    video_repo: VideoRepository = Depends(get_video_repository),
+    exclusion_repo: EntityVideoExclusionRepository = Depends(
+        get_entity_video_exclusion_repository
+    ),
+    op_log_repo: EntityOperationLogRepository = Depends(
+        get_entity_operation_log_repository
+    ),
+) -> Response:
+    """Undo an exclusion; the video reappears iff it still otherwise qualifies (FR-005).
+
+    Idempotent: removing an absent exclusion still returns 204. Each actual removal
+    writes an ``association_restore`` operation-log row (FR-007).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    if not await entity_repo.exists(session, parsed_entity_id):
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    if not await video_repo.exists_by_video_id(session, video_id):
+        raise NotFoundError(resource_type="Video", identifier=video_id)
+
+    removed = await exclusion_repo.remove(session, parsed_entity_id, video_id)
+    if removed:
+        await op_log_repo.create(
+            session,
+            obj_in=EntityOperationLogCreate(
+                entity_id=parsed_entity_id,
+                operation_type="association_restore",
+                rollback_data=AssociationExclusionRollback(video_id=video_id),
+                performed_by=ACTOR_USER_LOCAL,
+            ),
+        )
+    await session.commit()
+    return Response(status_code=204)
+
+
+@router.get(
+    "/entities/{entity_id}/excluded-videos",
+    status_code=200,
+    summary="List videos hidden from (excluded from) an entity",
+)
+async def list_entity_excluded_videos(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    limit: int = Query(default=50, ge=1, le=200, description="Items per page"),
+    offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    exclusion_repo: EntityVideoExclusionRepository = Depends(
+        get_entity_video_exclusion_repository
+    ),
+) -> EntityVideoExclusionListResponse:
+    """The 'hidden from this entity' view: an entity's current exclusions, paginated (FR-009)."""
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    if not await entity_repo.exists(session, parsed_entity_id):
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    data, total = await exclusion_repo.list_for_entity(
+        session, parsed_entity_id, limit=limit, offset=offset
+    )
+    return EntityVideoExclusionListResponse(
+        data=data,
+        pagination=PaginationMeta(
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_more=offset + limit < total,
+        ),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

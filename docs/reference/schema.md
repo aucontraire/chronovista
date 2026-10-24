@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**29 tables.** For the reasoning behind the design, see
+**30 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -495,7 +495,7 @@ Audit log for tag normalization and management operations.
 
 ## Named Entities
 
-Curated entities, their aliases, every place they are mentioned, and their normalized Wikipedia categories.
+Curated entities, their aliases, every place they are mentioned, their normalized Wikipedia categories, and videos manually excluded from an entity.
 
 ### `named_entities`
 
@@ -624,7 +624,7 @@ Audit log for named-entity curation edits (name/description) — Feature 057.
 
 **Constraints:**
 
-- CHECK `chk_entity_operation_type_valid`: `operation_type IN ('update', 'reground', 'refetch', 'alias_delete')`
+- CHECK `chk_entity_operation_type_valid`: `operation_type IN ('update', 'reground', 'refetch', 'alias_delete', 'association_exclude', 'association_restore')`
 
 **Indexes:**
 
@@ -663,6 +663,24 @@ Entity-to-category assignment (Feature 083).
 **Indexes:**
 
 - INDEX `idx_entity_categories_category_id` on `category_id`
+
+### `entity_video_exclusions`
+
+Explicit negative association — "this video is NOT this entity" (Feature 091).
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `entity_id` | UUID | no |  | **PK**, FK → `named_entities.id` |
+| `video_id` | VARCHAR(20) | no |  | **PK**, FK → `videos.video_id` |
+| `excluded_by` | VARCHAR(100) | no |  |  |
+| `excluded_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `reason` | TEXT | yes |  |  |
+
+**Composite primary key:** `entity_id`, `video_id`
+
+**Indexes:**
+
+- INDEX `idx_entity_video_exclusions_video_id` on `video_id`
 
 ## Recovery Provenance
 

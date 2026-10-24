@@ -67,6 +67,9 @@ from chronovista.repositories.entity_category_repository import (
 from chronovista.repositories.entity_operation_log_repository import (
     EntityOperationLogRepository,
 )
+from chronovista.repositories.entity_video_exclusion_repository import (
+    EntityVideoExclusionRepository,
+)
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
@@ -511,6 +514,16 @@ class Container:
         True
         """
         return EntityOperationLogRepository()
+
+    def create_entity_video_exclusion_repository(
+        self,
+    ) -> EntityVideoExclusionRepository:
+        """Create a new EntityVideoExclusionRepository instance (Feature 091).
+
+        Returns a fresh repository for the per-(entity, video) manual exclusion
+        store. Transient lifecycle (a new instance per call).
+        """
+        return EntityVideoExclusionRepository()
 
     def create_canonical_tag_repository(self) -> CanonicalTagRepository:
         """

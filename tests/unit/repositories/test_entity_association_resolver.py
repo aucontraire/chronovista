@@ -71,13 +71,16 @@ class TestQueryShape:
     async def test_bounded_query_count_not_per_row(self) -> None:
         """The count is fixed regardless of page size — never per-entity.
 
-        Empty alias rows short-circuit the fourth (alias-matched-tag) query, so
-        an all-empty mock issues three: mentions, canonical tags, aliases.
+        Empty alias rows short-circuit the alias-matched-tag query, so an all-empty
+        mock issues four FIXED queries: mentions, canonical tags, alias names, and the
+        Feature-091 manual-exclusion fetch (``entity_id IN (...)`` — one bounded query,
+        not per-row). The exclusion query raised this from three to four; the key
+        invariant below (``len(one) == len(many)``) still proves it never grows per row.
         """
         one = await _capture_sql([uuid.uuid4()])
         many = await _capture_sql([uuid.uuid4() for _ in range(25)])
         assert len(one) == len(many), "query count grows with page size"
-        assert len(one) == 3
+        assert len(one) == 4
 
     async def test_no_correlated_exists(self) -> None:
         """Correlated EXISTS re-evaluated per row is the #56 regression."""

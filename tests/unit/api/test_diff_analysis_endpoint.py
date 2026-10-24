@@ -298,7 +298,7 @@ class TestGetDiffAnalysis:
         mock_batch_service.get_patterns = AsyncMock(return_value=[pattern])
         mock_find_entity.return_value = (uuid.uuid4(), "Johnson")
 
-        response = await client.get(self.BASE_URL, params={"entity_name": "Trump"})
+        response = await client.get(self.BASE_URL, params={"entity_name": "Ava Stone"})
 
         assert response.status_code == 200
         assert response.json()["data"] == []

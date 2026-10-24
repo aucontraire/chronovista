@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-10-23
+
+### Added
+- **Manual association unlink.** On an entity's detail page you can now remove a video that is wrongly connected to the entity — including connections that arise only from a name/tag match with no stored record. The removed video disappears from the entity's video list and its count together (and from every other surface that reports the entity's associations), and it can be restored at any time from a new "Hidden from this entity" section. Excluding one video for an entity never affects that video's association to any other entity.
+
+### Internal
+- New `entity_video_exclusions` table (a per-(entity, video) negative association) with an additive migration; a second additive migration extends the entity operation-log `operation_type` CHECK with `association_exclude` / `association_restore`.
+- The exclusion is subtracted inside every association reader (the shared arms-union anti-join helper plus the id-set readers), so the videos filter, association counts, co-occurrence, intersection, and the entity-detail list/panel all honour it without drift — proven by a real-DB parity test across those surfaces.
+- Exclude/restore are recorded in the entity operation history with rollback data and are reversible through both the dedicated restore endpoint and the generic operation-undo (which now also fails cleanly with a 4xx, rather than a 500, for operation types it cannot reverse).
+
 ## [0.95.0] - 2026-10-23
 
 ### Changed

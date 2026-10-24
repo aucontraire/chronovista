@@ -140,6 +140,20 @@ def _make_entity_mention_db(
 
 
 @pytest.mark.filterwarnings("ignore::pytest.PytestWarning")
+@pytest.fixture(autouse=True)
+def _f091_no_exclusions() -> Any:
+    """Feature 091: these pre-existing mocked-execute-sequence tests seed no
+    exclusions, so stub the exclusion fetch to empty — the association logic and the
+    mocked sequences under test stay unchanged. Real exclusion behavior is covered by
+    test_entity_mention_exclusion_sql.py and the integration parity test."""
+    with patch.object(
+        EntityMentionRepository,
+        "_excluded_video_ids",
+        new=AsyncMock(return_value=set()),
+    ):
+        yield
+
+
 class TestEntityMentionRepositoryInitialization:
     """Verify repository can be instantiated and model attribute is correct.
 

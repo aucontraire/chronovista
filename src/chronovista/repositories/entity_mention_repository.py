@@ -55,6 +55,9 @@ from chronovista.db.models import (
     EntityMention as EntityMentionDB,
 )
 from chronovista.db.models import (
+    EntityVideoExclusion as EntityVideoExclusionDB,
+)
+from chronovista.db.models import (
     NamedEntity as NamedEntityDB,
 )
 from chronovista.db.models import (
@@ -953,6 +956,11 @@ class EntityMentionRepository(
     ) -> list[dict[str, Any]]:
         """Get entity summary for a video.
 
+        Feature 091: this is mention-only and is NOT exclusion-aware. It must stay
+        funnelled through :meth:`get_video_entity_associations` (which subtracts
+        excluded entities from its ``members`` before consulting this summary) — do
+        not call it raw as a user-facing surface, or excluded pairs would leak back.
+
         GROUP BY entity_id with COUNT(distinct segment_id) as mention_count,
         MIN(start_time) as first_mention_time. JOINs named_entities for
         canonical_name, entity_type, description. Uses LEFT JOIN on
@@ -1231,6 +1239,17 @@ class EntityMentionRepository(
         # Union both tag sources — same "tag" indicator for both paths
         tag_video_ids = canonical_tag_video_ids | alias_tag_video_ids
 
+        # Feature 091: subtract manual (entity, video) exclusions so this list AND
+        # its total match the association count and the /videos filter (FR-004).
+        # Drop from the source sets here (feeds all_video_ids + tag_only_ids) and,
+        # unconditionally, from the assembled rows below — Step 3's detail query is
+        # driven by the mention filter, not the restricted set, so the
+        # include_unavailable path would otherwise re-surface an excluded video.
+        excluded_video_ids = await self._excluded_video_ids(session, entity_id)
+        if excluded_video_ids:
+            transcript_video_ids -= excluded_video_ids
+            tag_video_ids -= excluded_video_ids
+
         # Deduplicated total count across all sources (T015, T020)
         all_video_ids = transcript_video_ids | tag_video_ids
 
@@ -1420,6 +1439,16 @@ class EntityMentionRepository(
                     "description_context": None,
                 }
 
+        # Feature 091: excluded videos must never appear, including on the
+        # include_unavailable path (Step 3's detail query ignores the restricted
+        # set). Unconditional, independent of availability.
+        if excluded_video_ids:
+            results_dict = {
+                vid: row
+                for vid, row in results_dict.items()
+                if vid not in excluded_video_ids
+            }
+
         # Availability (Feature 080, #252): drop rows for videos excluded above.
         # The transcript-detail query (Step 3) is driven by the mention filter, not
         # the restricted set, so it can populate results_dict with unavailable
@@ -1538,6 +1567,66 @@ class EntityMentionRepository(
 
         return paginated, filtered_total if wanted is not None else total_count
 
+    async def _excluded_video_ids(
+        self, session: AsyncSession, entity_id: uuid.UUID
+    ) -> set[str]:
+        """Video ids manually excluded from ``entity_id`` (Feature 091).
+
+        The set-shaped counterpart to :meth:`_without_exclusions` (which subtracts in
+        SQL at the arms-union sites): the video-id-set readers
+        (:meth:`get_entity_video_list`, :meth:`get_combined_video_count`) subtract this
+        from their assembled sets, so their list/total match the association count and
+        the ``/videos`` filter (FR-004).
+        """
+        return set(
+            (
+                await session.execute(
+                    select(EntityVideoExclusionDB.video_id).where(
+                        EntityVideoExclusionDB.entity_id == entity_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    def _without_exclusions(self, assoc_src: Subquery, out_name: str) -> Subquery:
+        """Subtract manual entity↔video exclusions from an association selectable (Feature 091).
+
+        THE single definition of the exclusion subtraction. Wraps any arms-union
+        selectable that exposes ``entity_id`` and ``video_id`` (plus whatever else it
+        carries) and removes every ``(entity_id, video_id)`` present in
+        ``entity_video_exclusions`` via a **LEFT JOIN anti-join** (outer join on the
+        pair, keep rows where the exclusion side ``IS NULL``). A correlated ``EXISTS``
+        is deliberately NOT used — the count path forbids it (the #56 perf guard). It
+        is applied at EVERY arms-union site — the entity filter, the association counts, and the
+        co-occurrence shape — so all three honor exclusions identically and the filter
+        and counts cannot drift (spec FR-004).
+
+        NOTE: the arms union is (historically) assembled in three separate methods, not
+        one shared selectable, so this helper is invoked at three call sites. It is the
+        single *definition* of the subtraction even though there are three *call sites*;
+        the Feature 091 plan carries the standing recommendation to unify the three
+        builders so a future consumer inherits the subtraction automatically.
+
+        Implemented as a **non-correlated LEFT JOIN anti-join** (not a correlated
+        ``EXISTS``): the count path forbids correlated ``EXISTS`` (the #56 perf
+        regression). The exclusion PK is one row per ``(entity_id, video_id)``, so the
+        outer join is 1:0-or-1 and never multiplies association rows.
+        """
+        return (
+            select(assoc_src)
+            .outerjoin(
+                EntityVideoExclusionDB,
+                and_(
+                    EntityVideoExclusionDB.entity_id == assoc_src.c.entity_id,
+                    EntityVideoExclusionDB.video_id == assoc_src.c.video_id,
+                ),
+            )
+            .where(EntityVideoExclusionDB.entity_id.is_(None))
+            .subquery(out_name)
+        )
+
     async def _tag_inclusive_association_arms(
         self,
         session: AsyncSession,
@@ -1645,7 +1734,7 @@ class EntityMentionRepository(
                     .columns(entity_id=Uuid, video_id=String, mention_weight=Integer)
                 )
 
-        return union_all(*arms).subquery("assoc")
+        return self._without_exclusions(union_all(*arms).subquery("assoc_src"), "assoc")
 
     async def build_entity_qualification_subquery(
         self,
@@ -2380,7 +2469,9 @@ class EntityMentionRepository(
                     .columns(entity_id=Uuid, video_id=String)
                 )
 
-        return union_all(*arms).subquery("assoc_in_videos")
+        return self._without_exclusions(
+            union_all(*arms).subquery("assoc_in_videos_src"), "assoc_in_videos"
+        )
 
     async def association_triples(
         self,
@@ -2435,6 +2526,24 @@ class EntityMentionRepository(
         # so this path yields (entity_id, video_id) pairs rather than a SELECT.
         for entity_id, video_id in await self._alias_tag_pairs(session, ids):
             triples.append((entity_id, video_id, "tag"))
+
+        # Feature 091: subtract manual (entity, video) exclusions so this shared
+        # hook point (count aggregator / video panel / provenance filter) cannot
+        # silently inherit the drift. Done in Python since the alias arm is already
+        # Python-side; the exclusion set is small and bounded by `ids`.
+        excluded_pairs: set[tuple[uuid.UUID, str]] = {
+            (row.entity_id, row.video_id)
+            for row in (
+                await session.execute(
+                    select(
+                        EntityVideoExclusionDB.entity_id,
+                        EntityVideoExclusionDB.video_id,
+                    ).where(EntityVideoExclusionDB.entity_id.in_(ids))
+                )
+            ).all()
+        }
+        if excluded_pairs:
+            triples = [t for t in triples if (t[0], t[1]) not in excluded_pairs]
 
         return triples
 
@@ -2533,7 +2642,9 @@ class EntityMentionRepository(
             )
             arms.append(alias_arm)
 
-        assoc = union_all(*arms).subquery("assoc")
+        assoc = self._without_exclusions(
+            union_all(*arms).subquery("assoc_src"), "assoc"
+        )
         count_stmt = select(
             assoc.c.entity_id,
             func.count(distinct(assoc.c.video_id)).label("total"),
@@ -2949,6 +3060,23 @@ class EntityMentionRepository(
         tag_ids = await self._video_tag_entity_ids(session, video_id)
 
         members = strict_mention_ids | tag_ids
+
+        # Feature 091: the exclusion is symmetric — a (entity, video) unlink must
+        # drop that entity from the video's panel too, so this inverse view cannot
+        # disagree with the entity side (FR-003/FR-004).
+        excluded_entity_ids: set[uuid.UUID] = set(
+            (
+                await session.execute(
+                    select(EntityVideoExclusionDB.entity_id).where(
+                        EntityVideoExclusionDB.video_id == video_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        members -= excluded_entity_ids
+
         if not members:
             return []
 
@@ -3063,6 +3191,9 @@ class EntityMentionRepository(
 
         # Deduplicated union
         all_video_ids = transcript_video_ids | tag_video_ids
+        # Feature 091: subtract manual exclusions so this lightweight count agrees
+        # with get_association_counts and the video list (FR-004).
+        all_video_ids -= await self._excluded_video_ids(session, entity_id)
         return len(all_video_ids)
 
     async def get_statistics(
@@ -3071,6 +3202,10 @@ class EntityMentionRepository(
         entity_type: str | None = None,
     ) -> dict[str, Any]:
         """Get aggregate statistics about entity mentions.
+
+        Feature 091: these are raw mention statistics and are exclusion-agnostic by
+        design (and tag-agnostic, as before 091). They do not claim to report
+        associations, so manual exclusions deliberately do not affect them.
 
         Parameters
         ----------
@@ -3211,6 +3346,12 @@ class EntityMentionRepository(
         The union of both paths ensures forward-compatibility: any new
         association type adding rows to ``entity_mentions`` automatically
         expands scope.
+
+        Feature 091 note: this DELIBERATELY does not subtract manual
+        ``entity_video_exclusions``. It feeds the phonetic matcher (scan /
+        candidate discovery); for v1 an exclusion governs the association
+        *display and count* surfaces, not match discovery. Revisit if a future
+        suppression layer should also gate discovery.
 
         Parameters
         ----------

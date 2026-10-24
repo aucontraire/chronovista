@@ -27,13 +27,14 @@ import { ReferencedByPanel } from "../components/entity/ReferencedByPanel";
 import { EntityEnrichmentSection } from "../components/entity/EntityEnrichmentSection";
 import { EntityPortrait } from "../components/entity/EntityPortrait";
 import { EntityAccordionGroup } from "../components/entity/EntityAccordionGroup";
+import { EntityVideoExcludeButton } from "../components/entity/EntityVideoExcludeButton";
+import { HiddenFromEntitySection } from "../components/entity/HiddenFromEntitySection";
 import { EntityTagSection } from "../components/entity/EntityTagSection";
 import { EntityTypeBadge } from "../components/EntityTypeBadge";
 import { AssociationBreakdown } from "../components/AssociationBreakdown";
 import { ENTITY_TYPE_LABELS } from "../constants/entityTypes";
 import {
   useEntityVideos,
-  useDeleteManualAssociation,
   useScanEntity,
   useUpdateEntity,
 } from "../hooks/useEntityMentions";
@@ -241,118 +242,6 @@ function EntityDetailSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
-// UnlinkConfirmation (inline, entity detail page)
-// ---------------------------------------------------------------------------
-
-interface UnlinkConfirmationProps {
-  /** Unique id used for data-testid attributes */
-  id: string;
-  /** Whether the delete mutation is in progress */
-  isPending: boolean;
-  /** Called when the user confirms the removal */
-  onConfirm: () => void;
-  /** Called when the user cancels or presses Escape */
-  onCancel: () => void;
-}
-
-/**
- * Inline horizontal confirmation row for removing a manual entity–video
- * association from the entity detail page video list.
- *
- * Follows the RevertConfirmation pattern:
- * - Confirm button auto-focuses on mount (WCAG 2.4.3)
- * - Escape key cancels
- * - Amber colour scheme
- * - Message text satisfies FR-027
- */
-function UnlinkConfirmation({
-  id,
-  isPending,
-  onConfirm,
-  onCancel,
-}: UnlinkConfirmationProps) {
-  const confirmButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    confirmButtonRef.current?.focus();
-  }, []);
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    event.stopPropagation();
-    if (event.key === "Escape") {
-      onCancel();
-    }
-  };
-
-  return (
-    <div
-      className="mt-2 flex flex-wrap items-start gap-2 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
-      onKeyDown={handleKeyDown}
-    >
-      <svg
-        className="w-4 h-4 flex-shrink-0 text-amber-600 mt-0.5"
-        fill="currentColor"
-        viewBox="0 0 24 24"
-        aria-hidden="true"
-      >
-        <path
-          fillRule="evenodd"
-          d="M9.401 3.003c1.155-2 4.043-2 5.197 0l7.355 12.748c1.154 2-.29 4.5-2.599 4.5H4.645c-2.309 0-3.752-2.5-2.598-4.5L9.4 3.003ZM12 8.25a.75.75 0 0 1 .75.75v3.75a.75.75 0 0 1-1.5 0V9a.75.75 0 0 1 .75-.75Zm0 8.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z"
-          clipRule="evenodd"
-        />
-      </svg>
-
-      <span className="text-xs text-amber-900 flex-1">
-        Only the manual association will be removed. Transcript-derived mentions
-        will remain unaffected.
-      </span>
-
-      <div className="flex items-center gap-2">
-        <button
-          ref={confirmButtonRef}
-          type="button"
-          data-testid={`unlink-confirm-${id}`}
-          onClick={onConfirm}
-          disabled={isPending}
-          aria-busy={isPending ? "true" : undefined}
-          aria-label="Confirm removal of manual association"
-          className="
-            min-h-[44px] min-w-[44px]
-            px-3 py-1
-            text-sm font-medium text-white
-            bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400
-            rounded-md
-            focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1
-            transition-colors
-          "
-        >
-          {isPending ? "Removing..." : "Remove"}
-        </button>
-
-        <button
-          type="button"
-          data-testid={`unlink-cancel-${id}`}
-          onClick={onCancel}
-          aria-label="Cancel removal"
-          className="
-            min-h-[44px] min-w-[44px]
-            px-3 py-1
-            text-sm font-medium text-slate-700
-            bg-white hover:bg-slate-50
-            border border-slate-300
-            rounded-md
-            focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1
-            transition-colors
-          "
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Video card
 // ---------------------------------------------------------------------------
 
@@ -379,18 +268,8 @@ interface EntityVideoCardProps {
    * the description context snippet (FR-034).
    */
   entityName: string;
-  /** Entity ID from route params — needed for the unlink mutation. */
+  /** Entity ID from route params — needed for the exclude control. */
   entityId: string;
-  /** Whether this card's unlink confirmation is currently visible. */
-  isUnlinking: boolean;
-  /** Called when the unlink button is clicked. */
-  onUnlinkClick: () => void;
-  /** Called when the unlink confirmation is cancelled. */
-  onUnlinkCancel: () => void;
-  /** Called when the unlink is confirmed. */
-  onUnlinkConfirm: () => void;
-  /** Whether the delete mutation is pending for this card. */
-  isDeletePending: boolean;
 }
 
 /**
@@ -424,11 +303,7 @@ function EntityVideoCard({
   has_manual,
   description_context,
   entityName,
-  isUnlinking,
-  onUnlinkClick,
-  onUnlinkCancel,
-  onUnlinkConfirm,
-  isDeletePending,
+  entityId,
 }: EntityVideoCardProps) {
   const isManualOnly = mention_count === 0 && has_manual;
   const hasTranscript = sources.includes("transcript") && mention_count > 0;
@@ -541,51 +416,14 @@ function EntityVideoCard({
           </div>
         </Link>
 
-        {/* T045: Unlink button — only shown when has_manual is true */}
-        {has_manual && (
-          <button
-            type="button"
-            data-testid={`unlink-button-${video_id}`}
-            aria-label={`Remove manual association for ${video_title}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-              onUnlinkClick();
-            }}
-            className="
-              absolute top-3 right-3
-              inline-flex items-center justify-center
-              w-7 h-7
-              text-slate-400 hover:text-amber-600
-              bg-white hover:bg-amber-50
-              border border-slate-200 hover:border-amber-300
-              rounded-full
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-1
-              transition-colors
-            "
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-              className="w-4 h-4"
-              aria-hidden="true"
-            >
-              <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
-            </svg>
-          </button>
-        )}
       </div>
 
-      {/* Inline unlink confirmation — shown below the card */}
-      {isUnlinking && (
-        <UnlinkConfirmation
-          id={video_id}
-          isPending={isDeletePending}
-          onConfirm={onUnlinkConfirm}
-          onCancel={onUnlinkCancel}
-        />
-      )}
+      {/* Feature 091: hide this video from the entity (any source) */}
+      <EntityVideoExcludeButton
+        entityId={entityId}
+        entityName={entityName}
+        videoId={video_id}
+      />
     </div>
   );
 }
@@ -1549,17 +1387,6 @@ export function EntityDetailPage() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // T045: Track which video's unlink confirmation is currently visible.
-  const [unlinkingVideoId, setUnlinkingVideoId] = useState<string | null>(null);
-  const deleteMutation = useDeleteManualAssociation();
-
-  // Auto-hide confirmation after a successful deletion.
-  useEffect(() => {
-    if (deleteMutation.isSuccess) {
-      setUnlinkingVideoId(null);
-    }
-  }, [deleteMutation.isSuccess]);
-
   // T008: Scan for mentions button state.
   type ScanMessageType = "success" | "error" | null;
   const [scanMessage, setScanMessage] = useState<string | null>(null);
@@ -2297,6 +2124,15 @@ export function EntityDetailPage() {
             </span>
           </div>
 
+          {/* Hidden-from-entity section — placed above the list so excluded
+              videos are discoverable without scrolling past a long list. */}
+          {entityId && (
+            <HiddenFromEntitySection
+              entityId={entityId}
+              entityName={entity.canonical_name}
+            />
+          )}
+
           {/* Loading skeleton for video list — T067: dropdown stays interactive */}
           {videosLoading && (
             <div className="space-y-4 animate-pulse">
@@ -2331,20 +2167,6 @@ export function EntityDetailPage() {
                     description_context={v.description_context ?? null}
                     entityName={entity.canonical_name}
                     entityId={entityId ?? ""}
-                    isUnlinking={unlinkingVideoId === v.video_id}
-                    isDeletePending={
-                      deleteMutation.isPending && unlinkingVideoId === v.video_id
-                    }
-                    onUnlinkClick={() => setUnlinkingVideoId(v.video_id)}
-                    onUnlinkCancel={() => setUnlinkingVideoId(null)}
-                    onUnlinkConfirm={() => {
-                      if (entityId) {
-                        deleteMutation.mutate({
-                          videoId: v.video_id,
-                          entityId,
-                        });
-                      }
-                    }}
                   />
                 );
               })}

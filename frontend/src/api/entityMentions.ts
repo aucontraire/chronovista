@@ -808,6 +808,87 @@ export async function deleteManualAssociation(
 }
 
 // ---------------------------------------------------------------------------
+// Entity-video exclusions (Feature 091 — unlink a video from an entity)
+// ---------------------------------------------------------------------------
+
+/** A video the user has hidden from an entity. */
+export interface EntityVideoExclusion {
+  entity_id: string;
+  video_id: string;
+  excluded_by: string;
+  excluded_at: string;
+  reason: string | null;
+}
+
+/** Data payload of POST /entities/{entity_id}/excluded-videos. */
+export interface CreateEntityVideoExclusionResult {
+  exclusion: EntityVideoExclusion;
+  already_excluded: boolean;
+}
+
+/** Response envelope for POST /entities/{entity_id}/excluded-videos. */
+export interface CreateEntityVideoExclusionResponse {
+  data: CreateEntityVideoExclusionResult;
+}
+
+/** Paginated response for GET /entities/{entity_id}/excluded-videos. */
+export interface EntityVideoExclusionListResponse {
+  data: EntityVideoExclusion[];
+  pagination: EntityPaginationMeta;
+}
+
+/** Variables for {@link createEntityVideoExclusion}. */
+export interface CreateEntityVideoExclusionVariables {
+  videoId: string;
+  reason?: string;
+}
+
+/** Query parameters for {@link fetchEntityVideoExclusions}. */
+export interface FetchEntityVideoExclusionsParams {
+  limit: number;
+  offset: number;
+}
+
+/** Hides a video from an entity (idempotent on the server). */
+export async function createEntityVideoExclusion(
+  entityId: string,
+  { videoId, reason }: CreateEntityVideoExclusionVariables
+): Promise<CreateEntityVideoExclusionResponse> {
+  const body: { video_id: string; reason?: string } = { video_id: videoId };
+  if (reason !== undefined) body.reason = reason;
+  return apiFetch<CreateEntityVideoExclusionResponse>(
+    `/entities/${entityId}/excluded-videos`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+
+/** Restores a hidden video to an entity (idempotent; 204). */
+export async function deleteEntityVideoExclusion(
+  entityId: string,
+  videoId: string
+): Promise<void> {
+  await apiFetch(`/entities/${entityId}/excluded-videos/${videoId}`, {
+    method: "DELETE",
+  });
+}
+
+/** Lists the videos hidden from an entity. */
+export async function fetchEntityVideoExclusions(
+  entityId: string,
+  { limit, offset }: FetchEntityVideoExclusionsParams,
+  signal?: AbortSignal
+): Promise<EntityVideoExclusionListResponse> {
+  const qs = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+  return apiFetch<EntityVideoExclusionListResponse>(
+    `/entities/${entityId}/excluded-videos?${qs.toString()}`,
+    signal ? { externalSignal: signal } : {}
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Duplicate check types (for GET /api/v1/entities/check-duplicate)
 // ---------------------------------------------------------------------------
 

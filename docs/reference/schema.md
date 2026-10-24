@@ -678,6 +678,10 @@ Explicit negative association — "this video is NOT this entity" (Feature 091).
 
 **Composite primary key:** `entity_id`, `video_id`
 
+**Indexes:**
+
+- INDEX `idx_entity_video_exclusions_video_id` on `video_id`
+
 ## Recovery Provenance
 
 Append-only record of which archive sources contributed metadata to a deleted video or channel, so one recovery pass cannot erase another's attribution.

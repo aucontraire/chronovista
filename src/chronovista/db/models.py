@@ -1823,6 +1823,12 @@ class EntityVideoExclusion(Base):
     )
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # The composite PK indexes ``(entity_id, video_id)``, which only serves
+    # entity-leading seeks. A reverse lookup by ``video_id`` alone — the
+    # video→entities panel and the ON DELETE CASCADE from ``videos`` — cannot
+    # use that prefix, so it gets its own index (mirrors ``entity_categories``).
+    __table_args__ = (Index("idx_entity_video_exclusions_video_id", "video_id"),)
+
 
 # Export all models
 __all__ = [

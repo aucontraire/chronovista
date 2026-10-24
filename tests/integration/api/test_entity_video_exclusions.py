@@ -40,6 +40,30 @@ async def _seed_entity_with_video(
         return str(entity.id)
 
 
+async def _count_op_rows(
+    factory: async_sessionmaker[AsyncSession], entity_id: str, op_type: str
+) -> int:
+    """How many ``op_type`` operation-log rows exist for ``entity_id``.
+
+    Lets a no-op path assert it wrote *nothing* — the idempotent return value
+    alone does not prove the audit trail was left untouched.
+    """
+    async with factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    select(EntityOperationLogDB.id).where(
+                        EntityOperationLogDB.entity_id == uuid.UUID(entity_id),
+                        EntityOperationLogDB.operation_type == op_type,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return len(rows)
+
+
 class TestExcludeEndpoint:
     async def test_exclude_drops_video_from_entity_videos(
         self,
@@ -85,6 +109,14 @@ class TestExcludeEndpoint:
         )
         assert second.status_code == 200
         assert second.json()["data"]["already_excluded"] is True
+        # The idempotent re-exclude is a genuine no-op: exactly one audit row,
+        # not a second ``association_exclude`` written on the already-excluded pass.
+        assert (
+            await _count_op_rows(
+                integration_session_factory, eid, "association_exclude"
+            )
+            == 1
+        )
 
     async def test_404_for_unknown_entity(self, async_client: AsyncClient) -> None:
         resp = await async_client.post(
@@ -147,6 +179,14 @@ class TestExcludeEndpoint:
             f"/api/v1/entities/{eid}/excluded-videos/f091api5"
         )
         assert resp.status_code == 204
+        # Nothing was actually removed, so the no-op 204 must NOT write a
+        # spurious ``association_restore`` audit row.
+        assert (
+            await _count_op_rows(
+                integration_session_factory, eid, "association_restore"
+            )
+            == 0
+        )
 
 
 async def _latest_op_id(

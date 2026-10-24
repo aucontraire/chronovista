@@ -12,10 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Manual association unlink.** On an entity's detail page you can now remove a video that is wrongly connected to the entity — including connections that arise only from a name/tag match with no stored record. The removed video disappears from the entity's video list and its count together (and from every other surface that reports the entity's associations), and it can be restored at any time from a new "Hidden from this entity" section. Excluding one video for an entity never affects that video's association to any other entity.
 
+### Changed
+- **Entity detail page remove control.** The entity detail page's earlier manual-association unlink control is replaced by the new "Not about this?" exclude control, which also removes name/tag-only connections (that the earlier control could not) and is reversible. The earlier manual-unlink remains available on the video detail panel for the single-mention case, so no capability is lost.
+- The generic operation-undo endpoint now returns a 4xx error for operation types it cannot reverse, instead of a 500.
+
 ### Internal
 - New `entity_video_exclusions` table (a per-(entity, video) negative association) with an additive migration; a second additive migration extends the entity operation-log `operation_type` CHECK with `association_exclude` / `association_restore`.
 - The exclusion is subtracted inside every association reader (the shared arms-union anti-join helper plus the id-set readers), so the videos filter, association counts, co-occurrence, intersection, and the entity-detail list/panel all honour it without drift — proven by a real-DB parity test across those surfaces.
-- Exclude/restore are recorded in the entity operation history with rollback data and are reversible through both the dedicated restore endpoint and the generic operation-undo (which now also fails cleanly with a 4xx, rather than a 500, for operation types it cannot reverse).
+- Exclude/restore are recorded in the entity operation history with rollback data and are reversible through both the dedicated restore endpoint and the generic operation-undo.
 
 ## [0.95.0] - 2026-10-23
 

@@ -81,8 +81,13 @@ class TestExclusionSubtractionSQL:
         assert "left outer join" in sql and "is null" in sql
         # Must NOT be a correlated EXISTS (#56 perf guard, enforced for the count path).
         assert "exists" not in sql
-        # Anti-join correlated on BOTH keys — a per-pair exclusion.
-        assert "entity_id" in sql and "video_id" in sql
+        # Anti-join correlated on BOTH keys — a per-pair exclusion. Assert the
+        # qualified ON-clause predicates, not the bare column names: a bare
+        # ``"entity_id" in sql`` is vacuous because both columns are SELECTed
+        # regardless of the join. These two substrings only occur in the LEFT
+        # JOIN's ON clause, so dropping either key makes the test go red.
+        assert "entity_video_exclusions.entity_id = " in sql
+        assert "entity_video_exclusions.video_id = " in sql
 
     def test_filter_path_subtracts_exclusions(self) -> None:
         subq = asyncio.run(

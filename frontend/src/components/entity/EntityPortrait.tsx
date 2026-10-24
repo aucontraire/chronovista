@@ -11,9 +11,17 @@
  * needed for the enlarged view.
  */
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { entityImageUrl } from "../../api/entityMentions";
-import type { EntityPropertyValue } from "../../api/entityMentions";
+import type {
+  EntityImageState,
+  EntityPropertyValue,
+} from "../../api/entityMentions";
+import {
+  useRemoveEntityImage,
+  useSetEntityImageSource,
+  useUploadEntityImage,
+} from "../../hooks/useEntityImage";
 
 export interface EntityPortraitProps {
   /** UUID of the named entity — used to build the image proxy URL. */
@@ -22,6 +30,8 @@ export interface EntityPortraitProps {
   canonicalName: string;
   /** The `image` enrichment property block, if any (`enrichment.properties.image`). */
   imageBlock?: EntityPropertyValue;
+  /** Manual/Wikidata image state (`entity.image`); `version` is the cache-buster. */
+  image?: EntityImageState;
 }
 
 /** Shared size classes so the image and its placeholder always match. */
@@ -51,31 +61,201 @@ function PortraitPlaceholder() {
   );
 }
 
-export function EntityPortrait({ entityId, canonicalName, imageBlock }: EntityPortraitProps) {
-  const [loadFailed, setLoadFailed] = useState(false);
-  const hasImageValue = Boolean(imageBlock?.values?.[0]);
-  const hasImage = hasImageValue && !loadFailed;
+const FOCUS_RING =
+  "focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2";
 
-  if (!hasImage) {
-    return <PortraitPlaceholder />;
-  }
+function UploadControl({
+  entityId,
+  hasManual,
+  onAnnounce,
+}: {
+  entityId: string;
+  hasManual: boolean;
+  onAnnounce: (message: string) => void;
+}) {
+  const inputId = useId();
+  const statusId = useId();
+  const upload = useUploadEntityImage(entityId);
 
-  const src = entityImageUrl(entityId, imageBlock?.set_at);
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file)
+      upload.mutate(file, {
+        onSuccess: () => onAnnounce("Portrait uploaded."),
+      });
+    e.target.value = "";
+  };
 
   return (
-    <a
-      href={src}
-      target="_blank"
-      rel="noopener"
-      aria-label={`Open full-size portrait of ${canonicalName}`}
-      className={`${SIZE_CLASSES} flex-shrink-0 block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2`}
-    >
-      <img
-        src={src}
-        alt={canonicalName}
-        className="w-full h-full rounded-lg object-cover border border-slate-200 hover:opacity-90 transition-opacity"
-        onError={() => setLoadFailed(true)}
+    <div className="mt-2 text-sm">
+      <label
+        htmlFor={inputId}
+        className="block text-slate-600 font-medium mb-1"
+      >
+        {hasManual ? "Replace portrait" : "Upload portrait"}
+      </label>
+      <input
+        id={inputId}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={onChange}
+        disabled={upload.isPending}
+        aria-describedby={statusId}
+        className="block w-full text-xs text-slate-600 file:mr-2 file:rounded-md file:border-0 file:bg-slate-100 file:px-2 file:py-1 file:text-slate-700 hover:file:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
       />
-    </a>
+      <p id={statusId} className="mt-1 text-xs text-slate-500">
+        JPEG, PNG or WebP, up to 10 MB.
+      </p>
+      {upload.isPending ? (
+        <p role="status" className="text-xs text-slate-500">
+          Uploading portrait...
+        </p>
+      ) : null}
+      {upload.isError ? (
+        <p role="alert" className="text-xs text-red-600">
+          {upload.error.message || "Upload failed."}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function SourceToggle({
+  entityId,
+  source,
+  onAnnounce,
+}: {
+  entityId: string;
+  source: EntityImageState["source"];
+  onAnnounce: (message: string) => void;
+}) {
+  const setSource = useSetEntityImageSource(entityId);
+  const options: { value: EntityImageState["source"]; label: string }[] = [
+    { value: "manual", label: "Your image" },
+    { value: "wikidata", label: "Wikidata image" },
+  ];
+
+  return (
+    <div
+      role="group"
+      aria-label="Portrait source"
+      className="mt-2 flex gap-1 text-xs"
+    >
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={source === o.value}
+          disabled={setSource.isPending}
+          onClick={() => {
+            if (source === o.value) return;
+            setSource.mutate(o.value, {
+              onSuccess: () => onAnnounce(`Now showing ${o.label}.`),
+            });
+          }}
+          className={`rounded-md border px-2 py-1 ${FOCUS_RING} ${
+            source === o.value
+              ? "border-indigo-600 bg-indigo-600 text-white"
+              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+      {setSource.isError ? (
+        <p role="alert" className="basis-full text-red-600">
+          {setSource.error.message || "Could not switch the portrait source."}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function RemoveControl({
+  entityId,
+  onAnnounce,
+}: {
+  entityId: string;
+  onAnnounce: (message: string) => void;
+}) {
+  const remove = useRemoveEntityImage(entityId);
+  return (
+    <div className="mt-2 text-xs">
+      <button
+        type="button"
+        disabled={remove.isPending}
+        onClick={() =>
+          remove.mutate(undefined, {
+            onSuccess: () => onAnnounce("Your portrait was removed."),
+          })
+        }
+        className={`rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:bg-slate-100 ${FOCUS_RING}`}
+      >
+        Remove portrait
+      </button>
+      {remove.isError ? (
+        <p role="alert" className="mt-1 text-red-600">
+          {remove.error.message || "Could not remove the portrait."}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function EntityPortrait({
+  entityId,
+  canonicalName,
+  imageBlock,
+  image,
+}: EntityPortraitProps) {
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+  const hasImageValue =
+    Boolean(imageBlock?.values?.[0]) || Boolean(image?.has_manual);
+  const hasImage = hasImageValue && !loadFailed;
+  const version = image?.version ?? imageBlock?.set_at;
+  const src = hasImage ? entityImageUrl(entityId, version ?? undefined) : "";
+
+  return (
+    <div className="w-40 sm:w-48 flex-shrink-0">
+      {hasImage ? (
+        <a
+          href={src}
+          target="_blank"
+          rel="noopener"
+          aria-label={`Open full-size portrait of ${canonicalName}`}
+          className={`${SIZE_CLASSES} block rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2`}
+        >
+          <img
+            src={src}
+            alt={canonicalName}
+            className="w-full h-full rounded-lg object-cover border border-slate-200 hover:opacity-90 transition-opacity"
+            onError={() => setLoadFailed(true)}
+          />
+        </a>
+      ) : (
+        <PortraitPlaceholder />
+      )}
+      <UploadControl
+        entityId={entityId}
+        hasManual={Boolean(image?.has_manual)}
+        onAnnounce={setAnnouncement}
+      />
+      {image?.has_manual && image.has_wikidata ? (
+        <SourceToggle
+          entityId={entityId}
+          source={image.source}
+          onAnnounce={setAnnouncement}
+        />
+      ) : null}
+      {image?.has_manual ? (
+        <RemoveControl entityId={entityId} onAnnounce={setAnnouncement} />
+      ) : null}
+      {announcement ? (
+        <p role="status" className="sr-only">
+          {announcement}
+        </p>
+      ) : null}
+    </div>
   );
 }

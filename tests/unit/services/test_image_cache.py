@@ -1319,7 +1319,11 @@ class TestGetEntityImageTransientPlaceholder:
         entity_id = "00000000-0000-4000-8000-000000000001"
 
         mock_result = MagicMock()
+        # Row shape after Feature 092: (manual_image_ext, image_source_preference, properties).
+        # No manual image here, so the resolver proceeds down the Wikidata path.
         mock_result.first.return_value = (
+            None,
+            "wikidata",
             {"image": {"values": ["Jane_Doe_portrait.jpg"], "source": "wikidata"}},
         )
         mock_db_session.execute.return_value = mock_result
@@ -1351,7 +1355,12 @@ class TestGetEntityImageTransientPlaceholder:
         entity_id = "00000000-0000-4000-8000-000000000002"
 
         mock_result = MagicMock()
-        mock_result.first.return_value = ({},)  # properties present, no image block
+        # Row shape after Feature 092: (manual_image_ext, image_source_preference, properties).
+        mock_result.first.return_value = (
+            None,
+            "wikidata",
+            {},
+        )  # no manual image; no image block
         mock_db_session.execute.return_value = mock_result
 
         response = await service.get_entity_image(

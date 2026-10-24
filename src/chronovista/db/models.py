@@ -1014,10 +1014,26 @@ class NamedEntity(Base):
         onupdate=func.now(),
     )
 
+    # Manual entity image (Feature 092). Stored in dedicated columns OUTSIDE the
+    # `properties` JSONB so enrichment (refetch/backfill/reground, which clears
+    # `properties`) can never clobber an operator-uploaded image. `manual_image_ext`
+    # NULL means no uploaded image; the file lives at data_dir/entity_images/{id}.{ext}.
+    manual_image_ext: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    manual_image_uploaded_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    image_source_preference: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="wikidata"
+    )
+
     # Table constraints
     __table_args__ = (
         UniqueConstraint(
             "canonical_name_normalized", "entity_type", name="uq_named_entity_canonical"
+        ),
+        CheckConstraint(
+            "image_source_preference IN ('manual', 'wikidata')",
+            name="chk_named_entity_image_source_valid",
         ),
         CheckConstraint(
             "entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other')",

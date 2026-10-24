@@ -1751,6 +1751,7 @@ export function EntityDetailPage() {
           <EntityPortrait
             entityId={entityId ?? ""}
             canonicalName={entity.canonical_name}
+            {...(entity.image !== undefined ? { image: entity.image } : {})}
             {...(entity.enrichment?.properties?.image !== undefined
               ? { imageBlock: entity.enrichment.properties.image }
               : {})}

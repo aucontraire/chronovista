@@ -7,6 +7,7 @@ supporting entity resolution, merge tracking, and confidence scoring.
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from collections.abc import Sequence
 from typing import Any
@@ -18,10 +19,20 @@ from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
+from chronovista.models.entity_image import ImageSource
 from chronovista.models.entity_relations import InboundRelationMatch
 from chronovista.models.named_entity import NamedEntityCreate, NamedEntityUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 from chronovista.repositories.entity_mention_repository import _folded
+
+
+class ManualImageMissingError(Exception):
+    """Raised when ``manual`` is requested as the image source but no manual image exists.
+
+    The caller is expected to have already verified the entity exists (the route does an
+    existence check first, mirroring Feature 091); a guarded UPDATE that touches zero rows
+    therefore means the entity has no uploaded image (``manual_image_ext IS NULL``).
+    """
 
 
 class NamedEntityRepository(
@@ -378,6 +389,138 @@ class NamedEntityRepository(
             update(NamedEntityDB)
             .where(NamedEntityDB.id == entity_id)
             .values(properties=properties)
+        )
+        result = await session.execute(stmt)
+        return result.rowcount
+
+    async def set_manual_image(
+        self,
+        session: AsyncSession,
+        entity_id: uuid.UUID,
+        *,
+        ext: str,
+        uploaded_at: datetime.datetime,
+    ) -> int:
+        """Record an uploaded manual image and make it the displayed source (Feature 092).
+
+        Sets ``manual_image_ext``, ``manual_image_uploaded_at`` and flips
+        ``image_source_preference`` to ``'manual'`` in one UPDATE. The SET clause touches only
+        the three manual-image columns — never ``properties`` / ``external_ids`` — so this write
+        is independent of the enrichment store (FR-010). UPDATE-only: 0 rows means the entity is
+        absent.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        entity_id : uuid.UUID
+            Target entity's primary key.
+        ext : str
+            The resolved file extension (``jpg`` / ``png`` / ``webp``).
+        uploaded_at : datetime.datetime
+            Upload time (the cache-buster version and audit signal).
+
+        Returns
+        -------
+        int
+            Number of rows updated: 1 if the entity existed, 0 if it was absent.
+        """
+        stmt = (
+            update(NamedEntityDB)
+            .where(NamedEntityDB.id == entity_id)
+            .values(
+                manual_image_ext=ext,
+                manual_image_uploaded_at=uploaded_at,
+                image_source_preference="manual",
+            )
+        )
+        result = await session.execute(stmt)
+        return result.rowcount
+
+    async def clear_manual_image(
+        self, session: AsyncSession, entity_id: uuid.UUID
+    ) -> int:
+        """Clear the manual image and revert the displayed source to automated (Feature 092).
+
+        Sets ``manual_image_ext`` and ``manual_image_uploaded_at`` to NULL and resets
+        ``image_source_preference`` to ``'wikidata'`` so the portrait falls back to the automated
+        image (or the placeholder). The on-disk file is removed by the service layer. UPDATE-only:
+        0 rows means the entity is absent (which the idempotent DELETE route handles as a no-op).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        entity_id : uuid.UUID
+            Target entity's primary key.
+
+        Returns
+        -------
+        int
+            Number of rows updated: 1 if the entity existed, 0 if it was absent.
+        """
+        stmt = (
+            update(NamedEntityDB)
+            .where(NamedEntityDB.id == entity_id)
+            .values(
+                manual_image_ext=None,
+                manual_image_uploaded_at=None,
+                image_source_preference="wikidata",
+            )
+        )
+        result = await session.execute(stmt)
+        return result.rowcount
+
+    async def set_image_source(
+        self, session: AsyncSession, entity_id: uuid.UUID, source: ImageSource
+    ) -> int:
+        """Set which image source the portrait displays, keeping the file (Feature 092).
+
+        Writes only ``image_source_preference`` — the uploaded file and the two manual columns are
+        untouched, so a later switch back needs no re-upload. Requesting ``'manual'`` is guarded:
+        the UPDATE only matches a row whose ``manual_image_ext IS NOT NULL``, so if the entity has
+        no uploaded image the write affects zero rows and :class:`ManualImageMissingError` is
+        raised (the caller verifies existence first, per the route's existence-check-before-write).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        entity_id : uuid.UUID
+            Target entity's primary key.
+        source : ImageSource
+            ``'manual'`` or ``'wikidata'``.
+
+        Returns
+        -------
+        int
+            Number of rows updated: 1 if the entity existed, 0 if it was absent.
+
+        Raises
+        ------
+        ManualImageMissingError
+            If ``source == 'manual'`` but the entity has no uploaded image.
+        """
+        if source == "manual":
+            stmt = (
+                update(NamedEntityDB)
+                .where(
+                    NamedEntityDB.id == entity_id,
+                    NamedEntityDB.manual_image_ext.isnot(None),
+                )
+                .values(image_source_preference="manual")
+            )
+            result = await session.execute(stmt)
+            if result.rowcount == 0:
+                raise ManualImageMissingError(
+                    "cannot set source to 'manual': no uploaded image for this entity"
+                )
+            return result.rowcount
+
+        stmt = (
+            update(NamedEntityDB)
+            .where(NamedEntityDB.id == entity_id)
+            .values(image_source_preference=source)
         )
         result = await session.execute(stmt)
         return result.rowcount

@@ -64,6 +64,7 @@ ALLOWLIST = {
     "Obsidian",
     "OpenAI",
     "Vector Database",
+    "spaCy",
 }
 
 # Country / region names that appear ONLY as language-variant display labels
@@ -118,6 +119,35 @@ COMMON_WORD_ALIASES = {
     # requires throughout the codebase.
     "Type",
     "Web",
+    # Ordinary code/prose vocabulary and generic fixture names that collided with
+    # library aliases, identified 2026-10-24 by cross-referencing the term list
+    # against words that actually occur in tracked code/docs. Each real entity is
+    # still covered by its full name; the bare word identifies no one. This clears a
+    # recurring class of false positives — e.g. "treats", Tailwind's "green", CSS
+    # "style", and the mypy/test/infra vocabulary "opt"/"miss"/"less"/"mass"/"cloud"/
+    # "broke"/"widen"/"evil"/"industry"/"brag"/"cast"/"space"/"startup"/"destiny" —
+    # plus the directional field labels "father"/"parent", and "Alan", a generic
+    # fixture first name used across the entity-creation tests just like "John".
+    "Alan",
+    "Brag",
+    "Broke",
+    "Cast",
+    "Cloud",
+    "Destiny",
+    "Evil",
+    "Father",
+    "Green",
+    "Industry",
+    "Less",
+    "Mass",
+    "Miss",
+    "Opt",
+    "Parent",
+    "Space",
+    "Startup",
+    "Style",
+    "Treats",
+    "Widen",
 }
 
 # Real entities that have served as fixture and example data since early in the

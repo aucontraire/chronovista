@@ -520,6 +520,9 @@ Named entities extracted from video tags (people, places, organizations, etc.).
 | `merged_into_id` | UUID | yes |  | FK → `named_entities.id` |
 | `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 | `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `manual_image_ext` | VARCHAR(8) | yes |  |  |
+| `manual_image_uploaded_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `image_source_preference` | VARCHAR(16) | no | `wikidata` |  |
 
 **Constraints:**
 
@@ -528,6 +531,7 @@ Named entities extracted from video tags (people, places, organizations, etc.).
 - CHECK `chk_entity_discovery_method_valid`: `discovery_method IN ('manual', 'spacy_ner', 'tag_bootstrap', 'llm_extraction', 'user_created')`
 - CHECK `chk_entity_status_valid`: `status IN ('active', 'merged', 'deprecated')`
 - CHECK `chk_entity_type_valid`: `entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other')`
+- CHECK `chk_named_entity_image_source_valid`: `image_source_preference IN ('manual', 'wikidata')`
 
 **Indexes:**
 

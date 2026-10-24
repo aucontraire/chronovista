@@ -483,11 +483,11 @@ class TestScanMetadataTitle:
         """
         entity1_id = _make_uuid()
         entity2_id = _make_uuid()
-        entity1 = _make_entity_row(entity_id=entity1_id, canonical_name="Biden")
-        entity2 = _make_entity_row(entity_id=entity2_id, canonical_name="Trump")
+        entity1 = _make_entity_row(entity_id=entity1_id, canonical_name="Ava Stone")
+        entity2 = _make_entity_row(entity_id=entity2_id, canonical_name="Ben Rivers")
         video = _make_video_row(
             video_id="vid00700007",
-            title="Biden and Trump Debate",
+            title="Ava Stone and Ben Rivers Interview",
         )
 
         factory = _make_session_factory(

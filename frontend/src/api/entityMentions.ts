@@ -185,6 +185,17 @@ export interface EntityDetail {
    * missing value the same as `grounded: false`.
    */
   enrichment?: EntityEnrichment;
+  /** Manual/Wikidata portrait state (Feature 092). Optional for older responses. */
+  image?: EntityImageState;
+}
+
+/** Image source/state for an entity (Feature 092). */
+export interface EntityImageState {
+  has_manual: boolean;
+  has_wikidata: boolean;
+  source: "manual" | "wikidata";
+  /** Effective image timestamp; drives the `?v=` cache-buster. Null when no image. */
+  version: string | null;
 }
 
 /** Paginated response envelope for GET /api/v1/entities */
@@ -1757,12 +1768,41 @@ export async function fetchWikidataEntityMap(
  * than reuse a pinned response for the bare URL.
  *
  * @param entityId - UUID of the named entity
- * @param version - optional cache-buster (the image block's `set_at`)
+ * @param version - optional cache-buster (the entity's `image.version`)
  * @returns URL for GET /api/v1/images/entities/{entityId}
  */
 export function entityImageUrl(entityId: string, version?: string): string {
   const base = `${API_BASE_URL}/images/entities/${entityId}`;
   return version ? `${base}?v=${encodeURIComponent(version)}` : base;
+}
+
+/** Uploads (or replaces) the entity's manual image (multipart, field `file`). */
+export async function uploadEntityImage(
+  entityId: string,
+  file: File
+): Promise<EntityImageState> {
+  const body = new FormData();
+  body.append("file", file);
+  return apiFetch<EntityImageState>(`/entities/${entityId}/image`, {
+    method: "POST",
+    body,
+  });
+}
+
+/** Switches which image source the entity portrait uses (Feature 092). */
+export async function setEntityImageSource(
+  entityId: string,
+  source: EntityImageState["source"]
+): Promise<EntityImageState> {
+  return apiFetch<EntityImageState>(`/entities/${entityId}/image/source`, {
+    method: "PATCH",
+    body: JSON.stringify({ source }),
+  });
+}
+
+/** Removes the entity's manual image, reverting to the Wikidata image (204). */
+export async function removeEntityImage(entityId: string): Promise<void> {
+  await apiFetch<void>(`/entities/${entityId}/image`, { method: "DELETE" });
 }
 
 // ---------------------------------------------------------------------------

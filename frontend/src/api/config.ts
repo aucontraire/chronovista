@@ -135,7 +135,10 @@ export async function apiFetch<T>(
       ...fetchOptions,
       signal: combinedSignal,
       headers: {
-        "Content-Type": "application/json",
+        // FormData bodies need the browser to set the multipart boundary.
+        ...(fetchOptions.body instanceof FormData
+          ? {}
+          : { "Content-Type": "application/json" }),
         ...fetchOptions.headers,
       },
     });

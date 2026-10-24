@@ -13,6 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from chronovista.api.schemas.responses import PaginationMeta
+from chronovista.models.entity_video_exclusion import EntityVideoExclusion
 from chronovista.models.enums import EntityType
 
 
@@ -1458,3 +1459,33 @@ class ReferencedByResponse(BaseModel):
     model_config = ConfigDict(strict=True)
 
     data: list[ReferencedByGroup]
+
+
+# ---------------------------------------------------------------------------
+# Manual association unlink — entity↔video exclusions (Feature 091)
+# ---------------------------------------------------------------------------
+
+
+class EntityVideoExclusionCreateResponse(BaseModel):
+    """Response for excluding a video from an entity.
+
+    ``already_excluded`` is True when the pair was already excluded before this
+    call — a reported idempotent no-op rather than an error (FR-006).
+    """
+
+    model_config = ConfigDict(strict=True)
+
+    exclusion: EntityVideoExclusion = Field(..., description="The exclusion record")
+    already_excluded: bool = Field(
+        default=False,
+        description="True if the pair was already excluded (idempotent no-op)",
+    )
+
+
+class EntityVideoExclusionListResponse(BaseModel):
+    """Paginated list of an entity's exclusions — the 'hidden from this entity' view (FR-009)."""
+
+    model_config = ConfigDict(strict=True)
+
+    data: list[EntityVideoExclusion]
+    pagination: PaginationMeta

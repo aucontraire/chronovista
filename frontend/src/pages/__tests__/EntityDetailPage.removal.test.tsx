@@ -1,37 +1,28 @@
 /**
- * TDD tests for EntityDetailPage — Feature 050, User Story 3 (T038).
+ * Tests for EntityDetailPage — manual-association display after Feature 091.
  *
- * This file covers the manual-association REMOVAL flow on the entity detail
- * page.  All tests are written TDD-style: the unlink button, confirmation
- * dialog, and `useDeleteManualAssociation` hook do not exist yet.
+ * The manual-unlink flow (unlink button, inline confirmation,
+ * `useDeleteManualAssociation`) was removed from this page; the "Not about
+ * this?" exclude control is the single remove control on each video row. The
+ * surgical manual-unlink remains on the video detail page (EntityMentionsPanel).
  *
  * Test suites:
- *   1. Unlink button on manual video cards — visible only when has_manual=true
- *   2. No unlink button for transcript-only cards
- *   3. Confirmation dialog on entity detail page
- *   4. Successful removal — caches invalidated (entity-videos, video-entities, entity-detail)
- *   5. Multi-source removal — removing manual keeps card but removes MANUAL badge
- *   6. Last-source removal — removing the only source removes the video card
+ *   1. No unlink control; exactly one (exclude) remove control per card
+ *   2. Multi-source cards keep the MANUAL badge and transcript badge
+ *   3. Manual-only cards: badge, label, and empty state
  *
  * Hook / module mocking strategy
  * --------------------------------
  * - `useEntityVideos` (hooks/useEntityMentions) — mocked to control video list
  * - `useQuery` (@tanstack/react-query) — mocked to control entity detail fetch
- * - `useDeleteManualAssociation` (hooks/useEntityMentions) — mocked for the new hook
  * - `PhoneticVariantsSection` — mocked to avoid independent useQuery calls
  * - `ExclusionPatternsSection` — mocked to keep tests focused
- *
- * data-testid contract (same as EntityMentionsPanel, scoped to video card context):
- *   - `unlink-button-{video_id}` — unlink button on a video card
- *   - `unlink-confirm-{video_id}` — Confirm button in the inline dialog
- *   - `unlink-cancel-{video_id}` — Cancel button in the inline dialog
  *
  * @module pages/__tests__/EntityDetailPage.removal
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -49,8 +40,6 @@ vi.mock("../../hooks/useEntityMentions", () => ({
     isError: false,
     error: null,
   })),
-  // The delete hook is the new export added in T038.
-  useDeleteManualAssociation: vi.fn(),
   useScanEntity: vi.fn(() => ({
     mutate: vi.fn(),
     isPending: false,
@@ -95,26 +84,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 
 import { useQuery } from "@tanstack/react-query";
 import { useEntityVideos } from "../../hooks/useEntityMentions";
-// TDD: useDeleteManualAssociation will be added to hooks/useEntityMentions in T038.
-// We import the module as unknown to avoid compile errors on the not-yet-existing export.
-import * as entityMentionsHooks from "../../hooks/useEntityMentions";
 import type { EntityVideoResult } from "../../api/entityMentions";
-
-// Typed accessor for the not-yet-existing hook (mocked at module level above).
-const useDeleteManualAssociation = (
-  entityMentionsHooks as unknown as {
-    useDeleteManualAssociation: () => {
-      mutate: (vars: { videoId: string; entityId: string }) => void;
-      mutateAsync: (vars: { videoId: string; entityId: string }) => Promise<void>;
-      isPending: boolean;
-      isError: boolean;
-      error: unknown;
-      isSuccess: boolean;
-      isIdle: boolean;
-      reset: () => void;
-    };
-  }
-).useDeleteManualAssociation;
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -228,19 +198,6 @@ function makeSuccessQuery(
   } as ReturnType<typeof useQuery>;
 }
 
-function makeIdleDeleteMutationState() {
-  return {
-    mutate: vi.fn(),
-    mutateAsync: vi.fn(),
-    isPending: false,
-    isError: false,
-    error: null,
-    isSuccess: false,
-    isIdle: true,
-    reset: vi.fn(),
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Render helper
 // ---------------------------------------------------------------------------
@@ -269,267 +226,63 @@ beforeEach(() => {
 
   vi.mocked(useQuery).mockReturnValue(makeSuccessQuery(mockEntity));
   vi.mocked(useEntityVideos).mockReturnValue(makeEntityVideosState());
-  vi.mocked(useDeleteManualAssociation).mockReturnValue(makeIdleDeleteMutationState());
 });
 
 // ===========================================================================
 // Suites
 // ===========================================================================
 
-describe("EntityDetailPage — manual association removal (TDD for T038)", () => {
+describe("EntityDetailPage — manual associations (no unlink control)", () => {
   // =========================================================================
-  // Suite 1: Unlink button visible on manual video cards (has_manual=true)
+  // Suite 1: The manual-unlink flow no longer exists on this page. The
+  // "Not about this?" exclude control is the single remove control per row.
   // =========================================================================
 
-  describe("TC-ER01: unlink button visible for video cards with has_manual=true", () => {
-    it("shows an unlink button on a video card with has_manual=true", () => {
+  describe("TC-ER01: no manual-unlink control on the entity detail page", () => {
+    it("renders no unlink button on a has_manual=true card", () => {
       vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([manualOnlyVideo])
+        makeEntityVideosState([manualOnlyVideo, multiSourceVideo])
       );
 
       renderPage();
 
-      // The unlink button on the video card is scoped by video_id.
-      const unlinkBtn =
-        screen.queryByTestId(`unlink-button-${manualOnlyVideo.video_id}`) ??
-        screen.queryByRole("button", { name: /unlink|remove manual|remove association/i });
-
-      expect(unlinkBtn).toBeInTheDocument();
+      expect(
+        screen.queryByTestId(`unlink-button-${manualOnlyVideo.video_id}`)
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId(`unlink-button-${multiSourceVideo.video_id}`)
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /remove manual association/i })
+      ).not.toBeInTheDocument();
     });
 
-    it("does NOT show an unlink button on a transcript-only video card (has_manual=false)", () => {
+    it("shows exactly one remove control per card: the exclude button", () => {
       vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([transcriptOnlyVideo])
+        makeEntityVideosState([manualOnlyVideo, transcriptOnlyVideo])
       );
 
       renderPage();
 
-      const unlinkBtn = screen.queryByTestId(
-        `unlink-button-${transcriptOnlyVideo.video_id}`
-      );
-      expect(unlinkBtn).not.toBeInTheDocument();
-    });
-
-    it("shows an unlink button on a multi-source video card", () => {
-      vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([multiSourceVideo])
-      );
-
-      renderPage();
-
-      const unlinkBtn =
-        screen.queryByTestId(`unlink-button-${multiSourceVideo.video_id}`) ??
-        screen.queryByRole("button", { name: /unlink|remove manual|remove association/i });
-
-      expect(unlinkBtn).toBeInTheDocument();
-    });
-
-    it("renders unlink buttons only for cards where has_manual=true when multiple cards are present", () => {
-      vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([transcriptOnlyVideo, manualOnlyVideo])
-      );
-
-      renderPage();
-
-      // Manual card: unlink button present.
-      const manualUnlink =
-        screen.queryByTestId(`unlink-button-${manualOnlyVideo.video_id}`) ??
-        screen.queryAllByRole("button", { name: /unlink|remove manual|remove association/i })[0];
-      expect(manualUnlink).toBeInTheDocument();
-
-      // Transcript-only card: no unlink button with specific testid.
-      const transcriptUnlink = screen.queryByTestId(
-        `unlink-button-${transcriptOnlyVideo.video_id}`
-      );
-      expect(transcriptUnlink).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId(`exclude-button-${manualOnlyVideo.video_id}`)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId(`exclude-button-${transcriptOnlyVideo.video_id}`)
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("Not about this?")).toHaveLength(2);
     });
   });
 
   // =========================================================================
-  // Suite 2: Confirmation dialog on entity detail page
-  // =========================================================================
-
-  describe("TC-ER02: confirmation dialog on entity detail page", () => {
-    it("shows an inline confirmation when the unlink button is clicked on a video card", async () => {
-      vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([manualOnlyVideo])
-      );
-
-      renderPage();
-
-      const unlinkBtn =
-        screen.getByTestId(`unlink-button-${manualOnlyVideo.video_id}`) ??
-        screen.getByRole("button", { name: /unlink|remove manual|remove association/i });
-
-      const user = userEvent.setup();
-      await user.click(unlinkBtn);
-
-      // Confirmation Confirm button must appear.
-      const confirmBtn =
-        screen.queryByTestId(`unlink-confirm-${manualOnlyVideo.video_id}`) ??
-        screen.queryByRole("button", { name: /confirm|yes, remove/i });
-
-      expect(confirmBtn).toBeInTheDocument();
-    });
-
-    it("confirmation dialog shows the FR-027 required message about transcript mentions remaining", async () => {
-      vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([manualOnlyVideo])
-      );
-
-      renderPage();
-
-      const unlinkBtn =
-        screen.getByTestId(`unlink-button-${manualOnlyVideo.video_id}`) ??
-        screen.getByRole("button", { name: /unlink|remove manual|remove association/i });
-
-      fireEvent.click(unlinkBtn);
-
-      await waitFor(() => {
-        expect(
-          screen.getByText(/only the manual association will be removed/i)
-        ).toBeInTheDocument();
-      });
-    });
-
-    it("confirmation dialog shows both a Confirm and Cancel button", async () => {
-      vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([manualOnlyVideo])
-      );
-
-      renderPage();
-
-      const unlinkBtn =
-        screen.getByTestId(`unlink-button-${manualOnlyVideo.video_id}`) ??
-        screen.getByRole("button", { name: /unlink|remove manual|remove association/i });
-
-      fireEvent.click(unlinkBtn);
-
-      await waitFor(() => {
-        const confirmBtn =
-          screen.queryByTestId(`unlink-confirm-${manualOnlyVideo.video_id}`) ??
-          screen.queryByRole("button", { name: /confirm|yes, remove/i });
-
-        const cancelBtn =
-          screen.queryByTestId(`unlink-cancel-${manualOnlyVideo.video_id}`) ??
-          screen.queryByRole("button", { name: /cancel/i });
-
-        expect(confirmBtn).toBeInTheDocument();
-        expect(cancelBtn).toBeInTheDocument();
-      });
-    });
-
-    it("clicking Cancel hides the confirmation dialog without calling the mutation", async () => {
-      const mutateFn = vi.fn();
-      vi.mocked(useDeleteManualAssociation).mockReturnValue({
-        ...makeIdleDeleteMutationState(),
-        mutate: mutateFn,
-      });
-
-      vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([manualOnlyVideo])
-      );
-
-      renderPage();
-
-      const unlinkBtn =
-        screen.getByTestId(`unlink-button-${manualOnlyVideo.video_id}`) ??
-        screen.getByRole("button", { name: /unlink|remove manual|remove association/i });
-
-      fireEvent.click(unlinkBtn);
-
-      const cancelBtn = await screen.findByRole("button", { name: /cancel/i });
-      fireEvent.click(cancelBtn);
-
-      await waitFor(() => {
-        expect(
-          screen.queryByText(/only the manual association will be removed/i)
-        ).not.toBeInTheDocument();
-      });
-
-      expect(mutateFn).not.toHaveBeenCalled();
-    });
-  });
-
-  // =========================================================================
-  // Suite 3: Successful removal — caches invalidated
-  // =========================================================================
-
-  describe("TC-ER03: successful removal fires the mutation with correct arguments", () => {
-    it("calls useDeleteManualAssociation mutate with { videoId, entityId } on confirm", async () => {
-      const mutateFn = vi.fn();
-      vi.mocked(useDeleteManualAssociation).mockReturnValue({
-        ...makeIdleDeleteMutationState(),
-        mutate: mutateFn,
-      });
-
-      vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([manualOnlyVideo])
-      );
-
-      renderPage(ENTITY_ID);
-
-      const unlinkBtn =
-        screen.getByTestId(`unlink-button-${manualOnlyVideo.video_id}`) ??
-        screen.getByRole("button", { name: /unlink|remove manual|remove association/i });
-
-      fireEvent.click(unlinkBtn);
-
-      const confirmBtn = await screen.findByRole("button", { name: /confirm|yes, remove/i });
-      fireEvent.click(confirmBtn);
-
-      expect(mutateFn).toHaveBeenCalledWith({
-        videoId: manualOnlyVideo.video_id,
-        entityId: ENTITY_ID,
-      });
-    });
-
-    it("does NOT call mutate before Confirm is clicked", async () => {
-      const mutateFn = vi.fn();
-      vi.mocked(useDeleteManualAssociation).mockReturnValue({
-        ...makeIdleDeleteMutationState(),
-        mutate: mutateFn,
-      });
-
-      vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([manualOnlyVideo])
-      );
-
-      renderPage();
-
-      const unlinkBtn =
-        screen.getByTestId(`unlink-button-${manualOnlyVideo.video_id}`) ??
-        screen.getByRole("button", { name: /unlink|remove manual|remove association/i });
-
-      fireEvent.click(unlinkBtn);
-
-      // Wait for dialog to render without clicking Confirm.
-      await screen.findByRole("button", { name: /confirm|yes, remove/i });
-
-      expect(mutateFn).not.toHaveBeenCalled();
-    });
-
-    it("the useDeleteManualAssociation hook is called on mount (hook is consumed by the page)", () => {
-      vi.mocked(useEntityVideos).mockReturnValue(
-        makeEntityVideosState([manualOnlyVideo])
-      );
-
-      renderPage();
-
-      // The hook must be invoked when the page renders (it sets up the mutation).
-      expect(vi.mocked(useDeleteManualAssociation)).toHaveBeenCalled();
-    });
-  });
-
-  // =========================================================================
-  // Suite 4: Multi-source removal — MANUAL badge disappears, card remains
+  // Suite 2: Multi-source removal — MANUAL badge disappears, card remains
   //
   // When a video has both transcript and manual sources, removing the manual
   // association leaves the video card visible (transcript mentions remain) but
   // the [MANUAL] badge disappears and the unlink button is removed.
   // =========================================================================
 
-  describe("TC-ER04: multi-source removal keeps card visible but removes MANUAL badge", () => {
+  describe("TC-ER02: multi-source removal keeps card visible but removes MANUAL badge", () => {
     it("MANUAL badge is present on a multi-source video card before removal", () => {
       vi.mocked(useEntityVideos).mockReturnValue(
         makeEntityVideosState([multiSourceVideo])
@@ -658,14 +411,14 @@ describe("EntityDetailPage — manual association removal (TDD for T038)", () =>
   });
 
   // =========================================================================
-  // Suite 5: Last-source removal — removing the only source removes the card
+  // Suite 3: Last-source removal — removing the only source removes the card
   //
   // When a video has ONLY a manual association (mention_count=0, sources=["manual"]),
   // removing that association means the backend will no longer return the video
   // in the entity-videos response.  The card should disappear from the list.
   // =========================================================================
 
-  describe("TC-ER05: last-source removal causes the video card to disappear", () => {
+  describe("TC-ER03: last-source removal causes the video card to disappear", () => {
     it("manual-only video card is visible before removal", () => {
       vi.mocked(useEntityVideos).mockReturnValue(
         makeEntityVideosState([manualOnlyVideo])

@@ -27,6 +27,7 @@ from chronovista.models.entity_enrichment import ExternalIdentifier
 from chronovista.models.entity_operation_log import (
     AliasDeleteRollback,
     AliasSnapshot,
+    AssociationExclusionRollback,
     EntityEditRollback,
     EntityEditSnapshot,
     EntityOperationLogCreate,
@@ -40,6 +41,9 @@ from chronovista.repositories.entity_alias_repository import EntityAliasReposito
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.entity_operation_log_repository import (
     EntityOperationLogRepository,
+)
+from chronovista.repositories.entity_video_exclusion_repository import (
+    EntityVideoExclusionRepository,
 )
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.services.tag_normalization import TagNormalizationService
@@ -106,6 +110,7 @@ class EntityCurationService:
         normalizer: TagNormalizationService | None = None,
         entity_alias_repo: EntityAliasRepository | None = None,
         entity_mention_repo: EntityMentionRepository | None = None,
+        entity_video_exclusion_repo: EntityVideoExclusionRepository | None = None,
     ) -> None:
         """
         Initialize the service with its repositories.
@@ -128,6 +133,8 @@ class EntityCurationService:
         # never touch them, so they stay optional for lighter construction.
         self._entity_alias_repo = entity_alias_repo
         self._entity_mention_repo = entity_mention_repo
+        # Only the association exclude/restore undo path (Feature 091) needs this.
+        self._exclusion_repo = entity_video_exclusion_repo
 
     async def update_entity(
         self,
@@ -580,6 +587,52 @@ class EntityCurationService:
         )
         return entity
 
+    async def _undo_association_exclusion(
+        self,
+        session: AsyncSession,
+        log_entry: EntityOperationLogDB,
+        *,
+        actor: str,
+    ) -> NamedEntityDB:
+        """Undo an ``association_exclude`` / ``association_restore`` op (Feature 091).
+
+        Reverses the exclusion store: undo of an exclude removes the exclusion
+        (re-including the video); undo of a restore re-adds it. The entity is the
+        log row's ``entity_id``; the affected video is the recorded
+        ``rollback_data.video_id``. Marks the log entry rolled back.
+        """
+        if self._exclusion_repo is None:
+            raise RuntimeError(
+                "entity-video exclusion repository is required for association undo"
+            )
+        entity = await self._entity_repo.get(session, log_entry.entity_id)
+        if entity is None:
+            raise EntityNotFoundError(
+                f"Entity '{log_entry.entity_id}' not found.",
+                entity_id=log_entry.entity_id,
+            )
+        rollback = AssociationExclusionRollback.model_validate(log_entry.rollback_data)
+        if log_entry.operation_type == "association_exclude":
+            await self._exclusion_repo.remove(
+                session, log_entry.entity_id, rollback.video_id
+            )
+        else:  # association_restore
+            await self._exclusion_repo.add(
+                session,
+                entity_id=log_entry.entity_id,
+                video_id=rollback.video_id,
+                excluded_by=actor,
+            )
+        await self._operation_log_repo.mark_rolled_back(session, log_entry.id)
+        logger.info(
+            "Association exclusion undone: op=%s entity=%s type=%s actor=%s",
+            log_entry.id,
+            entity.id,
+            log_entry.operation_type,
+            actor,
+        )
+        return entity
+
     async def undo_operation(
         self,
         session: AsyncSession,
@@ -631,6 +684,23 @@ class EntityCurationService:
         # Alias deletions restore an alias + its mentions, not entity fields.
         if log_entry.operation_type == "alias_delete":
             return await self._undo_alias_delete(session, log_entry, actor=actor)
+
+        # Association exclude/restore (Feature 091): reverse via the exclusion store.
+        if log_entry.operation_type in ("association_exclude", "association_restore"):
+            return await self._undo_association_exclusion(
+                session, log_entry, actor=actor
+            )
+
+        # The EntityEditRollback restore below applies ONLY to field edits
+        # (operation_type == "update"). Other types (e.g. the pre-existing
+        # reground/refetch, whose payload is a GroundingRollback) are not reversible
+        # here; fail cleanly with a 4xx rather than letting the model_validate below
+        # raise an uncaught 500.
+        if log_entry.operation_type != "update":
+            raise InvalidEntityEditError(
+                "Undo is not supported for operation type "
+                f"'{log_entry.operation_type}'."
+            )
 
         entity = await self._entity_repo.get(session, log_entry.entity_id)
         if entity is None:

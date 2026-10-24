@@ -13,7 +13,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-ALLOWED_ENTITY_OPERATION_TYPES = {"update", "reground", "refetch", "alias_delete"}
+ALLOWED_ENTITY_OPERATION_TYPES = {
+    "update",
+    "reground",
+    "refetch",
+    "alias_delete",
+    "association_exclude",
+    "association_restore",
+}
 
 
 class EntityEditSnapshot(BaseModel):
@@ -170,6 +177,22 @@ class AliasDeleteRollback(BaseModel):
     model_config = ConfigDict(validate_assignment=True, extra="forbid")
 
 
+class AssociationExclusionRollback(BaseModel):
+    """Typed rollback payload for a manual entity↔video exclusion (Feature 091).
+
+    Carries the ``video_id`` of the affected pair (the entity is the log row's
+    ``entity_id``) — enough to reverse either operation: undo of an
+    ``association_exclude`` removes the exclusion, undo of an
+    ``association_restore`` re-adds it. Its single-field shape is disjoint from
+    the edit/grounding/alias rollbacks, so the ``rollback_data`` smart union
+    stays unambiguous.
+    """
+
+    video_id: str = Field(..., description="Video id of the excluded/restored pair")
+
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
+
+
 class EntityOperationLogBase(BaseModel):
     """Base model for entity operation log data."""
 
@@ -179,11 +202,16 @@ class EntityOperationLogBase(BaseModel):
         max_length=30,
         description="Type of operation ('update', 'reground', or 'refetch')",
     )
-    rollback_data: EntityEditRollback | GroundingRollback | AliasDeleteRollback = Field(
+    rollback_data: (
+        EntityEditRollback
+        | GroundingRollback
+        | AliasDeleteRollback
+        | AssociationExclusionRollback
+    ) = Field(
         ...,
         description=(
-            "Typed rollback payload for undo (entity edit, grounding, or "
-            "alias deletion)"
+            "Typed rollback payload for undo (entity edit, grounding, "
+            "alias deletion, or association exclusion)"
         ),
     )
     performed_by: str = Field(

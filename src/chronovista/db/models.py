@@ -1400,7 +1400,8 @@ class EntityOperationLog(Base):
     # Table constraints and indexes
     __table_args__ = (
         CheckConstraint(
-            "operation_type IN ('update', 'reground', 'refetch', 'alias_delete')",
+            "operation_type IN ('update', 'reground', 'refetch', 'alias_delete', "
+            "'association_exclude', 'association_restore')",
             name="chk_entity_operation_type_valid",
         ),
         Index("idx_entity_operation_logs_entity_id", "entity_id"),
@@ -1795,6 +1796,34 @@ class EntityCategory(Base):
     __table_args__ = (Index("idx_entity_categories_category_id", "category_id"),)
 
 
+class EntityVideoExclusion(Base):
+    """Explicit negative association — "this video is NOT this entity" (Feature 091).
+
+    A stored negative that the shared association definition subtracts, so an excluded
+    ``(entity_id, video_id)`` pair never qualifies as associated regardless of basis
+    (mention, canonical-tag, or alias-tag name match). Independent of ``entity_mentions``:
+    a manual exclusion persists until the user undoes it, even if a new basis later arises.
+    """
+
+    __tablename__ = "entity_video_exclusions"
+
+    entity_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    video_id: Mapped[str] = mapped_column(
+        String(20),
+        ForeignKey("videos.video_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    excluded_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    excluded_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 # Export all models
 __all__ = [
     "Base",
@@ -1825,4 +1854,5 @@ __all__ = [
     "ChannelRecoverySource",
     "WikipediaCategory",
     "EntityCategory",
+    "EntityVideoExclusion",
 ]

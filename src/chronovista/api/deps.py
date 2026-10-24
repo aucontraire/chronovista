@@ -33,6 +33,12 @@ from chronovista.repositories import (
 from chronovista.repositories.entity_category_repository import (
     EntityCategoryRepository,
 )
+from chronovista.repositories.entity_operation_log_repository import (
+    EntityOperationLogRepository,
+)
+from chronovista.repositories.entity_video_exclusion_repository import (
+    EntityVideoExclusionRepository,
+)
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
@@ -284,6 +290,20 @@ def get_named_entity_repository() -> NamedEntityRepository:
     return container.create_named_entity_repository()
 
 
+def get_entity_operation_log_repository() -> EntityOperationLogRepository:
+    """Dependency providing an EntityOperationLogRepository via the container (Feature 091)."""
+    from chronovista.container import container
+
+    return container.create_entity_operation_log_repository()
+
+
+def get_entity_video_exclusion_repository() -> EntityVideoExclusionRepository:
+    """Dependency providing an EntityVideoExclusionRepository via the container (Feature 091)."""
+    from chronovista.container import container
+
+    return container.create_entity_video_exclusion_repository()
+
+
 def get_entity_category_repository() -> EntityCategoryRepository:
     """Dependency providing an EntityCategoryRepository via the container (Feature 085)."""
     from chronovista.container import container
@@ -448,6 +468,7 @@ def get_entity_curation_service() -> "EntityCurationService":
         operation_log_repo=container.create_entity_operation_log_repository(),
         entity_alias_repo=container.create_entity_alias_repository(),
         entity_mention_repo=container.create_entity_mention_repository(),
+        entity_video_exclusion_repo=container.create_entity_video_exclusion_repository(),
     )
 
 

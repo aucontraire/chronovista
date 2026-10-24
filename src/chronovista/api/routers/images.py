@@ -38,6 +38,9 @@ _image_cache_config = ImageCacheConfig(
     channels_dir=settings.cache_dir / "images" / "channels",
     videos_dir=settings.cache_dir / "images" / "videos",
     entities_dir=settings.cache_dir / "images" / "entities",
+    # Feature 092: durable store for operator-uploaded portraits, so the resolver
+    # can serve a manual image ahead of the Wikidata render.
+    manual_images_dir=settings.data_dir / "entity_images",
 )
 
 _image_cache_service = ImageCacheService(config=_image_cache_config)

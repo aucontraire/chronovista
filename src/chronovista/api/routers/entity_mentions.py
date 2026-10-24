@@ -15,7 +15,17 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, Depends, Path, Query, Request, Response
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Path,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,6 +100,8 @@ from chronovista.api.schemas.entity_mentions import (
 )
 from chronovista.api.schemas.responses import ApiResponse, PaginationMeta
 from chronovista.config.database import db_manager
+from chronovista.config.settings import settings
+from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.exceptions import (
     APIValidationError,
     BadRequestError,
@@ -102,6 +114,11 @@ from chronovista.models.entity_enrichment import (
     EntityEnrichment,
     EntityIdentifierView,
     ExternalIdentifier,
+)
+from chronovista.models.entity_image import (
+    EntityImageState,
+    ImageSource,
+    SetImageSourceRequest,
 )
 from chronovista.models.entity_operation_log import (
     AssociationExclusionRollback,
@@ -128,7 +145,10 @@ from chronovista.repositories.entity_operation_log_repository import (
 from chronovista.repositories.entity_video_exclusion_repository import (
     EntityVideoExclusionRepository,
 )
-from chronovista.repositories.named_entity_repository import NamedEntityRepository
+from chronovista.repositories.named_entity_repository import (
+    ManualImageMissingError,
+    NamedEntityRepository,
+)
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.category_coverage import title_from_dbpedia_iri
 from chronovista.services.entity_curation_service import (
@@ -146,6 +166,12 @@ from chronovista.services.entity_enrichment_service import (
 from chronovista.services.entity_mention_scan_service import (
     EntityMentionScanService,
     ScanResult,
+)
+from chronovista.services.image_cache import ImageCacheConfig, ImageCacheService
+from chronovista.services.image_validation import (
+    MAX_IMAGE_BYTES,
+    ImageValidationError,
+    read_and_validate,
 )
 from chronovista.services.phonetic_matcher import PhoneticMatcher
 from chronovista.services.relation_groups import INBOUND_FIELDS, RELATION_GROUPS
@@ -213,6 +239,83 @@ RATE_LIMIT_DUPLICATE_CHECK = 50
 
 # Storage for rate limit tracking
 _duplicate_check_counts: dict[str, list[float]] = defaultdict(list)
+
+
+# Image-cache service for the manual-portrait upload path (Feature 092). Constructed with the
+# durable manual-image store and the evictable entities render cache so the upload route can both
+# persist bytes (``save_manual_image``) and clear a stale Wikidata render (``invalidate_entity``).
+# Mirrors the serving singleton in ``api/routers/images.py`` so both resolve the same directories.
+_image_cache_service = ImageCacheService(
+    config=ImageCacheConfig(
+        cache_dir=settings.cache_dir,
+        channels_dir=settings.cache_dir / "images" / "channels",
+        videos_dir=settings.cache_dir / "images" / "videos",
+        entities_dir=settings.cache_dir / "images" / "entities",
+        manual_images_dir=settings.data_dir / "entity_images",
+    )
+)
+
+# Read the upload in 1 MiB slices so an oversized file is rejected before it is fully buffered;
+# ``read_and_validate`` enforces the real cap authoritatively as it consumes the chunks.
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+def _has_wikidata_image(properties: dict[str, Any] | None) -> bool:
+    """True iff the entity has a usable automated Wikidata/Commons image (Feature 092, FR-012).
+
+    Mirrors the resolver's ``properties.image.values[0]`` extraction: a non-empty string filename
+    at that path is the single source of truth for "an automated image exists".
+    """
+    if not isinstance(properties, dict):
+        return False
+    block = properties.get("image")
+    if not isinstance(block, dict):
+        return False
+    values = block.get("values")
+    return (
+        isinstance(values, list)
+        and bool(values)
+        and isinstance(values[0], str)
+        and bool(values[0])
+    )
+
+
+def _build_image_state(entity: NamedEntityDB) -> EntityImageState:
+    """Assemble the entity's resolved image state from its row (Feature 092, FR-012).
+
+    ``version`` is the effective image's timestamp and is the portrait ``?v=`` cache-buster: the
+    manual upload time when the manual source is both preferred and present, otherwise the automated
+    image's ``properties.image.set_at``, otherwise ``None`` (only a placeholder applies). Because an
+    upload always stamps a fresh ``manual_image_uploaded_at``, ``version`` changes on every
+    image-state change, which is what lets the frontend bust its cached portrait.
+    """
+    has_manual = entity.manual_image_ext is not None
+    properties = entity.properties
+    has_wikidata = _has_wikidata_image(properties)
+    # The column is typed ``str`` but a DB CHECK pins it to exactly these two values; narrow it
+    # to the ``ImageSource`` literal so the state model's strict typing holds.
+    source: ImageSource = (
+        "manual" if entity.image_source_preference == "manual" else "wikidata"
+    )
+    version: str | None = None
+    if (
+        source == "manual"
+        and has_manual
+        and entity.manual_image_uploaded_at is not None
+    ):
+        version = entity.manual_image_uploaded_at.isoformat()
+    elif isinstance(properties, dict):
+        block = properties.get("image")
+        if isinstance(block, dict):
+            set_at = block.get("set_at")
+            if isinstance(set_at, str) and set_at:
+                version = set_at
+    return EntityImageState(
+        has_manual=has_manual,
+        has_wikidata=has_wikidata,
+        source=source,
+        version=version,
+    )
 
 
 @router.get(
@@ -842,6 +945,10 @@ async def get_entity_detail(
             "enrichment": _build_enrichment(
                 entity.external_ids, entity.properties
             ).model_dump(),
+            # Feature 092 (FR-012): resolved image state so the UI can present the
+            # manual/automated choice and bust its cached portrait. Additive — no
+            # existing field changes.
+            "image": _build_image_state(entity).model_dump(),
         }
     }
 
@@ -2300,6 +2407,201 @@ async def list_entity_excluded_videos(
             has_more=offset + limit < total,
         ),
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# POST /entities/{entity_id}/image — Upload a manual portrait (Feature 092, US1)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.post(
+    "/entities/{entity_id}/image",
+    status_code=200,
+    response_model=EntityImageState,
+    summary="Upload (or replace) an entity's manual portrait",
+)
+async def upload_entity_image(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    file: UploadFile = File(
+        ..., description="Image file (JPEG / PNG / WebP, <= 10 MB)"
+    ),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+) -> EntityImageState:
+    """Upload a manual portrait and make it the displayed image (FR-001/002/011).
+
+    Validates the upload by its content signature (magic bytes), never the declared
+    content-type or filename, and enforces a 10 MB cap while reading — a mislabeled or
+    oversized file is rejected with ``422`` and nothing is stored. On success the bytes
+    are written to the durable store, the three manual-image columns are set with
+    ``image_source_preference = 'manual'``, and the cached Wikidata render is invalidated
+    so the new portrait shows immediately. Mirrors the 091 exclusion route:
+    existence-check-before-write (``404`` if the entity is missing).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    entity = await entity_repo.get(session, parsed_entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    # Validate before storing anything: stream the upload in bounded slices and let
+    # ``read_and_validate`` enforce the cap + signature authoritatively (FR-002).
+    async def _chunks() -> list[bytes]:
+        collected: list[bytes] = []
+        size = 0
+        while True:
+            chunk = await file.read(_UPLOAD_CHUNK_BYTES)
+            if not chunk:
+                break
+            collected.append(chunk)
+            size += len(chunk)
+            # Stop buffering past the cap; read_and_validate raises the real 422.
+            if size > MAX_IMAGE_BYTES:
+                break
+        return collected
+
+    try:
+        data, ext = read_and_validate(await _chunks())
+    except ImageValidationError as exc:
+        raise APIValidationError(
+            message=exc.message,
+            details={"reason": exc.reason.value},
+        ) from exc
+
+    uploaded_at = datetime.now(UTC)
+    # The file write is blocking (atomic temp-file → rename); keep it off the event loop.
+    await asyncio.to_thread(
+        _image_cache_service.save_manual_image, str(parsed_entity_id), ext, data
+    )
+    rows = await entity_repo.set_manual_image(
+        session, parsed_entity_id, ext=ext, uploaded_at=uploaded_at
+    )
+    if rows == 0:
+        # The entity was deleted between the existence check and this write (TOCTOU).
+        # Roll back the no-op transaction, remove the orphaned file, and report 404 —
+        # never return a false success for a row that was not updated.
+        await session.rollback()
+        _image_cache_service.delete_manual_image(str(parsed_entity_id))
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    await session.commit()
+    _image_cache_service.invalidate_entity(str(parsed_entity_id))
+
+    # Build the resulting state from the known post-write values: a core UPDATE does not
+    # refresh the in-memory ORM row, and ``properties`` is untouched by an upload.
+    return EntityImageState(
+        has_manual=True,
+        has_wikidata=_has_wikidata_image(entity.properties),
+        source="manual",
+        version=uploaded_at.isoformat(),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PATCH /entities/{entity_id}/image/source — Switch the displayed source (US3)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.patch(
+    "/entities/{entity_id}/image/source",
+    status_code=200,
+    response_model=EntityImageState,
+    summary="Switch which image source an entity's portrait displays",
+)
+async def set_entity_image_source(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    body: SetImageSourceRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+) -> EntityImageState:
+    """Switch which source the portrait displays, keeping the uploaded file (FR-007).
+
+    Writes only ``image_source_preference`` — the uploaded file and the two manual
+    columns are untouched, so a later switch back needs no re-upload. Requesting
+    ``'manual'`` when the entity has no uploaded image is rejected with ``409`` and
+    nothing changes. Mirrors the 091/US1 existence-check-before-write: ``404`` if the
+    entity is missing. On success the cached Wikidata render is invalidated so the new
+    precedence takes effect immediately, and the resolved state is returned.
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    entity = await entity_repo.get(session, parsed_entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    try:
+        rows = await entity_repo.set_image_source(
+            session, parsed_entity_id, body.source
+        )
+    except ManualImageMissingError as exc:
+        # 'manual' requested but no uploaded file exists: the preference is unchanged.
+        await session.rollback()
+        raise ConflictError(
+            message="no uploaded image to switch to",
+            details={"source": body.source},
+        ) from exc
+    if rows == 0:
+        # The entity was deleted between the existence check and this write (TOCTOU),
+        # reachable only for the 'wikidata' branch (the 'manual' branch raises above).
+        await session.rollback()
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    await session.commit()
+    _image_cache_service.invalidate_entity(str(parsed_entity_id))
+
+    # Re-read the committed row so the returned state (and its ``version`` cache-buster)
+    # reflects the new preference — a core UPDATE does not refresh the in-memory ORM row.
+    refreshed = await entity_repo.get(session, parsed_entity_id)
+    if refreshed is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    return _build_image_state(refreshed)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DELETE /entities/{entity_id}/image — Remove the manual portrait (US4)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@router.delete(
+    "/entities/{entity_id}/image",
+    status_code=204,
+    summary="Remove an entity's manual portrait and revert to the automated source",
+)
+async def delete_entity_image(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+) -> Response:
+    """Remove the manual portrait and revert to the automated source (FR-008). Idempotent.
+
+    Deletes the on-disk file, clears the two manual columns, resets
+    ``image_source_preference`` to ``'wikidata'``, and invalidates the cached render so
+    the portrait falls back to the automated image (or the placeholder). Succeeds with
+    ``204`` whether or not a manual image existed — a second call is a no-op. Mirrors the
+    091/US1 existence-check-before-write: ``404`` if the entity is missing.
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    entity = await entity_repo.get(session, parsed_entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    # Remove the durable file first (idempotent), then clear the columns. The file delete
+    # is blocking, so keep it off the event loop. A missing file is a no-op (FR-014).
+    await asyncio.to_thread(
+        _image_cache_service.delete_manual_image, str(parsed_entity_id)
+    )
+    await entity_repo.clear_manual_image(session, parsed_entity_id)
+    await session.commit()
+    _image_cache_service.invalidate_entity(str(parsed_entity_id))
+    return Response(status_code=204)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

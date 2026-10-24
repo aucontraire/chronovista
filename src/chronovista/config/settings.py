@@ -147,6 +147,7 @@ class Settings(BaseSettings):
         """Create required directories if they don't exist."""
         for directory in [
             self.data_dir,
+            self.data_dir / "entity_images",
             self.cache_dir,
             self.logs_dir,
             self.export_dir,

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-10-24
+
+### Added
+- **Manual entity portraits.** On an entity's detail page you can now upload your own image for an entity — useful when no good automated picture exists (no source entry, a source entry with no usable image, or a picture that is only available non-freely). The uploaded image takes precedence over the automated one and is never overwritten by enrichment; you can switch between your image and the automated image at any time without re-uploading, and replace or remove your image. Images are stored locally on your machine, never committed to version control, and are personal to you.
+
+### Changed
+- The entity detail response gains an additive `image` state object (whether a manual and/or automated image exists, the chosen display source, and a cache-buster version). No existing field changed, so existing consumers are unaffected.
+
+### Internal
+- New dedicated columns on `named_entities` (`manual_image_ext`, `manual_image_uploaded_at`, `image_source_preference`) via an additive migration, stored **outside** the enrichment property bag so a property refetch or re-grounding cannot overwrite or drop a manual image — proven by a real-database preservation test.
+- New upload / switch-source / remove endpoints; magic-byte (content-signature) upload validation (JPEG / PNG / WebP, ≤ 10 MB); the manual image is served by the existing entity-image proxy ahead of the automated source.
+- Added `python-multipart` as a declared dependency (required by the multipart file-upload endpoint) and regenerated `poetry.lock`.
+
 ## [0.96.0] - 2026-10-23
 
 ### Added

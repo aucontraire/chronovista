@@ -54,6 +54,11 @@ def _is_allowed_image_host(url: str) -> bool:
     return host is not None and host.endswith(_ALLOWED_IMAGE_HOST_SUFFIXES)
 
 
+# Feature 092: the extensions a manual entity image may be stored under. Exactly one
+# file per entity exists; a replacement with a different extension removes the prior one.
+_MANUAL_IMAGE_EXTS = ("jpg", "png", "webp")
+
+
 def _is_transient_fetch_failure(reason: str | None) -> bool:
     """True if a ``_fetch_and_cache`` failure reason is worth re-attempting on the next view.
 
@@ -251,6 +256,10 @@ class ImageCacheConfig(BaseModel):
     channels_dir: Path
     videos_dir: Path
     entities_dir: Path | None = None
+    # Feature 092: durable store for operator-uploaded entity portraits
+    # (``settings.data_dir / "entity_images"``). Separate from the evictable
+    # ``entities_dir`` cache; ``None`` disables the manual-image path.
+    manual_images_dir: Path | None = None
     on_demand_timeout: float = 2.0
     warm_timeout: float = 10.0
     max_concurrent_fetches: int = 5
@@ -349,6 +358,8 @@ class ImageCacheService:
             self._config.videos_dir.mkdir(parents=True, exist_ok=True)
             if self._config.entities_dir is not None:
                 self._config.entities_dir.mkdir(parents=True, exist_ok=True)
+            if self._config.manual_images_dir is not None:
+                self._config.manual_images_dir.mkdir(parents=True, exist_ok=True)
             logger.debug(
                 "Image cache directories ready: channels=%s, videos=%s",
                 self._config.channels_dir,
@@ -872,7 +883,109 @@ class ImageCacheService:
             return commons_image_url(filename)
 
     # ------------------------------------------------------------------
-    # Public API: get_entity_image (Feature 079)
+    # Manual entity image durable store (Feature 092)
+    # ------------------------------------------------------------------
+
+    def _manual_image_path(self, entity_id: str, ext: str) -> Path | None:
+        """Path to an entity's manual image for a given extension, or ``None`` if unconfigured.
+
+        Validates both components before building the path: ``ext`` must be a known image
+        extension and ``entity_id`` must be a canonical UUID. This stops a malformed value
+        (``../``, ``/``) from traversing out of the store, and normalising to ``str(UUID(...))``
+        keeps the on-disk name independent of UUID spelling so save/serve/delete always agree.
+        """
+        if self._config.manual_images_dir is None:
+            return None
+        if ext not in _MANUAL_IMAGE_EXTS:
+            raise ValueError(f"unsupported manual image extension: {ext!r}")
+        canonical = str(
+            UUID(entity_id)
+        )  # ValueError on a non-UUID / path-traversal input
+        return self._config.manual_images_dir / f"{canonical}.{ext}"
+
+    def save_manual_image(self, entity_id: str, ext: str, data: bytes) -> None:
+        """Persist uploaded bytes to the durable store, replacing any prior file (Feature 092).
+
+        Writes ``data_dir/entity_images/{entity_id}.{ext}`` atomically (temp file → rename), THEN
+        removes any existing file for this entity whose extension differs. The new file lands
+        before the old one is deleted, so a failed write (disk full, permissions) never destroys
+        the existing image. Exactly one file per entity results.
+
+        Parameters
+        ----------
+        entity_id : str
+            The entity UUID (string form).
+        ext : str
+            The resolved, validated extension (``jpg`` / ``png`` / ``webp``).
+        data : bytes
+            The validated image bytes.
+
+        Raises
+        ------
+        RuntimeError
+            If the manual-image store is not configured.
+        ValueError
+            If ``ext`` or ``entity_id`` is invalid.
+        OSError
+            If the write fails (the existing image is left intact).
+        """
+        if self._config.manual_images_dir is None:
+            raise RuntimeError("manual image store is not configured")
+        target = self._manual_image_path(entity_id, ext)
+        assert target is not None  # dir is configured, so non-None
+        self._config.manual_images_dir.mkdir(parents=True, exist_ok=True)
+        canonical = target.stem
+        # Write the new file first (temp → atomic rename); only destroy the old file once the new
+        # one is safely in place (write-then-replace, never delete-then-write). On any failure,
+        # clean up the temp file and leave the existing image untouched.
+        tmp_path = target.with_name(f".{canonical}.tmp.{uuid4()}")
+        try:
+            tmp_path.write_bytes(data)
+            tmp_path.rename(target)
+        except OSError:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
+            raise
+        # New file is in place: remove any prior file of a different extension (no orphan). A
+        # failure here leaves a harmless extra file, never loses the current image.
+        for prior_ext in _MANUAL_IMAGE_EXTS:
+            if prior_ext != ext:
+                prior = self._config.manual_images_dir / f"{canonical}.{prior_ext}"
+                with contextlib.suppress(OSError):
+                    prior.unlink(missing_ok=True)
+        logger.info("Stored manual entity image: %s (%d bytes)", target, len(data))
+
+    def delete_manual_image(self, entity_id: str) -> None:
+        """Remove any manual image file for an entity (Feature 092). Idempotent."""
+        if self._config.manual_images_dir is None:
+            return
+        try:
+            canonical = str(UUID(entity_id))
+        except ValueError:
+            return
+        for ext in _MANUAL_IMAGE_EXTS:
+            path = self._config.manual_images_dir / f"{canonical}.{ext}"
+            with contextlib.suppress(OSError):
+                path.unlink(missing_ok=True)
+
+    def invalidate_entity(self, entity_id: str) -> None:
+        """Clear the cached Wikidata render for an entity so the next view re-resolves (Feature 092).
+
+        Removes ``cache/images/entities/{id}.jpg`` and its ``.missing`` marker. Called on every
+        image-state change (upload, replace, remove, preference switch) so the resolver's new
+        precedence takes effect immediately. Idempotent; a no-op when the entities cache is
+        unconfigured.
+        """
+        if self._config.entities_dir is None:
+            return
+        cache_path = self._config.entities_dir / f"{entity_id}.jpg"
+        with contextlib.suppress(OSError):
+            cache_path.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            cache_path.with_suffix(".missing").unlink(missing_ok=True)
+
+    # ------------------------------------------------------------------
+    # Public API: get_entity_image (Feature 079, manual precedence Feature 092)
     # ------------------------------------------------------------------
 
     async def get_entity_image(
@@ -904,7 +1017,37 @@ class ImageCacheService:
 
         cache_path = self._config.entities_dir / f"{entity_id}.jpg"
 
-        # 1. Cache HIT
+        # A malformed id has neither a manual nor a Wikidata image.
+        try:
+            eid = UUID(entity_id)
+        except ValueError:
+            return self._serve_placeholder("channel")
+
+        # Read the manual-image columns alongside properties in one lookup (Feature 092):
+        # manual precedence must be decided before any cached Wikidata render is served, so
+        # a 'manual' preference wins even if a stale Wikidata render is still on disk.
+        result = await session.execute(
+            select(
+                NamedEntityDB.manual_image_ext,
+                NamedEntityDB.image_source_preference,
+                NamedEntityDB.properties,
+            ).where(NamedEntityDB.id == eid)
+        )
+        row = result.first()
+        manual_ext = row[0] if row is not None else None
+        source_pref = row[1] if row is not None else "wikidata"
+        properties = row[2] if row is not None else None
+
+        # 0. Manual-image precedence (Feature 092): preference 'manual' with an uploaded file on
+        #    disk → serve it straight from the durable store (no Commons fetch, no cache round-trip,
+        #    no SSRF/transient logic — it is local, verified-at-upload bytes). A 'manual' preference
+        #    whose file is missing falls through to the Wikidata path/placeholder below (FR-014).
+        if source_pref == "manual" and isinstance(manual_ext, str) and manual_ext:
+            manual_path = self._manual_image_path(entity_id, manual_ext)
+            if manual_path is not None and manual_path.is_file():
+                return self._serve_cached_file(manual_path, "MANUAL")
+
+        # 1. Cache HIT (Wikidata render)
         if self._check_cache(cache_path) == "HIT":
             return self._serve_cached_file(cache_path, "HIT")
 
@@ -913,17 +1056,9 @@ class ImageCacheService:
             return self._serve_placeholder("channel")
 
         # 3. Look up the Commons filename from properties.image
-        try:
-            eid = UUID(entity_id)
-        except ValueError:
-            return self._serve_placeholder("channel")
-        result = await session.execute(
-            select(NamedEntityDB.properties).where(NamedEntityDB.id == eid)
-        )
-        row = result.first()
         filename: str | None = None
-        if row is not None and isinstance(row[0], dict):
-            block = row[0].get("image")
+        if isinstance(properties, dict):
+            block = properties.get("image")
             if isinstance(block, dict):
                 values = block.get("values")
                 if isinstance(values, list) and values and isinstance(values[0], str):

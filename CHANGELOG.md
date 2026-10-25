@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.100.0] - 2026-10-25
+
+### Added
+- **Richer entity facts from the knowledge base.** Grounding a person, organization, or creative work now captures a broader, evidence-chosen set of facts and shows the new relationships on the entity page. For people: awards received, notable works, and event participation. For organizations: parent and child organizations, owner, chairperson, chief executive, and affiliation. For creative works: creator, production company, and original broadcaster. The new relationships also appear under "Referenced by" on the other entity's page where that entity is tracked (for example, the owner of an organization sees it listed). Alongside these, new descriptive attributes surface as plain-text facts: religion/worldview, residence, and ethnic group for people; legal form, industry, political ideology/alignment, and the office held by the organization's head.
+
+### Internal
+- The curated field set was chosen by mining a local archive of every grounded entity's raw knowledge-base record, ranked by how often our own entities carry each property. Capture is additive-only — new keys in the existing properties store; no schema change, no migration, no new dependency, and no backfill of already-grounded entities (they gain the facts on re-grounding or refresh). New fields enter the kind-grouped capture registry only, so the derived capture lists and the graph export's relationship edges follow automatically. Two deliberate decisions, both evidence-backed and pinned by tests: `owner_of` is not captured (the owner side is shown via the inverse of `owned_by`, since the forward property is 99% dangling subsidiary links), and head-of-organization position is an attribute, not a relationship (its value is an office title, not an entity). Covered by backend and frontend unit tests, a real-seam capture integration test (parametrized across entity types, including a write-scoping assertion that grounding one entity leaves others untouched), and a referenced-by integration test.
+
 ## [0.99.0] - 2026-10-25
 
 ### Changed

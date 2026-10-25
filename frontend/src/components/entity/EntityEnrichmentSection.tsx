@@ -123,6 +123,19 @@ const RELATION_KEYS = new Set([
   "producer",
   "screenwriter",
   "composer",
+  // Feature 095: additional forward relationships (attribute fields stay in the generic list).
+  "award_received",
+  "notable_work",
+  "participant_in",
+  "parent_organization",
+  "child_organization",
+  "owned_by",
+  "chairperson",
+  "ceo",
+  "affiliation",
+  "creator",
+  "production_company",
+  "original_broadcaster",
 ]);
 
 /** Social/web properties (Feature 079): a single handle value, linked via a fixed URL pattern. */

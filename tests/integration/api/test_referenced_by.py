@@ -413,3 +413,69 @@ class TestReferencedBy:
             async with integration_session_factory() as s:
                 await s.execute(delete(NamedEntityDB).where(NamedEntityDB.id.in_(ids)))
                 await s.commit()
+
+
+class TestFeature095ReferencedBy:
+    """Feature 095 — the new inverse relationship groups surface through the same endpoint.
+
+    The owner side of ``owned_by`` is the Q3 display path (``owner_of`` is never captured). Inline
+    create + try/finally cleanup, mirroring the Feature 088 cases above; placeholder names only.
+    """
+
+    async def test_owned_by_surfaces_owner_side(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        owner_qid = "Q095OWNER"
+        async with integration_session_factory() as s:
+            owner = await _entity(
+                s, "f095 owner", external_ids={"wikidata": {"id": owner_qid}}
+            )
+            subsidiary = await _entity(
+                s, "f095 subsidiary", properties={"owned_by": _rel(owner_qid)}
+            )
+            await s.commit()
+            ids = [owner, subsidiary]
+        try:
+            resp = await async_client.get(f"/api/v1/entities/{owner}/referenced-by")
+            assert resp.status_code == 200, resp.text
+            groups = {g["key"]: g for g in resp.json()["data"]}
+            assert "owned_entity" in groups, resp.json()["data"]
+            owned = groups["owned_entity"]
+            assert owned["label"] == "Owner of"
+            assert "wikidata" in owned["attribution"].lower()
+            assert {_u(m["entity_id"]) for m in owned["members"]} == {subsidiary}
+        finally:
+            async with integration_session_factory() as s:
+                await s.execute(delete(NamedEntityDB).where(NamedEntityDB.id.in_(ids)))
+                await s.commit()
+
+    async def test_ceo_and_creator_inverse_groups_present(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        person_qid = "Q095PERSON"
+        async with integration_session_factory() as s:
+            person = await _entity(
+                s, "f095 person", external_ids={"wikidata": {"id": person_qid}}
+            )
+            acme = await _entity(s, "f095 acme", properties={"ceo": _rel(person_qid)})
+            film = await _entity(
+                s, "f095 film", properties={"creator": _rel(person_qid)}
+            )
+            await s.commit()
+            ids = [person, acme, film]
+        try:
+            resp = await async_client.get(f"/api/v1/entities/{person}/referenced-by")
+            assert resp.status_code == 200, resp.text
+            groups = {g["key"]: g for g in resp.json()["data"]}
+            assert {_u(m["entity_id"]) for m in groups["led_org"]["members"]} == {acme}
+            assert {_u(m["entity_id"]) for m in groups["created_work"]["members"]} == {
+                film
+            }
+        finally:
+            async with integration_session_factory() as s:
+                await s.execute(delete(NamedEntityDB).where(NamedEntityDB.id.in_(ids)))
+                await s.commit()

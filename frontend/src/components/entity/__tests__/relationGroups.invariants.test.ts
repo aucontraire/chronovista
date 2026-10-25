@@ -26,6 +26,9 @@ describe('forward relationGroups invariants', () => {
         'cast', 'child', 'composer', 'director', 'employment', 'father', 'founder',
         'membership', 'mother', 'producer', 'screenwriter', 'sibling',
         'significant_person', 'spouse',
+        'award_received', 'notable_work', 'participant_in', 'parent_organization',
+        'child_organization', 'owned_by', 'chairperson', 'ceo', 'affiliation',
+        'creator', 'production_company', 'original_broadcaster',
       ].sort()
     );
     expect(relationGroupForField('employer')?.key).toBe('employment');

@@ -100,3 +100,46 @@ def test_every_group_is_specifically_attributed() -> None:
         low = f"{g.label} {g.attribution}".lower()
         assert "wikidata" in g.attribution.lower()
         assert "related to" not in low and "connected with" not in low
+
+
+def test_feature_095_inverse_groups_present() -> None:
+    # Each new relationship edge has an inverse ("Referenced by") group over its single field.
+    expected = {
+        "award_recipient": "award_received",
+        "noted_work": "notable_work",
+        "event_participant": "participant_in",
+        "child_org": "parent_organization",
+        "parent_org": "child_organization",
+        "owned_entity": "owned_by",
+        "chaired_org": "chairperson",
+        "led_org": "ceo",
+        "affiliated_entity": "affiliation",
+        "created_work": "creator",
+        "produced_work": "production_company",
+        "broadcast_work": "original_broadcaster",
+    }
+    for key, field in expected.items():
+        assert _group(key).member_fields == (field,), key
+        assert field in INBOUND_FIELDS
+
+
+def test_owned_by_has_inverse_group_but_owner_of_is_absent() -> None:
+    # Feature 095 Q3: the owner side is the INVERSE of owned_by; owner_of is never captured.
+    assert "owned_by" in INBOUND_FIELDS
+    assert "owner_of" not in INBOUND_FIELDS
+    assert "owner_of" not in WANTED.values()
+
+
+def test_feature_095_attributes_excluded_from_relation_groups() -> None:
+    # The 8 new node attributes are NOT relationships — they must never enter the inverse surface.
+    for attr in (
+        "religion_or_worldview",
+        "residence",
+        "ethnic_group",
+        "legal_form",
+        "industry",
+        "political_ideology",
+        "political_alignment",
+        "head_position",
+    ):
+        assert attr not in INBOUND_FIELDS

@@ -10,7 +10,12 @@ from __future__ import annotations
 from typing import Any
 
 from chronovista.services.wikidata_properties import (
+    ATTRIBUTES_ITEM,
+    ATTRIBUTES_LITERAL,
+    IDENTIFIERS,
+    RELATIONS,
     WANTED,
+    WANTED_LITERAL,
     assemble_block,
     assemble_properties,
     assemble_reference_block,
@@ -408,3 +413,117 @@ class TestMergeWikidataBlocks:
             },
         }
         assert merge_wikidata_blocks(current, {}) == {"category": current["category"]}
+
+
+class TestKindGrouping:
+    """The kind-grouped registry derives WANTED/WANTED_LITERAL and the export's edge set.
+
+    The registry is defined as four KIND groups (RELATIONS / ATTRIBUTES_ITEM / ATTRIBUTES_LITERAL /
+    IDENTIFIERS); WANTED and WANTED_LITERAL are DERIVED views of them. These tests pin two invariants:
+    (1) the derived public contract is byte-for-byte what it was before the regroup (so no consumer
+    behaviour changed), and (2) RELATIONS covers every field the graph export emits as an edge — the
+    anti-drift guard that replaces the export's hand-copied list.
+    """
+
+    # Frozen snapshot of the public contract as it stood BEFORE the kind-grouping refactor. If a kind
+    # group is edited, these must still hold (or be updated deliberately) — they are the proof that
+    # the derivation preserves the historical contents, not just the shape.
+    _WANTED_SNAPSHOT = {
+        "P31": "instance_of",
+        "P279": "subclass_of",
+        "P106": "occupation",
+        "P27": "country",
+        "P17": "country",
+        "P39": "position_held",
+        "P21": "sex_or_gender",
+        "P19": "place_of_birth",
+        "P69": "educated_at",
+        "P108": "employer",
+        "P102": "political_party",
+        "P463": "member_of",
+        "P1412": "languages",
+        "P159": "headquarters",
+        "P26": "spouse",
+        "P22": "father",
+        "P25": "mother",
+        "P40": "child",
+        "P3373": "sibling",
+        "P20": "place_of_death",
+        "P101": "field_of_work",
+        "P361": "part_of",
+        "P451": "unmarried_partner",
+        "P3342": "significant_person",
+        "P112": "founder",
+        "P161": "cast_member",
+        "P57": "director",
+        "P162": "producer",
+        "P58": "screenwriter",
+        "P86": "composer",
+    }
+    _WANTED_LITERAL_SNAPSHOT = {
+        "P569": "birth_date",
+        "P570": "death_date",
+        "P571": "inception",
+        "P856": "official_website",
+        "P2397": "youtube_channel_id",
+        "P345": "imdb_id",
+        "P2002": "x_username",
+        "P2003": "instagram_username",
+        "P18": "image",
+        "P1559": "native_language_name",
+        "P1477": "birth_name",
+        "P2013": "facebook_id",
+        "P7085": "tiktok_username",
+        "P4033": "mastodon_address",
+    }
+
+    def test_wanted_is_unchanged_by_refactor(self) -> None:
+        assert WANTED == self._WANTED_SNAPSHOT
+
+    def test_wanted_literal_is_unchanged_by_refactor(self) -> None:
+        assert WANTED_LITERAL == self._WANTED_LITERAL_SNAPSHOT
+
+    def test_wanted_derives_from_item_groups(self) -> None:
+        assert WANTED == {**RELATIONS, **ATTRIBUTES_ITEM}
+
+    def test_wanted_literal_derives_from_literal_groups(self) -> None:
+        assert WANTED_LITERAL == {**ATTRIBUTES_LITERAL, **IDENTIFIERS}
+
+    def test_kind_groups_are_disjoint(self) -> None:
+        # No P-number may appear in two kinds — that would make WANTED/WANTED_LITERAL ambiguous.
+        groups = [RELATIONS, ATTRIBUTES_ITEM, ATTRIBUTES_LITERAL, IDENTIFIERS]
+        keys = [k for g in groups for k in g]
+        assert len(keys) == len(set(keys))
+
+    def test_relations_cover_every_exported_edge(self) -> None:
+        # The graph export derives its RELS from RELATIONS. This guard pins that RELATIONS covers the
+        # export's original 14 edges PLUS the 9 that were captured in WANTED but never exported (the
+        # drift this refactor closes) — so the hand-copied list can never fall behind again.
+        exported_edges = {
+            # original export RELS
+            "employer",
+            "educated_at",
+            "member_of",
+            "place_of_birth",
+            "place_of_death",
+            "father",
+            "mother",
+            "spouse",
+            "child",
+            "sibling",
+            "position_held",
+            "political_party",
+            "part_of",
+            "subclass_of",
+            # the 9 that drifted (in WANTED, absent from the export's old copy)
+            "founder",
+            "cast_member",
+            "director",
+            "producer",
+            "screenwriter",
+            "composer",
+            "significant_person",
+            "unmarried_partner",
+            "field_of_work",
+        }
+        assert exported_edges <= set(RELATIONS.values())

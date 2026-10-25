@@ -134,6 +134,10 @@ COMMON_WORD_ALIASES = {
     "Cast",
     "Cloud",
     "Destiny",
+    # The Wikidata P57 field name (creative-work credit family), added 2026-10-25 when it blocked
+    # the kind-grouped WANTED refactor — same class as "Cast"/"Father" above (schema field names,
+    # not library content). The real entity is still covered by its full name.
+    "Director",
     "Evil",
     "Father",
     "Green",

@@ -29,67 +29,96 @@ from typing import Any
 
 SOURCE = "wikidata"
 
-# Wikidata property -> our field name. Item-valued: the value is a QID that must be resolved to a
-# readable label. This is the single source; the batch pipeline imports it rather than keeping its
-# own copy (#258) — P27 and P17 both fold into "country"; P31 is the entity-type cross-check.
-WANTED: dict[str, str] = {
-    "P31": "instance_of",
-    "P279": "subclass_of",
-    "P106": "occupation",
-    "P27": "country",
-    "P17": "country",
-    "P39": "position_held",
-    "P21": "sex_or_gender",
-    "P19": "place_of_birth",
-    "P69": "educated_at",
+# ---------------------------------------------------------------------------------------------------
+# Capture registry, grouped by KIND (the #258 single source).
+#
+# `kind` is the SEMANTIC axis — is a field a traversable graph edge, a node attribute, or an external
+# identifier? It is ORTHOGONAL to the item/literal axis (does the value need a QID->label round?),
+# which is what ``WANTED`` vs ``WANTED_LITERAL`` encode. Both public dicts are DERIVED from these four
+# groups, byte-for-byte identical to their historical contents, so every consumer
+# (``extract_claims``, ``relation_groups``, the gitignored batch pipeline) is untouched.
+#
+# The knowledge-graph export derives its edge set from :data:`RELATIONS` instead of a hand-copied list
+# that drifted: ``founder``/``cast_member``/``director``/``producer``/``screenwriter``/``composer``/
+# ``significant_person``/``unmarried_partner``/``field_of_work`` were all captured in ``WANTED`` yet
+# were never added to the export's parallel RELS list. Grouping them under ``RELATIONS`` closes that
+# drift at the source. P27/P17 country, P31 instance_of, P21 sex_or_gender, P106 occupation, P1412
+# languages and P159 headquarters are item-valued too, but are NODE ATTRIBUTES — the export emits them
+# as scalar node fields, not edges, which ``ATTRIBUTES_ITEM`` records.
+# ---------------------------------------------------------------------------------------------------
+
+# RELATIONS — item-valued QID targets exported as traversable graph edges (entity -> entity).
+# THIS is the single source for the graph export's relation set; adding a field here reaches both the
+# enrichment writers (via the derived ``WANTED``) and the export (which reads ``RELATIONS``).
+RELATIONS: dict[str, str] = {
     "P108": "employer",
-    "P102": "political_party",
+    "P69": "educated_at",
     "P463": "member_of",
-    "P1412": "languages",
-    "P159": "headquarters",
-    # Feature 079 — item-valued relations (values are QIDs resolved in the label round).
-    "P26": "spouse",
+    "P19": "place_of_birth",
+    "P20": "place_of_death",
     "P22": "father",
     "P25": "mother",
+    "P26": "spouse",
     "P40": "child",
     "P3373": "sibling",
-    "P20": "place_of_death",
-    "P101": "field_of_work",
+    "P39": "position_held",
+    "P102": "political_party",
     "P361": "part_of",
-    "P451": "unmarried_partner",
-    "P3342": "significant_person",
-    # Feature 087 — organization founders (item-valued). Captured going forward here; a backfill
-    # populates existing grounded entities. Reaches both writers via the #258 single source.
+    "P279": "subclass_of",
+    # Feature 087 — organization founders.
     "P112": "founder",
-    # Feature 088 — creative-work credit family (item-valued; stored on the work, pointing at people).
-    # Surfaced on both ends via 087's reverse "Referenced by" + the forward display; a backfill
-    # populates existing grounded works. Reaches both writers via the #258 single source.
+    # Feature 088 — creative-work credit family (stored on the work, pointing at people).
     "P161": "cast_member",
     "P57": "director",
     "P162": "producer",
     "P58": "screenwriter",
     "P86": "composer",
+    # Feature 079 — remaining item-valued relations.
+    "P3342": "significant_person",
+    "P451": "unmarried_partner",
+    "P101": "field_of_work",
 }
 
-# Literal-valued: strings, URLs and dates that ARE the value (no label round needed).
-WANTED_LITERAL: dict[str, str] = {
+# ATTRIBUTES_ITEM — item-valued, but node attributes rather than edges (resolved to label strings).
+# P27 and P17 both fold into "country"; P31 is the entity-type cross-check.
+ATTRIBUTES_ITEM: dict[str, str] = {
+    "P31": "instance_of",
+    "P106": "occupation",
+    "P27": "country",
+    "P17": "country",
+    "P21": "sex_or_gender",
+    "P1412": "languages",
+    "P159": "headquarters",
+}
+
+# ATTRIBUTES_LITERAL — literal node attributes (the value IS the datum; no label round).
+ATTRIBUTES_LITERAL: dict[str, str] = {
     "P569": "birth_date",
     "P570": "death_date",
     "P571": "inception",
+    # Feature 079 — portrait image (commonsMedia serializes as a "string" filename) + monolingual names.
+    "P18": "image",
+    "P1559": "native_language_name",
+    "P1477": "birth_name",
+}
+
+# IDENTIFIERS — external-DB / social-platform IDs and URLs (literal node properties, never edges).
+IDENTIFIERS: dict[str, str] = {
     "P856": "official_website",
     "P2397": "youtube_channel_id",
     "P345": "imdb_id",
     "P2002": "x_username",
     "P2003": "instagram_username",
-    # Feature 079 — portrait image (commonsMedia serializes as a "string" filename),
-    # monolingual names, and the remaining social-identifier platforms (no follower counts).
-    "P18": "image",
-    "P1559": "native_language_name",
-    "P1477": "birth_name",
     "P2013": "facebook_id",
     "P7085": "tiktok_username",
     "P4033": "mastodon_address",
 }
+
+# ---- Derived public contract — DO NOT hand-edit; add to the kind groups above. ----
+# Item-valued: the value is a QID resolved to a readable label in the label round.
+WANTED: dict[str, str] = {**RELATIONS, **ATTRIBUTES_ITEM}
+# Literal-valued: strings, URLs and dates that ARE the value (no label round needed).
+WANTED_LITERAL: dict[str, str] = {**ATTRIBUTES_LITERAL, **IDENTIFIERS}
 
 # Value-label languages. Some items carry only Wikidata's cross-lingual ``mul`` label — invisible to
 # a chain that asks for ``en`` alone. Order defines resolution preference.

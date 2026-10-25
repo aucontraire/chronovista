@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.99.0] - 2026-10-25
+
+### Changed
+- **Automatic Wikipedia portraits now fill in on grounding.** When you ground a new entity, re-link one to a different knowledge-base match, or press Refresh, the app now automatically pulls a freely-licensed Wikimedia Commons image from the entity's English Wikipedia page when the knowledge base has no usable image — no manual backfill needed. A real knowledge-base image always takes precedence, only free Commons images are ever stored, and re-grounding an entity now re-derives its Wikipedia image instead of losing it.
+
+### Internal
+- The Wikipedia free-Commons image fallback is now a best-effort step inside the shared on-grounding enrichment, reusing the existing licensing gate and image-block writer verbatim. It is detached and non-blocking: a Wikimedia failure is logged and never fails or delays the grounding. A manually-uploaded image does not suppress it (the automated slot is still filled so the manual/automated toggle has an image to switch to). No schema change, no migration, no new dependency, no API/CLI/frontend change.
+
 ## [0.98.0] - 2026-10-24
 
 ### Added

@@ -257,6 +257,41 @@ def assemble_block(
     }
 
 
+WIKIPEDIA_SOURCE = "wikipedia"
+
+
+def wikipedia_image_block(filename: str, set_at: str) -> dict[str, Any]:
+    """Assemble the automated-image block for a free Commons image sourced via Wikipedia (FR-003).
+
+    Deliberately NOT :func:`assemble_block`: that helper hard-codes ``source == "wikidata"``, which
+    the refetch merge (:func:`merge_wikidata_blocks`) treats as replaceable. A Wikipedia-sourced
+    image must instead be tagged ``source == "wikipedia"`` so the merge *preserves* it across a
+    property refetch that finds no P18, while a later real P18 (a fresh ``source == "wikidata"``
+    block on the same ``"image"`` key) still overrides it (FR-005). The shape is otherwise identical
+    to a Wikidata image block, so the resolver serves ``values[0]`` as a bare Commons filename with
+    no change (FR-004).
+
+    Parameters
+    ----------
+    filename : str
+        A bare Wikimedia **Commons** ``File:`` name (no ``File:`` prefix, no URL) — the only form
+        the Commons-only serving path resolves.
+    set_at : str
+        ISO timestamp of the backfill (also the resolver's ``?v=`` cache-buster).
+
+    Returns
+    -------
+    dict[str, Any]
+        ``{"values": [filename], "qids": [], "source": "wikipedia", "set_at": set_at}``.
+    """
+    return {
+        "values": [filename],
+        "qids": [],
+        "source": WIKIPEDIA_SOURCE,
+        "set_at": set_at,
+    }
+
+
 def value_qids(extracted: dict[str, dict[str, list[str]]]) -> list[str]:
     """Distinct value-QIDs across all fields, for a single batched label round (order-stable)."""
     seen: dict[str, None] = {}

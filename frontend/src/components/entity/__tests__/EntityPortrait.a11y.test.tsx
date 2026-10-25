@@ -67,7 +67,7 @@ describe("EntityPortrait accessibility", () => {
       screen.getByRole("button", { name: "Your image" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Wikidata image" }),
+      screen.getByRole("button", { name: "Automated image" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Remove portrait" }),
@@ -91,7 +91,7 @@ describe("EntityPortrait accessibility", () => {
   it("is keyboard operable with a visible focus indicator", async () => {
     setSourceMock.mockResolvedValue({ ...BOTH, source: "wikidata" });
     setup(BOTH);
-    const wikidata = screen.getByRole("button", { name: "Wikidata image" });
+    const wikidata = screen.getByRole("button", { name: "Automated image" });
     expect(wikidata.className).toContain("focus-visible:ring-2");
     expect(
       screen.getByRole("button", { name: "Remove portrait" }).className,
@@ -107,7 +107,7 @@ describe("EntityPortrait accessibility", () => {
       expect(setSourceMock).toHaveBeenCalledWith(ENTITY_ID, "wikidata"),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Now showing Wikidata image.",
+      "Now showing Automated image.",
     );
   });
 

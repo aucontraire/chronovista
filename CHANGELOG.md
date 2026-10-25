@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-10-24
+
+### Added
+- **Automatic portraits from Wikipedia.** A new backfill fills an entity's portrait from the free image on its English Wikipedia page when the usual automated source has none — closing the gap for entities that previously showed only a placeholder. Only freely-licensed images hosted on Wikimedia Commons are ever stored; a non-free image, a fair-use image uploaded locally to Wikipedia, or an image whose licensing cannot be confirmed is always declined and nothing is stored. The backfill is a read-only dry run by default and writes only when explicitly applied, with the usual database-target safeguards (dev-database refusal, target confirmation) and a pre-change backup.
+
+### Changed
+- The entity portrait's source toggle now labels the automated option **"Automated image"** rather than "Wikidata image", since an automated portrait may now come from either Wikipedia or the structured-data source.
+
+### Internal
+- New `entities backfill-wikipedia-images` CLI command (dry-run-first, per-entity resumable, with a per-entity outcome summary that counts proven absences separately from failures). A Wikipedia-sourced image is stored in the existing automated-image block tagged `source:"wikipedia"`, served by the existing image resolver with no change, preserved across a property refetch, and overridden by a later real structured-data image. No schema change, no migration, no new dependency. The free/Commons license gate (all accept/decline paths), the source-tagged write boundary, the refetch-preservation/override contract, and the per-entity outcome counting are covered by unit and real-database integration tests.
+
 ## [0.97.0] - 2026-10-24
 
 ### Added

@@ -132,7 +132,7 @@ function SourceToggle({
   const setSource = useSetEntityImageSource(entityId);
   const options: { value: EntityImageState["source"]; label: string }[] = [
     { value: "manual", label: "Your image" },
-    { value: "wikidata", label: "Wikidata image" },
+    { value: "wikidata", label: "Automated image" },
   ];
 
   return (

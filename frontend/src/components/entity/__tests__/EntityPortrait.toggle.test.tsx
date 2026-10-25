@@ -82,7 +82,7 @@ describe("EntityPortrait source toggle", () => {
       "true",
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Wikidata image" }),
+      screen.getByRole("button", { name: "Automated image" }),
     );
 
     await waitFor(() =>

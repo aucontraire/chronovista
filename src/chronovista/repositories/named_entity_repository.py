@@ -556,6 +556,67 @@ class NamedEntityRepository(
         result = await session.execute(stmt)
         return result.scalars().all()
 
+    async def list_grounded_without_image(
+        self,
+        session: AsyncSession,
+        *,
+        entity_type: str | None = None,
+        limit: int | None = None,
+    ) -> Sequence[NamedEntityDB]:
+        """Return grounded, active entities that have **no usable image** (Feature 093 work-list).
+
+        The candidate population for the Wikipedia free-Commons fallback (FR-001): an entity is
+        selected only when it is grounded to Wikidata but shows a placeholder today. "No usable
+        image" is the single predicate that makes a re-run idempotent (FR-010) — it excludes an
+        entity that already has **any** image, whatever its source:
+
+        - ``status == 'active'`` and ``merged_into_id IS NULL`` — a live entity only.
+        - ``external_ids -> 'wikidata' ->> 'id'`` present — grounded (the fetch needs the QID).
+        - ``manual_image_ext IS NULL`` — no uploaded image (Feature 092; an upload always wins).
+        - ``properties -> 'image' -> 'values' ->> 0`` is null or empty — no usable *automated*
+          image, which catches both the no-P18 state and a prior ``source:"wikipedia"`` image, so
+          a re-run skips anything already filled and re-attempts only the still-imageless.
+
+        Ordered by ``id`` for a stable, resumable sweep. Read-only. Like
+        :meth:`list_wikidata_grounded`, the JSONB predicates are function-wrapped and seq-scan
+        ``named_entities``; acceptable at the current low-thousands scale (revisit with a measured
+        functional index only if the table grows an order of magnitude).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        entity_type : str | None, optional
+            Narrow to a single entity type (e.g. ``"person"``); ``None`` (default) selects all
+            grounded-no-image types.
+        limit : int | None, optional
+            Process at most this many entities (batching / resumption); ``None`` for no cap.
+
+        Returns
+        -------
+        Sequence[NamedEntityDB]
+            Grounded, active, image-less entities ordered by ``id``.
+        """
+        wikidata_id = NamedEntityDB.external_ids["wikidata"]["id"].as_string()
+        image_value = NamedEntityDB.properties["image"]["values"][0].as_string()
+        stmt = (
+            select(NamedEntityDB)
+            .where(
+                NamedEntityDB.status == "active",
+                NamedEntityDB.merged_into_id.is_(None),
+                wikidata_id.isnot(None),
+                NamedEntityDB.manual_image_ext.is_(None),
+                func.nullif(image_value, "").is_(None),
+            )
+            .order_by(NamedEntityDB.id)
+        )
+        if entity_type is not None:
+            stmt = stmt.where(NamedEntityDB.entity_type == entity_type)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        result = await session.execute(stmt)
+        return result.scalars().all()
+
     async def get_by_wikidata_qids(
         self, session: AsyncSession, qids: Sequence[str]
     ) -> dict[str, tuple[uuid.UUID, str]]:

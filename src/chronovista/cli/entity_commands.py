@@ -21,6 +21,7 @@ from typing import Annotated, Any
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -45,6 +46,7 @@ from chronovista.models.enums import (
     EntityType,
 )
 from chronovista.models.named_entity import NamedEntityCreate
+from chronovista.models.wikipedia_image import FallbackOutcome
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
@@ -59,6 +61,7 @@ from chronovista.services.entity_mention_scan_service import (
 )
 from chronovista.services.tag_normalization import TagNormalizationService
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
+from chronovista.services.wikipedia_image_fallback import WikipediaImageFallback
 
 logger = logging.getLogger(__name__)
 
@@ -1345,6 +1348,223 @@ def backfill_wikidata_properties(
                 )
             else:
                 # Dry run makes no writes; roll back explicitly since get_session auto-commits on exit.
+                await session.rollback()
+                console.print(
+                    Panel(
+                        f"[bold]Dry run — nothing written.[/bold] {summary}\n"
+                        "Re-run with --apply to write.",
+                        title="Dry Run",
+                        border_style="yellow",
+                    )
+                )
+
+    asyncio.run(_run())
+
+
+@entity_app.command("backfill-wikipedia-images")
+def backfill_wikipedia_images(
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        is_flag=True,
+        help="Write changes. Without this, runs a read-only dry run (default).",
+    ),
+    allow_dev: bool = typer.Option(
+        False,
+        "--allow-dev",
+        is_flag=True,
+        help="Permit --apply against a dev database (otherwise refused).",
+    ),
+    entity_type: str | None = typer.Option(
+        None,
+        "--entity-type",
+        help="Narrow to one entity type (e.g. 'person'). Default: all grounded-no-image types.",
+    ),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        help="Process at most N candidate entities (batching / resumption).",
+    ),
+    pause: float = typer.Option(
+        3.5,
+        "--pause",
+        help="Seconds to wait between entities (Wikimedia rate-limit courtesy).",
+    ),
+) -> None:
+    """Fill portraits for grounded entities with no image from free Wikimedia Commons images (093).
+
+    For each grounded entity that has no uploaded and no usable automated image, resolves its
+    English Wikipedia page and, when that page's free lead image is confirmed hosted on Wikimedia
+    Commons and not non-free, stores the bare Commons filename as a ``source:"wikipedia"`` image
+    block the existing resolver serves unchanged. A non-free, local-upload, or unverifiable image
+    stores NOTHING (the legal invariant, FR-002).
+
+    Dry run (default) performs the lookups, prints the per-entity outcome table and writes nothing.
+    ``--apply`` prints the effective database, requires confirmation, writes a pre-change JSON
+    backup, then stores per entity (committing per entity — resumable). Idempotent: an entity that
+    already has any image is not selected, so a re-run re-attempts only the still-imageless (FR-010).
+
+    Assumes no concurrent enrichment write to ``named_entities.properties`` during an apply run:
+    candidates are snapshotted once up front and each write full-replaces the bag (with every other
+    block preserved from that snapshot), so a block written by another process mid-run would be
+    overwritten with stale data. Run it when no reground/property-refresh is in flight.
+    """
+
+    async def _run() -> None:
+        dsn = settings.effective_database_url
+        redacted = _redact_dsn(dsn)
+        is_dev = "chronovista_dev" in dsn or ":5434" in dsn
+
+        if apply:
+            if is_dev and not allow_dev:
+                console.print(
+                    Panel(
+                        f"[red]Refusing --apply against a dev database:[/red] {redacted}\n"
+                        "Pass --allow-dev to backfill a dev database intentionally.",
+                        title="Blocked",
+                        border_style="red",
+                    )
+                )
+                raise typer.Exit(1)
+            console.print(f"[bold]Target database:[/bold] {redacted}")
+            if not typer.confirm(f"Apply the Wikipedia-image backfill to {redacted}?"):
+                console.print("[yellow]Aborted.[/yellow]")
+                raise typer.Exit(1)
+
+        fallback = WikipediaImageFallback()
+        repo = NamedEntityRepository()
+
+        async for session in db_manager.get_session(echo=False):
+            candidates = list(
+                await repo.list_grounded_without_image(
+                    session, entity_type=entity_type, limit=limit
+                )
+            )
+
+            if not candidates:
+                console.print(
+                    Panel(
+                        "[yellow]No grounded entities without an image found.[/yellow]",
+                        title="Nothing to Backfill",
+                        border_style="yellow",
+                    )
+                )
+                if not apply:
+                    await session.rollback()
+                return
+
+            # Pre-change backup (apply only): id + prior properties for every entity in scope.
+            if apply:
+                backup_dir = Path("backups")
+                backup_dir.mkdir(exist_ok=True)
+                stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+                backup_path = backup_dir / f"wikipedia_image_backfill_{stamp}.json"
+                backup_path.write_text(
+                    json.dumps(
+                        [
+                            {"id": str(e.id), "properties": e.properties}
+                            for e in candidates
+                        ],
+                        indent=2,
+                    )
+                )
+                console.print(
+                    f"[dim]Backup written: {backup_path} ({len(candidates)} rows)[/dim]"
+                )
+
+            console.print(
+                f"[bold]Evaluating {len(candidates)} candidate(s) against Wikipedia[/bold]"
+                + ("" if apply else " [dim](dry run — nothing will be written)[/dim]")
+            )
+
+            # Outcome -> style for the streamed per-entity line: green=stored, yellow=declined,
+            # dim=proven absence (no page / no lead image), red=error.
+            outcome_styles = {
+                FallbackOutcome.STORED: "green",
+                FallbackOutcome.DECLINED_NON_FREE: "yellow",
+                FallbackOutcome.DECLINED_NOT_COMMONS: "yellow",
+                FallbackOutcome.NO_PAGE: "dim",
+                FallbackOutcome.NO_LEAD_IMAGE: "dim",
+                FallbackOutcome.ERROR: "red",
+            }
+
+            counts: dict[FallbackOutcome, int] = dict.fromkeys(FallbackOutcome, 0)
+            # A live progress bar with each entity's outcome streamed ABOVE it as it resolves, so a
+            # long rate-limited sweep shows real-time progress instead of a silent wait until the
+            # end. `escape()` guards every rendered value against an entity name / filename that
+            # happens to contain Rich markup. The per-entity line is printed through
+            # `progress.console` so it renders cleanly above the bar.
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                console=console,
+                transient=True,
+            ) as progress:
+                task = progress.add_task("Starting…", total=len(candidates))
+                for index, entity in enumerate(candidates):
+                    label = escape(
+                        f"{entity.canonical_name[:26]} ({str(entity.id)[:6]})"
+                    )
+                    progress.update(task, description=label)
+
+                    qid = wp.wikidata_qid(entity.external_ids)
+                    if not qid:
+                        # The query guarantees a grounded QID; skip defensively if one slips through.
+                        progress.advance(task)
+                        continue
+
+                    result = await fallback.evaluate(entity.id, str(qid))
+                    # Tally the evaluated OUTCOME (so a dry run reports what it *would* store); this
+                    # is not a confirmation of rows written.
+                    counts[result.outcome] += 1
+                    detail = escape(result.filename or result.detail or "")
+                    style = outcome_styles.get(result.outcome, "white")
+                    progress.console.print(
+                        f"[{style}]{result.outcome.value:<20}[/{style}] {label}"
+                        + (f"  [dim]{detail}[/dim]" if detail else "")
+                    )
+
+                    if (
+                        result.outcome is FallbackOutcome.STORED
+                        and result.filename
+                        and apply
+                    ):
+                        set_at = datetime.now(UTC).isoformat()
+                        merged = {
+                            **(entity.properties or {}),
+                            "image": wp.wikipedia_image_block(result.filename, set_at),
+                        }
+                        await repo.replace_properties(
+                            session, entity.id, properties=merged
+                        )
+                        await session.commit()  # per-entity commit -> resumable
+
+                    progress.advance(task)
+                    # Courtesy pacing between Wikimedia calls (skip after the last).
+                    if pause > 0 and index < len(candidates) - 1:
+                        await asyncio.sleep(pause)
+
+            stored = counts[FallbackOutcome.STORED]
+            summary = (
+                f"stored={stored} "
+                f"declined_non_free={counts[FallbackOutcome.DECLINED_NON_FREE]} "
+                f"declined_not_commons={counts[FallbackOutcome.DECLINED_NOT_COMMONS]} "
+                f"no_page={counts[FallbackOutcome.NO_PAGE]} "
+                f"no_lead_image={counts[FallbackOutcome.NO_LEAD_IMAGE]} "
+                f"error={counts[FallbackOutcome.ERROR]} total={len(candidates)}"
+            )
+            if apply:
+                console.print(
+                    Panel(
+                        f"[bold]Applied.[/bold] {summary}",
+                        title="[green]Backfill Complete[/green]",
+                        border_style="green",
+                    )
+                )
+            else:
+                # Dry run makes no writes; roll back explicitly (get_session auto-commits on exit).
                 await session.rollback()
                 console.print(
                     Panel(

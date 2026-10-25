@@ -300,8 +300,18 @@ class EntityEnrichmentService:
         Never raises and never blocks the grounding/refresh: any failure (a flaky Wikimedia source, an
         exhausted retry, a DB error) is caught and logged, leaving the Wikidata enrichment intact
         (FR-005). A successful store is logged for operator auditability (FR-010).
+
+        The up-to-3 Wikimedia calls are made with **no DB session open** — mirroring
+        ``_store_dbpedia``, not ``_store_categories``. A short read session decides whether to fetch
+        (and closes), then the network call runs session-less, then a short write session persists.
+        This matters beyond connection-pool hygiene: as a detached task, this coroutine can be
+        cancelled at any ``await``; holding a session across the (possibly slow/hung) Wikimedia call
+        would leave an ``idle in transaction`` connection on cancellation, deadlocking any later
+        ``DROP``/DDL on ``named_entities``/``entity_mentions`` — which is exactly what broke the
+        integration suite before this was split.
         """
         try:
+            # 1. Short read session: decide whether to fetch at all, then release the connection.
             async with self._session_factory() as session:
                 existing = await self._repo.get(session, entity_id)
                 if existing is None:
@@ -310,8 +320,17 @@ class EntityEnrichmentService:
                     # A usable automated image (incl. a just-written P18, or a prior Wikipedia
                     # block on a refresh) is already present — skip (FR-001, FR-004).
                     return
-                result = await self._image_fallback_factory().evaluate(entity_id, qid)
-                if result.outcome is not FallbackOutcome.STORED or not result.filename:
+
+            # 2. Network call with NO DB session held (the crux — see docstring).
+            result = await self._image_fallback_factory().evaluate(entity_id, qid)
+            if result.outcome is not FallbackOutcome.STORED or not result.filename:
+                return
+
+            # 3. Short write session: re-read (a P18 may have landed meanwhile → re-check skip),
+            #    then merge the Wikipedia block into the current bag and persist.
+            async with self._session_factory() as session:
+                existing = await self._repo.get(session, entity_id)
+                if existing is None or _has_usable_automated_image(existing.properties):
                     return
                 merged = {
                     **(existing.properties or {}),

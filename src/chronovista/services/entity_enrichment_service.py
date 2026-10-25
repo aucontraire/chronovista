@@ -28,11 +28,13 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from chronovista.models.entity_enrichment import ExternalIdentifier
+from chronovista.models.wikipedia_image import FallbackOutcome
 from chronovista.repositories.entity_category_repository import (
     EntityCategoryRepository,
 )
@@ -46,8 +48,31 @@ from chronovista.services.category_size import CategorySizeService
 from chronovista.services.dbpedia_resolver import DbpediaResolver
 from chronovista.services.entity_category_fetch import EntityCategoryFetchService
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
+from chronovista.services.wikipedia_image_fallback import WikipediaImageFallback
 
 logger = logging.getLogger(__name__)
+
+
+def _has_usable_automated_image(properties: dict[str, Any] | None) -> bool:
+    """True when ``properties.image.values[0]`` is a non-empty string (a usable automated image).
+
+    Mirrors the resolver's and the Feature 093 candidate query's definition of "has an image": a
+    Wikidata P18 block or a prior Wikipedia block both satisfy it. A manually-uploaded image lives in
+    a dedicated column (Feature 092), NOT in ``properties``, so it does not satisfy this and does not
+    suppress the Wikipedia fallback (Feature 094, FR-001).
+    """
+    if not isinstance(properties, dict):
+        return False
+    block = properties.get("image")
+    if not isinstance(block, dict):
+        return False
+    values = block.get("values")
+    return (
+        isinstance(values, list)
+        and len(values) > 0
+        and isinstance(values[0], str)
+        and bool(values[0])
+    )
 
 
 class EntityEnrichmentService:
@@ -62,6 +87,9 @@ class EntityEnrichmentService:
             [], EntityCategoryFetchService
         ] = EntityCategoryFetchService,
         size_factory: Callable[[], CategorySizeService] = CategorySizeService,
+        image_fallback_factory: Callable[
+            [], WikipediaImageFallback
+        ] = WikipediaImageFallback,
     ) -> None:
         """Initialise the service.
 
@@ -77,12 +105,16 @@ class EntityEnrichmentService:
             Returns the entity→categories fetch service (Feature 084). Overridable in tests.
         size_factory : Callable[[], CategorySizeService]
             Returns the category global-size service (Feature 083). Overridable in tests.
+        image_fallback_factory : Callable[[], WikipediaImageFallback]
+            Returns the Wikipedia free-Commons image fallback (Feature 093/094). Overridable in
+            tests with a ``MockTransport``-backed instance.
         """
         self._session_factory = session_factory
         self._client_factory = client_factory
         self._dbpedia_factory = dbpedia_factory
         self._category_fetch_factory = category_fetch_factory
         self._size_factory = size_factory
+        self._image_fallback_factory = image_fallback_factory
         self._repo = NamedEntityRepository()
         self._cat_repo = WikipediaCategoryRepository()
         self._assign_repo = EntityCategoryRepository()
@@ -111,10 +143,12 @@ class EntityEnrichmentService:
         grounded and its properties to be filled by the next batch run. The done-callback that retires
         the task handle must therefore never need to inspect an exception.
 
-        Three independent best-effort steps: the Wikidata **properties** write (primary), then a
-        DBpedia **identifier** merge, then the Wikipedia **category** fetch (Feature 084). Each later
-        step is separate on purpose — its external endpoint is unreliable, so its failure must not
-        affect what already landed. The category step is add-only (FR-004).
+        Four independent best-effort steps: the Wikidata **properties** write (primary), then the
+        Wikipedia **image** fallback (Feature 094 — fills the automated image from a free Commons
+        image when the write produced no usable image), a DBpedia **identifier** merge, and the
+        Wikipedia **category** fetch (Feature 084). Each secondary step is separate on purpose — its
+        external endpoint is unreliable, so its failure must not affect what already landed. The
+        category step is add-only (FR-004).
         """
         entity_present = await self._write_properties(entity_id, qid)
         if entity_present is not True:
@@ -123,6 +157,7 @@ class EntityEnrichmentService:
             # written; on a failed/absent run a later batch retries all three. This also keeps the
             # invariant that a fetch failure opens no further DB sessions.
             return
+        await self._store_wikipedia_image(entity_id, qid)
         await self._store_dbpedia(entity_id, qid)
         await self._store_categories(entity_id, qid)
 
@@ -246,6 +281,57 @@ class EntityEnrichmentService:
         except Exception as exc:  # noqa: BLE001 (detached task must not surface)
             logger.warning(
                 "on-approval category enrichment failed for entity %s (qid=%s): %s",
+                entity_id,
+                qid,
+                exc,
+            )
+
+    async def _store_wikipedia_image(self, entity_id: uuid.UUID, qid: str) -> None:
+        """Best-effort (Feature 094): fill the automated image from a free Commons Wikipedia image.
+
+        Runs after the Wikidata property write. SKIPS when the entity already has a usable automated
+        image (``properties.image.values[0]`` non-empty) — a Wikidata P18 the property write just
+        stored already satisfies this, so a real P18 always wins (FR-001/FR-004), and a re-run on an
+        already-imaged entity is a no-op. A manually-uploaded image (a dedicated column, Feature 092)
+        does NOT count and does NOT suppress the fetch, so the automated slot is filled for the
+        manual/automated toggle (FR-001, clarified). Reuses the Feature 093 gate + writer verbatim;
+        only a confirmed free Commons image is stored (FR-002/FR-003).
+
+        Never raises and never blocks the grounding/refresh: any failure (a flaky Wikimedia source, an
+        exhausted retry, a DB error) is caught and logged, leaving the Wikidata enrichment intact
+        (FR-005). A successful store is logged for operator auditability (FR-010).
+        """
+        try:
+            async with self._session_factory() as session:
+                existing = await self._repo.get(session, entity_id)
+                if existing is None:
+                    return
+                if _has_usable_automated_image(existing.properties):
+                    # A usable automated image (incl. a just-written P18, or a prior Wikipedia
+                    # block on a refresh) is already present — skip (FR-001, FR-004).
+                    return
+                result = await self._image_fallback_factory().evaluate(entity_id, qid)
+                if result.outcome is not FallbackOutcome.STORED or not result.filename:
+                    return
+                merged = {
+                    **(existing.properties or {}),
+                    "image": wp.wikipedia_image_block(
+                        result.filename, datetime.now(UTC).isoformat()
+                    ),
+                }
+                await self._repo.replace_properties(
+                    session, entity_id, properties=merged
+                )
+                await session.commit()
+                logger.info(
+                    "on-approval Wikipedia image stored for entity %s (qid=%s): %s",
+                    entity_id,
+                    qid,
+                    result.filename,
+                )
+        except Exception as exc:  # noqa: BLE001 (detached task must not surface)
+            logger.warning(
+                "on-approval Wikipedia image fallback failed for entity %s (qid=%s): %s",
                 entity_id,
                 qid,
                 exc,

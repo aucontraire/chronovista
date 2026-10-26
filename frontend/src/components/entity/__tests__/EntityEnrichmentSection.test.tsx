@@ -637,6 +637,47 @@ describe('EntityEnrichmentSection — property rendering (Feature 079, US3)', ()
     });
   });
 
+  describe('Feature 095 property expansion', () => {
+    it('renders a new relationship (owned_by) in the Relations block with label and attribution', () => {
+      mockWikidataEntityMap({
+        data: { Q00000901: { entity_id: 'ent-owner', canonical_name: 'Placeholder Owner' } },
+      });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            owned_by: propBlock(['Placeholder Owner'], { qids: ['Q00000901'] }),
+          },
+        }),
+      });
+
+      expect(screen.getByText('Relations')).toBeInTheDocument();
+      expect(screen.getByText('Owned by')).toBeInTheDocument();
+      expect(
+        screen.getByText('Listed by Wikidata as an owner of this entity')
+      ).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Placeholder Owner' })).toHaveAttribute(
+        'href',
+        '/entities/ent-owner'
+      );
+    });
+
+    it('renders a new attribute (industry) as plain text, not in the Relations block', () => {
+      mockWikidataEntityMap({ data: {} });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            industry: propBlock(['Placeholder Industry'], { qids: ['Q00000902'] }),
+          },
+        }),
+      });
+
+      expect(screen.getByText('Placeholder Industry')).toBeInTheDocument();
+      expect(screen.queryByText('Relations')).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Placeholder Industry' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Listed by Wikidata/)).not.toBeInTheDocument();
+    });
+  });
+
   describe('social/web properties', () => {
     it('links a known social property via its fixed URL pattern', () => {
       renderSection({

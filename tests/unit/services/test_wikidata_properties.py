@@ -459,6 +459,28 @@ class TestKindGrouping:
         "P162": "producer",
         "P58": "screenwriter",
         "P86": "composer",
+        # Feature 095 — relationship edges.
+        "P166": "award_received",
+        "P800": "notable_work",
+        "P1344": "participant_in",
+        "P749": "parent_organization",
+        "P355": "child_organization",
+        "P127": "owned_by",
+        "P488": "chairperson",
+        "P169": "ceo",
+        "P1416": "affiliation",
+        "P170": "creator",
+        "P272": "production_company",
+        "P449": "original_broadcaster",
+        # Feature 095 — item-valued node attributes.
+        "P140": "religion_or_worldview",
+        "P551": "residence",
+        "P172": "ethnic_group",
+        "P1454": "legal_form",
+        "P452": "industry",
+        "P1142": "political_ideology",
+        "P1387": "political_alignment",
+        "P2388": "head_position",
     }
     _WANTED_LITERAL_SNAPSHOT = {
         "P569": "birth_date",
@@ -525,5 +547,67 @@ class TestKindGrouping:
             "significant_person",
             "unmarried_partner",
             "field_of_work",
+            # Feature 095 — new relationship edges.
+            "award_received",
+            "notable_work",
+            "participant_in",
+            "parent_organization",
+            "child_organization",
+            "owned_by",
+            "chairperson",
+            "ceo",
+            "affiliation",
+            "creator",
+            "production_company",
+            "original_broadcaster",
         }
         assert exported_edges <= set(RELATIONS.values())
+
+
+class TestFeature095Extraction:
+    """Feature 095 — the new relationship and attribute fields extract as item-valued facts."""
+
+    _RELATIONS = {
+        "P166": "award_received",
+        "P800": "notable_work",
+        "P1344": "participant_in",
+        "P749": "parent_organization",
+        "P355": "child_organization",
+        "P127": "owned_by",
+        "P488": "chairperson",
+        "P169": "ceo",
+        "P1416": "affiliation",
+        "P170": "creator",
+        "P272": "production_company",
+        "P449": "original_broadcaster",
+    }
+    _ATTRIBUTES = {
+        "P140": "religion_or_worldview",
+        "P551": "residence",
+        "P172": "ethnic_group",
+        "P1454": "legal_form",
+        "P452": "industry",
+        "P1142": "political_ideology",
+        "P1387": "political_alignment",
+        "P2388": "head_position",
+    }
+
+    def test_new_relationship_fields_extract_as_item_valued(self) -> None:
+        for pnum, alias in self._RELATIONS.items():
+            out = extract_claims({pnum: [_item_snak("Q1"), _item_snak("Q2")]})
+            assert out[alias] == {"qids": ["Q1", "Q2"], "literals": []}, pnum
+
+    def test_new_attribute_fields_extract_as_item_valued(self) -> None:
+        for pnum, alias in self._ATTRIBUTES.items():
+            out = extract_claims({pnum: [_item_snak("Q9")]})
+            assert out[alias] == {"qids": ["Q9"], "literals": []}, pnum
+
+    def test_owner_of_p1830_is_not_captured(self) -> None:
+        # Feature 095 deliberately drops owner_of (P1830); the owner side is the inverse of owned_by.
+        out = extract_claims({"P1830": [_item_snak("Q1")]})
+        assert out == {}
+
+    def test_absent_new_fact_is_omitted(self) -> None:
+        # A record with none of the new facts yields no new keys (best-effort capture, no error).
+        out = extract_claims({"P31": [_item_snak("Q5")]})
+        assert set(out) == {"instance_of"}

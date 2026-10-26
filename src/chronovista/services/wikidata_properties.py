@@ -77,6 +77,22 @@ RELATIONS: dict[str, str] = {
     "P3342": "significant_person",
     "P451": "unmarried_partner",
     "P101": "field_of_work",
+    # Feature 095 — curated relationship expansion (archive-ranked edges).
+    # Person edges:
+    "P166": "award_received",
+    "P800": "notable_work",
+    "P1344": "participant_in",
+    # Organization edges (owner_of/P1830 deliberately NOT captured — see Feature 095 spec):
+    "P749": "parent_organization",
+    "P355": "child_organization",
+    "P127": "owned_by",
+    "P488": "chairperson",
+    "P169": "ceo",
+    "P1416": "affiliation",
+    # Creative-work edges:
+    "P170": "creator",
+    "P272": "production_company",
+    "P449": "original_broadcaster",
 }
 
 # ATTRIBUTES_ITEM — item-valued, but node attributes rather than edges (resolved to label strings).
@@ -89,6 +105,17 @@ ATTRIBUTES_ITEM: dict[str, str] = {
     "P21": "sex_or_gender",
     "P1412": "languages",
     "P159": "headquarters",
+    # Feature 095 — item-valued node attributes (NOT graph edges; shown as plain-text facts).
+    # Person attributes:
+    "P140": "religion_or_worldview",
+    "P551": "residence",
+    "P172": "ethnic_group",
+    # Organization attributes (head_position/P2388 is an office/title item, not a person — attribute):
+    "P1454": "legal_form",
+    "P452": "industry",
+    "P1142": "political_ideology",
+    "P1387": "political_alignment",
+    "P2388": "head_position",
 }
 
 # ATTRIBUTES_LITERAL — literal node attributes (the value IS the datum; no label round).

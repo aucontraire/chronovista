@@ -148,6 +148,80 @@ RELATION_GROUPS: tuple[RelationGroup, ...] = (
         label="Scored by this entity",
         attribution="Listed by Wikidata as having its score composed by this entity",
     ),
+    # Feature 095 — inverse groups for the new relationship edges. Each label describes the
+    # REFERENCING entity's relationship to the viewed one (the inverse of the stored field).
+    RelationGroup(
+        key="award_recipient",
+        member_fields=("award_received",),
+        label="Recipient",
+        attribution="Listed by Wikidata as a recipient of this award",
+    ),
+    RelationGroup(
+        key="noted_work",
+        member_fields=("notable_work",),
+        label="Noted for this work",
+        attribution="Listed by Wikidata as someone whose notable work this is",
+    ),
+    RelationGroup(
+        key="event_participant",
+        member_fields=("participant_in",),
+        label="Participant",
+        attribution="Listed by Wikidata as a participant in this",
+    ),
+    RelationGroup(
+        key="child_org",
+        member_fields=("parent_organization",),
+        label="Child organization",
+        attribution="Listed by Wikidata as having this entity as its parent organization",
+    ),
+    RelationGroup(
+        key="parent_org",
+        member_fields=("child_organization",),
+        label="Parent organization",
+        attribution="Listed by Wikidata as having this entity as a child organization or unit",
+    ),
+    RelationGroup(
+        key="owned_entity",
+        member_fields=("owned_by",),
+        label="Owner of",
+        attribution="Listed by Wikidata as owned by this entity",
+    ),
+    RelationGroup(
+        key="chaired_org",
+        member_fields=("chairperson",),
+        label="Chairperson of",
+        attribution="Listed by Wikidata as an organization this entity chairs",
+    ),
+    RelationGroup(
+        key="led_org",
+        member_fields=("ceo",),
+        label="Chief executive of",
+        attribution="Listed by Wikidata as an organization this entity is chief executive of",
+    ),
+    RelationGroup(
+        key="affiliated_entity",
+        member_fields=("affiliation",),
+        label="Affiliated entity",
+        attribution="Listed by Wikidata as affiliated with this entity",
+    ),
+    RelationGroup(
+        key="created_work",
+        member_fields=("creator",),
+        label="Creator of",
+        attribution="Listed by Wikidata as a work created by this entity",
+    ),
+    RelationGroup(
+        key="produced_work",
+        member_fields=("production_company",),
+        label="Production company of",
+        attribution="Listed by Wikidata as a work this entity produced",
+    ),
+    RelationGroup(
+        key="broadcast_work",
+        member_fields=("original_broadcaster",),
+        label="Original broadcaster of",
+        attribution="Listed by Wikidata as a work this entity originally broadcast",
+    ),
 )
 
 # Flat set of every field the reverse query searches (de-duplicated), for the repository's WHERE.

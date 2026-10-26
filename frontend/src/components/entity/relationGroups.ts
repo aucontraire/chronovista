@@ -107,6 +107,79 @@ export const RELATION_GROUPS: readonly RelationGroupDef[] = [
     label: "Composer",
     attribution: "Listed by Wikidata as a composer of this work",
   },
+  // Feature 095: additional forward relationships; each is its own group (none are synonyms).
+  {
+    key: "award_received",
+    fields: ["award_received"],
+    label: "Award received",
+    attribution: "Listed by Wikidata as an award received by this entity",
+  },
+  {
+    key: "notable_work",
+    fields: ["notable_work"],
+    label: "Notable work",
+    attribution: "Listed by Wikidata as a notable work of this entity",
+  },
+  {
+    key: "participant_in",
+    fields: ["participant_in"],
+    label: "Participant in",
+    attribution: "Listed by Wikidata as something this entity participated in",
+  },
+  {
+    key: "parent_organization",
+    fields: ["parent_organization"],
+    label: "Parent organization",
+    attribution: "Listed by Wikidata as this entity's parent organization",
+  },
+  {
+    key: "child_organization",
+    fields: ["child_organization"],
+    label: "Child organization",
+    attribution: "Listed by Wikidata as a child organization or unit of this entity",
+  },
+  {
+    key: "owned_by",
+    fields: ["owned_by"],
+    label: "Owned by",
+    attribution: "Listed by Wikidata as an owner of this entity",
+  },
+  {
+    key: "chairperson",
+    fields: ["chairperson"],
+    label: "Chairperson",
+    attribution: "Listed by Wikidata as this entity's chairperson",
+  },
+  {
+    key: "ceo",
+    fields: ["ceo"],
+    label: "Chief executive officer",
+    attribution: "Listed by Wikidata as this entity's chief executive officer",
+  },
+  {
+    key: "affiliation",
+    fields: ["affiliation"],
+    label: "Affiliation",
+    attribution: "Listed by Wikidata as an affiliation of this entity",
+  },
+  {
+    key: "creator",
+    fields: ["creator"],
+    label: "Creator",
+    attribution: "Listed by Wikidata as the creator of this entity",
+  },
+  {
+    key: "production_company",
+    fields: ["production_company"],
+    label: "Production company",
+    attribution: "Listed by Wikidata as the production company of this entity",
+  },
+  {
+    key: "original_broadcaster",
+    fields: ["original_broadcaster"],
+    label: "Original broadcaster",
+    attribution: "Listed by Wikidata as the original broadcaster of this entity",
+  },
 ];
 
 const GROUP_BY_FIELD: ReadonlyMap<string, RelationGroupDef> = new Map(

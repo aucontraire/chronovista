@@ -60,6 +60,30 @@ _FIELDS = (
     "producer",
     "screenwriter",
     "composer",
+    # Feature 095 — item-valued relationship edges added to the registry; backfill onto existing
+    # grounded entities (they were grounded before these fields existed). Additive: _patch_for only
+    # touches these keys, merge_properties preserves everything else.
+    "award_received",
+    "notable_work",
+    "participant_in",
+    "parent_organization",
+    "child_organization",
+    "owned_by",
+    "chairperson",
+    "ceo",
+    "affiliation",
+    "creator",
+    "production_company",
+    "original_broadcaster",
+    # Feature 095 — item-valued node attributes (not edges, but same additive-backfill mechanism).
+    "religion_or_worldview",
+    "residence",
+    "ethnic_group",
+    "legal_form",
+    "industry",
+    "political_ideology",
+    "political_alignment",
+    "head_position",
 )
 _CAPTURE_DIR = Path(__file__).resolve().parents[1] / "entity_resolution"
 

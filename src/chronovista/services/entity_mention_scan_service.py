@@ -214,6 +214,61 @@ def _compile_entity_regex(pattern: _EntityPattern) -> re.Pattern[str]:
     return re.compile(r"\b(" + pattern.pg_pattern + r")\b", flags)
 
 
+def _build_entity_pattern(
+    *,
+    entity_id: uuid.UUID,
+    canonical_name: str,
+    entity_type: str,
+    names: list[str],
+    case_sensitive_names: set[str],
+    exclusion_patterns: list[str],
+    alias_id_by_fold: dict[str, uuid.UUID] | None = None,
+) -> _EntityPattern:
+    """Build an :class:`_EntityPattern` from a name set.
+
+    The ONE place the match pattern is constructed, shared by DB loading
+    (:meth:`EntityMentionScanService._load_entity_patterns`) and any caller that
+    must match provisional names with the *exact same rule* (e.g. candidate
+    discovery grounding a not-yet-created entity). Forking this logic would
+    silently diverge the two matchers.
+
+    Builds the diacritic-folded alternation ``alias1|alias2|...``: names are folded
+    (accents stripped) so the pattern matches accented occurrences in folded text
+    (alias "Cafe" matches "Café"); case is handled by ``re.IGNORECASE`` at compile
+    time. Names that fold to empty (pure combining marks) are dropped. Case
+    sensitivity is per ALIAS but the alternation is per ENTITY, and Python picks the
+    first matching alternative — so the list is sorted longest-first and each
+    case-sensitive alternative carries its own ``(?i:...)`` scope rather than
+    splitting the group (which would break the length ordering). When nothing opts
+    in, the pattern and the global ``IGNORECASE`` are built exactly as before.
+    """
+    folded_pairs = [
+        (folded, n in case_sensitive_names)
+        for n, folded in ((n, _fold_diacritics(n)[0]) for n in names)
+        if folded
+    ]
+    folded_pairs.sort(key=lambda p: len(p[0]), reverse=True)
+
+    any_case_sensitive = any(cs for _, cs in folded_pairs)
+    if any_case_sensitive:
+        pg_pattern = "|".join(
+            re.escape(f) if cs else f"(?i:{re.escape(f)})" for f, cs in folded_pairs
+        )
+    else:
+        pg_pattern = "|".join(re.escape(f) for f, _ in folded_pairs)
+
+    return _EntityPattern(
+        entity_id=entity_id,
+        canonical_name=canonical_name,
+        entity_type=entity_type,
+        pg_pattern=pg_pattern,
+        alias_names=names,
+        alias_id_by_fold=alias_id_by_fold or {},
+        exclusion_patterns=exclusion_patterns,
+        has_case_sensitive_alias=any_case_sensitive,
+    )
+
+
 class EntityMentionScanService:
     """Service for scanning transcript segments for named entity mentions.
 
@@ -1591,49 +1646,18 @@ class EntityMentionScanService:
                         name,
                     )
 
-            # Build the diacritic-folded alternation: \b(alias1|alias2|...)\b.
-            # Alias names are folded (accents stripped) so the pattern matches
-            # accented occurrences in folded text — e.g. alias "Peru" must
-            # match "Perú".  Case is still handled by re.IGNORECASE at compile
-            # time.  Names that fold to empty (pure combining marks) cannot match
-            # anything meaningful and are dropped to avoid an empty alternative.
-            #
-            # Case sensitivity is per ALIAS, but the alternation is per ENTITY,
-            # and Python picks the first alternative that matches — which is why
-            # the list is sorted longest-first. Splitting into a case-sensitive
-            # group and a case-insensitive one would break that ordering, so
-            # each alternative carries its own scoped flag instead and the
-            # single length-sorted order survives intact.
-            #
-            # When nothing on this entity opted in — every entity, until
-            # someone sets the flag — the pattern and the global IGNORECASE
-            # are built exactly as before, so the default path is unchanged.
-            folded_pairs = [
-                (folded, n in case_sensitive_names)
-                for n, folded in ((n, _fold_diacritics(n)[0]) for n in names)
-                if folded
-            ]
-            folded_pairs.sort(key=lambda p: len(p[0]), reverse=True)
-
-            any_case_sensitive = any(cs for _, cs in folded_pairs)
-            if any_case_sensitive:
-                pg_pattern = "|".join(
-                    re.escape(f) if cs else f"(?i:{re.escape(f)})"
-                    for f, cs in folded_pairs
-                )
-            else:
-                pg_pattern = "|".join(re.escape(f) for f, _ in folded_pairs)
-
+            # Build the folded alias alternation + the _EntityPattern via the single
+            # shared builder (module-level `_build_entity_pattern`), so DB loading and
+            # candidate-discovery grounding construct the match pattern identically.
             patterns.append(
-                _EntityPattern(
+                _build_entity_pattern(
                     entity_id=entity.id,
                     canonical_name=entity.canonical_name,
                     entity_type=entity.entity_type,
-                    pg_pattern=pg_pattern,
-                    alias_names=names,
-                    alias_id_by_fold=alias_id_by_fold,
+                    names=names,
+                    case_sensitive_names=case_sensitive_names,
                     exclusion_patterns=list(entity.exclusion_patterns or []),
-                    has_case_sensitive_alias=any_case_sensitive,
+                    alias_id_by_fold=alias_id_by_fold,
                 )
             )
 

@@ -3470,3 +3470,82 @@ class TestCaseSensitivityReachesTheCompiledPattern:
         assert rx.search("I sidetone agree") is None
         # The sibling alias keeps its own rule rather than inheriting.
         assert rx.search("k reed performed") is not None
+
+
+class TestBuildEntityPatternSharedBuilder:
+    """`_build_entity_pattern` is the single pattern builder shared by DB loading
+    (`_load_entity_patterns`) and candidate-discovery grounding (seed-and-grow).
+    These pin its behaviour so the extraction stays byte-identical to the former
+    inline logic — a divergence would silently invalidate any caller that grounds
+    provisional names against the real detector rule."""
+
+    def test_case_sensitive_mixed_pattern(self) -> None:
+        from chronovista.services.entity_mention_scan_service import (
+            _build_entity_pattern,
+            _compile_entity_regex,
+            _fold_diacritics,
+        )
+
+        eid = uuid.uuid4()
+        p = _build_entity_pattern(
+            entity_id=eid,
+            canonical_name="Peña Nieto",
+            entity_type="person",
+            names=["Peña Nieto", "EPN"],
+            case_sensitive_names={"EPN"},
+            exclusion_patterns=["an exclusion"],
+        )
+        # structural fields carry through unchanged
+        assert p.entity_id == eid
+        assert p.canonical_name == "Peña Nieto"
+        assert p.entity_type == "person"
+        assert p.alias_names == ["Peña Nieto", "EPN"]
+        assert p.exclusion_patterns == ["an exclusion"]
+        assert p.alias_id_by_fold == {}  # default when not supplied (transient caller)
+        assert p.has_case_sensitive_alias is True
+        # diacritics folded, case preserved, longest-first, cs alias left un-scoped
+        assert p.pg_pattern == r"(?i:Pena\ Nieto)|EPN"
+        # functional: accented occurrence matches; the cs alias is case-exact
+        rx = _compile_entity_regex(p)
+        assert rx.search(_fold_diacritics("met Peña Nieto today")[0]) is not None
+        assert rx.search("EPN") is not None
+        assert rx.search("epn") is None
+
+    def test_default_path_ignorecase_longest_first(self) -> None:
+        from chronovista.services.entity_mention_scan_service import (
+            _build_entity_pattern,
+            _compile_entity_regex,
+        )
+
+        p = _build_entity_pattern(
+            entity_id=uuid.uuid4(),
+            canonical_name="Acme",
+            entity_type="organization",
+            names=["Acme", "Acme Corporation"],
+            case_sensitive_names=set(),
+            exclusion_patterns=[],
+        )
+        assert p.has_case_sensitive_alias is False
+        # longest-first ordering preserved in the alternation
+        assert p.pg_pattern == r"Acme\ Corporation|Acme"
+        rx = _compile_entity_regex(p)
+        assert (
+            rx.search("acme corporation") is not None
+        )  # default path is case-insensitive
+
+    def test_empty_fold_names_dropped(self) -> None:
+        from chronovista.services.entity_mention_scan_service import (
+            _build_entity_pattern,
+        )
+
+        # a pure combining-mark name folds to empty and is dropped from the alternation
+        p = _build_entity_pattern(
+            entity_id=uuid.uuid4(),
+            canonical_name="Foo",
+            entity_type="concept",
+            names=["Foo", "́"],
+            case_sensitive_names=set(),
+            exclusion_patterns=[],
+        )
+        assert p.pg_pattern == "Foo"
+        assert p.has_case_sensitive_alias is False

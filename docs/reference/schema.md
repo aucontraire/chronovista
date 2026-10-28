@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**30 tables.** For the reasoning behind the design, see
+**31 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -495,7 +495,7 @@ Audit log for tag normalization and management operations.
 
 ## Named Entities
 
-Curated entities, their aliases, every place they are mentioned, their normalized Wikipedia categories, and videos manually excluded from an entity.
+Curated entities, their aliases, every place they are mentioned, their normalized Wikipedia categories, videos manually excluded from an entity, and the seed-and-grow queue of suggested entities awaiting review.
 
 ### `named_entities`
 
@@ -685,6 +685,54 @@ Explicit negative association — "this video is NOT this entity" (Feature 091).
 **Indexes:**
 
 - INDEX `idx_entity_video_exclusions_video_id` on `video_id`
+
+### `candidate_suggestions`
+
+Proposed, not-yet-created entity queued for human review (Feature 096).
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `source_channel` | VARCHAR(30) | no | `relation` |  |
+| `wikidata_qid` | VARCHAR(32) | no |  |  |
+| `label` | VARCHAR(500) | no |  |  |
+| `label_normalized` | VARCHAR(500) | no |  |  |
+| `type_hint` | VARCHAR(50) | no |  |  |
+| `token_count` | INTEGER | no |  |  |
+| `corroboration_count` | INTEGER | no | `1` |  |
+| `dangling_edge_count` | INTEGER | no | `0` |  |
+| `salience` | INTEGER | no | `0` |  |
+| `score` | FLOAT | no | `0` |  |
+| `triage` | VARCHAR(20) | no |  |  |
+| `provenance` | JSONB | no | `'{}'::jsonb` |  |
+| `possible_duplicate_of_id` | UUID | yes |  | FK → `named_entities.id` |
+| `review_status` | VARCHAR(20) | no | `pending` |  |
+| `reviewed_by` | VARCHAR(255) | yes |  |  |
+| `reviewed_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `created_entity_id` | UUID | yes |  | FK → `named_entities.id` |
+| `last_generated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Constraints:**
+
+- UNIQUE on `source_channel`, `wikidata_qid` (`uq_candidate_channel_qid`)
+- CHECK `chk_candidate_corroboration_positive`: `corroboration_count >= 1`
+- CHECK `chk_candidate_dangling_non_negative`: `dangling_edge_count >= 0`
+- CHECK `chk_candidate_pending_clean`: `review_status <> 'pending' OR (created_entity_id IS NULL AND reviewed_by IS NULL AND reviewed_at IS NULL)`
+- CHECK `chk_candidate_qid_format`: `wikidata_qid ~ '^Q[0-9]+$'`
+- CHECK `chk_candidate_review_status_valid`: `review_status IN ('pending', 'approved', 'rejected', 'superseded')`
+- CHECK `chk_candidate_salience_non_negative`: `salience >= 0`
+- CHECK `chk_candidate_score_non_negative`: `score >= 0`
+- CHECK `chk_candidate_source_channel_valid`: `source_channel IN ('relation', 'tag_seed', 'category')`
+- CHECK `chk_candidate_token_count_positive`: `token_count >= 1`
+- CHECK `chk_candidate_triage_valid`: `triage IN ('worth_review', 'likely_eliminable', 'grounds_nowhere')`
+- CHECK `chk_candidate_type_hint_valid`: `type_hint IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other')`
+
+**Indexes:**
+
+- INDEX `idx_candidate_label_normalized` on `label_normalized`
+- INDEX `idx_candidate_pending_score` on `score`
 
 ## Recovery Provenance
 

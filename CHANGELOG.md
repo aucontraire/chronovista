@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.101.0] - 2026-10-27
+
+### Added
+- **Grow your entity graph from the entities you already have.** A new seed-and-grow candidate queue suggests entities worth adding by following your grounded entities' relationships to related things, then checking which of those actually appear in your own video titles and descriptions. Run `chronovista candidates generate` to build a ranked, triaged queue; review it with `chronovista candidates list` (filter by triage, type, token count, or possible-duplicate; sort by score, corroboration, or presence) and `candidates show`; then `candidates approve` to create a grounded entity or `candidates reject` to dismiss it. `candidates summary` shows progress. Nothing is ever created automatically — every entity comes from an explicit approval, and single-word names always require review. Re-running is safe: it refreshes still-pending suggestions and never disturbs ones you have approved or rejected, and it never suggests a rejected one again. The pending queue is also exposed read-only at `GET /api/v1/candidates`, `/candidates/{id}`, and `/candidates/summary` for a dashboard or script.
+
+### Internal
+- New `candidate_suggestions` table (one additive Alembic migration; channel-agnostic `source_channel` discriminator + JSONB provenance, unique per `(source_channel, wikidata_qid)`), its Pydantic Base/Create/Update/Full set, an async repository (race-safe `INSERT … ON CONFLICT DO UPDATE … WHERE pending` upsert and a compare-and-set verdict), a generation/scoring/review service, a Typer `candidates` command group, and a read-only FastAPI router. Generation is offline (reads stored relationship properties only); grounding reuses the shared entity-detection pattern builder verbatim (not a re-implementation) so a discovered name matches what the scanner would find; scoring is specificity-weighted presence (presence ÷ name commonness, with a corroboration boost) and ranks only. Approval reuses the existing entity creation + enrichment path; duplicates (identity already grounded, or a name+type collision) supersede rather than duplicate. No new third-party dependency. Covered by unit + property tests (scorer/triage/type-hint, a grounding-seam equality test) and real-database integration tests (upsert state machine, the cross-feature approve→read-back mutation, connectivity increase, raced/collision/failure paths, re-generation durability, and the read-only API).
+
 ## [0.100.0] - 2026-10-25
 
 ### Added

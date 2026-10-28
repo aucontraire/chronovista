@@ -10,6 +10,7 @@ from rich.panel import Panel
 
 from chronovista import __version__
 from chronovista.cli.auth_commands import auth_app
+from chronovista.cli.candidate_commands import candidate_app
 from chronovista.cli.category_commands import category_app
 from chronovista.cli.commands.api import api_app
 from chronovista.cli.commands.cache import app as cache_app
@@ -49,6 +50,9 @@ app.add_typer(
     correction_app, name="corrections", help="🔧 Batch transcript correction tools"
 )
 app.add_typer(entity_app, name="entities", help="🧑 Named entity management")
+app.add_typer(
+    candidate_app, name="candidates", help="🌱 Seed-and-grow entity candidate queue"
+)
 app.add_typer(
     identity_app,
     name="identity",

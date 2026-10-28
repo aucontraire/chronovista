@@ -6,6 +6,7 @@ the Repository pattern for clean separation of domain logic and data persistence
 """
 
 from .base import BaseRepository, BaseSQLAlchemyRepository, IdType
+from .candidate_suggestion_repository import CandidateSuggestionRepository
 from .canonical_tag_repository import CanonicalTagRepository
 from .channel_repository import ChannelRepository
 from .channel_topic_repository import ChannelTopicRepository
@@ -31,6 +32,7 @@ __all__ = [
     "BaseRepository",
     "BaseSQLAlchemyRepository",
     "IdType",
+    "CandidateSuggestionRepository",
     "CanonicalTagRepository",
     "ChannelRepository",
     "ChannelTopicRepository",

@@ -11,6 +11,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  fetchEntityTagFootprint,
+  linkEntityTag,
+} from "../api/candidates";
+import type { TagFootprintResponse, TagLinkResponse } from "../api/candidates";
+import {
   addEntityTag,
   fetchEntityTags,
   unlinkEntityTag,
@@ -109,5 +114,58 @@ export function useUnlinkEntityTag(entityId: string) {
     mutationFn: (normalizedForm: string) =>
       unlinkEntityTag(entityId, normalizedForm),
     onSuccess: () => invalidateTagSurfaces(queryClient, entityId),
+  });
+}
+
+/**
+ * Tags whose linking would newly associate videos with the entity (Feature 097).
+ *
+ * @param entityId - The entity to inspect
+ */
+export function useEntityTagFootprint(entityId: string) {
+  return useQuery<TagFootprintResponse>({
+    queryKey: ["entity-tag-footprint", entityId],
+    queryFn: ({ signal }) => fetchEntityTagFootprint(entityId, signal),
+  });
+}
+
+/** Invalidates every surface a tag link changes (shared with approve-and-link). */
+export function invalidateAfterTagLink(
+  queryClient: ReturnType<typeof useQueryClient>,
+  entityId: string
+): void {
+  invalidateTagSurfaces(queryClient, entityId);
+  for (const queryKey of [
+    ["entity-videos"],
+    ["video-entities"],
+    ["entities"],
+    ["entitySearch"],
+    ["entity-tag-footprint", entityId],
+  ]) {
+    void queryClient.invalidateQueries({ queryKey });
+  }
+}
+
+/**
+ * Claim a tag for an entity. Linking changes entity-video associations, so the
+ * full association family is invalidated (mirrors `useScanEntity`), plus the
+ * footprint itself so the delta drops to zero.
+ *
+ * @param entityId - The entity claiming the tag
+ */
+export function useLinkEntityTag(entityId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    TagLinkResponse,
+    unknown,
+    { normalizedForm: string; entityType: string }
+  >({
+    mutationFn: ({ normalizedForm, entityType }) =>
+      linkEntityTag(entityId, {
+        normalized_form: normalizedForm,
+        entity_type: entityType,
+      }),
+    onSuccess: () => invalidateAfterTagLink(queryClient, entityId),
   });
 }

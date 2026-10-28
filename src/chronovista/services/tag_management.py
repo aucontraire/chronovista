@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from pydantic import BaseModel
 from sqlalchemy import distinct, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -157,6 +158,20 @@ class UndoResult:
     details: str
 
 
+class TagFootprintMatch(BaseModel):
+    """A canonical tag matching an entity/candidate by name, with its claim delta (F097).
+
+    ``would_newly_associate`` is the count of the tag's videos NOT already
+    associated with the entity (SC-008, no double-count). ``owned_by_entity_id``
+    is the tag's current owner, if any — set and different from the target means
+    a link would re-assign ownership.
+    """
+
+    normalized_form: str
+    would_newly_associate: int
+    owned_by_entity_id: uuid.UUID | None = None
+
+
 @dataclass
 class MergePreviewResult:
     """Read-only preview of a merge's impact (no mutation)."""
@@ -207,6 +222,44 @@ class TagManagementService:
         self._named_entity_repo = named_entity_repo
         self._entity_alias_repo = entity_alias_repo
         self._operation_log_repo = operation_log_repo
+
+    async def tag_footprint(
+        self,
+        session: AsyncSession,
+        *,
+        normalized_form: str,
+        associated_video_ids: set[str] | None = None,
+    ) -> list[TagFootprintMatch]:
+        """Compute an entity/candidate's claimable tag footprint (Feature 097).
+
+        A canonical tag matches by name (``normalized_form`` is unique, so at most
+        one match). The claim delta is the tag's videos minus a baseline:
+        ``associated_video_ids`` (the entity's current association set — all arms —
+        for the post-approval view, SC-008) when provided, else the derived
+        alias-tag coverage for the name (the pre-approval view, where the entity
+        does not exist yet). Returns ``[]`` when no canonical tag matches.
+        """
+        tag = await self._canonical_tag_repo.get_by_normalized_form(
+            session, normalized_form
+        )
+        if tag is None:
+            return []
+        tag_video_ids = await self._canonical_tag_repo.get_video_ids_by_normalized_form(
+            session, normalized_form
+        )
+        if associated_video_ids is None:
+            baseline = await self._canonical_tag_repo.get_name_matched_video_ids(
+                session, normalized_form
+            )
+        else:
+            baseline = associated_video_ids
+        return [
+            TagFootprintMatch(
+                normalized_form=normalized_form,
+                would_newly_associate=len(tag_video_ids - baseline),
+                owned_by_entity_id=tag.entity_id,
+            )
+        ]
 
     # -------------------------------------------------------------------
     # Shared private utilities

@@ -1372,6 +1372,92 @@ class CandidateSuggestion(Base):
     )
 
 
+class CandidateGenerationRun(Base):
+    """Durable, UI-observable state of a background candidate generation run (F097).
+
+    Persisted so the live progress percentage is readable by any worker answering
+    a status poll, a crashed/stale run is detectable, and state survives a restart.
+    The partial unique index on ``source_channel WHERE status='running'`` enforces
+    at most one active run per channel (FR-024) at the DB level.
+    """
+
+    __tablename__ = "candidate_generation_runs"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    source_channel: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="relation", server_default="relation"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="running", server_default="running"
+    )
+    progress_percent: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    seeds_grounded: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    candidates_discovered: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    candidates_upserted: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    superseded: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    pending_total: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    by_triage: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sql_text("'{}'::jsonb")
+    )
+    empty_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    started_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed')",
+            name="chk_candidate_generation_run_status_valid",
+        ),
+        CheckConstraint(
+            "progress_percent BETWEEN 0 AND 100",
+            name="chk_candidate_generation_run_progress_range",
+        ),
+        CheckConstraint(
+            "source_channel IN ('relation', 'tag_seed', 'category')",
+            name="chk_candidate_generation_run_channel_valid",
+        ),
+        # At most one active run per channel (FR-024) — the guarded-insert guard.
+        Index(
+            "uq_candidate_generation_runs_active",
+            "source_channel",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+        ),
+        # Fast lookup of a stale running row (FR-025).
+        Index(
+            "idx_candidate_generation_runs_status_updated",
+            "status",
+            "updated_at",
+        ),
+    )
+
+
 class TagAlias(Base):
     """Raw tag forms mapped to their canonical representation."""
 

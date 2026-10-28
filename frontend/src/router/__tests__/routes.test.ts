@@ -66,7 +66,7 @@ describe("navRoutes — top-level structure", () => {
       "group:Transcripts",
       "route:/channels",
       "route:/playlists",
-      "route:/entities",
+      "group:Entities",
       "group:Tags",
       "route:/search",
       "separator",
@@ -107,11 +107,22 @@ describe("navRoutes — flat NavRoute entries", () => {
     expect(route?.icon).toBeDefined();
   });
 
-  it("/entities route has correct label and tooltip", () => {
+  it("/entities route lives inside the Entities group with label 'All'", () => {
     const route = findRoute(navRoutes, "/entities");
     expect(route).toBeDefined();
-    expect(route?.label).toBe("Entities");
+    expect(route?.label).toBe("All");
     expect(route?.icon).toBeDefined();
+  });
+
+  it("Entities group children are /entities (All) then /candidates (Candidates)", () => {
+    const group = findGroup(navRoutes, "Entities");
+    expect(group?.kind).toBe("group");
+    expect(group?.defaultExpanded).toBe(true);
+    expect(group?.storageKey).toBe("chronovista.sidebar.entitiesExpanded");
+    expect(group?.children.map((c) => [c.path, c.label])).toEqual([
+      ["/entities", "All"],
+      ["/candidates", "Candidates"],
+    ]);
   });
 
   it("/search route is a top-level flat route (not nested under Transcripts)", () => {
@@ -293,7 +304,7 @@ describe("navRoutes — Tags group (Feature 056)", () => {
 
   it("Tags group is positioned after Entities and before the config separator", () => {
     const entitiesIndex = navRoutes.findIndex(
-      (e): e is NavRoute => e.kind === "route" && e.path === "/entities"
+      (e) => e.kind === "group" && e.label === "Entities"
     );
     const tagsGroupIndex = navRoutes.findIndex(
       (e) => e.kind === "group" && e.label === "Tags"

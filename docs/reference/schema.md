@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**31 tables.** For the reasoning behind the design, see
+**32 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -733,6 +733,39 @@ Proposed, not-yet-created entity queued for human review (Feature 096).
 
 - INDEX `idx_candidate_label_normalized` on `label_normalized`
 - INDEX `idx_candidate_pending_score` on `score`
+
+### `candidate_generation_runs`
+
+Durable, UI-observable state of a background candidate generation run (F097).
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `source_channel` | VARCHAR(30) | no | `relation` |  |
+| `status` | VARCHAR(20) | no | `running` |  |
+| `progress_percent` | INTEGER | no | `0` |  |
+| `seeds_grounded` | INTEGER | no | `0` |  |
+| `candidates_discovered` | INTEGER | no | `0` |  |
+| `candidates_upserted` | INTEGER | no | `0` |  |
+| `superseded` | INTEGER | no | `0` |  |
+| `pending_total` | INTEGER | no | `0` |  |
+| `by_triage` | JSONB | no | `'{}'::jsonb` |  |
+| `empty_reason` | TEXT | yes |  |  |
+| `error` | TEXT | yes |  |  |
+| `started_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `completed_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+
+**Constraints:**
+
+- CHECK `chk_candidate_generation_run_channel_valid`: `source_channel IN ('relation', 'tag_seed', 'category')`
+- CHECK `chk_candidate_generation_run_progress_range`: `progress_percent BETWEEN 0 AND 100`
+- CHECK `chk_candidate_generation_run_status_valid`: `status IN ('running', 'completed', 'failed')`
+
+**Indexes:**
+
+- INDEX `idx_candidate_generation_runs_status_updated` on `status`, `updated_at`
+- UNIQUE INDEX `uq_candidate_generation_runs_active` on `source_channel`
 
 ## Recovery Provenance
 

@@ -390,6 +390,19 @@ class ReviewStatus(str, Enum):
     SUPERSEDED = "superseded"
 
 
+class GenerationRunStatus(str, Enum):
+    """Lifecycle state of a candidate generation run (Feature 097).
+
+    A run is ``RUNNING`` while the background sweep executes, then terminal:
+    ``COMPLETED`` on success (with result counts) or ``FAILED`` on error — a
+    run whose heartbeat goes stale is also surfaced as ``FAILED`` (FR-025).
+    """
+
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class TagOperationType(str, Enum):
     """Types of operations recorded in the tag operation log."""
 

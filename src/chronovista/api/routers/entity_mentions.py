@@ -42,11 +42,18 @@ from chronovista.api.deps import (
     get_tag_management_service,
     get_video_repository,
     require_auth,
+    require_local_identity,
 )
 from chronovista.api.query_protection import (
     check_rate_limit,
     get_client_id,
     run_with_timeout,
+)
+from chronovista.api.schemas.candidates import (
+    TagFootprintMatch,
+    TagFootprintResponse,
+    TagLinkRequest,
+    TagLinkResponse,
 )
 from chronovista.api.schemas.entity_mentions import (
     AddEntityTagRequest,
@@ -4085,3 +4092,123 @@ async def unlink_entity_tag(
     await session.commit()
 
     return UnlinkResponse(data=UnlinkResult(unlinked=normalized_form))
+
+
+@router.get(
+    "/entities/{entity_id}/tag-footprint",
+    response_model=TagFootprintResponse,
+    summary="Canonical-tag footprint an entity can still claim (Feature 097)",
+)
+async def entity_tag_footprint(
+    entity_id: str = Path(..., description="Entity UUID"),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    mention_repo: EntityMentionRepository = Depends(get_entity_mention_repository),
+    tag_service: TagManagementService = Depends(get_tag_management_service),
+) -> TagFootprintResponse:
+    """Post-approval footprint (FR-050): how many videos a canonical-tag link would
+    NEWLY associate with this entity, with its current association set (all arms)
+    subtracted so the count never double-counts already-associated videos (SC-008).
+    """
+    try:
+        parsed_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+    entity = await entity_repo.get(session, parsed_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    associated = await mention_repo.get_associated_video_ids(session, parsed_id)
+    matches = await tag_service.tag_footprint(
+        session,
+        normalized_form=entity.canonical_name_normalized,
+        associated_video_ids=associated,
+    )
+    return TagFootprintResponse(
+        matches=[
+            TagFootprintMatch(
+                normalized_form=m.normalized_form,
+                would_newly_associate=m.would_newly_associate,
+                owned_by_entity_id=m.owned_by_entity_id,
+            )
+            for m in matches
+        ]
+    )
+
+
+@router.post(
+    "/entities/{entity_id}/tag-link",
+    response_model=TagLinkResponse,
+    dependencies=[Depends(require_local_identity)],
+    summary="Link an entity to a canonical tag, claiming its video footprint (F097)",
+)
+async def entity_tag_link(
+    entity_id: str = Path(..., description="Entity UUID"),
+    body: TagLinkRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    canonical_tag_repo: CanonicalTagRepository = Depends(get_canonical_tag_repository),
+    tag_service: TagManagementService = Depends(get_tag_management_service),
+) -> TagLinkResponse:
+    """Link the entity to a canonical tag via the existing ``classify`` op
+    (FR-051/052). Linking is an explicit human action and claims an *unclaimed*
+    tag; a tag already linked to a different entity is refused (409). Re-assigning
+    a tag between entities is out of scope — the only re-classify primitive is
+    destructive (it can delete the prior owner), so a safe move is a separate
+    feature.
+    """
+    try:
+        parsed_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+    entity = await entity_repo.get(session, parsed_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+    try:
+        entity_type_enum = EntityType(body.entity_type)
+    except ValueError as exc:
+        raise BadRequestError(
+            message=f"Invalid entity_type: {body.entity_type}",
+            details={"entity_type": body.entity_type},
+        ) from exc
+
+    prior = await canonical_tag_repo.get_by_normalized_form(
+        session, body.normalized_form
+    )
+    # Re-assigning a tag already linked to a *different* entity is refused here:
+    # the only primitive that re-classifies an owned tag (``classify(force=True)``)
+    # deletes the prior owner entity when it was user-created — a destructive
+    # cross-feature side effect. Moving a tag between entities is deferred to a
+    # dedicated, safe operation (F097 claims only unclaimed tags).
+    if (
+        prior is not None
+        and prior.entity_id is not None
+        and prior.entity_id != parsed_id
+    ):
+        raise ConflictError(
+            message=(
+                "This canonical tag is already linked to another entity. "
+                "Re-assigning a tag between entities is not supported here; "
+                "unlink it in tag management first."
+            ),
+            details={
+                "normalized_form": body.normalized_form,
+                "owned_by_entity_id": str(prior.entity_id),
+            },
+        )
+    try:
+        await tag_service.classify(
+            session,
+            body.normalized_form,
+            entity_type_enum,
+            link_entity_id=parsed_id,
+            actor=ACTOR_USER_LOCAL,
+        )
+    except ValueError as exc:
+        raise BadRequestError(
+            message=str(exc), details={"entity_id": entity_id}
+        ) from exc
+    await session.commit()
+    return TagLinkResponse(
+        normalized_form=body.normalized_form,
+        linked_entity_id=parsed_id,
+    )

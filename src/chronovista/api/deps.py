@@ -7,7 +7,13 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
+    from chronovista.repositories.candidate_generation_run_repository import (
+        CandidateGenerationRunRepository,
+    )
     from chronovista.services.batch_correction_service import BatchCorrectionService
+    from chronovista.services.candidate_suggestion_service import (
+        CandidateSuggestionService,
+    )
     from chronovista.services.entity_curation_service import EntityCurationService
     from chronovista.services.tag_management import TagManagementService
     from chronovista.services.transcript_correction_service import (
@@ -261,6 +267,58 @@ def get_candidate_suggestion_repository() -> CandidateSuggestionRepository:
     from chronovista.container import container
 
     return container.create_candidate_suggestion_repository()
+
+
+def get_candidate_generation_run_repository() -> "CandidateGenerationRunRepository":
+    """Dependency providing a CandidateGenerationRunRepository (F097).
+
+    Stateless (session flows per method call), so a fresh per-request instance
+    is cheap — mirrors the other repository dependencies.
+    """
+    from chronovista.repositories.candidate_generation_run_repository import (
+        CandidateGenerationRunRepository,
+    )
+
+    return CandidateGenerationRunRepository()
+
+
+def get_candidate_suggestion_service() -> "CandidateSuggestionService":
+    """
+    Dependency for the candidate review service (approve/reject/generate, F097).
+
+    Mirrors ``get_tag_management_service`` — builds the service from its
+    repositories per request (they are stateless). Enrichment is deliberately
+    NOT wired here: the HTTP approve path schedules enrichment as a detached
+    task *after* ``approve`` returns, so the request's session is never held
+    across the enrichment network calls (FR-004, the held-session deadlock
+    class). The CLI, which can block, wires enrichment itself.
+
+    Returns
+    -------
+    CandidateSuggestionService
+        A service instance wired with its repositories and ``enrichment=None``.
+    """
+    from chronovista.repositories.candidate_suggestion_repository import (
+        CandidateSuggestionRepository,
+    )
+    from chronovista.repositories.entity_alias_repository import (
+        EntityAliasRepository,
+    )
+    from chronovista.repositories.named_entity_repository import (
+        NamedEntityRepository,
+    )
+    from chronovista.repositories.video_repository import VideoRepository
+    from chronovista.services.candidate_suggestion_service import (
+        CandidateSuggestionService,
+    )
+
+    return CandidateSuggestionService(
+        candidate_repo=CandidateSuggestionRepository(),
+        entity_repo=NamedEntityRepository(),
+        video_repo=VideoRepository(),
+        alias_repo=EntityAliasRepository(),
+        enrichment=None,
+    )
 
 
 def get_video_repository() -> VideoRepository:

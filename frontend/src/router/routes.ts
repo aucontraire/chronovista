@@ -6,6 +6,7 @@ import type React from "react";
 
 import {
   BatchCorrectionsIcon,
+  CandidatesIcon,
   ChartBarIcon,
   ChannelIcon,
   ClockIcon,
@@ -132,11 +133,28 @@ export const navRoutes: NavEntry[] = [
     icon: PlaylistIcon,
   },
   {
-    kind: "route",
-    path: "/entities",
+    kind: "group",
     label: "Entities",
-    tooltip: "Browse named entities",
+    tooltip: "Named entities and review queue",
     icon: EntityIcon,
+    defaultExpanded: true,
+    storageKey: "chronovista.sidebar.entitiesExpanded",
+    children: [
+      {
+        kind: "route",
+        path: "/entities",
+        label: "All",
+        tooltip: "Browse all named entities",
+        icon: EntityIcon,
+      },
+      {
+        kind: "route",
+        path: "/candidates",
+        label: "Candidates",
+        tooltip: "Review suggested entities",
+        icon: CandidatesIcon,
+      },
+    ],
   },
   {
     kind: "group",

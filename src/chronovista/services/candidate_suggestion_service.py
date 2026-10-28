@@ -15,6 +15,7 @@ import math
 import re
 import uuid
 from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -267,12 +268,21 @@ class CandidateSuggestionService:
         self._channel = SourceChannel.RELATION
 
     async def generate(
-        self, session: AsyncSession, *, dry_run: bool = False
+        self,
+        session: AsyncSession,
+        *,
+        dry_run: bool = False,
+        progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> GenerationSummary:
         """Discover, ground, score, triage, and upsert candidates (FR-001..FR-005, FR-014).
 
         ``dry_run`` computes and summarizes without writing (no upsert, no supersede);
         the triage tally is then projected from the freshly built candidates.
+
+        ``progress`` (Feature 097) is an optional async callback invoked as
+        ``progress(done, total)`` through the candidate-build loop — the dominant
+        cost — so a UI-triggered run can report a determinate percentage (FR-023a).
+        It is called at roughly 1% granularity; the CLI and tests pass ``None``.
         """
         grounded_qids = await self._entities.get_grounded_qids(session)
         if not grounded_qids:
@@ -297,11 +307,20 @@ class CandidateSuggestionService:
         index = _CorpusIndex(corpus)
         ungrounded = await self._entities.get_ungrounded_normalized_map(session)
 
-        creates = [
-            create
-            for row in rows
-            if (create := self._build_create(row, index, ungrounded)) is not None
-        ]
+        total = len(rows)
+        step = max(1, total // 100)
+        creates = []
+        for i, row in enumerate(rows):
+            create = self._build_create(row, index, ungrounded)
+            if create is not None:
+                creates.append(create)
+            # Report progress through the build loop at ~1% granularity (FR-023a).
+            if (
+                progress is not None
+                and total
+                and ((i + 1) % step == 0 or i + 1 == total)
+            ):
+                await progress(i + 1, total)
 
         if dry_run:
             dry_triage: dict[str, int] = {t.value: 0 for t in TriageCategory}
@@ -522,7 +541,20 @@ class CandidateSuggestionService:
     async def reject(
         self, session: AsyncSession, *, candidate_id: uuid.UUID, reviewed_by: str
     ) -> VerdictResult:
-        """Record a rejection; the QID is not re-offered on later runs (FR-010)."""
+        """Record a rejection; the QID is not re-offered on later runs (FR-010).
+
+        Distinguishes a missing candidate (``not_found`` → HTTP 404) from an
+        already-decided one (``failed``), mirroring ``approve`` — the existence
+        check precedes the compare-and-set, which still guards the race where the
+        candidate is decided between the read and the write.
+        """
+        candidate = await self._candidates.get(session, candidate_id)
+        if candidate is None:
+            return VerdictResult(
+                outcome="not_found",
+                candidate_id=candidate_id,
+                detail="No such candidate",
+            )
         updated = await self._candidates.set_verdict(
             session,
             candidate_id=candidate_id,
@@ -534,6 +566,6 @@ class CandidateSuggestionService:
             return VerdictResult(
                 outcome="failed",
                 candidate_id=candidate_id,
-                detail="Candidate not found or already decided",
+                detail="Candidate is already decided",
             )
         return VerdictResult(outcome="rejected", candidate_id=candidate_id)

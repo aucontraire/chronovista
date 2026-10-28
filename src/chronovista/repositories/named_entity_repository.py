@@ -171,6 +171,25 @@ class NamedEntityRepository(
         )
         return result.scalar_one_or_none()
 
+    async def find_by_normalized_and_type(
+        self, session: AsyncSession, normalized_name: str, entity_type: str
+    ) -> NamedEntityDB | None:
+        """Return the entity with this normalized name + type, any status (Feature 096).
+
+        The ``uq_named_entity_canonical`` unique constraint on
+        ``(canonical_name_normalized, entity_type)`` is global across statuses, so this
+        yields zero or one. Unlike :meth:`find_active_by_normalized_and_type`, it also
+        matches merged/deprecated rows — so candidate approval can detect a collision
+        that would otherwise surface only as an ``IntegrityError`` on create.
+        """
+        result = await session.execute(
+            select(NamedEntityDB).where(
+                NamedEntityDB.canonical_name_normalized == normalized_name,
+                NamedEntityDB.entity_type == entity_type,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_with_aliases(
         self, session: AsyncSession, id: uuid.UUID
     ) -> NamedEntityDB | None:
@@ -555,6 +574,59 @@ class NamedEntityRepository(
         )
         result = await session.execute(stmt)
         return result.scalars().all()
+
+    async def get_grounded_qids(self, session: AsyncSession) -> set[str]:
+        """Return the set of Wikidata QIDs grounded to an active library entity (Feature 096).
+
+        Backs the candidate-queue reconciliation (FR-011b): a pending candidate whose
+        QID is in this set has become a library entity by other means and is superseded.
+        Read-only; seq-scans the JSONB predicate like :meth:`list_wikidata_grounded`.
+        """
+        wikidata_id = NamedEntityDB.external_ids["wikidata"]["id"].as_string()
+        stmt = select(wikidata_id).where(
+            NamedEntityDB.status == "active",
+            NamedEntityDB.merged_into_id.is_(None),
+            wikidata_id.isnot(None),
+        )
+        result = await session.execute(stmt)
+        return {qid for (qid,) in result.all() if qid}
+
+    async def get_ungrounded_normalized_map(
+        self, session: AsyncSession
+    ) -> dict[str, uuid.UUID]:
+        """Map normalized name → entity id for active, ungrounded entities (Feature 096).
+
+        Ungrounded == no Wikidata id in ``external_ids``. Active == ``status == 'active'``
+        and ``merged_into_id IS NULL``. Backs the candidate name-collision flag (FR-011a):
+        a candidate whose ``label_normalized`` matches an ungrounded entity is marked a
+        possible duplicate. Keyed by normalized name regardless of type (the flag is
+        advisory); if two ungrounded entities share a normalized name the last wins —
+        acceptable for an advisory signal. Read-only; seq-scans the JSONB predicate like
+        :meth:`list_wikidata_grounded`.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+
+        Returns
+        -------
+        dict[str, uuid.UUID]
+            ``{canonical_name_normalized: entity_id}`` for active, ungrounded entities.
+        """
+        wikidata_id = NamedEntityDB.external_ids["wikidata"]["id"].as_string()
+        stmt = (
+            select(NamedEntityDB.canonical_name_normalized, NamedEntityDB.id).where(
+                NamedEntityDB.status == "active",
+                NamedEntityDB.merged_into_id.is_(None),
+                wikidata_id.is_(None),
+            )
+            # Stable last-wins when two ungrounded entities share a normalized name
+            # (the column is NOT NULL, so no None key is produced).
+            .order_by(NamedEntityDB.id)
+        )
+        result = await session.execute(stmt)
+        return {row.canonical_name_normalized: row.id for row in result.all()}
 
     async def list_grounded_without_image(
         self,

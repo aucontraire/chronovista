@@ -219,6 +219,32 @@ class VideoRepository(
         result = await session.execute(query)
         return result.first() is not None
 
+    async def get_all_title_description(
+        self, session: AsyncSession
+    ) -> list[tuple[str, str, str | None]]:
+        """Return ``(video_id, title, description)`` for every video (Feature 096).
+
+        The corpus for candidate grounding: the generation step builds an in-memory
+        inverted index over titles + descriptions and matches candidate names with the
+        shared entity-detection rule. Title is non-null; description may be ``None``.
+        The index built from this result is the memory bound (not this list); at the
+        current corpus size (low tens of thousands of rows) a single read is fine.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+
+        Returns
+        -------
+        list[tuple[str, str, str | None]]
+            One ``(video_id, title, description)`` tuple per video.
+        """
+        result = await session.execute(
+            select(VideoDB.video_id, VideoDB.title, VideoDB.description)
+        )
+        return [(row.video_id, row.title, row.description) for row in result.all()]
+
     async def get_titles_by_ids(
         self, session: AsyncSession, video_ids: list[str]
     ) -> dict[str, str]:

@@ -19,6 +19,7 @@ from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
 from chronovista.config.settings import settings
 from chronovista.repositories import (
+    CandidateSuggestionRepository,
     CanonicalTagRepository,
     ChannelRepository,
     EntityAliasRepository,
@@ -253,6 +254,13 @@ def get_canonical_tag_repository() -> CanonicalTagRepository:
     from chronovista.container import container
 
     return container.create_canonical_tag_repository()
+
+
+def get_candidate_suggestion_repository() -> CandidateSuggestionRepository:
+    """Dependency providing a CandidateSuggestionRepository via the container (F096)."""
+    from chronovista.container import container
+
+    return container.create_candidate_suggestion_repository()
 
 
 def get_video_repository() -> VideoRepository:

@@ -1245,6 +1245,133 @@ class CanonicalTag(Base):
     )
 
 
+class CandidateSuggestion(Base):
+    """Proposed, not-yet-created entity queued for human review (Feature 096).
+
+    Channel-agnostic store: ``source_channel`` discriminates how the candidate
+    was discovered and ``provenance`` holds the channel-specific detail. Unique
+    per ``(source_channel, wikidata_qid)`` — the upsert key for idempotent
+    re-generation.
+    """
+
+    __tablename__ = "candidate_suggestions"
+
+    # Primary key
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+
+    # Discovery channel + external identity
+    source_channel: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="relation", server_default="relation"
+    )
+    wikidata_qid: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    # Labels
+    label: Mapped[str] = mapped_column(String(500), nullable=False)
+    label_normalized: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # Derived signals
+    type_hint: Mapped[str] = mapped_column(String(50), nullable=False)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    corroboration_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=sql_text("1")
+    )
+    dangling_edge_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    salience: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    score: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default=sql_text("0")
+    )
+    triage: Mapped[str] = mapped_column(String(20), nullable=False)
+    provenance: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sql_text("'{}'::jsonb")
+    )
+
+    # Review lifecycle
+    possible_duplicate_of_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    review_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
+    )
+    reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reviewed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_entity_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Timestamps
+    last_generated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source_channel", "wikidata_qid", name="uq_candidate_channel_qid"
+        ),
+        CheckConstraint(
+            "source_channel IN ('relation', 'tag_seed', 'category')",
+            name="chk_candidate_source_channel_valid",
+        ),
+        CheckConstraint(
+            "triage IN ('worth_review', 'likely_eliminable', 'grounds_nowhere')",
+            name="chk_candidate_triage_valid",
+        ),
+        CheckConstraint(
+            "review_status IN ('pending', 'approved', 'rejected', 'superseded')",
+            name="chk_candidate_review_status_valid",
+        ),
+        CheckConstraint(
+            "type_hint IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other')",
+            name="chk_candidate_type_hint_valid",
+        ),
+        CheckConstraint("wikidata_qid ~ '^Q[0-9]+$'", name="chk_candidate_qid_format"),
+        # A pending candidate carries no verdict (prevents a producer minting an
+        # already-approved row; a terminal row may legitimately have NULL
+        # created_entity_id after a hard-delete SET NULL, so the guard is
+        # one-directional).
+        CheckConstraint(
+            "review_status <> 'pending' OR "
+            "(created_entity_id IS NULL AND reviewed_by IS NULL AND reviewed_at IS NULL)",
+            name="chk_candidate_pending_clean",
+        ),
+        CheckConstraint("token_count >= 1", name="chk_candidate_token_count_positive"),
+        CheckConstraint(
+            "corroboration_count >= 1", name="chk_candidate_corroboration_positive"
+        ),
+        CheckConstraint(
+            "dangling_edge_count >= 0", name="chk_candidate_dangling_non_negative"
+        ),
+        CheckConstraint("salience >= 0", name="chk_candidate_salience_non_negative"),
+        CheckConstraint("score >= 0", name="chk_candidate_score_non_negative"),
+        Index(
+            "idx_candidate_pending_score",
+            "score",
+            postgresql_where=text("review_status = 'pending'"),
+        ),
+        Index("idx_candidate_label_normalized", "label_normalized"),
+    )
+
+
 class TagAlias(Base):
     """Raw tag forms mapped to their canonical representation."""
 

@@ -44,6 +44,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 from chronovista.repositories import (
+    CandidateSuggestionRepository,
     CanonicalTagRepository,
     ChannelRepository,
     ChannelTopicRepository,
@@ -545,6 +546,20 @@ class Container:
         True
         """
         return CanonicalTagRepository()
+
+    def create_candidate_suggestion_repository(self) -> CandidateSuggestionRepository:
+        """
+        Create a new CandidateSuggestionRepository instance (Feature 096).
+
+        Returns a fresh repository instance for candidate-suggestion operations.
+        Each call creates a new instance (transient lifecycle).
+
+        Returns
+        -------
+        CandidateSuggestionRepository
+            A new CandidateSuggestionRepository instance for the candidate queue.
+        """
+        return CandidateSuggestionRepository()
 
     def create_user_language_preference_repository(
         self,

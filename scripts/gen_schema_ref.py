@@ -68,7 +68,8 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     (
         "Named Entities",
         "Curated entities, their aliases, every place they are mentioned, their "
-        "normalized Wikipedia categories, and videos manually excluded from an entity.",
+        "normalized Wikipedia categories, videos manually excluded from an entity, "
+        "and the seed-and-grow queue of suggested entities awaiting review.",
         [
             "named_entities",
             "entity_aliases",
@@ -77,6 +78,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
             "wikipedia_categories",
             "entity_categories",
             "entity_video_exclusions",
+            "candidate_suggestions",
         ],
     ),
     (

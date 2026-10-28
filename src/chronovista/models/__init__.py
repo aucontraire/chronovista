@@ -52,6 +52,12 @@ from .api_responses import (
     YouTubeVideoCategoryResponse,
     YouTubeVideoResponse,
 )
+from .candidate_suggestion import (
+    CandidateSuggestion,
+    CandidateSuggestionBase,
+    CandidateSuggestionCreate,
+    CandidateSuggestionUpdate,
+)
 from .canonical_tag import (
     CanonicalTag,
     CanonicalTagBase,
@@ -374,6 +380,10 @@ __all__ = [
     "EnrichmentSummary",
     "EnrichmentDetail",
     # Canonical Tags (Feature 028 - Tag Normalization)
+    "CandidateSuggestion",
+    "CandidateSuggestionCreate",
+    "CandidateSuggestionUpdate",
+    "CandidateSuggestionBase",
     "CanonicalTag",
     "CanonicalTagCreate",
     "CanonicalTagUpdate",

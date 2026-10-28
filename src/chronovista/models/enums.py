@@ -352,6 +352,44 @@ class DiscoveryMethod(str, Enum):
     USER_CREATED = "user_created"
 
 
+class SourceChannel(str, Enum):
+    """Discovery channel that produced a candidate suggestion (Feature 096).
+
+    Only ``RELATION`` is implemented; ``TAG_SEED`` (cold-start from normalized
+    tags) and ``CATEGORY`` (shared-category) are reserved for future producers
+    that write into the same candidate store.
+    """
+
+    RELATION = "relation"
+    TAG_SEED = "tag_seed"
+    CATEGORY = "category"
+
+
+class TriageCategory(str, Enum):
+    """Advisory triage bucket for a candidate suggestion (Feature 096).
+
+    Advisory only: used to pre-sort the review and never to auto-approve or
+    auto-reject (FR-005).
+    """
+
+    WORTH_REVIEW = "worth_review"
+    LIKELY_ELIMINABLE = "likely_eliminable"
+    GROUNDS_NOWHERE = "grounds_nowhere"
+
+
+class ReviewStatus(str, Enum):
+    """Review lifecycle state of a candidate suggestion (Feature 096).
+
+    ``SUPERSEDED`` means the candidate's identity became a library entity by
+    other means; it is terminal and never re-offered (FR-011b).
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+
+
 class TagOperationType(str, Enum):
     """Types of operations recorded in the tag operation log."""
 

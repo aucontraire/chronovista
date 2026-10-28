@@ -81,9 +81,18 @@ describe("Sidebar — flat nav items", () => {
     expect(screen.getByRole("link", { name: /playlists/i })).toBeInTheDocument();
   });
 
-  it("renders the Entities link", () => {
+  it("renders the Entities group with All and Candidates child links", () => {
     renderSidebar();
-    expect(screen.getByRole("link", { name: /entities/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /entities/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^all$/i })).toHaveAttribute(
+      "href",
+      "/entities"
+    );
+    expect(
+      screen.getByRole("link", { name: /candidates/i })
+    ).toHaveAttribute("href", "/candidates");
   });
 });
 

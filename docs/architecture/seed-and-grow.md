@@ -87,3 +87,26 @@ whose status is derived from live database counts; a future tag-seed step would 
 in there, keyed off a count the queue already exposes. The read-only summary
 endpoint is shaped so such a step could read a single number — which is why the
 queue is designed to be *onboarding-ready* without adding an onboarding step here.
+
+## Browser review (Feature 097)
+
+The whole loop — generate, triage, approve/reject — is available in the browser, so
+no step requires the command line.
+
+- **Generation runs as a background job with a persisted run record.** Triggering a
+  run returns immediately and launches a detached task; the run's status and a
+  determinate completion percentage live in `candidate_generation_runs`, not in
+  process memory, so the live percentage is readable whichever worker answers a
+  status poll, a crashed run is detectable (a stale `updated_at` heartbeat reads as
+  failed), and a partial unique index on the running row enforces one run at a time.
+- **Approval detaches enrichment.** The approve endpoint reuses the review service
+  but schedules the on-approval property fetch as a detached task *after* the entity
+  and verdict commit, so the request is never held across enrichment's network
+  calls.
+- **The tag footprint claims unclaimed tags only.** Approving an entity surfaces how
+  many additional videos linking a name-matching canonical tag would associate — the
+  tag's videos minus those already associated with the entity, so the count never
+  double-counts. Linking reuses the existing classify operation. Moving a tag that is
+  already linked to another entity is deliberately *not* supported here: the only
+  re-classify primitive deletes the prior owner when forced, so safe re-assignment is
+  left to its own future operation.

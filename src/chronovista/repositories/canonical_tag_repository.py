@@ -476,6 +476,62 @@ class CanonicalTagRepository(
 
         return items, total_count
 
+    async def get_video_ids_by_normalized_form(
+        self,
+        session: AsyncSession,
+        normalized_form: str,
+        *,
+        include_unavailable: bool = False,
+    ) -> set[str]:
+        """Distinct video ids under a canonical tag's full alias cluster (F097).
+
+        Same join path as :meth:`get_videos_by_normalized_form` but returns the
+        unpaginated id set — the footprint delta intersects this with the
+        entity's already-associated videos (SC-008, no double-count).
+        """
+        query = (
+            select(distinct(VideoDB.video_id))
+            .select_from(CanonicalTagDB)
+            .join(TagAliasDB, TagAliasDB.canonical_tag_id == CanonicalTagDB.id)
+            .join(VideoTag, VideoTag.tag == TagAliasDB.raw_form)
+            .join(VideoDB, VideoDB.video_id == VideoTag.video_id)
+            .where(
+                CanonicalTagDB.normalized_form == normalized_form,
+                CanonicalTagDB.status == "active",
+            )
+        )
+        if not include_unavailable:
+            query = query.where(VideoDB.availability_status == "available")
+        result = await session.execute(query)
+        return set(result.scalars().all())
+
+    async def get_name_matched_video_ids(
+        self,
+        session: AsyncSession,
+        normalized_form: str,
+        *,
+        include_unavailable: bool = False,
+    ) -> set[str]:
+        """Distinct video ids the derived alias-tag arm would cover for a name (F097).
+
+        Videos tagged with a raw form whose tag-alias ``normalized_form`` equals
+        ``normalized_form`` — i.e. the coverage an entity gets for free once its
+        canonical self-alias exists. This is the pre-approval footprint baseline
+        (the entity does not exist yet, so its would-be derived coverage is what a
+        link must be measured against).
+        """
+        query = (
+            select(distinct(VideoDB.video_id))
+            .select_from(TagAliasDB)
+            .join(VideoTag, VideoTag.tag == TagAliasDB.raw_form)
+            .join(VideoDB, VideoDB.video_id == VideoTag.video_id)
+            .where(TagAliasDB.normalized_form == normalized_form)
+        )
+        if not include_unavailable:
+            query = query.where(VideoDB.availability_status == "available")
+        result = await session.execute(query)
+        return set(result.scalars().all())
+
     async def resolve_by_raw_form(
         self,
         session: AsyncSession,

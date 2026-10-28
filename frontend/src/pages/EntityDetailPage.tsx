@@ -29,6 +29,7 @@ import { EntityPortrait } from "../components/entity/EntityPortrait";
 import { EntityAccordionGroup } from "../components/entity/EntityAccordionGroup";
 import { EntityVideoExcludeButton } from "../components/entity/EntityVideoExcludeButton";
 import { HiddenFromEntitySection } from "../components/entity/HiddenFromEntitySection";
+import { EntityTagFootprintSection } from "../components/entity/EntityTagFootprintSection";
 import { EntityTagSection } from "../components/entity/EntityTagSection";
 import { EntityTypeBadge } from "../components/EntityTypeBadge";
 import { AssociationBreakdown } from "../components/AssociationBreakdown";
@@ -995,6 +996,8 @@ interface EntityNameEditorProps {
   entityId: string;
   canonicalName: string;
   description: string | null;
+  /** Auto-derived Wikidata one-liner shown (labelled) only when `description` is empty. */
+  fallbackDescription?: string | null;
   entityType: string;
   /** Rendered next to the name in read mode (the existing entity-type badge). */
   typeBadge: React.ReactNode;
@@ -1025,6 +1028,7 @@ function EntityNameEditor({
   entityId,
   canonicalName,
   description,
+  fallbackDescription = null,
   entityType,
   typeBadge,
 }: EntityNameEditorProps) {
@@ -1175,6 +1179,17 @@ function EntityNameEditor({
 
         {description ? (
           <p className="text-gray-600 mb-4 max-w-3xl">{description}</p>
+        ) : fallbackDescription ? (
+          <p className="text-gray-600 mb-4 max-w-3xl">
+            {fallbackDescription}{" "}
+            <span
+              data-testid="description-wikidata-hint"
+              title="Auto-derived from Wikidata; not hand-curated"
+              className="ml-1 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-slate-100 text-slate-600 border border-slate-200 align-middle"
+            >
+              from Wikidata
+            </span>
+          </p>
         ) : (
           <p className="text-gray-400 italic mb-4">No description available.</p>
         )}
@@ -1763,6 +1778,10 @@ export function EntityDetailPage() {
               entityId={entityId ?? ""}
               canonicalName={entity.canonical_name}
               description={entity.description}
+              fallbackDescription={
+                entity.enrichment?.properties?.wikidata_description?.values?.[0] ??
+                null
+              }
               entityType={entity.entity_type}
               typeBadge={
                 <EntityTypeBadge entityType={entity.entity_type} size="md" />
@@ -2010,6 +2029,13 @@ export function EntityDetailPage() {
         {/* Tags section (Feature 064) */}
         {entityId && (
           <EntityTagSection entityId={entityId} entityName={entity.canonical_name} />
+        )}
+        {entityId && (
+          <EntityTagFootprintSection
+            entityId={entityId}
+            entityName={entity.canonical_name}
+            entityType={entity.entity_type}
+          />
         )}
       </EntityAccordionGroup>
 

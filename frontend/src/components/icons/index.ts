@@ -3,6 +3,7 @@
  */
 
 export { BatchCorrectionsIcon } from "./BatchCorrectionsIcon";
+export { CandidatesIcon } from "./CandidatesIcon";
 export { ChartBarIcon } from "./ChartBarIcon";
 export { ChannelIcon } from "./ChannelIcon";
 export { ClockIcon } from "./ClockIcon";

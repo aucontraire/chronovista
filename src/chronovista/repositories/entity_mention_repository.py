@@ -1736,6 +1736,22 @@ class EntityMentionRepository(
 
         return self._without_exclusions(union_all(*arms).subquery("assoc_src"), "assoc")
 
+    async def get_associated_video_ids(
+        self, session: AsyncSession, entity_id: uuid.UUID
+    ) -> set[str]:
+        """Video ids associated with an entity through any arm (Feature 097).
+
+        Wraps :meth:`build_entity_qualification_subquery` at ``ANY`` scope for a
+        single entity — mention, canonical-tag, and alias-tag arms — so the
+        footprint delta can subtract what a candidate's entity is already
+        associated with (SC-008, no double-count).
+        """
+        subquery = await self.build_entity_qualification_subquery(
+            session, [entity_id], EvidenceScope.ANY
+        )
+        result = await session.execute(select(subquery.c.video_id))
+        return set(result.scalars().all())
+
     async def build_entity_qualification_subquery(
         self,
         session: AsyncSession,

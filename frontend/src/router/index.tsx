@@ -62,6 +62,16 @@ const EntityDetailPage = lazy(() =>
     default: m.EntityDetailPage,
   })),
 );
+const CandidatesPage = lazy(() =>
+  import("../pages/CandidatesPage").then((m) => ({
+    default: m.CandidatesPage,
+  })),
+);
+const CandidateDetailPage = lazy(() =>
+  import("../pages/CandidateDetailPage").then((m) => ({
+    default: m.CandidateDetailPage,
+  })),
+);
 const CategoryDetailPage = lazy(() =>
   import("../pages/CategoryDetailPage").then((m) => ({
     default: m.CategoryDetailPage,
@@ -197,6 +207,14 @@ export const router = createBrowserRouter([
       {
         path: "entities/:entityId",
         element: lazySuspense(<EntityDetailPage />),
+      },
+      {
+        path: "candidates",
+        element: lazySuspense(<CandidatesPage />),
+      },
+      {
+        path: "candidates/:candidateId",
+        element: lazySuspense(<CandidateDetailPage />),
       },
       {
         path: "wikipedia-categories/:categoryId",

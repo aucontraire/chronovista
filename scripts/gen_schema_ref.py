@@ -79,6 +79,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
             "entity_categories",
             "entity_video_exclusions",
             "candidate_suggestions",
+            "candidate_generation_runs",
         ],
     ),
     (

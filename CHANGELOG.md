@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.102.0] - 2026-10-28
+
+### Added
+- **Review candidate entities in the browser.** The seed-and-grow suggestion queue now has a full review surface on a new **Candidates** page — no command line needed. Generate suggestions with a click (the run happens in the background behind a progress bar), triage the queue with filters and sort plus a live summary, open a candidate to inspect its signals, provenance (which of your entities and relationships produced it, each linked), and a *View on Wikidata* link, then approve (which creates a grounded entity) or reject — each action tells you its true outcome and keeps your other views in sync. When you approve an entity whose name matches one of your tags, the entity page shows how many *additional* videos linking that tag would associate and lets you claim them in one click.
+- **Evidence-based tag linking.** A matching tag is always surfaced (even when it adds no new videos, so you can still formally claim it); its name links to that tag's videos in a new tab so you can spot-check for a same-name-different-thing mismatch before linking; an opt-in "link this tag when I approve" checkbox (off by default, offered only for a single unclaimed match) links it as part of approving; and an info note states plainly that linking connects every video with that tag to the entity. The Candidates and entity detail pages also explain their terms (corroboration, salience, triage buckets, …) behind a small info control, "Candidates" sits under an **Entities** group in the sidebar, and an entity with no curated description falls back to its Wikidata one-line description (labeled as such).
+
+### Internal
+- Authenticated write endpoints wrap the existing review service: `POST /api/v1/candidates/{id}/approve` and `/reject` (approval schedules enrichment as a detached task so the request is never held across its network calls), `POST /api/v1/candidates/generation` + `GET /api/v1/candidates/generation/status` (a background sweep with a persisted `candidate_generation_runs` record — one new additive migration — driving a determinate percentage; a partial unique index enforces one run at a time and a heartbeat detects a stale run), and tag-footprint read + link endpoints that reuse the existing classify operation. New React review/detail pages, generation polling + progress, filters/summary, and the tag-footprint panel reuse existing frontend patterns. Tag ownership *re-assignment* is intentionally out of scope (the only re-classify primitive is destructive). No new third-party dependency. Covered by real-database API integration tests (approve/reject seam and FR-052 negative guarantee, generation lifecycle/concurrency/stale-reap/re-run-preserves-verdicts, tag-link no-double-count and refused re-assignment) and frontend component tests.
+
 ## [0.101.0] - 2026-10-27
 
 ### Added

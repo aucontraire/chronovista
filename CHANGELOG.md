@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.104.1] - 2026-10-29
+
+### Fixed
+- **Entities whose Wikipedia article is reached through a redirect no longer show zero categories.** When an entity's derived article title was itself a redirect (a less-common spelling, or an older name that points at the canonical article), the category fetch read the redirect stub — which carries no categories of its own — and recorded the entity as "processed, zero categories", never retrying it. The fetch now follows redirects to the real article, so these entities pick up their true Wikipedia categories, which feed the shared-category similarity signal and the entity category panels. Re-running the category backfill recovers the affected entities (a reviewed audit of the grounded, DBpedia-linked, zero-category entities found almost all of them recoverable this way, with no genuine loss).
+
+### Internal
+- `EntityCategoryFetchService` (`services/entity_category_fetch.py`) now sends `redirects=1` on the `prop=categories` query and folds MediaWiki's `normalized`/`redirects` hop chain back onto each caller's original input title, so a resolved article's categories stay keyed by the title the caller asked for (without the remap the resolved page fails the title lookup and the entity is left processed-zero forever). No schema change, no new third-party dependency. Covered by a unit test that drives the full normalized→redirect chain and a request-parameter assertion.
+
 ## [0.104.0] - 2026-10-29
 
 ### Changed

@@ -94,6 +94,11 @@ class EntityCategoryFetchService:
         the continue loop accumulates them before returning. The loop is bounded by
         ``_MAX_CONTINUATIONS`` so a server that echoes a non-advancing ``clcontinue`` cannot hang
         the run — it degrades to a partial (append-only, best-effort) result instead.
+
+        ``redirects=1`` is set so a redirect title (e.g. a less-common spelling that points at the
+        canonical article) resolves to the article that actually carries the categories; the
+        per-page remap of MediaWiki's ``normalized``/``redirects`` hops keeps the result keyed by
+        the caller's original input title.
         """
         by_norm = {self._norm(t): t for t in batch}
         accumulated: dict[str, list[str]] = {}
@@ -103,12 +108,32 @@ class EntityCategoryFetchService:
             "prop": "categories",
             "clshow": "!hidden",
             "cllimit": str(_CLLIMIT),
+            "redirects": "1",  # follow redirect titles to the real article (see below)
             "titles": "|".join(batch),
         }
         cont: dict[str, str] = {}
         for _ in range(_MAX_CONTINUATIONS):
             data = await self._get(client, {**base, **cont})
-            pages = (data.get("query") or {}).get("pages") or {}
+            query = data.get("query") or {}
+            # With redirects=1 a page is keyed by its *resolved* title: a request for the redirect
+            # "Old Name" comes back as the article "New Name", whose norm is absent from by_norm.
+            # Without remapping, that page fails the by_norm lookup below and the entity is stored
+            # as processed-zero forever (the Feature 084 redirect bug). So fold MediaWiki's own
+            # normalized→redirect hop chain back onto the caller's original input title. Processing
+            # 'normalized' before 'redirects' resolves the (input → canonical → target) chain in
+            # order; re-running it each continuation page is idempotent.
+            if isinstance(query, dict):
+                for hop_key in ("normalized", "redirects"):
+                    hops = query.get(hop_key)
+                    if not isinstance(hops, list):
+                        continue
+                    for hop in hops:
+                        if not isinstance(hop, dict):
+                            continue
+                        origin = by_norm.get(self._norm(str(hop.get("from", ""))))
+                        if origin is not None:
+                            by_norm[self._norm(str(hop.get("to", "")))] = origin
+            pages = query.get("pages") or {}
             if isinstance(pages, dict):
                 for page in pages.values():
                     if not isinstance(page, dict):

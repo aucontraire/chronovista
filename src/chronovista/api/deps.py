@@ -311,6 +311,7 @@ def get_candidate_suggestion_service() -> "CandidateSuggestionService":
     from chronovista.services.candidate_suggestion_service import (
         CandidateSuggestionService,
     )
+    from chronovista.services.wikidata_client import WikidataClient
 
     return CandidateSuggestionService(
         candidate_repo=CandidateSuggestionRepository(),
@@ -318,6 +319,10 @@ def get_candidate_suggestion_service() -> "CandidateSuggestionService":
         video_repo=VideoRepository(),
         alias_repo=EntityAliasRepository(),
         enrichment=None,
+        # Authoritative P31 typing for approval re-verification (Feature 098). The approve
+        # path fetches BEFORE the write transaction so the request session is not held across
+        # the Wikidata call; on failure it falls back to the candidate's stored type (FR-006/011).
+        wikidata_client=WikidataClient(),
     )
 
 

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.103.0] - 2026-10-28
+
+### Changed
+- **Candidate entity types now come from Wikidata, not from the relationship that surfaced them.** Previously a candidate's type was guessed from the relationship it was reached through (so, for example, a country reached via a "founder" relationship was mislabeled a person). Candidates are now typed from their own Wikidata classification, so the type shown in the review queue — and the review **type filter** — are accurate, and approving a candidate creates a correctly-typed entity (the name+type duplicate check uses the true type too). A one-time backfill utility re-types the existing pending queue. When the knowledge base can't be reached or has nothing to say, typing falls back to the previous relationship heuristic, so generation never fails.
+
+### Added
+- **The create-entity modal suggests a type from Wikidata.** You can now ground a new entity to a Wikidata match *before* choosing its type, and the modal pre-selects the type that match suggests — you can always override it, and when Wikidata offers no confident type the selector is simply left for you to choose. The existing "type may differ" corroboration badge now draws on the same shared classification, so the suggestion and the badge always agree.
+
+### Internal
+- A single shared Wikidata type classifier (`services/wikidata_taxonomy.py`) is now the one source of truth mapping a Wikidata entity's `instance_of` (P31) to the project's entity types, with a fixed multi-type precedence and an honest catch-all. It replaces duplicated/divergent copies (the create-time corroboration table and a verbatim copy in the entity-resolution sweep tooling; a shallow category-discovery bucketer is deliberately left for later). The classifier feeds candidate typing at generation (a batched `instance_of` fetch performed **outside** the generation DB transaction so the session is never held across the network batch), a dry-run-first backfill of the pending queue, approval-time re-verification (pending candidates only; overrides the stored type only with positive P31 evidence, else keeps it), and the create-modal suggestion. The candidate search/resolve endpoints relax `entity_type` from required to optional (so grounding can precede type selection) and return an additive `suggested_entity_type`. No schema change, no new third-party dependency. Covered by unit tests (classifier mapping/precedence/determinism, corroboration-vs-classification decoupling) and HTTP-boundary + real-database integration tests (generation typing with heuristic fallback, the review filter, backfill dry-run/apply, approval re-verification, the resolve suggestion), plus frontend component tests for the grounding-before-type flow.
+
 ## [0.102.0] - 2026-10-28
 
 ### Added

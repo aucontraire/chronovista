@@ -50,7 +50,9 @@ from chronovista.services.entity_mention_scan_service import (
     _fold_diacritics,
 )
 from chronovista.services.tag_normalization import TagNormalizationService
+from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
 from chronovista.services.wikidata_properties import RELATIONS
+from chronovista.services.wikidata_taxonomy import classify_entity_type
 
 # Tokens for the inverted index (drops punctuation and underscores), matching the
 # word-boundary the detector regex uses.
@@ -256,6 +258,7 @@ class CandidateSuggestionService:
         alias_repo: EntityAliasRepository,
         normalizer: TagNormalizationService | None = None,
         enrichment: EntityEnrichmentService | None = None,
+        wikidata_client: WikidataClient | None = None,
     ) -> None:
         self._candidates = candidate_repo
         self._entities = entity_repo
@@ -265,6 +268,10 @@ class CandidateSuggestionService:
         # Optional: when None, approval skips enrichment (best-effort, FR-009) — the
         # test and no-network paths pass None; the CLI passes a real service.
         self._enrichment = enrichment
+        # Optional Wikidata client for authoritative P31-based typing (Feature 098).
+        # When None (no-network/test paths), generation and approval fall back to the
+        # relation-name heuristic / the candidate's stored type (FR-011).
+        self._wikidata = wikidata_client
         self._channel = SourceChannel.RELATION
 
     async def generate(
@@ -273,6 +280,7 @@ class CandidateSuggestionService:
         *,
         dry_run: bool = False,
         progress: Callable[[int, int], Awaitable[None]] | None = None,
+        instance_of_map: dict[str, list[str]] | None = None,
     ) -> GenerationSummary:
         """Discover, ground, score, triage, and upsert candidates (FR-001..FR-005, FR-014).
 
@@ -306,12 +314,23 @@ class CandidateSuggestionService:
         corpus = await self._videos.get_all_title_description(session)
         index = _CorpusIndex(corpus)
         ungrounded = await self._entities.get_ungrounded_normalized_map(session)
+        # Authoritative P31 types for every discovered QID (Feature 098). The detached runner
+        # pre-fetches these OUTSIDE this session (via discover_target_qids → fetch) and passes
+        # them in, so a DB transaction is never held idle across the minutes-long Wikidata batch
+        # (the Feature 094 held-session class). The CLI/tests omit the map and fetch inline — a
+        # short, single-user or faked call. {} → each candidate falls back to the relation
+        # heuristic (FR-004/FR-011).
+        p31_by_qid = (
+            instance_of_map
+            if instance_of_map is not None
+            else await self._fetch_instance_of_for_rows(rows)
+        )
 
         total = len(rows)
         step = max(1, total // 100)
         creates = []
         for i, row in enumerate(rows):
-            create = self._build_create(row, index, ungrounded)
+            create = self._build_create(row, index, ungrounded, p31_by_qid)
             if create is not None:
                 creates.append(create)
             # Report progress through the build loop at ~1% granularity (FR-023a).
@@ -356,11 +375,42 @@ class CandidateSuggestionService:
             by_triage={t.value: counts.get(t.value, 0) for t in TriageCategory},
         )
 
+    async def _fetch_instance_of_for_rows(
+        self, rows: list[RelationCandidateRow]
+    ) -> dict[str, list[str]]:
+        """Batch-fetch P31 (``instance_of``) for the discovered QIDs (Feature 098, FR-001/004).
+
+        Returns ``{qid: [p31...]}``; ``{}`` when no Wikidata client is wired or the knowledge
+        base is unreachable, so generation degrades to the relation heuristic (FR-011).
+        """
+        if self._wikidata is None:
+            return {}
+        qids = sorted({row.wikidata_qid for row in rows})
+        if not qids:
+            return {}
+        try:
+            return await self._wikidata.fetch_instance_of(qids)
+        except WikidataUnavailable:
+            return {}
+
+    async def discover_target_qids(self, session: AsyncSession) -> list[str]:
+        """Distinct target QIDs for the current relation candidates (Feature 098).
+
+        Lets the detached runner read QIDs in a SHORT session it closes BEFORE the Wikidata
+        batch, so no DB transaction is held across the network call (the Feature 094 held-session
+        class). ``generate`` then receives the pre-fetched ``instance_of_map``.
+        """
+        rows = await self._candidates.emit_relation_candidates(
+            session, relation_fields=sorted(set(RELATIONS.values()))
+        )
+        return sorted({row.wikidata_qid for row in rows})
+
     def _build_create(
         self,
         row: RelationCandidateRow,
         index: _CorpusIndex,
         ungrounded: dict[str, uuid.UUID],
+        p31_by_qid: dict[str, list[str]],
     ) -> CandidateSuggestionCreate | None:
         """Turn an emitted row into a persistable candidate, or ``None`` to skip it."""
         normalized = self._normalizer.normalize(row.label)
@@ -369,7 +419,13 @@ class CandidateSuggestionService:
         token_count = len(normalized.split())
         if token_count < 1:
             return None
-        type_hint = _derive_type_hint(row.relations)
+        # Authoritative type from the candidate's own Wikidata P31 when available; fall back to
+        # the relation-name heuristic only when there is no usable P31 (QID unknown/unreachable
+        # or no instance_of) — Feature 098, FR-001/004/011.
+        p31 = p31_by_qid.get(row.wikidata_qid)
+        type_hint = (
+            classify_entity_type(p31) if p31 else _derive_type_hint(row.relations)
+        )
         salience, specificity = index.salience(
             row.wikidata_qid, row.label, type_hint.value
         )
@@ -393,6 +449,34 @@ class CandidateSuggestionService:
             },
             possible_duplicate_of_id=ungrounded.get(normalized),
         )
+
+    async def reverify_type(self, qid: str, stored_type: str) -> str:
+        """Re-verify an entity's type from its own Wikidata P31 at approval (Feature 098, FR-006).
+
+        Overrides the stored type ONLY with positive P31 evidence; with no usable P31 (QID
+        unknown/absent, or no instance_of) it keeps the stored type — consistent with
+        generation's heuristic-on-no-P31 (FR-004), so a reviewer never approves one type and
+        gets another. Best-effort: any Wikidata failure keeps the stored type, so approval never
+        fails for this reason (FR-011).
+
+        Held-session trade-off: called inside ``approve`` for a PENDING candidate only, so the
+        request's DB connection is held across one Wikidata lookup. Accepted as bounded for this
+        single-user local app (interactive, one approval at a time; NOT the Feature-094
+        background-task-across-cancellable-await deadlock). If this ever becomes multi-user or
+        batched, move the re-verify off the request session. An external pre-fetch was tried and
+        reverted — using a second ``db_manager`` session mid-request breaks under the test harness's
+        event loop (asyncpg "Future attached to a different loop").
+        """
+        if self._wikidata is None:
+            return stored_type
+        try:
+            p31_by_qid = await self._wikidata.fetch_instance_of([qid])
+        except (
+            Exception
+        ):  # noqa: BLE001 - best-effort; any failure keeps the stored type (FR-011)
+            return stored_type
+        p31 = p31_by_qid.get(qid)
+        return classify_entity_type(p31).value if p31 else stored_type
 
     async def approve(
         self, session: AsyncSession, *, candidate_id: uuid.UUID, reviewed_by: str
@@ -443,7 +527,12 @@ class CandidateSuggestionService:
         normalized = (
             self._normalizer.normalize(candidate.label) or candidate.label_normalized
         )
-        type_value = candidate.type_hint
+        # Re-verify the type against Wikidata at the write moment (Feature 098, FR-006): a
+        # candidate's stored type_hint may be a transient heuristic fallback (Wikidata was down
+        # at generation) or stale. The re-verified value drives BOTH the collision check below
+        # and the created entity's type, so they cannot disagree. Only reached for a PENDING
+        # candidate (the not-pending paths return above), so no wasted lookup on a decided one.
+        type_value = await self.reverify_type(qid, candidate.type_hint)
         # Name+type collision with ANY existing entity (uq_named_entity_canonical is
         # global across statuses) → supersede, never attempt a create that would raise
         # IntegrityError and dead-end the candidate (adversarial M1).

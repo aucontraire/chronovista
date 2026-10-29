@@ -125,6 +125,7 @@ function makeCandidate(overrides: Partial<WikidataCandidate> = {}): WikidataCand
     sitelink_count: 3,
     is_stub: false,
     type_matches: true,
+    suggested_entity_type: null,
     ...overrides,
   };
 }
@@ -290,13 +291,13 @@ describe("CreateEntityModal — Wikidata grounding (Feature 067, US3)", () => {
       expect(hook.search).toHaveBeenCalled();
     });
 
-    it("does not show the grounding section before name and type are both filled", () => {
+    it("shows the grounding section once a name is filled, before any type is chosen (Feature 098)", () => {
       renderModal();
       expect(screen.queryByText(/ground in wikidata/i)).not.toBeInTheDocument();
 
       fireEvent.change(getNameInput(), { target: { value: "Test Person" } });
-      // Type not yet selected.
-      expect(screen.queryByText(/ground in wikidata/i)).not.toBeInTheDocument();
+      // Type not yet selected — grounding is available anyway.
+      expect(screen.getByText(/ground in wikidata/i)).toBeInTheDocument();
     });
 
   });
@@ -725,13 +726,13 @@ describe("CreateEntityModal — Wikidata grounding (Feature 067, US3)", () => {
       expect(screen.getByRole("radiogroup", { name: /wikidata candidates/i })).toBeInTheDocument();
     });
 
-    it("does not show the grounding section before a type is chosen for the tag", () => {
+    it("shows the grounding section before a type is chosen for the tag (Feature 098)", () => {
       mockTagResults([makeTag({ canonical_form: "Test Person", normalized_form: "test person" })]);
       renderModal();
 
       selectTag("Test Person");
 
-      expect(screen.queryByText(/ground in wikidata/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/ground in wikidata/i)).toBeInTheDocument();
     });
 
     it("submits approvedIdentifier via the classify mutation when a candidate is approved", async () => {

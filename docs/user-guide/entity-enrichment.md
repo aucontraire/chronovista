@@ -24,16 +24,20 @@ An entity with neither reads as **not grounded** — not an error, just nothing 
 ## Ground an entity while creating it
 
 Grounding is offered on the **Create Entity** dialog, whether you are creating a standalone
-entity or promoting an existing tag. It depends only on the name and type — not on whether a
-tag exists.
+entity or promoting an existing tag. It depends only on the **name** — you can ground before
+choosing a type, and the match can suggest the type for you.
 
-1. Open **Create Entity**, enter the **name**, and pick an **entity type**.
-2. A **Ground in Wikidata** section appears and searches automatically. It offers a short,
-   ranked list of candidates. Each shows what you need to reject a look-alike: a description,
-   a **Type match** check against the type you chose, the number of statements and linked
-   reference pages, and a **stub** warning for machine-generated items.
-3. Select the correct candidate. It shows as **Grounded to …**, and — if the description
-   field is empty — offers to prefill it from the match (you can edit or clear it).
+1. Open **Create Entity** and enter the **name**. You may pick an **entity type** now, or leave
+   it and let the match suggest one (see step 3).
+2. A **Ground in Wikidata** section searches automatically. It offers a short, ranked list of
+   candidates. Each shows what you need to reject a look-alike: a description, the number of
+   statements and linked reference pages, a **stub** warning for machine-generated items, and —
+   once you have chosen a type — a **Type match** check against it.
+3. Select the correct candidate. It shows as **Grounded to …**. If you have not chosen a type,
+   the match's **suggested type** (from its own Wikidata classification) is pre-selected for you
+   to confirm or change; when Wikidata offers no confident type, the selector is left for you to
+   pick. If the description field is empty, the dialog also offers to prefill it from the match
+   (you can edit or clear it).
 4. Click **Create Entity**. The identifier is stored as **verified**.
 
 Grounding is always optional. If no candidate is right, if the search finds nothing, or if

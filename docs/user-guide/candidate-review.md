@@ -33,7 +33,7 @@ whose identity has since become a real entity is quietly retired.
 The queue is ranked by plausibility. Narrow it with the filters:
 
 - **Triage bucket** — worth-review, likely-eliminable, or grounds-nowhere.
-- **Type** — person, organization, place, and so on.
+- **Type** — person, organization, place, and so on. A candidate's type comes from its own Wikidata classification, so filtering by type is accurate (a country shows under *place*, not *person*), and approving a candidate creates a correctly-typed entity.
 - **Hide single-token names** — drop one-word names that are usually noise.
 - **Possible duplicates only** — show suggestions that collide with an existing name.
 

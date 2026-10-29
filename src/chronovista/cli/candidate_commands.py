@@ -51,12 +51,17 @@ def _service(*, with_enrichment: bool = False) -> CandidateSuggestionService:
         )
 
         enrichment = get_enrichment_service()
+    from chronovista.services.wikidata_client import WikidataClient
+
     return CandidateSuggestionService(
         candidate_repo=CandidateSuggestionRepository(),
         entity_repo=NamedEntityRepository(),
         video_repo=VideoRepository(),
         alias_repo=EntityAliasRepository(),
         enrichment=enrichment,
+        # Authoritative P31 typing for generation + approval re-verification (Feature 098);
+        # degrades to the relation heuristic / stored type when Wikidata is unreachable.
+        wikidata_client=WikidataClient(),
     )
 
 

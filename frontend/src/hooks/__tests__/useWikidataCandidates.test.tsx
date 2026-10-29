@@ -80,6 +80,7 @@ function makeCandidate(overrides: Partial<WikidataCandidate> = {}): WikidataCand
     sitelink_count: 1,
     is_stub: false,
     type_matches: true,
+    suggested_entity_type: null,
     ...overrides,
   };
 }

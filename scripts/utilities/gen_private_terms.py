@@ -107,6 +107,9 @@ COMMON_WORD_ALIASES = {
     # Fires on "shared helper", "test helper", "helper function" — unavoidable
     # vocabulary in a codebase, and it blocked a refactor commit message.
     "Helper",
+    # A generic geography word and a Wikidata class label (Q23442, "island") used in the
+    # entity-type classifier's anchor comments (Feature 098); collides with a library place name.
+    "Island",
     "John",
     "Mate",
     "Peek",

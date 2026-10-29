@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "chronovista"
-version = "0.103.0"
+version = "0.104.0"
 description = "Personal YouTube data analytics tool for comprehensive access to your YouTube engagement history"
 authors = ["chronovista <noreply@chronovista.dev>"]
 maintainers = ["chronovista <noreply@chronovista.dev>"]

@@ -39,6 +39,10 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
             "Q7275",  # state
             "Q82794",  # geographic region
             "Q23442",  # island
+            # Feature 099: library-frequency place classes
+            "Q35657",  # U.S. state
+            "Q15149663",  # state of Mexico
+            "Q1549591",  # big city
         }
     ),
     EntityType.ORGANIZATION: frozenset(
@@ -52,6 +56,24 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
             "Q163740",  # nonprofit organization
             "Q3918",  # university
             "Q1002697",  # periodical
+            # Feature 099: library-frequency organization classes
+            "Q7210356",  # political organization
+            "Q47913",  # intelligence agency
+            "Q17127659",  # terrorist organization
+            "Q207320",  # paramilitary organization
+            "Q17149090",  # armed organization
+            "Q20858006",  # federal law enforcement agency
+            "Q910252",  # federal executive department
+            "Q62078547",  # public research university
+            "Q902104",  # private university
+            "Q15936437",  # research university
+            "Q1188663",  # colonial college
+            "Q23002054",  # private not-for-profit educational institution
+            "Q11032",  # newspaper
+            "Q1110794",  # daily newspaper
+            "Q1153191",  # online newspaper
+            "Q35127",  # website
+            "Q561068",  # specialty channel
         }
     ),
     EntityType.EVENT: frozenset(
@@ -59,6 +81,7 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
             "Q1656682",  # event
             "Q1190554",  # occurrence
             "Q13418847",  # historical event
+            "Q934744",  # political scandal (Feature 099)
         }
     ),
     EntityType.WORK: frozenset(
@@ -70,11 +93,16 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
             "Q11424",  # film
             "Q2188189",  # musical work
             "Q7889",  # video game
+            "Q5398426",  # television series (Feature 099)
         }
     ),
     EntityType.CONCEPT: frozenset(
         {
             "Q151885",  # concept
+            # Feature 099: library-frequency concept classes
+            "Q12909644",  # political ideology
+            "Q49773",  # social movement
+            "Q2738074",  # political movement
         }
     ),
     # TECHNICAL_TERM: no dependable P31 anchor yet → resolves to OTHER until grown.

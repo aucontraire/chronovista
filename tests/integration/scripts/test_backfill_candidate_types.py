@@ -34,6 +34,7 @@ P31_BY_QID: dict[str, str] = {
     "Q8001": "Q6256",  # country -> place
     "Q8002": "Q5",  # human -> person
     "Q8003": "Q5",  # human -> person (stored person: no change)
+    "Q8005": "Q88888888",  # unrecognized class -> OTHER (Direction A: keep stored type)
 }
 
 
@@ -103,6 +104,7 @@ async def seeded(db_session: AsyncSession) -> dict[str, uuid.UUID]:
         "Q8002": EntityType.PLACE,
         "Q8003": EntityType.PERSON,
         "Q8004": EntityType.ORGANIZATION,
+        "Q8005": EntityType.PERSON,  # P31 -> OTHER; Direction A keeps 'person'
     }
     ids: dict[str, uuid.UUID] = {}
     for qid, t in rows.items():
@@ -151,6 +153,7 @@ async def test_apply_updates_changed_rows_and_commits(
         "Q8002": "person",
         "Q8003": "person",
         "Q8004": "organization",
+        "Q8005": "person",  # P31 classified OTHER -> stored type kept (Direction A)
     }
     # Committed, not merely flushed: survives a rollback of the shared session.
     await db_session.rollback()
@@ -177,3 +180,14 @@ async def test_update_statement_sets_type_hint_column() -> None:
     assert set_clause.startswith("type_hint=")
     assert "review_status" not in set_clause
     assert compiled.params["type_hint"] == "place"
+
+
+async def test_other_classification_keeps_stored_type(
+    wired: None, seeded: dict[str, uuid.UUID]
+) -> None:
+    """Direction A: a candidate whose P31 classifies to OTHER (an unrecognized class, Q8005) keeps
+    its stored type rather than being flipped to 'other'."""
+    pending = await bct._load_pending()
+    changes = await bct._compute_changes(pending)
+    changed_qids = {qid for _, qid, _, _ in changes}
+    assert "Q8005" not in changed_qids

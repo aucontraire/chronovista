@@ -10,8 +10,9 @@ Safety (mirrors ``backfill_entity_relations.py``):
 - **``--apply`` requires ``--confirm-target <dbname>``** matching the effective database.
 - **Reversible capture** — ``--apply`` writes a gitignored JSON of every changed row
   (id, qid, old→new) under ``backups/`` before committing.
-- **Graceful** — a candidate with no usable P31 (QID unknown/absent) keeps its current type; a
-  Wikidata outage aborts cleanly having written nothing.
+- **Direction A / graceful** — the stored type is overridden only on positive, determinate
+  evidence: a candidate with no usable P31 (QID unknown/absent) OR whose P31 classifies to the
+  catch-all (OTHER) keeps its current type; a Wikidata outage aborts cleanly having written nothing.
 - The DB session is NOT held across the Wikidata fetch (load → close → fetch → reopen to write).
 
 Output is counts + QIDs only — no entity names (no library content).
@@ -47,6 +48,7 @@ from chronovista.services.wikidata_client import (  # noqa: E402
 from chronovista.services.wikidata_taxonomy import classify_entity_type  # noqa: E402
 
 _PENDING = "pending"
+_OTHER = "other"
 
 # A change row: (candidate id, qid, old type_hint, new type_hint)
 Change = tuple[uuid.UUID, str, str, str]
@@ -72,7 +74,9 @@ async def _compute_changes(
 ) -> list[Change]:
     """Classify each candidate from its P31 (no DB session held across this network call).
 
-    A candidate with no usable P31 (QID unknown to Wikidata) keeps its current type.
+    Direction A: override the stored type only on positive, determinate evidence. A candidate
+    with no usable P31 (QID unknown/absent) OR whose P31 classifies to the catch-all (OTHER — an
+    unrecognized class) keeps its current type, rather than being flooded into ``other``.
     """
     qids = sorted({qid for _, qid, _ in pending})
     p31_by_qid = await WikidataClient().fetch_instance_of(qids)
@@ -82,7 +86,9 @@ async def _compute_changes(
         if not p31:  # unknown/absent → undeterminable → leave unchanged
             continue
         new = classify_entity_type(p31).value
-        if new != old:
+        if (
+            new != old and new != _OTHER
+        ):  # Direction A: only override with a determinate type
             changes.append((cid, qid, old, new))
     return changes
 

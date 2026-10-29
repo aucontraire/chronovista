@@ -73,6 +73,9 @@ class TestCategoriesForTitles:
         assert seen[0]["clshow"] == [
             "!hidden"
         ]  # hidden categories excluded at the source
+        assert seen[0]["redirects"] == [
+            "1"
+        ]  # follow redirect titles to the real article
         assert seen[0]["titles"] == ["Title_A|Title_B"]
 
     async def test_seen_title_with_zero_categories_is_empty_list_not_omitted(
@@ -112,6 +115,32 @@ class TestCategoriesForTitles:
         # Key is the caller's exact input, not Wikipedia's canonicalized form.
         assert await _service(handler).categories_for_titles(["Foo_Bar"]) == {
             "Foo_Bar": ["cat-x"]
+        }
+
+    async def test_redirect_title_maps_categories_back_to_input(self) -> None:
+        # The Feature 084 redirect bug: the derived title is a redirect, so with redirects=1 the
+        # response carries a normalized→redirect hop chain and a page keyed by the *resolved*
+        # article title. The result must still be keyed by the caller's original input title, and
+        # must carry the resolved article's categories (not an empty "processed-zero" list).
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "query": {
+                        "normalized": [{"from": "Old_Name", "to": "Old Name"}],
+                        "redirects": [{"from": "Old Name", "to": "New Name"}],
+                        "pages": {
+                            "1": {
+                                "title": "New Name",
+                                "categories": _cats("Category:cat-x", "Category:cat-y"),
+                            }
+                        },
+                    }
+                },
+            )
+
+        assert await _service(handler).categories_for_titles(["Old_Name"]) == {
+            "Old_Name": ["cat-x", "cat-y"]
         }
 
     async def test_continue_token_accumulates_pages(self) -> None:

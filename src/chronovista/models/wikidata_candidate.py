@@ -52,3 +52,12 @@ class WikidataCandidate(BaseModel):
             "the UI must render None as neutral/absent, never as 'Type may differ')."
         ),
     )
+    suggested_entity_type: str | None = Field(
+        default=None,
+        description=(
+            "Suggested entity type derived from this item's instance_of (Feature 098, FR-008): "
+            "a type string to pre-select in the create modal, or None when undeterminable (the "
+            "modal leaves the selector unset — clarification Q2). Derives from the same "
+            "classifier as type_matches, so suggestion and corroboration badge cannot drift."
+        ),
+    )

@@ -71,8 +71,12 @@ export interface WikidataGroundingPickerProps {
    * typing doesn't spam the lookup on every keystroke.
    */
   name: string;
-  /** Entity type (e.g. "person", "organization", "place"). */
-  entityType: string;
+  /**
+   * Entity type (e.g. "person", "organization", "place"). Optional: when
+   * unset/empty, the lookup runs without a type and candidates carry a
+   * `suggested_entity_type` instead of a type-match signal.
+   */
+  entityType?: string | undefined;
   /**
    * The candidate the caller currently has approved, if any. Fully
    * controlled — this component never holds its own copy of the selection
@@ -178,12 +182,35 @@ export const WikidataGroundingPicker = forwardRef<
   // "searching" state immediately instead of a blank gap before the
   // debounce settles.
   const isNameSettling =
-    name !== "" && entityType !== "" && debouncedName !== name;
+    name !== "" && debouncedName !== name;
 
   // Discard a stale search (and the caller's selection) when the effective
   // name or type changes — a candidate approved for one name/type must not
   // silently carry over to a different one.
+  const prevNameRef = useRef(name);
+  const prevTypeRef = useRef(entityType);
   useEffect(() => {
+    const nameChanged = prevNameRef.current !== name;
+    const prevType = prevTypeRef.current;
+    const typeChanged = prevType !== entityType;
+    prevNameRef.current = name;
+    prevTypeRef.current = entityType;
+    // Keep the approval (so the chip doesn't vanish) when the name is
+    // unchanged and either the caller applied this candidate's own suggested
+    // type, or the type was previously unset — a candidate grounded before any
+    // type was chosen is not scoped to a type, so the first pick must not
+    // discard it. Only an A -> B change between two set types clears.
+    // (The type change still re-runs the search once — accepted.)
+    if (
+      !nameChanged &&
+      typeChanged &&
+      selectedCandidate !== null &&
+      (selectedCandidate.suggested_entity_type === entityType ||
+        prevType === undefined ||
+        prevType === "")
+    ) {
+      return;
+    }
     setGroundingSkipped(false);
     setQidInput("");
     setQidResult(null);
@@ -199,7 +226,7 @@ export const WikidataGroundingPicker = forwardRef<
   // manual "Search Wikidata" trigger so grounding is discoverable without
   // the user having to find a button.
   useEffect(() => {
-    if (debouncedName !== "" && entityType !== "") {
+    if (debouncedName !== "") {
       wikidata.search();
     }
     // Intentionally depends on the debounced name/entityType only, not on

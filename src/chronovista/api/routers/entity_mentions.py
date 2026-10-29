@@ -651,8 +651,13 @@ async def check_duplicate_entity(
 )
 async def wikidata_candidates(
     name: str = Query(..., min_length=1, description="Name to search Wikidata for"),
-    entity_type: str = Query(
-        ..., description="Entity type being assigned (for the cross-check)"
+    entity_type: str | None = Query(
+        None,
+        description=(
+            "Entity type being assigned, for the type cross-check (corroboration badge). "
+            "Optional (Feature 098): omit when grounding before a type is chosen — the "
+            "suggested_entity_type is still returned, only the corroboration is then neutral."
+        ),
     ),
     limit: int = Query(
         7, ge=1, le=20, description="Max candidates per page (default 7)"
@@ -703,8 +708,13 @@ async def wikidata_candidates(
 )
 async def wikidata_candidate_by_qid(
     qid: str = Path(..., min_length=2, description="Wikidata QID, e.g. Q42"),
-    entity_type: str = Query(
-        ..., description="Entity type being assigned (for the cross-check)"
+    entity_type: str | None = Query(
+        None,
+        description=(
+            "Entity type being assigned, for the type cross-check (corroboration badge). "
+            "Optional (Feature 098): omit when grounding before a type is chosen — the "
+            "suggested_entity_type is still returned, only the corroboration is then neutral."
+        ),
     ),
 ) -> dict[str, Any]:
     """Resolve a pasted Wikidata QID to a single candidate (the modal's paste-a-QID fallback).

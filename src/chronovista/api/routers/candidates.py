@@ -124,6 +124,11 @@ async def _run_generation(run_id: uuid.UUID) -> None:
     sees the advancing percentage; the candidate upserts commit once at the end
     (FR-027). Any failure marks the run failed (FR-025 / graceful degradation).
     """
+    from chronovista.services.wikidata_client import (
+        WikidataClient,
+        WikidataUnavailable,
+    )
+
     session_factory = db_manager.get_session_factory()
     run_repo = CandidateGenerationRunRepository()
     service = CandidateSuggestionService(
@@ -132,6 +137,9 @@ async def _run_generation(run_id: uuid.UUID) -> None:
         video_repo=VideoRepository(),
         alias_repo=EntityAliasRepository(),
         enrichment=None,
+        # No wikidata_client here on purpose (Feature 098): generation types from the
+        # instance_of_map pre-fetched OUTSIDE the session below, so the service never fetches
+        # inline during the sweep.
     )
 
     last_pct = 0
@@ -154,8 +162,23 @@ async def _run_generation(run_id: uuid.UUID) -> None:
             await heartbeat_session.commit()
 
     try:
+        # Pre-fetch P31 OUTSIDE the generate session (Feature 098): read the target QIDs in a
+        # short session, close it, THEN run the (minutes-long) Wikidata batch with no DB
+        # transaction held across the network I/O (the Feature 094 held-session class). A
+        # Wikidata outage degrades to {} → each candidate falls back to the relation heuristic.
+        async with session_factory() as qid_session:
+            target_qids = await service.discover_target_qids(qid_session)
+            await qid_session.rollback()
+        instance_of_map: dict[str, list[str]] = {}
+        if target_qids:
+            try:
+                instance_of_map = await WikidataClient().fetch_instance_of(target_qids)
+            except WikidataUnavailable:
+                instance_of_map = {}
         async with session_factory() as gen_session:
-            summary = await service.generate(gen_session, progress=on_progress)
+            summary = await service.generate(
+                gen_session, progress=on_progress, instance_of_map=instance_of_map
+            )
             await gen_session.commit()
         async with session_factory() as done_session:
             await run_repo.finish(
@@ -347,6 +370,9 @@ async def approve_candidate(
     a 404, an already-grounded identity/name collision ``superseded``.
     """
     parsed_id = _parse_candidate_id(candidate_id)
+    # approve() re-verifies the entity's type from its own Wikidata P31 (Feature 098, FR-006) for
+    # pending candidates only, before the create + collision check. See the held-session trade-off
+    # documented on CandidateSuggestionService.reverify_type (bounded, single-user, pending-only).
     result = await service.approve(
         session, candidate_id=parsed_id, reviewed_by=reviewed_by
     )

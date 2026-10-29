@@ -217,6 +217,18 @@ class TestEmptyVsUnavailable:
         with pytest.raises(WikidataUnavailable):
             await client.search_candidates("X", "person", limit=5)
 
+    async def test_non_json_200_raises_unavailable(self) -> None:
+        # A 200 with a non-JSON body (Wikimedia maintenance/HTML/truncated page) must degrade
+        # to WikidataUnavailable, not escape as a raw JSONDecodeError (Feature 098 / FR-011).
+        def html_200(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, text="<html>maintenance</html>")
+
+        client = WikidataClient(
+            http=httpx.AsyncClient(transport=httpx.MockTransport(html_200))
+        )
+        with pytest.raises(WikidataUnavailable):
+            await client.fetch_instance_of(["Q42"])
+
 
 class TestOffsetPaging:
     async def test_offset_passes_continue_to_search(self) -> None:

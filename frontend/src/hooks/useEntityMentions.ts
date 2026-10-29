@@ -854,12 +854,12 @@ export interface UseWikidataCandidatesResult {
  */
 export function useWikidataCandidates(
   name: string,
-  entityType: string,
+  entityType: string | undefined,
   limit = 7
 ): UseWikidataCandidatesResult {
   const [searchParams, setSearchParams] = useState<{
     name: string;
-    entityType: string;
+    entityType: string | undefined;
   } | null>(null);
 
   const queryResult = useInfiniteQuery<WikidataCandidatesData, ApiError>({

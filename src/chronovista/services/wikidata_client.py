@@ -22,6 +22,13 @@ import httpx
 
 from chronovista.models.wikidata_candidate import WikidataCandidate
 from chronovista.services import wikidata_properties as wp
+from chronovista.services.wikidata_taxonomy import (
+    EXPECTED_INSTANCE_OF as EXPECTED_INSTANCE_OF,  # re-export: single source (Feature 098)
+)
+from chronovista.services.wikidata_taxonomy import (
+    suggest_entity_type,
+    type_corroboration,
+)
 
 API = "https://www.wikidata.org/w/api.php"
 # Wikimedia's User-Agent policy gates request rate on a compliant UA that carries a contact
@@ -33,45 +40,20 @@ USER_AGENT = (
     "personal YouTube-library tool)"
 )
 
-# Instance_of (P31) values that corroborate a hand-assigned type. Mirrors the pipeline's
-# deliberately-narrow map (sweep_absent_wikidata.EXPECTED): a wrong "matches" is costlier than
-# a missed one, since it is the signal a reviewer most trusts.
-EXPECTED_INSTANCE_OF: dict[str, set[str]] = {
-    "person": {"Q5"},
-    "place": {"Q6256", "Q3624078", "Q515", "Q15284", "Q7275", "Q82794", "Q23442"},
-    "organization": {
-        "Q4830453",
-        "Q43229",
-        "Q783794",
-        "Q7278",
-        "Q1616075",
-        "Q11033",
-        "Q163740",
-        "Q3918",
-        "Q1002697",
-    },
-}
+# P31→type knowledge now lives in the shared classifier (Feature 098): EXPECTED_INSTANCE_OF is
+# imported/re-exported above and the corroboration rule is delegated below, so the create badge and
+# the candidate classifier cannot drift (single source of truth). The callers of
+# ``_type_verification`` below are unchanged.
 
 
-def _type_verification(entity_type: str, instance_of: list[str]) -> bool | None:
+def _type_verification(entity_type: str | None, instance_of: list[str]) -> bool | None:
     """Tri-state type corroboration for a Wikidata candidate (#271).
 
-    The ONE definition of the corroboration rule, shared by both candidate paths
-    (search + paste-a-QID) so they cannot drift.
-
-    - ``True``  — the entity type has an expected ``P31`` set AND the candidate's
-      ``instance_of`` corroborates it.
-    - ``False`` — the type has an expected set but ``instance_of`` does not match
-      it: a genuine "type may differ".
-    - ``None``  — the type has no expected set (e.g. ``event``, ``work``,
-      ``concept``, ``technical_term``), so corroboration is simply unavailable.
-      This is NOT a doubt signal; callers must render it as neutral/absent, never
-      as "type may differ" (that conflation is the #271 bug).
+    Thin wrapper over the shared ``wikidata_taxonomy.type_corroboration`` (Feature 098).
+    Semantics unchanged: ``True`` (agrees) / ``False`` ("type may differ") / ``None`` (neutral —
+    no reliable expected set; render as absent, never as "may differ").
     """
-    expected = EXPECTED_INSTANCE_OF.get(entity_type, set())
-    if not expected:
-        return None
-    return bool(expected & set(instance_of))
+    return type_corroboration(entity_type, instance_of)
 
 
 # Thin + sitelink-less + ORCID-only is the signature of an item auto-generated from a
@@ -126,12 +108,23 @@ class WikidataClient:
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
                 raise WikidataUnavailable(str(exc)) from exc
-            data: dict[str, Any] = resp.json()
+            # A 200 with a non-JSON body (Wikimedia maintenance/HTML/captcha page or a
+            # truncated response under load) raises ValueError/JSONDecodeError, which is NOT
+            # an httpx.HTTPError — translate it so callers degrade instead of failing (FR-011).
+            try:
+                data: dict[str, Any] = resp.json()
+            except ValueError as exc:
+                raise WikidataUnavailable(f"non-JSON response: {exc}") from exc
             return data
         raise WikidataUnavailable("rate limited repeatedly")
 
     async def search_candidates(
-        self, name: str, entity_type: str, *, limit: int = 5, offset: int = 0
+        self,
+        name: str,
+        entity_type: str | None = None,
+        *,
+        limit: int = 5,
+        offset: int = 0,
     ) -> list[WikidataCandidate]:
         """Return a relevance-ranked shortlist (at most ``limit``) for ``name``.
 
@@ -181,12 +174,32 @@ class WikidataClient:
                     sitelink_count=det.get("sitelinks", 0),
                     is_stub=bool(det.get("looks_like_author_stub", False)),
                     type_matches=_type_verification(entity_type, instance_of),
+                    suggested_entity_type=suggest_entity_type(instance_of),
                 )
             )
         return candidates
 
+    async def fetch_instance_of(self, qids: list[str]) -> dict[str, list[str]]:
+        """Batched P31 (``instance_of``) for many QIDs (Feature 098).
+
+        Public wrapper over the one batched ``wbgetentities`` fetch (50/chunk), returning
+        ``{qid: [p31 qids]}`` for the QIDs Wikidata knows (unknown QIDs are omitted). Reuses the
+        single fetch path so candidate typing, the backfill, and approval re-verification share it.
+        Raises ``WikidataUnavailable`` on transport/rate-limit failure so callers can degrade.
+        """
+        if not qids:
+            return {}
+        http = self._http or self._new_client()
+        owns = self._http is None
+        try:
+            details = await self._item_details(http, qids)
+        finally:
+            if owns:
+                await http.aclose()
+        return {qid: list(det.get("instance_of") or []) for qid, det in details.items()}
+
     async def resolve_candidate(
-        self, qid: str, entity_type: str
+        self, qid: str, entity_type: str | None = None
     ) -> WikidataCandidate | None:
         """Resolve one pasted Wikidata QID directly to a candidate.
 
@@ -218,6 +231,7 @@ class WikidataClient:
             sitelink_count=det.get("sitelinks", 0),
             is_stub=bool(det.get("looks_like_author_stub", False)),
             type_matches=_type_verification(entity_type, instance_of),
+            suggested_entity_type=suggest_entity_type(instance_of),
         )
 
     async def fetch_properties(self, qid: str) -> dict[str, Any]:

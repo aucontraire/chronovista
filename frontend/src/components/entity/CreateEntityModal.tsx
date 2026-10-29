@@ -176,6 +176,10 @@ export default function CreateEntityModal({
   // prefill again — but this flag is what stops any of that from clobbering
   // a Description the user typed themselves.
   const [descriptionTouched, setDescriptionTouched] = useState(false);
+  // Feature 098 (US3): true once the user has picked the entity type
+  // themselves. A grounded candidate's suggested type only fills the selector
+  // while this is false — an explicit choice is never overridden.
+  const [typeTouched, setTypeTouched] = useState(false);
   // Feature: picker candidate reachability — text the user typed into the
   // picker's QID field that never resolved to a valid QID/URL. Used to warn
   // before a silent-discard submit rather than to block it.
@@ -297,6 +301,7 @@ export default function CreateEntityModal({
     setHighlightedIndex(-1);
     setApprovedCandidate(null);
     setDescriptionTouched(false);
+    setTypeTouched(false);
     setPendingInvalidQidText("");
     setShowQidConfirm(false);
     // WikidataGroundingPicker's own search/skip state resets on its own —
@@ -539,8 +544,20 @@ export default function CreateEntityModal({
       if (candidate !== null && !descriptionTouched) {
         setDescription(candidate.description ?? "");
       }
+      // Feature 098 (US3): pre-select the Wikidata-suggested type as a
+      // default only; null suggestion leaves the selector untouched.
+      if (
+        candidate !== null &&
+        !typeTouched &&
+        candidate.suggested_entity_type !== null &&
+        (ENTITY_PRODUCING_TYPES as readonly string[]).includes(
+          candidate.suggested_entity_type
+        )
+      ) {
+        setEntityType(candidate.suggested_entity_type);
+      }
     },
-    [descriptionTouched]
+    [descriptionTouched, typeTouched]
   );
 
   // ---------------------------------------------------------------------------
@@ -1072,7 +1089,10 @@ export default function CreateEntityModal({
             <select
               id="create-entity-type"
               value={entityType}
-              onChange={(e) => setEntityType(e.target.value)}
+              onChange={(e) => {
+                setEntityType(e.target.value);
+                setTypeTouched(true);
+              }}
               disabled={isSubmitting}
               aria-required="true"
               className="
@@ -1181,11 +1201,11 @@ export default function CreateEntityModal({
           {/* leaves the primary submit button enabled, so a slow/unavailable/ */}
           {/* empty lookup never blocks creation.                              */}
           {/* ---------------------------------------------------------------- */}
-          {groundingName !== "" && entityType !== "" && (
+          {groundingName !== "" && (
             <WikidataGroundingPicker
               ref={pickerRef}
               name={groundingName}
-              entityType={entityType}
+              entityType={entityType !== "" ? entityType : undefined}
               selectedCandidate={approvedCandidate}
               onSelectCandidate={handleCandidateSelect}
               onPendingInvalidQidChange={setPendingInvalidQidText}

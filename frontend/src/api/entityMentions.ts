@@ -1162,6 +1162,11 @@ export interface WikidataCandidate {
    * never as "type may differ".
    */
   type_matches: boolean | null;
+  /**
+   * Entity type suggested from this candidate's own Wikidata `instance_of`
+   * (Feature 098), or `null` when undeterminable. A default only — never forced.
+   */
+  suggested_entity_type: string | null;
 }
 
 /**
@@ -1217,16 +1222,18 @@ export interface WikidataCandidateByQidResponse {
  */
 export async function fetchWikidataCandidates(
   name: string,
-  entityType: string,
+  entityType: string | undefined,
   limit = 7,
   signal?: AbortSignal,
   offset = 0
 ): Promise<WikidataCandidatesData> {
   const params = new URLSearchParams({
     name,
-    entity_type: entityType,
     limit: String(limit),
   });
+  if (entityType !== undefined && entityType !== "") {
+    params.set("entity_type", entityType);
+  }
   if (offset > 0) {
     params.set("offset", String(offset));
   }
@@ -1250,10 +1257,13 @@ export async function fetchWikidataCandidates(
  */
 export async function fetchWikidataCandidateByQid(
   qid: string,
-  entityType: string,
+  entityType: string | undefined,
   signal?: AbortSignal
 ): Promise<WikidataCandidateByQidData> {
-  const params = new URLSearchParams({ entity_type: entityType });
+  const params = new URLSearchParams();
+  if (entityType !== undefined && entityType !== "") {
+    params.set("entity_type", entityType);
+  }
   const res = await apiFetch<WikidataCandidateByQidResponse>(
     `/entities/wikidata-candidates/${encodeURIComponent(qid)}?${params.toString()}`,
     {

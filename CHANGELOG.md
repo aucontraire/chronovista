@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.105.1] - 2026-10-30
+
+### Fixed
+- **Organizations are no longer mistyped as "other" when approved.** An entity whose Wikidata classification was a kind of organization the type table did not yet recognize (for example a military alliance, an international organization, a think tank, a research institute, a public university, or an online platform) was demoted at approval to the catch-all "other" type — worse than the plain-language guess it replaced, which already had it as an organization. Approval (and candidate generation) now treat the catch-all as "could not classify" and keep the more specific type instead of overwriting it, and those organization classes are recognized outright. A one-time, reversible re-type corrects the entities already affected.
+
+### Internal
+- Approval re-verification (`reverify_type`) and candidate generation now share one definition of "positive P31 evidence" by routing through `wikidata_taxonomy.suggest_entity_type`, which yields no suggestion for the catch-all OTHER — the Direction-A rule `backfill_candidate_types` already applied, so the three paths can no longer disagree (the disagreement *was* the bug: approval overwrote a specific stored type with OTHER while its siblings kept it). The organization classification set gains the classes that were falling through. Candidate `provenance` now records `type_source` (`"p31"` vs `"relation_heuristic"`) so a heuristic fallback is never silently indistinguishable from an authoritative classification. No schema change, no new dependency. Covered by taxonomy unit tests for the newly mapped classes and integration tests for the approval OTHER-guard, the mapping end to end, and generation's `type_source` on each path.
+
 ## [0.105.0] - 2026-10-29
 
 ### Added

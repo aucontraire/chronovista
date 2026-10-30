@@ -198,6 +198,72 @@ class WikidataClient:
                 await http.aclose()
         return {qid: list(det.get("instance_of") or []) for qid, det in details.items()}
 
+    async def fetch_sitelinks(self, qids: list[str]) -> dict[str, dict[str, str]]:
+        """Batched Wikipedia sitelinks for many QIDs (Feature 100).
+
+        Returns ``{qid: {wiki_dbname: article_title}}`` restricted to **Wikipedia** projects
+        (``*wiki`` keys, excluding Commons / Wikispecies / Meta / Wikidata and other sister
+        projects, per FR-002). The caller derives a language subdomain from a dbname by dropping
+        the ``wiki`` suffix (``eswiki`` → ``es``). Batched 50 ids/request (the ``wbgetentities``
+        ceiling, FR-016) over the shared polite client; raises ``WikidataUnavailable`` on
+        transport/rate-limit failure so callers can degrade (FR-014).
+        """
+        if not qids:
+            return {}
+        non_wikipedia = frozenset(
+            {
+                # sister projects + Wikimedia admin wikis whose dbname ends in "wiki" but which
+                # are NOT language Wikipedias (sister projects like enwiktionary/enwikinews end in
+                # "wiktionary"/"wikinews" and are already excluded by the endswith("wiki") filter).
+                "commonswiki",
+                "specieswiki",
+                "metawiki",
+                "wikidatawiki",
+                "sourceswiki",
+                "mediawikiwiki",
+                "wikimaniawiki",
+                "incubatorwiki",
+                "testwiki",
+                "test2wiki",
+                "outreachwiki",
+                "donatewiki",
+                "foundationwiki",
+                "nostalgiawiki",
+            }
+        )
+        http = self._http or self._new_client()
+        owns = self._http is None
+        out: dict[str, dict[str, str]] = {}
+        try:
+            for start in range(0, len(qids), 50):
+                data = await self._get(
+                    http,
+                    action="wbgetentities",
+                    ids="|".join(qids[start : start + 50]),
+                    props="sitelinks",
+                )
+                entities = data.get("entities") or {}
+                for qid, ent in entities.items():
+                    if not isinstance(ent, dict) or "missing" in ent:
+                        continue
+                    sitelinks = ent.get("sitelinks") or {}
+                    wikis: dict[str, str] = {}
+                    for dbname, link in sitelinks.items():
+                        title = link.get("title") if isinstance(link, dict) else None
+                        if (
+                            isinstance(dbname, str)
+                            and dbname.endswith("wiki")
+                            and dbname not in non_wikipedia
+                            and isinstance(title, str)
+                            and title
+                        ):
+                            wikis[dbname] = title
+                    out[str(qid)] = wikis
+        finally:
+            if owns:
+                await http.aclose()
+        return out
+
     async def resolve_candidate(
         self, qid: str, entity_type: str | None = None
     ) -> WikidataCandidate | None:

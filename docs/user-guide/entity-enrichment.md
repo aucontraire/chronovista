@@ -139,5 +139,18 @@ enrichment. The same background fetch also runs when you **re-link** or **refres
 after creation (see above), so a single corrected entity fills its facts without waiting for
 the next batch run.
 
+### Categories for entities without an English Wikipedia article
+
+A grounded entity whose Wikipedia article exists only in another language — Spanish, French,
+Hebrew, Arabic, and so on — used to show no categories, because categories were read from the
+English article it does not have. Now the same background fetch reads that entity's foreign-language
+article categories and maps each one to its English equivalent, attaching the English categories it
+finds and quietly skipping any that have no English counterpart. When the entity has articles in
+several languages, the categories from all of them are combined. Because this runs on the same
+approval / refresh fetch, pressing **Refresh** on such an entity recovers its categories; a one-time
+maintenance backfill applies the same recovery to entities created before this was added. The
+recovered categories are stored exactly like English-sourced ones, so the entity takes its place in
+the shared-category relationships used to relate entities to one another.
+
 For how the enrichment is stored, see
 [Data model](../architecture/data-model.md).

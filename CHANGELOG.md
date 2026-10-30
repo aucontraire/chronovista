@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.105.0] - 2026-10-29
+
+### Added
+- **Entities that only have a non-English Wikipedia article now get English categories too.** Some grounded entities have no English Wikipedia article but do have one in another language (Spanish, French, Hebrew, Arabic, …), so they showed no categories and dropped out of the shared-category similarity signal. The system now reads each such entity's foreign-language article categories and maps each one to its English equivalent (through the category's own Wikidata item), attaching the English categories it finds and skipping the ones with no English counterpart. This happens automatically whenever an entity is grounded, approved, or refreshed — so the entity-detail **Refresh** button recovers these entities — and a one-time backfill applies the same recovery to entities that already exist.
+
+### Internal
+- A single per-entity cross-walk primitive (`services/category_coverage.resolve_and_crosswalk_entity`) resolves a foreign-only entity's articles from its Wikidata sitelinks, fetches each foreign article's non-hidden categories (the category fetch is now language-parameterized, default English, so existing callers are unchanged), and cross-walks each category to English via its Wikidata item's `enwiki` sitelink — taking the **union** across all of the entity's languages, de-duplicated, and dropping only the categories with no English equivalent (the entity is still categorized with whatever cross-walks). Two thin callers consume it: the on-approval/refresh enrichment seam (`EntityEnrichmentService._store_categories`, which runs the cross-walk and its size fetch with no DB session held, then a short write — and skips any entity that already carries a DBpedia IRI, i.e. has an English article), and a dry-run-first, `--confirm-target`-gated, reversible bulk backfill (`scripts/utilities/backfill_foreign_categories.py`). Cross-walked categories are stored under the existing `wikipedia` source, indistinguishable from native ones, so they feed the shared-category similarity signal identically. No schema change, no new third-party dependency. Covered by unit tests (language parameter, pageprops lookup, union/dedup/drop, hyphenated-language host derivation end-to-end) and real-database integration tests (enrichment on approval + refresh, best-effort failure, the DBpedia-guard, backfill dry-run/apply/idempotency/reverse, and a downstream shared-category-bridge check).
+
 ## [0.104.1] - 2026-10-29
 
 ### Fixed

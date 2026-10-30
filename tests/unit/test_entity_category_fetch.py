@@ -272,3 +272,95 @@ class TestCategoriesForTitles:
             assert "chronovista" in client.headers["User-Agent"]
         finally:
             await client.aclose()
+
+
+class TestLanguageParameter:
+    async def test_default_language_queries_english_wikipedia(self) -> None:
+        hosts: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            hosts.append(request.url.host)
+            return httpx.Response(200, json=_pages())
+
+        await _service(handler).categories_for_titles(["Title_A"])
+        assert hosts == ["en.wikipedia.org"]
+
+    async def test_language_switches_the_request_host(self) -> None:
+        hosts: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            hosts.append(request.url.host)
+            return httpx.Response(
+                200, json=_pages({"title": "Foo", "categories": _cats("Categoría:x")})
+            )
+
+        service = EntityCategoryFetchService(
+            client_factory=lambda: httpx.AsyncClient(
+                transport=httpx.MockTransport(handler)
+            ),
+            pause=0.0,
+            language="es",
+        )
+        await service.categories_for_titles(["Foo"])
+        assert hosts == ["es.wikipedia.org"]
+
+
+class TestWikibaseItemsForCategories:
+    async def test_maps_titles_to_qids_and_omits_itemless(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            q = parse_qs(request.url.query.decode())
+            assert q["prop"] == ["pageprops"]
+            assert q["ppprop"] == ["wikibase_item"]
+            return httpx.Response(
+                200,
+                json={
+                    "query": {
+                        "pages": {
+                            "1": {
+                                "title": "Categoría:A",
+                                "pageprops": {"wikibase_item": "Q1"},
+                            },
+                            "2": {"title": "Categoría:B"},  # no wikibase_item → omitted
+                        }
+                    }
+                },
+            )
+
+        result = await _service(handler).wikibase_items_for_categories(
+            ["Categoría:A", "Categoría:B"]
+        )
+        assert result == {"Categoría:A": "Q1"}
+
+    async def test_normalized_title_maps_back_to_caller_input(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "query": {
+                        "normalized": [
+                            {"from": "Categoría:A_B", "to": "Categoría:A B"}
+                        ],
+                        "pages": {
+                            "1": {
+                                "title": "Categoría:A B",
+                                "pageprops": {"wikibase_item": "Q9"},
+                            }
+                        },
+                    }
+                },
+            )
+
+        assert await _service(handler).wikibase_items_for_categories(
+            ["Categoría:A_B"]
+        ) == {"Categoría:A_B": "Q9"}
+
+    async def test_empty_input_makes_no_request(self) -> None:
+        calls = 0
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            nonlocal calls
+            calls += 1
+            return httpx.Response(200, json={})
+
+        assert await _service(handler).wikibase_items_for_categories([]) == {}
+        assert calls == 0

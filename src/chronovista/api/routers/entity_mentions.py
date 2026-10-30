@@ -325,6 +325,24 @@ def _build_image_state(entity: NamedEntityDB) -> EntityImageState:
     )
 
 
+def _wikidata_description_fallback(properties: dict[str, Any] | None) -> str | None:
+    """First Wikidata reference-block description, for list display when an entity has no
+    hand-set ``description`` column.
+
+    Candidate-promoted / enrichment-only entities store the Wikidata description in
+    ``properties.wikidata_description`` (a display-only reference block) rather than the
+    ``description`` column, which stays empty until a human writes one. The detail page already
+    falls back to this value (badged "from Wikidata"); this gives the list endpoint the same
+    value so the two views agree instead of the list showing "No description available".
+    """
+    block = (properties or {}).get("wikidata_description")
+    if isinstance(block, dict):
+        values = block.get("values")
+        if isinstance(values, list) and values and isinstance(values[0], str):
+            return values[0] or None
+    return None
+
+
 @router.get(
     "/entities",
     status_code=200,
@@ -445,6 +463,13 @@ async def list_entities(
             "canonical_name": e.canonical_name,
             "entity_type": e.entity_type,
             "description": e.description,
+            # When the entity has no hand-set description, surface the Wikidata reference-block
+            # description so the list matches what the detail page shows (badged "from Wikidata").
+            "fallback_description": (
+                _wikidata_description_fallback(e.properties)
+                if not e.description
+                else None
+            ),
             "status": e.status,
             "mention_count": e.mention_count or 0,
             "video_count": counts[e.id].total,
@@ -953,6 +978,14 @@ async def get_entity_detail(
             "canonical_name": entity.canonical_name,
             "entity_type": entity.entity_type,
             "description": entity.description,
+            # Same shared derivation as the list endpoint, so both views show the identical
+            # Wikidata fallback (badged "from Wikidata") when there is no hand-set description —
+            # one source of truth instead of the detail page re-deriving it in the frontend.
+            "fallback_description": (
+                _wikidata_description_fallback(entity.properties)
+                if not entity.description
+                else None
+            ),
             "status": entity.status,
             "mention_count": entity.mention_count or 0,
             "video_count": association.total,

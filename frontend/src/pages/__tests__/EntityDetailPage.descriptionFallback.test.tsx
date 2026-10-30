@@ -204,7 +204,11 @@ beforeEach(() => {
 
 describe("EntityDetailPage description fallback", () => {
   it("shows the wikidata description with a hint when description is empty", () => {
-    setEntity({ description: "", enrichment });
+    setEntity({
+      description: "",
+      fallback_description: "a placeholder wikidata description",
+      enrichment,
+    });
     renderPage();
     const hint = screen.getByTestId("description-wikidata-hint");
     expect(hint).toHaveTextContent("from Wikidata");
@@ -212,7 +216,11 @@ describe("EntityDetailPage description fallback", () => {
   });
 
   it("shows the curated description, without the hint, when present", () => {
-    setEntity({ description: "A curated description.", enrichment });
+    setEntity({
+      description: "A curated description.",
+      fallback_description: "a placeholder wikidata description",
+      enrichment,
+    });
     renderPage();
     expect(screen.getByText("A curated description.")).toBeInTheDocument();
     expect(screen.queryByTestId("description-wikidata-hint")).not.toBeInTheDocument();

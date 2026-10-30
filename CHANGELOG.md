@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.105.2] - 2026-10-30
+
+### Fixed
+- **The entities list now shows the Wikidata description for entities that have no hand-written one.** An entity promoted from a candidate (or otherwise enriched) keeps its Wikidata description in a display-only reference block rather than in its own description field, so the list view showed "No description available" even though the detail view displayed it. The list now falls back to the same Wikidata description the detail page uses, badged "from Wikidata", so the two views agree.
+
+### Internal
+- Both `GET /entities` and `GET /entities/{id}` gain a nullable `fallback_description` field (the first `properties.wikidata_description` value, populated only when the `description` column is empty) from one shared backend helper — additive and backward-compatible. The entity list card and the detail header both render `description`, else `fallback_description` with the muted "from Wikidata" attribution badge, else "No description available." The detail page now consumes this backend field instead of re-deriving the fallback from the enrichment block in the frontend, so list and detail share a single source of truth (no divergent derivation). No schema change, no new dependency.
+
 ## [0.105.1] - 2026-10-30
 
 ### Fixed

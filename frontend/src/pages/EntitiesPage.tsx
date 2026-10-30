@@ -108,10 +108,22 @@ function EntityCard({ entity }: { entity: EntityListItem }) {
         {entity.canonical_name}
       </h3>
 
-      {/* Description snippet */}
+      {/* Description snippet — falls back to the Wikidata reference description (badged) when
+          the entity has no hand-written one, matching the detail page (Feature 057). */}
       {entity.description ? (
         <p className="text-sm text-gray-500 mb-4 line-clamp-2">
           {entity.description}
+        </p>
+      ) : entity.fallback_description ? (
+        <p className="text-sm text-gray-500 mb-4 line-clamp-2">
+          {entity.fallback_description}{" "}
+          <span
+            data-testid="description-wikidata-hint"
+            title="Auto-derived from Wikidata; not hand-curated"
+            className="ml-1 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-slate-100 text-slate-600 border border-slate-200 align-middle"
+          >
+            from Wikidata
+          </span>
         </p>
       ) : (
         <p className="text-sm text-gray-400 italic mb-4 line-clamp-1">

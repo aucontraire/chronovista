@@ -126,6 +126,12 @@ export interface EntityListItem {
   canonical_name: string;
   entity_type: string;
   description: string | null;
+  /**
+   * Wikidata reference-block description, present only when `description` is empty — the UI
+   * falls back to this (badged "from Wikidata") so list and detail show the same value.
+   * Optional for backward compatibility with older responses (matches `enrichment`/`image`).
+   */
+  fallback_description?: string | null;
   status: string;
   mention_count: number;
   /** Combined distinct-video association total across all five sources. */
@@ -171,6 +177,12 @@ export interface EntityDetail {
   canonical_name: string;
   entity_type: string;
   description: string | null;
+  /**
+   * Wikidata reference-block description, present only when `description` is empty — the detail
+   * header falls back to this (badged "from Wikidata"), the same value the list shows. Optional
+   * for backward compatibility with older responses (matches `enrichment`/`image`).
+   */
+  fallback_description?: string | null;
   status: string;
   mention_count: number;
   /** Combined distinct-video association total across all five sources. */

@@ -74,6 +74,22 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
             "Q1153191",  # online newspaper
             "Q35127",  # website
             "Q561068",  # specialty channel
+            # Classes that previously classified to OTHER and so were demoted from the heuristic's
+            # 'organization' guess at approval (reverify OTHER-guard fix). A rock band (musical
+            # ensemble ⊂ organization) is included; platform/software classes are deliberately NOT
+            # here — they await a future `product` entity type rather than being forced into org.
+            "Q484652",  # international organization
+            "Q1127126",  # military alliance
+            "Q124964",  # coalition
+            "Q52110228",  # geopolitical group
+            "Q4120211",  # regional organization
+            "Q120121699",  # political economic union
+            "Q170156",  # confederation
+            "Q155271",  # think tank
+            "Q31855",  # research institute
+            "Q875538",  # public university
+            "Q45400320",  # open-access publisher
+            "Q5741069",  # rock band (musical ensemble ⊂ organization)
         }
     ),
     EntityType.EVENT: frozenset(

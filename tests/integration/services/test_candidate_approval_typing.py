@@ -230,3 +230,151 @@ async def test_reachable_but_no_p31_keeps_stored_type(
     created = await NamedEntityRepository().get(db_session, result.created_entity_id)
     assert created is not None
     assert created.entity_type == "person"
+
+
+async def test_reverify_keeps_stored_type_when_p31_classifies_to_other(
+    db_session: AsyncSession, make_seed_entity: Callable[..., NamedEntityDB]
+) -> None:
+    # Regression: a reachable P31 that classifies ONLY to the catch-all OTHER is evidence the
+    # classifier could not place the entity, NOT positive evidence of type OTHER. Approval must
+    # keep the more specific stored 'organization' type, never demote it to 'other' (FR-006 /
+    # Direction A). This is the exact defect that typed real organizations as 'other' at approval.
+    unmapped_p31 = (
+        "Q999999999"  # absent from INSTANCE_OF_BY_TYPE → classify_entity_type → OTHER
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"entities": {"Q7106": _entity_payload(unmapped_p31)}}
+        )
+
+    cand = await _pending_candidate(
+        db_session,
+        make_seed_entity,
+        seed_qid="Q5955",
+        target_qid="Q7106",
+        stored_type="organization",
+    )
+    result = await _service(handler).approve(
+        db_session, candidate_id=cand.id, reviewed_by="tester"
+    )
+
+    assert result.outcome == "approved"
+    assert result.created_entity_id is not None
+    created = await NamedEntityRepository().get(db_session, result.created_entity_id)
+    assert created is not None
+    assert created.entity_type == "organization"  # NOT demoted to "other"
+
+
+async def test_reverify_applies_newly_mapped_organization_class(
+    db_session: AsyncSession, make_seed_entity: Callable[..., NamedEntityDB]
+) -> None:
+    # The demoted classes now map to organization; a military-alliance P31 overrides a stale
+    # stored 'person' with the determinate 'organization', proving the mapping end to end.
+    military_alliance = "Q1127126"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"entities": {"Q7107": _entity_payload(military_alliance)}}
+        )
+
+    cand = await _pending_candidate(
+        db_session,
+        make_seed_entity,
+        seed_qid="Q5956",
+        target_qid="Q7107",
+        stored_type="person",
+    )
+    result = await _service(handler).approve(
+        db_session, candidate_id=cand.id, reviewed_by="tester"
+    )
+
+    assert result.outcome == "approved"
+    assert result.created_entity_id is not None
+    created = await NamedEntityRepository().get(db_session, result.created_entity_id)
+    assert created is not None
+    assert created.entity_type == "organization"
+
+
+async def _generate_candidate(
+    session: AsyncSession,
+    make_seed_entity: Callable[..., NamedEntityDB],
+    *,
+    seed_qid: str,
+    target_qid: str,
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> CandidateDB:
+    """Run the real ``generate`` against a given Wikidata handler and return the candidate."""
+    session.add(
+        make_seed_entity(
+            name=f"Seed {seed_qid}",
+            qid=seed_qid,
+            relation="founder",
+            target_qid=target_qid,
+            target_label=TARGET_LABEL,
+        )
+    )
+    await session.flush()
+    await _service(handler).generate(session)
+    cand = await CandidateSuggestionRepository().get_by_channel_qid(
+        session, source_channel="relation", wikidata_qid=target_qid
+    )
+    assert cand is not None
+    return cand
+
+
+async def test_generation_records_heuristic_type_source_when_p31_unavailable(
+    db_session: AsyncSession, make_seed_entity: Callable[..., NamedEntityDB]
+) -> None:
+    # Wikidata down → no usable P31 → heuristic path, recorded in provenance so a guess is never
+    # silently indistinguishable from an authoritative classification.
+    cand = await _generate_candidate(
+        db_session,
+        make_seed_entity,
+        seed_qid="Q5957",
+        target_qid="Q7108",
+        handler=_down,
+    )
+    assert cand.provenance.get("type_source") == "relation_heuristic"
+
+
+async def test_generation_records_p31_type_source_and_classifies(
+    db_session: AsyncSession, make_seed_entity: Callable[..., NamedEntityDB]
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "entities": {"Q7109": _entity_payload("Q1127126")}
+            },  # military alliance
+        )
+
+    cand = await _generate_candidate(
+        db_session,
+        make_seed_entity,
+        seed_qid="Q5958",
+        target_qid="Q7109",
+        handler=handler,
+    )
+    assert cand.provenance.get("type_source") == "p31"
+    assert cand.type_hint == "organization"
+
+
+async def test_generation_falls_back_to_heuristic_when_p31_classifies_to_other(
+    db_session: AsyncSession, make_seed_entity: Callable[..., NamedEntityDB]
+) -> None:
+    # P31 present but catch-all OTHER → keep the relation heuristic, recorded as such (the same
+    # Direction-A rule as reverify_type, applied at generation).
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"entities": {"Q7110": _entity_payload("Q999999999")}}
+        )
+
+    cand = await _generate_candidate(
+        db_session,
+        make_seed_entity,
+        seed_qid="Q5959",
+        target_qid="Q7110",
+        handler=handler,
+    )
+    assert cand.provenance.get("type_source") == "relation_heuristic"

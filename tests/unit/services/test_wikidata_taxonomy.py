@@ -54,6 +54,35 @@ class TestClassifyCatchAll:
         assert classify_entity_type(["Q999999999", "Q5"]) == EntityType.PERSON
 
 
+class TestOrganizationDemotionFixClasses:
+    """Classes that previously classified to OTHER and so were demoted from the heuristic's
+    'organization' guess at approval. All now map to ORGANIZATION, which is both what lets the
+    repair re-type the affected entities and what keeps them inside corroboration coverage.
+    (Platform/software classes are intentionally NOT here — they await a future `product` type.)
+    """
+
+    @pytest.mark.parametrize(
+        "qid",
+        [
+            "Q484652",  # international organization
+            "Q1127126",  # military alliance
+            "Q124964",  # coalition
+            "Q52110228",  # geopolitical group
+            "Q4120211",  # regional organization
+            "Q120121699",  # political economic union
+            "Q170156",  # confederation
+            "Q155271",  # think tank
+            "Q31855",  # research institute
+            "Q875538",  # public university
+            "Q45400320",  # open-access publisher
+            "Q5741069",  # rock band
+        ],
+    )
+    def test_class_maps_to_organization(self, qid: str) -> None:
+        assert classify_entity_type([qid]) == EntityType.ORGANIZATION
+        assert suggest_entity_type([qid]) == "organization"
+
+
 class TestClassifyPrecedence:
     @pytest.mark.parametrize(
         ("instance_of", "expected"),

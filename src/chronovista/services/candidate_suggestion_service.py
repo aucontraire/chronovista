@@ -52,7 +52,7 @@ from chronovista.services.entity_mention_scan_service import (
 from chronovista.services.tag_normalization import TagNormalizationService
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
 from chronovista.services.wikidata_properties import RELATIONS
-from chronovista.services.wikidata_taxonomy import classify_entity_type
+from chronovista.services.wikidata_taxonomy import suggest_entity_type
 
 # Tokens for the inverted index (drops punctuation and underscores), matching the
 # word-boundary the detector regex uses.
@@ -419,13 +419,22 @@ class CandidateSuggestionService:
         token_count = len(normalized.split())
         if token_count < 1:
             return None
-        # Authoritative type from the candidate's own Wikidata P31 when available; fall back to
-        # the relation-name heuristic only when there is no usable P31 (QID unknown/unreachable
-        # or no instance_of) — Feature 098, FR-001/004/011.
+        # Authoritative type from the candidate's own Wikidata P31 when available; fall back to the
+        # relation-name heuristic when there is no usable P31 (QID unknown/unreachable or no
+        # instance_of) OR the P31 classifies only to the catch-all OTHER — a catch-all is evidence
+        # the classifier could not place it, not positive evidence of type OTHER (Feature 098,
+        # FR-001/004/011; the Direction-A rule shared with reverify_type and backfill_candidate_types
+        # via suggest_entity_type, which returns None for the OTHER case). ``type_source`` records
+        # which path set the type, so a heuristic guess is never silently indistinguishable from an
+        # authoritative classification (nor from a P31 fetch that quietly failed).
         p31 = p31_by_qid.get(row.wikidata_qid)
-        type_hint = (
-            classify_entity_type(p31) if p31 else _derive_type_hint(row.relations)
-        )
+        suggested = suggest_entity_type(p31) if p31 else None
+        if suggested is not None:
+            type_hint = EntityType(suggested)
+            type_source = "p31"
+        else:
+            type_hint = _derive_type_hint(row.relations)
+            type_source = "relation_heuristic"
         salience, specificity = index.salience(
             row.wikidata_qid, row.label, type_hint.value
         )
@@ -446,6 +455,7 @@ class CandidateSuggestionService:
             provenance={
                 "seed_entity_ids": [str(s) for s in row.seed_entity_ids],
                 "relations": row.relations,
+                "type_source": type_source,
             },
             possible_duplicate_of_id=ungrounded.get(normalized),
         )
@@ -453,10 +463,11 @@ class CandidateSuggestionService:
     async def reverify_type(self, qid: str, stored_type: str) -> str:
         """Re-verify an entity's type from its own Wikidata P31 at approval (Feature 098, FR-006).
 
-        Overrides the stored type ONLY with positive P31 evidence; with no usable P31 (QID
-        unknown/absent, or no instance_of) it keeps the stored type — consistent with
-        generation's heuristic-on-no-P31 (FR-004), so a reviewer never approves one type and
-        gets another. Best-effort: any Wikidata failure keeps the stored type, so approval never
+        Overrides the stored type ONLY with positive, determinate P31 evidence; with no usable P31
+        (QID unknown/absent, no instance_of, or a P31 that classifies only to the catch-all OTHER)
+        it keeps the stored type — consistent with generation's heuristic-on-no-P31 (FR-004) and
+        with ``backfill_candidate_types``' Direction-A rule, so a reviewer never approves one type
+        and gets another. Best-effort: any Wikidata failure keeps the stored type, so approval never
         fails for this reason (FR-011).
 
         Held-session trade-off: called inside ``approve`` for a PENDING candidate only, so the
@@ -476,7 +487,12 @@ class CandidateSuggestionService:
         ):  # noqa: BLE001 - best-effort; any failure keeps the stored type (FR-011)
             return stored_type
         p31 = p31_by_qid.get(qid)
-        return classify_entity_type(p31).value if p31 else stored_type
+        if not p31:
+            return stored_type
+        # A P31 that classifies only to the catch-all OTHER is NOT positive evidence of type OTHER;
+        # keep the more specific stored type (Direction A / FR-006). suggest_entity_type returns
+        # None for the OTHER case, which is exactly the "keep stored" signal.
+        return suggest_entity_type(p31) or stored_type
 
     async def approve(
         self, session: AsyncSession, *, candidate_id: uuid.UUID, reviewed_by: str

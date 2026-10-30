@@ -43,7 +43,13 @@ from chronovista.repositories.wikipedia_category_repository import (
     WikipediaCategoryRepository,
 )
 from chronovista.services import wikidata_properties as wp
-from chronovista.services.category_coverage import categorize_entity
+from chronovista.services.category_coverage import (
+    WIKIPEDIA_SOURCE,
+    categorize_entity,
+    default_fetch_factory,
+    resolve_and_crosswalk_entity,
+    store_categories_for_entity,
+)
 from chronovista.services.category_size import CategorySizeService
 from chronovista.services.dbpedia_resolver import DbpediaResolver
 from chronovista.services.entity_category_fetch import EntityCategoryFetchService
@@ -90,6 +96,9 @@ class EntityEnrichmentService:
         image_fallback_factory: Callable[
             [], WikipediaImageFallback
         ] = WikipediaImageFallback,
+        crosswalk_fetch_factory: Callable[
+            [str], EntityCategoryFetchService
+        ] = default_fetch_factory,
     ) -> None:
         """Initialise the service.
 
@@ -115,6 +124,7 @@ class EntityEnrichmentService:
         self._category_fetch_factory = category_fetch_factory
         self._size_factory = size_factory
         self._image_fallback_factory = image_fallback_factory
+        self._crosswalk_fetch_factory = crosswalk_fetch_factory
         self._repo = NamedEntityRepository()
         self._cat_repo = WikipediaCategoryRepository()
         self._assign_repo = EntityCategoryRepository()
@@ -259,23 +269,71 @@ class EntityEnrichmentService:
         Never raises and never blocks the entity's creation/grounding or its other enrichment: any
         failure (no resolvable article, a fetch error, a DB error) is caught and logged, leaving the
         entity grounded and its categories to be filled by a later batch run.
+
+        Foreign-only fallback (Feature 100): when the English path resolves no article AND no stored
+        DBpedia IRI is present (a DBpedia IRI implies an English article — out of scope, FR-001), the
+        entity's foreign-language categories are cross-walked to English via
+        ``resolve_and_crosswalk_entity`` and stored under the same ``wikipedia`` source. Because this
+        seam also runs on a Feature-073 reground/refresh, the detail-view Refresh recovers foreign-only
+        entities too. The cross-walk and its size fetch run with NO DB session held (the 094 deadlock
+        lesson); a short write session persists the single add-only result.
         """
         try:
+            resolved_title: str | None = None
+            has_dbpedia_iri = False
             async with self._session_factory() as session:
                 existing = await self._repo.get(session, entity_id)
                 if existing is None:
                     return
-                await categorize_entity(
+                external_ids = existing.external_ids or {}
+                dbpedia = external_ids.get("dbpedia")
+                has_dbpedia_iri = isinstance(dbpedia, dict) and bool(dbpedia.get("id"))
+                resolved_title = await categorize_entity(
                     session,
                     entity_id,
                     qid,
-                    existing.external_ids or {},
+                    external_ids,
                     fetch_service=self._category_fetch_factory(),
                     resolver=self._dbpedia_factory(),
                     cat_repo=self._cat_repo,
                     assign_repo=self._assign_repo,
                     size_service=self._size_factory(),
                     replace=False,
+                )
+                await session.commit()
+            if resolved_title is not None or has_dbpedia_iri:
+                # Either the English path handled it, OR a stored DBpedia IRI means the entity HAS
+                # an English article (DBpedia is English-Wikipedia-derived) and is out of scope for
+                # the foreign cross-walk (FR-001) — even if the English fetch merely failed this
+                # run, retry the English path later rather than mis-source foreign categories.
+                return
+
+            # Foreign-only fallback (Feature 100): no English article resolved. Cross-walk the
+            # entity's foreign-language categories to English. ALL network (sitelinks, per-language
+            # category fetch, cross-walk lookups, and the size fetch) runs with NO DB session held
+            # — the 094 deadlock lesson — then a short write session persists the result. The
+            # cross-walk's own eligibility gate re-confirms there is no enwiki article, so an entity
+            # whose English fetch merely failed transiently is correctly skipped here, not mis-filed.
+            result = await resolve_and_crosswalk_entity(
+                qid,
+                wikidata_client=self._client_factory(),
+                fetch_factory=self._crosswalk_fetch_factory,
+            )
+            if result is None or not result.english_categories:
+                return  # not eligible, or recovered zero — leave for a later run
+            sizes = await self._size_factory().sizes_for(result.english_categories)
+            async with self._session_factory() as session:
+                if await self._repo.get(session, entity_id) is None:
+                    return
+                await store_categories_for_entity(
+                    session,
+                    entity_id,
+                    result.english_categories,
+                    cat_repo=self._cat_repo,
+                    assign_repo=self._assign_repo,
+                    sizes=sizes,
+                    replace=False,
+                    source=WIKIPEDIA_SOURCE,
                 )
                 await session.commit()
         except Exception as exc:  # noqa: BLE001 (detached task must not surface)

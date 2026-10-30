@@ -135,6 +135,10 @@ COMMON_WORD_ALIASES = {
     "Brag",
     "Broke",
     "Cast",
+    # A generic English plural that is also a library tag; collides with the "categories"
+    # shorthand (`cats`) throughout the Feature 100 cross-walk code and tests. The real tag is
+    # still just a common word that identifies no one.
+    "Cats",
     "Cloud",
     "Destiny",
     # The Wikidata P57 field name (creative-work credit family), added 2026-10-25 when it blocked

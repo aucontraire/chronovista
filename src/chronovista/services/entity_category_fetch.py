@@ -25,6 +25,13 @@ import httpx
 
 WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
 USER_AGENT = "chronovista/1.0 (https://github.com/aucontraire/chronovista; category coverage fetch)"
+
+
+def _api_url_for(language: str) -> str:
+    """The MediaWiki API endpoint for a language's Wikipedia (``en`` → the default host)."""
+    return f"https://{language}.wikipedia.org/w/api.php"
+
+
 _DEFAULT_TIMEOUT = 15.0
 _BATCH = 50  # MediaWiki titles-per-request limit for most query modules
 _CLLIMIT = 500  # categories returned per page before a continue token is issued
@@ -45,10 +52,15 @@ class EntityCategoryFetchService:
         client_factory: Callable[[], httpx.AsyncClient] | None = None,
         timeout: float = _DEFAULT_TIMEOUT,
         pause: float = _DEFAULT_PAUSE,
+        language: str = "en",
     ) -> None:
         self._timeout = timeout
         self._client_factory = client_factory or self._new_client
         self._pause = pause
+        # Which Wikipedia to query. Default "en" preserves every existing caller unchanged;
+        # the foreign cross-walk (Feature 100) constructs the service per non-English language.
+        self._language = language
+        self._api_url = _api_url_for(language)
 
     def _new_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -159,6 +171,64 @@ class EntityCategoryFetchService:
             break
         return accumulated
 
+    async def wikibase_items_for_categories(
+        self, category_titles: Iterable[str]
+    ) -> dict[str, str]:
+        """Map each category page title on THIS language's wiki to its Wikidata item QID.
+
+        Uses ``prop=pageprops&ppprop=wikibase_item`` (the Feature 100 cross-walk's first hop).
+        Keys are the caller's exact input titles (e.g. a foreign ``Categoría:…``); a category with
+        no Wikidata item is simply absent from the result. Batched ≤50 titles/request and paced
+        between batches, the same etiquette as the category fetch (FR-016). Best-effort: a failed
+        request yields no mapping for its batch rather than raising (FR-014).
+        """
+        unique = [t for t in dict.fromkeys(category_titles) if t]
+        out: dict[str, str] = {}
+        if not unique:
+            return out
+        client = self._client_factory()
+        try:
+            for batch_index, start in enumerate(range(0, len(unique), _BATCH)):
+                if batch_index > 0 and self._pause > 0:
+                    await asyncio.sleep(self._pause)
+                batch = unique[start : start + _BATCH]
+                by_norm = {self._norm(t): t for t in batch}
+                data = await self._get(
+                    client,
+                    {
+                        "action": "query",
+                        "format": "json",
+                        "prop": "pageprops",
+                        "ppprop": "wikibase_item",
+                        "titles": "|".join(batch),
+                    },
+                )
+                query = data.get("query") or {}
+                if not isinstance(query, dict):
+                    continue
+                for norm_entry in query.get("normalized") or []:
+                    if isinstance(norm_entry, dict):
+                        origin = by_norm.get(
+                            self._norm(str(norm_entry.get("from", "")))
+                        )
+                        if origin is not None:
+                            by_norm[self._norm(str(norm_entry.get("to", "")))] = origin
+                pages = query.get("pages") or {}
+                if not isinstance(pages, dict):
+                    continue
+                for page in pages.values():
+                    if not isinstance(page, dict):
+                        continue
+                    original = by_norm.get(self._norm(str(page.get("title", ""))))
+                    if original is None:
+                        continue
+                    qid = (page.get("pageprops") or {}).get("wikibase_item")
+                    if isinstance(qid, str) and qid:
+                        out[original] = qid
+        finally:
+            await client.aclose()
+        return out
+
     async def _get(
         self, client: httpx.AsyncClient, params: dict[str, str]
     ) -> dict[str, Any]:
@@ -169,7 +239,7 @@ class EntityCategoryFetchService:
         """
         for attempt in range(_MAX_RETRIES):
             try:
-                resp = await client.get(WIKIPEDIA_API, params=params)
+                resp = await client.get(self._api_url, params=params)
                 resp.raise_for_status()
                 parsed = resp.json()
                 return dict(parsed) if isinstance(parsed, dict) else {}

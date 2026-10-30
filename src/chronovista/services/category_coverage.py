@@ -22,8 +22,11 @@ from __future__ import annotations
 import datetime
 import urllib.parse
 import uuid
+from collections.abc import Callable
 from typing import Any
 
+import httpx
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.repositories.entity_category_repository import EntityCategoryRepository
@@ -33,11 +36,28 @@ from chronovista.repositories.wikipedia_category_repository import (
 from chronovista.services.category_size import CategorySizeService
 from chronovista.services.dbpedia_resolver import DbpediaResolver
 from chronovista.services.entity_category_fetch import EntityCategoryFetchService
+from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
 
 #: Every assignment this feature writes carries this source — one uniform namespace (FR-007).
 WIKIPEDIA_SOURCE = "wikipedia"
 
 _DBPEDIA_RESOURCE_MARKER = "/resource/"
+_CATEGORY_PREFIX = "Category:"
+
+
+def _norm(name: str) -> str:
+    """Normalize a category name for de-duplication (``_``/blanks and case fold together)."""
+    return name.replace("_", " ").strip().lower()
+
+
+#: A per-language fetch-service factory — injectable so tests can supply a MockTransport-backed
+#: service per language. The default constructs one bound to that language's Wikipedia.
+FetchServiceFactory = Callable[[str], EntityCategoryFetchService]
+
+
+def default_fetch_factory(language: str) -> EntityCategoryFetchService:
+    """Default factory: a category-fetch service bound to ``language``'s Wikipedia."""
+    return EntityCategoryFetchService(language=language)
 
 
 def title_from_dbpedia_iri(iri: str) -> str | None:
@@ -217,3 +237,141 @@ async def categorize_entity(
         replace=replace,
     )
     return title
+
+
+# ---------------------------------------------------------------------------
+# Feature 100 — foreign-language category cross-walk
+# ---------------------------------------------------------------------------
+
+
+class EntityCrosswalkResult(BaseModel):
+    """Outcome of cross-walking one foreign-only entity's categories to English (Feature 100).
+
+    ``english_categories`` is the de-duplicated UNION of English category names recovered across
+    every foreign language the entity has (FR-005); ``source_langs_by_category`` records, per
+    English name, which language(s) it came from (capture/audit, FR-010); ``dropped_count`` is the
+    number of foreign categories with no English equivalent (reporting, SC-002). An empty
+    ``english_categories`` means "recovered zero" — eligible but nothing cross-walked (not an error).
+    """
+
+    english_categories: list[str] = Field(default_factory=list)
+    source_langs_by_category: dict[str, list[str]] = Field(default_factory=dict)
+    dropped_count: int = 0
+    languages: list[str] = Field(default_factory=list)
+
+
+async def crosswalk_foreign_categories(
+    foreign_categories_by_lang: dict[str, list[str]],
+    *,
+    fetch_factory: FetchServiceFactory,
+    wikidata_client: WikidataClient,
+) -> EntityCrosswalkResult:
+    """Cross-walk foreign categories to their English equivalents, unioned across languages (FR-004/5/6).
+
+    For each language, resolve its category titles to their own Wikidata items
+    (``wikibase_item``); then one batched sitelink fetch maps those items to the English
+    ``Category:`` title (``enwiki`` sitelink). Per-category inclusion: a category with no Wikidata
+    item, or whose item has no ``enwiki`` sitelink, is dropped (counted) — never raises.
+    """
+    # Hop 1 (per language): foreign category title -> its Wikidata QID.
+    lang_cat_qids: list[tuple[str, str]] = []
+    dropped = 0
+    for lang, titles in foreign_categories_by_lang.items():
+        if not titles:
+            continue
+        try:
+            mapping = await fetch_factory(lang).wikibase_items_for_categories(titles)
+        except httpx.HTTPError:
+            # Degrade on a transport failure only — a language's lookup failing drops its
+            # categories, not the whole entity. A logic error is NOT swallowed (it should surface).
+            mapping = {}
+        for title in titles:
+            qid = mapping.get(title)
+            if qid:
+                lang_cat_qids.append((lang, qid))
+            else:
+                dropped += 1  # no Wikidata item -> no English equivalent (FR-006)
+
+    # Hop 2 (one batched call): category QID -> English Category title via its enwiki sitelink.
+    cat_qids = list(dict.fromkeys(qid for _, qid in lang_cat_qids))
+    try:
+        sitelinks = await wikidata_client.fetch_sitelinks(cat_qids) if cat_qids else {}
+    except WikidataUnavailable:
+        sitelinks = {}  # degrade: no cross-walk this run, retry later (FR-014)
+
+    result = EntityCrosswalkResult(languages=sorted(foreign_categories_by_lang))
+    seen: dict[str, str] = {}
+    for lang, qid in lang_cat_qids:
+        enwiki_title = (sitelinks.get(qid) or {}).get("enwiki")
+        if not enwiki_title:
+            dropped += 1  # item exists but has no English category (FR-006)
+            continue
+        name = (
+            enwiki_title[len(_CATEGORY_PREFIX) :]
+            if enwiki_title.startswith(_CATEGORY_PREFIX)
+            else enwiki_title
+        )
+        if not name:
+            dropped += 1
+            continue
+        key = _norm(name)
+        canonical = seen.get(key)
+        if canonical is None:
+            seen[key] = name
+            result.english_categories.append(name)
+            result.source_langs_by_category[name] = [lang]
+        elif lang not in result.source_langs_by_category[canonical]:
+            result.source_langs_by_category[canonical].append(lang)
+    result.dropped_count = dropped
+    return result
+
+
+async def resolve_and_crosswalk_entity(
+    qid: str,
+    *,
+    wikidata_client: WikidataClient,
+    fetch_factory: FetchServiceFactory = default_fetch_factory,
+) -> EntityCrosswalkResult | None:
+    """Cross-walk one grounded, foreign-only entity (Feature 100). All network, NO database.
+
+    This is the per-entity primitive shared by the enrichment seam (US1) and the backfill (US2).
+    Resolves the entity's foreign articles from its QID (sitelinks), fetches each foreign article's
+    non-hidden categories, and cross-walks them (:func:`crosswalk_foreign_categories`). Keeping it
+    DB-free means no session is ever held across this network work (FR-012, the 094 deadlock lesson);
+    the caller performs the single ``store_categories_for_entity`` write afterward.
+
+    Returns ``None`` when the entity is NOT eligible — it has an English Wikipedia article (out of
+    scope, FR-001) or no foreign article at all. Otherwise returns an :class:`EntityCrosswalkResult`,
+    which may have an empty ``english_categories`` ("recovered zero"). Degrades on knowledge-base
+    failure (returns ``None``) rather than raising.
+    """
+    try:
+        sitelinks = await wikidata_client.fetch_sitelinks([qid])
+    except WikidataUnavailable:
+        return None  # knowledge base unreachable — leave as-is, retry later (FR-014)
+    wikis = sitelinks.get(qid) or {}
+    if "enwiki" in wikis:
+        return None  # has an English article -> out of scope (FR-001)
+    foreign = {
+        # Wikimedia dbnames use "_" where the host subdomain uses "-" (e.g. zh_yuewiki ->
+        # zh-yue.wikipedia.org, be_x_oldwiki -> be-x-old...); without the swap the host 404s and
+        # that language silently contributes nothing (FR-005 under-recovery).
+        dbname[: -len("wiki")].replace("_", "-"): title
+        for dbname, title in wikis.items()
+        if dbname.endswith("wiki") and dbname != "enwiki"
+    }
+    if not foreign:
+        return None  # grounded but no foreign article -> nothing to recover
+
+    categories_by_lang: dict[str, list[str]] = {}
+    for language, article in foreign.items():
+        fetched = await fetch_factory(language).categories_for_titles([article])
+        cats = fetched.get(article) or []
+        if cats:
+            categories_by_lang[language] = cats
+
+    return await crosswalk_foreign_categories(
+        categories_by_lang,
+        fetch_factory=fetch_factory,
+        wikidata_client=wikidata_client,
+    )

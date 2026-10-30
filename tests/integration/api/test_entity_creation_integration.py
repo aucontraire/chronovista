@@ -793,6 +793,55 @@ class TestConflictOnDuplicateCreation:
             f"got {response.status_code}: {response.text}"
         )
 
+    async def test_409_not_500_when_colliding_entity_is_merged(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        """POST /entities returns 409 (NOT 500) when the collision is a non-active entity.
+
+        Regression: ``uq_named_entity_canonical(normalized, type)`` is global across statuses,
+        but create once deduped active-only — so a name colliding with a merged/deprecated
+        entity slipped the check and failed at the DB with IntegrityError → 500. It must detect
+        the all-status collision and return a clean 409.
+        """
+        canonical = "Zzztest Merged Dedup Entity"
+        normalized = "zzztest merged dedup entity"
+        entity_id = uuid.UUID(bytes=uuid7().bytes)
+        async with integration_session_factory() as session:
+            session.add(
+                NamedEntityDB(
+                    id=entity_id,
+                    canonical_name=canonical,
+                    canonical_name_normalized=normalized,
+                    entity_type="person",
+                    status="merged",
+                    discovery_method="user_created",
+                    confidence=1.0,
+                )
+            )
+            await session.commit()
+        try:
+            with patch("chronovista.api.deps.youtube_oauth") as mock_oauth:
+                mock_oauth.is_authenticated.return_value = True
+                response = await async_client.post(
+                    _create_entity_url(),
+                    json={"name": canonical, "entity_type": "person"},
+                )
+            assert response.status_code == 409, (
+                f"Expected 409 (not 500) when the colliding entity is merged, "
+                f"got {response.status_code}: {response.text}"
+            )
+        finally:
+            async with integration_session_factory() as session:
+                await session.execute(
+                    delete(EntityAliasDB).where(EntityAliasDB.entity_id == entity_id)
+                )
+                await session.execute(
+                    delete(NamedEntityDB).where(NamedEntityDB.id == entity_id)
+                )
+                await session.commit()
+
     async def test_same_name_different_type_is_allowed(
         self,
         async_client: AsyncClient,

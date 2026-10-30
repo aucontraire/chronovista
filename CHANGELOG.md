@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.105.3] - 2026-10-30
+
+### Fixed
+- **Creating an entity whose name matches a merged or deprecated entity no longer returns a 500.** The manual create endpoint checked for a duplicate only among *active* entities, but the uniqueness rule spans all statuses — so a name colliding with a soft-deleted, merged, or deprecated entity slipped past the check and failed at the database with an unhandled error. It now detects the collision across all statuses and returns a clean 409 that names the existing entity and its status.
+
 ## [0.105.2] - 2026-10-30
 
 ### Fixed

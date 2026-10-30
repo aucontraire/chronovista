@@ -1705,7 +1705,7 @@ class TestCreateEntityEndpoint:
                     lambda text: text.strip().lower()
                 )
 
-                mock_entity_repo.find_active_by_normalized_and_type = AsyncMock(
+                mock_entity_repo.find_by_normalized_and_type = AsyncMock(
                     return_value=None
                 )
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)
@@ -1755,7 +1755,7 @@ class TestCreateEntityEndpoint:
                 "chronovista.api.routers.entity_mentions._normalizer"
             ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = "radia perlman"
-                mock_entity_repo.find_active_by_normalized_and_type = AsyncMock(
+                mock_entity_repo.find_by_normalized_and_type = AsyncMock(
                     return_value=None
                 )
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)
@@ -1908,7 +1908,7 @@ class TestCreateEntityEndpoint:
                 mock_normalizer.normalize.side_effect = (
                     lambda text: text.strip().lower()
                 )
-                mock_entity_repo.find_active_by_normalized_and_type = AsyncMock(
+                mock_entity_repo.find_by_normalized_and_type = AsyncMock(
                     return_value=None
                 )
                 mock_entity_repo.create = AsyncMock(return_value=db_entity)

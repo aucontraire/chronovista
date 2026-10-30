@@ -2924,8 +2924,8 @@ async def create_entity(
     APIValidationError
         If the name normalizes to an empty string (422).
     ConflictError
-        If an active entity with the same normalized name and type already
-        exists (409).
+        If an entity with the same normalized name and type already exists in
+        ANY status — the unique constraint is global across statuses (409).
     """
     # 1. Convert entity_type string to enum
     try:
@@ -2948,15 +2948,19 @@ async def create_entity(
     # human decision and must not be flattened (Feature 057, FR-012).
     canonical_name = body.name.strip()
 
-    # 4. Check for duplicate (same normalized name + type + active status)
-    existing = await entity_repo.find_active_by_normalized_and_type(
+    # 4. Check for a duplicate across ALL statuses. The unique constraint
+    # uq_named_entity_canonical(canonical_name_normalized, entity_type) is global across
+    # statuses, so a merged/deprecated entity with the same normalized name+type blocks
+    # creation too. An active-only check let that case slip through to an IntegrityError (500)
+    # at insert; returning 409 with the colliding entity (whatever its status) is correct.
+    existing = await entity_repo.find_by_normalized_and_type(
         session, normalized_name, entity_type_enum.value
     )
     if existing is not None:
         raise ConflictError(
             message=(
-                f"An active entity with normalized name '{normalized_name}' "
-                f"and type '{entity_type_enum.value}' already exists"
+                f"An entity with normalized name '{normalized_name}' and type "
+                f"'{entity_type_enum.value}' already exists (status: {existing.status})"
             ),
             details={
                 "existing_entity": {
@@ -2964,6 +2968,7 @@ async def create_entity(
                     "canonical_name": existing.canonical_name,
                     "entity_type": existing.entity_type,
                     "description": existing.description,
+                    "status": existing.status,
                 }
             },
         )

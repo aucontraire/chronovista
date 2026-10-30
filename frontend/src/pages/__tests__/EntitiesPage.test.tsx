@@ -137,6 +137,7 @@ function createEntity(overrides: Partial<EntityListItem> = {}): EntityListItem {
     canonical_name: "Ada Lovelace",
     entity_type: "person",
     description: "American linguist and political commentator.",
+    fallback_description: null,
     status: "active",
     mention_count: 42,
     video_count: 8,
@@ -356,16 +357,64 @@ describe("EntitiesPage", () => {
       ).toBeInTheDocument();
     });
 
-    it("renders 'No description available.' when description is null", () => {
+    it("renders 'No description available.' when description and fallback are null", () => {
       vi.mocked(useEntities).mockReturnValue(
         makeHookReturn({
-          entities: [createEntity({ description: null })],
+          entities: [
+            createEntity({ description: null, fallback_description: null }),
+          ],
           total: 1,
           loadedCount: 1,
         })
       );
       renderPage();
       expect(screen.getByText("No description available.")).toBeInTheDocument();
+    });
+
+    it("falls back to the Wikidata description with a 'from Wikidata' badge when there is no own description", () => {
+      vi.mocked(useEntities).mockReturnValue(
+        makeHookReturn({
+          entities: [
+            createEntity({
+              description: null,
+              fallback_description: "British politician (placeholder)",
+            }),
+          ],
+          total: 1,
+          loadedCount: 1,
+        })
+      );
+      renderPage();
+      expect(
+        screen.getByText("British politician (placeholder)", { exact: false })
+      ).toBeInTheDocument();
+      const hint = screen.getByTestId("description-wikidata-hint");
+      expect(hint).toHaveTextContent("from Wikidata");
+      expect(
+        screen.queryByText("No description available.")
+      ).not.toBeInTheDocument();
+    });
+
+    it("prefers the own description and shows no badge when both are present", () => {
+      vi.mocked(useEntities).mockReturnValue(
+        makeHookReturn({
+          entities: [
+            createEntity({
+              description: "Hand-written description.",
+              fallback_description: "British politician (placeholder)",
+            }),
+          ],
+          total: 1,
+          loadedCount: 1,
+        })
+      );
+      renderPage();
+      expect(
+        screen.getByText("Hand-written description.")
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("description-wikidata-hint")
+      ).not.toBeInTheDocument();
     });
 
     it("renders mention_count in the stats row", () => {

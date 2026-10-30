@@ -143,3 +143,91 @@ class TestCrossViewConsistency:
 
         assert vid in await _filtered("tag")
         assert vid not in await _filtered("transcript")
+
+    async def test_list_surfaces_wikidata_fallback_description(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        # Regression: an entity with no hand-set description but a Wikidata reference-block
+        # description showed "No description available" in the list while the detail page
+        # displayed it. The list now returns ``fallback_description`` so the two agree. One
+        # entity has no own description (fallback expected); one has its own (fallback suppressed).
+        no_desc_id = _uid()
+        own_desc_id = _uid()
+        wiki_desc = "Placeholder reference description"
+        no_desc_name = f"Xview066 Fallback {no_desc_id.hex}"
+        own_desc_name = f"Xview066 Own {own_desc_id.hex}"
+
+        async with integration_session_factory() as s:
+            s.add(
+                NamedEntityDB(
+                    id=no_desc_id,
+                    canonical_name=no_desc_name,
+                    canonical_name_normalized=no_desc_name.lower(),
+                    entity_type="organization",
+                    status="active",
+                    description=None,
+                    properties={
+                        "wikidata_description": {
+                            "values": [wiki_desc],
+                            "source": "wikidata",
+                        }
+                    },
+                )
+            )
+            s.add(
+                NamedEntityDB(
+                    id=own_desc_id,
+                    canonical_name=own_desc_name,
+                    canonical_name_normalized=own_desc_name.lower(),
+                    entity_type="organization",
+                    status="active",
+                    description="A hand-written description",
+                    properties={
+                        "wikidata_description": {
+                            "values": [wiki_desc],
+                            "source": "wikidata",
+                        }
+                    },
+                )
+            )
+            await s.commit()
+
+        async def _row(name: str, eid: uuid.UUID) -> dict:
+            r = await async_client.get(
+                "/api/v1/entities", params={"search": name, "limit": 200}
+            )
+            assert r.status_code == 200, r.text
+            row = next(
+                (x for x in r.json()["data"] if x["entity_id"] == str(eid)), None
+            )
+            assert row is not None
+            return row
+
+        # No own description → list falls back to the Wikidata reference value (what detail shows).
+        no_desc = await _row(no_desc_name, no_desc_id)
+        assert no_desc["description"] is None
+        assert no_desc["fallback_description"] == wiki_desc
+
+        # Own description present → fallback is suppressed (never shadows a hand-set description).
+        own_desc = await _row(own_desc_name, own_desc_id)
+        assert own_desc["description"] == "A hand-written description"
+        assert own_desc["fallback_description"] is None
+
+        # The DETAIL endpoint derives fallback_description from the same shared helper, so list
+        # and detail can never disagree on which description to show (the consolidation: one
+        # backend source of truth instead of the detail page re-deriving it in the frontend).
+        async def _detail(eid: uuid.UUID) -> dict:
+            r = await async_client.get(f"/api/v1/entities/{eid}")
+            assert r.status_code == 200, r.text
+            return r.json()["data"]
+
+        no_desc_detail = await _detail(no_desc_id)
+        assert no_desc_detail["description"] is None
+        assert no_desc_detail["fallback_description"] == wiki_desc
+        assert no_desc_detail["fallback_description"] == no_desc["fallback_description"]
+
+        own_desc_detail = await _detail(own_desc_id)
+        assert own_desc_detail["description"] == "A hand-written description"
+        assert own_desc_detail["fallback_description"] is None

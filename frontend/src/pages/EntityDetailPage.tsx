@@ -1778,10 +1778,7 @@ export function EntityDetailPage() {
               entityId={entityId ?? ""}
               canonicalName={entity.canonical_name}
               description={entity.description}
-              fallbackDescription={
-                entity.enrichment?.properties?.wikidata_description?.values?.[0] ??
-                null
-              }
+              fallbackDescription={entity.fallback_description ?? null}
               entityType={entity.entity_type}
               typeBadge={
                 <EntityTypeBadge entityType={entity.entity_type} size="md" />

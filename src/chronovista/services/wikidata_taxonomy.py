@@ -175,6 +175,29 @@ def classify_entity_type(instance_of: list[str]) -> EntityType:
     return EntityType.OTHER
 
 
+def classify_if_determinate(instance_of: list[str]) -> EntityType | None:
+    """Classify a Wikidata entity's P31, returning ``None`` when it is undeterminable.
+
+    The typed sibling of :func:`suggest_entity_type` (which is this value as a string). A
+    *determinate* result means the P31 anchors picked a specific type; the catch-all ``OTHER``
+    (no anchor matched) is reported as ``None``. This is the single home for the
+    "classify, or leave it alone if undeterminable" decision that re-typing and suggestion
+    callers share (Direction A: never flood a row into ``other`` on absence of evidence).
+
+    Parameters
+    ----------
+    instance_of : list[str]
+        The entity's P31 class QIDs (e.g. ``["Q6256", "Q3624078"]``). May be empty.
+
+    Returns
+    -------
+    EntityType | None
+        The classified type, or ``None`` when it classifies to the catch-all ``OTHER``.
+    """
+    classified = classify_entity_type(instance_of)
+    return classified if classified is not EntityType.OTHER else None
+
+
 def type_corroboration(entity_type: str | None, instance_of: list[str]) -> bool | None:
     """Tri-state: does a *chosen* entity type agree with the entity's P31 (#271 semantics)?
 
@@ -199,5 +222,5 @@ def suggest_entity_type(instance_of: list[str]) -> str | None:
     toward "other". Derives from the same classifier as the corroboration badge, so suggestion
     and badge cannot drift (FR-009).
     """
-    classified = classify_entity_type(instance_of)
-    return classified.value if classified is not EntityType.OTHER else None
+    determinate = classify_if_determinate(instance_of)
+    return determinate.value if determinate is not None else None

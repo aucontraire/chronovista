@@ -18,6 +18,7 @@ from chronovista.services.wikidata_client import (
 from chronovista.services.wikidata_taxonomy import (
     INSTANCE_OF_BY_TYPE,
     classify_entity_type,
+    classify_if_determinate,
     suggest_entity_type,
     type_corroboration,
 )
@@ -199,6 +200,54 @@ class TestSuggestEntityType:
         # US2 forward path: a newly-recognized class now yields a confident suggestion for the
         # create-entity modal / candidate generation, where before it was undeterminable (None).
         assert suggest_entity_type([qid]) == expected
+
+
+class TestClassifyIfDeterminate:
+    """The typed 'classify, or None if undeterminable' predicate — the single home shared by the
+    re-typing backfills and (as a string) by the create-modal suggestion. A determinate P31 yields
+    its EntityType; the catch-all OTHER yields None (Direction A: absence of evidence never
+    overrides a stored type)."""
+
+    @pytest.mark.parametrize(
+        ("instance_of", "expected"),
+        [
+            (["Q5"], EntityType.PERSON),  # human
+            (["Q6256"], EntityType.PLACE),  # country
+            (["Q43229"], EntityType.ORGANIZATION),  # organization
+            (["Q1656682"], EntityType.EVENT),  # event
+            (["Q11424"], EntityType.WORK),  # film
+            (["Q151885"], EntityType.CONCEPT),  # concept
+        ],
+    )
+    def test_determinate_returns_type(
+        self, instance_of: list[str], expected: EntityType
+    ) -> None:
+        assert classify_if_determinate(instance_of) == expected
+
+    def test_empty_is_none(self) -> None:
+        assert classify_if_determinate([]) is None
+
+    def test_unknown_qid_is_none(self) -> None:
+        assert classify_if_determinate(["Q999999999"]) is None
+
+    def test_other_classification_is_none_not_other(self) -> None:
+        # The catch-all OTHER is reported as None, never EntityType.OTHER — that is the whole
+        # point of the predicate (the backfills skip None; they must never write 'other').
+        assert classify_entity_type(["Q999999999"]) is EntityType.OTHER
+        assert classify_if_determinate(["Q999999999"]) is None
+
+    @pytest.mark.parametrize(
+        "instance_of",
+        [[], ["Q999999999"], ["Q5"], ["Q6256"], ["Q43229"], ["Q1656682"]],
+    )
+    def test_suggest_entity_type_is_the_string_view(
+        self, instance_of: list[str]
+    ) -> None:
+        # Single source: suggest_entity_type is exactly classify_if_determinate rendered to a
+        # string, so the two cannot drift.
+        determinate = classify_if_determinate(instance_of)
+        expected = determinate.value if determinate is not None else None
+        assert suggest_entity_type(instance_of) == expected
 
 
 class TestExpectedInstanceOfDriftGuard:

@@ -52,9 +52,10 @@ from sqlalchemy import select, text, update  # noqa: E402
 
 from chronovista.config.database import db_manager  # noqa: E402
 from chronovista.db.models import NamedEntity  # noqa: E402
-from chronovista.services.wikidata_taxonomy import classify_entity_type  # noqa: E402
+from chronovista.services.wikidata_taxonomy import (  # noqa: E402
+    classify_if_determinate,
+)
 
-_OTHER = "other"
 _MERGED = "merged"
 
 
@@ -104,10 +105,12 @@ def _compute_changes(
     Direction A: an OTHER classification never overrides the stored type."""
     changes: list[EntityTypeCorrection] = []
     for eid, old, qids in rows:
-        new = classify_entity_type(qids).value
-        if new != _OTHER and new != old:
+        classified = classify_if_determinate(qids)
+        if classified is not None and classified.value != old:
             changes.append(
-                EntityTypeCorrection(entity_id=eid, old_type=old, new_type=new)
+                EntityTypeCorrection(
+                    entity_id=eid, old_type=old, new_type=classified.value
+                )
             )
     return changes
 
@@ -116,7 +119,7 @@ def _report(
     rows: list[tuple[uuid.UUID, str, list[str]]],
     changes: list[EntityTypeCorrection],
 ) -> None:
-    other = sum(1 for _, _, qids in rows if classify_entity_type(qids).value == _OTHER)
+    other = sum(1 for _, _, qids in rows if classify_if_determinate(qids) is None)
     pct = (other / len(rows) * 100) if rows else 0.0
     print(f"Grounded entities with stored instance_of: {len(rows)}")
     print(f"  undeterminable (OTHER, kept): {other} ({pct:.1f}%)")

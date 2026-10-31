@@ -45,10 +45,11 @@ from chronovista.services.wikidata_client import (  # noqa: E402
     WikidataClient,
     WikidataUnavailable,
 )
-from chronovista.services.wikidata_taxonomy import classify_entity_type  # noqa: E402
+from chronovista.services.wikidata_taxonomy import (  # noqa: E402
+    classify_if_determinate,
+)
 
 _PENDING = "pending"
-_OTHER = "other"
 
 # A change row: (candidate id, qid, old type_hint, new type_hint)
 Change = tuple[uuid.UUID, str, str, str]
@@ -85,11 +86,11 @@ async def _compute_changes(
         p31 = p31_by_qid.get(qid)
         if not p31:  # unknown/absent → undeterminable → leave unchanged
             continue
-        new = classify_entity_type(p31).value
-        if (
-            new != old and new != _OTHER
-        ):  # Direction A: only override with a determinate type
-            changes.append((cid, qid, old, new))
+        # Direction A: override only on a determinate classification; the catch-all OTHER
+        # (reported as None) leaves the stored type unchanged.
+        classified = classify_if_determinate(p31)
+        if classified is not None and classified.value != old:
+            changes.append((cid, qid, old, classified.value))
     return changes
 
 

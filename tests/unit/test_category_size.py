@@ -10,16 +10,18 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-from chronovista.services.category_size import CategorySizeService
+from chronovista.services.category_size import _UA_COMPONENT, CategorySizeService
+from chronovista.services.wikimedia_transport import wikimedia_user_agent
 
 pytestmark = pytest.mark.asyncio
 
 
 def _service(handler: Callable[[httpx.Request], httpx.Response]) -> CategorySizeService:
-    def factory() -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
-
-    return CategorySizeService(client_factory=factory)
+    # Inject a MockTransport-backed client via the shared transport's http= seam (Feature 102);
+    # the service composes WikimediaTransport over it.
+    return CategorySizeService(
+        http=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
 
 
 def _pages(*pages: dict[str, Any]) -> dict[str, Any]:
@@ -171,9 +173,7 @@ class TestSizesFor:
             return httpx.Response(200, json=_pages())
 
         service = CategorySizeService(
-            client_factory=lambda: httpx.AsyncClient(
-                transport=httpx.MockTransport(handler)
-            ),
+            http=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
             pause=1.5,
         )
         # 120 names -> 3 batches -> exactly 2 inter-batch pauses (no retries here).
@@ -194,18 +194,21 @@ class TestSizesFor:
             return httpx.Response(200, json=_pages())
 
         service = CategorySizeService(
-            client_factory=lambda: httpx.AsyncClient(
-                transport=httpx.MockTransport(handler)
-            ),
+            http=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
             pause=0.0,
         )
         await service.sizes_for([f"cat-{i}" for i in range(60)])  # 2 batches
         assert calls == []
 
-    async def test_default_client_factory_sets_user_agent(self) -> None:
-        service = CategorySizeService(timeout=1.0)
-        client = service._new_client()
-        try:
-            assert "chronovista" in client.headers["User-Agent"]
-        finally:
-            await client.aclose()
+    async def test_requests_carry_the_templated_user_agent(self) -> None:
+        # Feature 102: the UA is single-sourced from the transport template with this service's
+        # component label (was a hand-assembled ``chronovista/1.0 (...)`` literal), so it carries
+        # the LIVE package version — an expected, documented flip from the old static "1.0".
+        seen: dict[str, str | None] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["ua"] = request.headers.get("User-Agent")
+            return httpx.Response(200, json=_pages())
+
+        await _service(handler).sizes_for(["cat-x"])
+        assert seen["ua"] == wikimedia_user_agent(_UA_COMPONENT)

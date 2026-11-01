@@ -314,3 +314,92 @@ class TestApplyCapture:
             }
         ]
         assert data["diff"] == {"added": 1, "removed": 1, "unchanged": 1}
+
+
+@pytest.mark.asyncio
+class TestUnreachableDominates:
+    """FIX 1 (FR-017/SC-007): absence==unreachable (dominates), present-empty==reached-settled
+    (does not). A healthy run over a tail of missing/invalid titles — which the transport now
+    returns present-empty — must NOT read as an outage; a genuine whole-run outage must.
+    """
+
+    @staticmethod
+    def _entities(n: int) -> list[_DetachOnClose]:
+        iri = "http://dbpedia.org/resource/"
+        return [_DetachOnClose({"dbpedia": {"id": f"{iri}T{i}"}}) for i in range(n)]
+
+    async def _build(self, entities: list[_DetachOnClose], fetch: _StubFetch) -> Any:
+        entity_repo = MagicMock()
+        entity_repo.list_wikidata_grounded = AsyncMock(return_value=entities)
+        session = MagicMock()
+        with (
+            patch.object(
+                bec.db_manager,
+                "session",
+                lambda echo=False: _DetachingSessionCtx(session, entities),
+            ),
+            patch.object(bec, "sources_by_entity", AsyncMock(return_value={})),
+            patch.object(bec, "old_categories_by_entity", AsyncMock(return_value={})),
+        ):
+            return await bec.build_plan(
+                entity_repo=entity_repo,
+                resolver=_StubResolver(),  # type: ignore[arg-type]
+                fetch_service=fetch,  # type: ignore[arg-type]
+                size_service=_StubSizes(),  # type: ignore[arg-type]
+            )
+
+    async def test_all_missing_titles_are_settled_not_unreachable(self) -> None:
+        # Healthy source; every article title is missing/invalid → the transport returns each
+        # present-empty, so build_plan counts them reached-settled (zero_categories), NOT
+        # fetch_omitted. Unreachable must NOT dominate (the false-outage BLOCKER).
+        plan = await self._build(
+            self._entities(5), _StubFetch({f"T{i}": [] for i in range(5)})
+        )
+        assert plan.zero_categories == 5  # reached-settled
+        assert plan.fetch_omitted == 0  # nothing unreachable
+        assert bec._unreachable_dominates(plan) is False
+
+    async def test_whole_run_unreachable_dominates(self) -> None:
+        # Whole-run WikidataUnavailable: every batch raises → the service omits every title, so
+        # every title is ABSENT from the fetch result (fetch_omitted). Unreachable dominates.
+        plan = await self._build(self._entities(5), _StubFetch({}))
+        assert plan.fetch_omitted == 5  # all absent (unreachable)
+        assert plan.zero_categories == 0
+        assert bec._unreachable_dominates(plan) is True
+
+    async def test_dry_run_exits_zero_when_settled(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock(
+            side_effect=[_result(scalar="testdb"), _result(scalar=0)]
+        )
+        session.rollback = AsyncMock()
+        settled = bec._Plan()
+        settled.zero_categories = 5
+        with (
+            patch.object(
+                bec.db_manager, "session", lambda echo=False: _FakeSessionCtx(session)
+            ),
+            patch.object(bec, "build_plan", AsyncMock(return_value=settled)),
+            patch.object(bec, "_apply", AsyncMock()) as apply_fn,
+        ):
+            code = await bec.run_backfill(apply=False, confirm_target=None)
+        assert code == 0  # a settled healthy run is a completed pass
+        apply_fn.assert_not_awaited()
+
+    async def test_dry_run_exits_three_when_unreachable_dominates(self) -> None:
+        session = MagicMock()
+        session.execute = AsyncMock(
+            side_effect=[_result(scalar="testdb"), _result(scalar=0)]
+        )
+        session.rollback = AsyncMock()
+        dominated = bec._Plan()
+        dominated.fetch_omitted = 5
+        with (
+            patch.object(
+                bec.db_manager, "session", lambda echo=False: _FakeSessionCtx(session)
+            ),
+            patch.object(bec, "build_plan", AsyncMock(return_value=dominated)),
+            patch.object(bec, "_apply", AsyncMock()),
+        ):
+            code = await bec.run_backfill(apply=False, confirm_target=None)
+        assert code == 3  # an outage must not look like a completed pass

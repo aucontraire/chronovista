@@ -14,7 +14,11 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-from chronovista.services.entity_category_fetch import EntityCategoryFetchService
+from chronovista.services.entity_category_fetch import (
+    _UA_COMPONENT,
+    EntityCategoryFetchService,
+)
+from chronovista.services.wikimedia_transport import wikimedia_user_agent
 
 pytestmark = pytest.mark.asyncio
 
@@ -22,10 +26,11 @@ pytestmark = pytest.mark.asyncio
 def _service(
     handler: Callable[[httpx.Request], httpx.Response],
 ) -> EntityCategoryFetchService:
-    def factory() -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
-
-    return EntityCategoryFetchService(client_factory=factory, pause=0.0)
+    # Inject a MockTransport-backed client via the shared transport's http= seam (Feature 102);
+    # the service composes WikimediaTransport over it.
+    return EntityCategoryFetchService(
+        http=httpx.AsyncClient(transport=httpx.MockTransport(handler)), pause=0.0
+    )
 
 
 def _cats(*titles: str) -> list[dict[str, str]]:
@@ -90,7 +95,11 @@ class TestCategoriesForTitles:
             "Title_A": []
         }
 
-    async def test_missing_title_is_omitted(self) -> None:
+    async def test_missing_title_is_present_empty_not_omitted(self) -> None:
+        # Feature 102 fix (was test_missing_title_is_omitted): a reached batch returns every
+        # requested title. A title Wikipedia reports `missing` now comes back present-empty
+        # (reached-settled), NOT omitted — omission now means only that the batch was UNREACHABLE
+        # (the transport raised), covered by the transport-error tests below.
         def handler(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
                 200,
@@ -101,7 +110,8 @@ class TestCategoriesForTitles:
             )
 
         result = await _service(handler).categories_for_titles(["Title_A", "Title_B"])
-        assert result == {"Title_A": ["cat-x"]}  # Title_B omitted (retry later)
+        # Title_B present-empty (reached, nothing there), distinct from an omitted (unreachable) one.
+        assert result == {"Title_A": ["cat-x"], "Title_B": []}
 
     async def test_title_matching_ignores_underscore_and_case(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
@@ -175,7 +185,12 @@ class TestCategoriesForTitles:
         assert calls == 2
         assert result == {"Title_A": ["cat-x", "cat-y"]}
 
-    async def test_non_advancing_continue_is_bounded(self) -> None:
+    async def test_non_advancing_continue_is_bounded_then_omitted(self) -> None:
+        # A server echoing a non-advancing continuation token must not hang. Feature 102 changes
+        # the degrade: exceeding _MAX_CONTINUATIONS now raises inside paginate_mediawiki (an
+        # explicit incomplete signal, SC-004), which the service ABSORBS by omitting the whole
+        # batch — never a silently truncated prefix presented as complete (the old behaviour
+        # returned the partial set it had gathered).
         calls = 0
 
         def handler(request: httpx.Request) -> httpx.Response:
@@ -199,8 +214,10 @@ class TestCategoriesForTitles:
         result = await asyncio.wait_for(
             _service(handler).categories_for_titles(["Title_A"]), timeout=5
         )
-        assert calls == 50  # _MAX_CONTINUATIONS — does not hang
-        assert result["Title_A"]  # whatever it gathered before the cap
+        assert calls == 50  # _MAX_CONTINUATIONS pages fetched — does not hang
+        assert (
+            result == {}
+        )  # incomplete batch omitted (retry later), not a truncated partial
 
     async def test_http_error_yields_omission_without_raising(self) -> None:
         calls = 0
@@ -247,9 +264,7 @@ class TestCategoriesForTitles:
             return httpx.Response(200, json=_pages())
 
         service = EntityCategoryFetchService(
-            client_factory=lambda: httpx.AsyncClient(
-                transport=httpx.MockTransport(handler)
-            ),
+            http=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
             pause=1.5,
         )
         # 120 titles -> 3 batches -> exactly 2 inter-batch pauses (no retries, no continue).
@@ -265,13 +280,18 @@ class TestCategoriesForTitles:
 
             assert await _service(handler).categories_for_titles(["Title_A"]) == {}
 
-    async def test_default_client_factory_sets_user_agent(self) -> None:
-        service = EntityCategoryFetchService(timeout=1.0)
-        client = service._new_client()
-        try:
-            assert "chronovista" in client.headers["User-Agent"]
-        finally:
-            await client.aclose()
+    async def test_requests_carry_the_templated_user_agent(self) -> None:
+        # Feature 102: the UA is single-sourced from the transport template with this service's
+        # component label (was a hand-assembled ``chronovista/1.0 (...)`` literal), so it carries
+        # the LIVE package version — an expected, documented flip from the old static "1.0".
+        seen: dict[str, str | None] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["ua"] = request.headers.get("User-Agent")
+            return httpx.Response(200, json=_pages())
+
+        await _service(handler).categories_for_titles(["Title_A"])
+        assert seen["ua"] == wikimedia_user_agent(_UA_COMPONENT)
 
 
 class TestLanguageParameter:
@@ -295,9 +315,7 @@ class TestLanguageParameter:
             )
 
         service = EntityCategoryFetchService(
-            client_factory=lambda: httpx.AsyncClient(
-                transport=httpx.MockTransport(handler)
-            ),
+            http=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
             pause=0.0,
             language="es",
         )

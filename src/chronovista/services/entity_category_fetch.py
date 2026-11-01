@@ -3,14 +3,20 @@
 Given Wikipedia article titles, return each one's **non-hidden** category names
 (``action=query&prop=categories&clshow=!hidden``). This is a sibling of Feature 083's
 ``CategorySizeService`` (which goes category→global-size), not a reuse of it: the direction and
-response shape differ, so the two services share only the low-level HTTP conventions — the
-Wikimedia-compliant contact User-Agent, the timeout, the bounded retry, and the polite
-inter-batch pause.
+response shape differ, so the two services share only the shared :class:`WikimediaTransport`
+(Feature 102) — the Wikimedia-compliant contact User-Agent, the per-request client lifecycle, the
+unified rate-limit/backoff, the chunking helper, and the single MediaWiki continuation helper
+(``paginate_mediawiki``, which owns the continuation loop and the ``normalized``/``redirects``
+hop-remap). This service owns only its endpoint, request parameters, and response parsing (FR-009).
 
-Graceful degradation (Constitution VIII): a title that errors, 404s, or is missing is **omitted**
-from the result (the caller leaves the entity as-is and may retry on a later run); a title that
-exists but has no non-hidden categories is returned with an **empty list** (processed, zero —
-distinct from a fetch failure). The service never raises for a transport/API error.
+Graceful degradation (Constitution VIII): a title is **omitted** from the result only when its
+batch was UNREACHABLE — the transport raised ``WikidataUnavailable`` (a transport/parse failure, an
+error-object-in-200, or an incomplete continuation) and this service **absorbs** it per the spec's
+per-service table, dropping that batch's titles for a later retry (FR-008). A title that is reached
+but has no non-hidden categories — including one Wikipedia reports ``missing``/``invalid`` — is
+returned with an **empty list** (reached/settled, zero), distinct from the omit-on-unreachable case.
+So an absent title means "retry later" and a present-empty title means "reached, nothing there" (the
+distinction the operator-facing batch report surfaces — FR-017).
 
 Name-free: article titles and category names are runtime arguments, never embedded in source.
 """
@@ -18,13 +24,20 @@ Name-free: article titles and category names are runtime arguments, never embedd
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from typing import Any
 
 import httpx
 
+from chronovista.services.wikimedia_transport import (
+    WikidataUnavailable,
+    WikimediaTransport,
+)
+
 WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
-USER_AGENT = "chronovista/1.0 (https://github.com/aucontraire/chronovista; category coverage fetch)"
+# The per-client component label baked into the single-sourced outbound User-Agent (G1/FR-002):
+# the transport assembles the compliant UA from this label; no UA string is hand-built here.
+_UA_COMPONENT = "category coverage fetch"
 
 
 def _api_url_for(language: str) -> str:
@@ -33,14 +46,15 @@ def _api_url_for(language: str) -> str:
 
 
 _DEFAULT_TIMEOUT = 15.0
-_BATCH = 50  # MediaWiki titles-per-request limit for most query modules
 _CLLIMIT = 500  # categories returned per page before a continue token is issued
-_MAX_RETRIES = 3
 _DEFAULT_PAUSE = (
     1.0  # polite gap (seconds) between batches — Wikimedia rate etiquette (FR-014)
 )
 # A ≤50-title batch at cllimit=500 drains in a handful of pages for any real article; this cap
-# only guards against a server that echoes a non-advancing clcontinue (would otherwise hang).
+# only guards against a server that echoes a non-advancing continuation token (would otherwise
+# hang). It
+# is passed to the transport's paginate_mediawiki as max_pages: exceeding it raises an explicit
+# incomplete signal (never a silently truncated prefix presented as complete — SC-004).
 _MAX_CONTINUATIONS = 50
 
 
@@ -49,23 +63,29 @@ class EntityCategoryFetchService:
 
     def __init__(
         self,
-        client_factory: Callable[[], httpx.AsyncClient] | None = None,
+        http: httpx.AsyncClient | None = None,
+        *,
         timeout: float = _DEFAULT_TIMEOUT,
         pause: float = _DEFAULT_PAUSE,
         language: str = "en",
     ) -> None:
+        self._http = http
         self._timeout = timeout
-        self._client_factory = client_factory or self._new_client
         self._pause = pause
         # Which Wikipedia to query. Default "en" preserves every existing caller unchanged;
         # the foreign cross-walk (Feature 100) constructs the service per non-English language.
         self._language = language
         self._api_url = _api_url_for(language)
 
-    def _new_client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
-            headers={"User-Agent": USER_AGENT}, timeout=self._timeout
-        )
+    def _transport(self) -> WikimediaTransport:
+        """The shared outbound transport for this service (FR-001).
+
+        Preserves the ``http=None`` injection seam: a per-request client by default, or the injected
+        client reused when one is supplied (tests/DI). UA assembly, the unified retry/backoff, the
+        unreachable-vs-empty contract, chunking, and the continuation handling all live in the
+        transport.
+        """
+        return WikimediaTransport(_UA_COMPONENT, http=self._http, timeout=self._timeout)
 
     @staticmethod
     def _norm(title: str) -> str:
@@ -78,98 +98,70 @@ class EntityCategoryFetchService:
         """Return ``{article title: [non-hidden category names]}`` for titles that resolve.
 
         Batched (≤50 titles/request) and paced between batches (FR-001, FR-014). Keys are the
-        caller's exact input titles, not Wikipedia's canonicalized form. A title that errors/404s
-        or is reported missing is **absent** from the result (graceful — retry later); a title
-        that exists with no non-hidden categories maps to an **empty list** (processed, zero).
+        caller's exact input titles, not Wikipedia's canonicalized form. A title is **absent** from
+        the result only when its batch was unreachable (the transport raised and this service
+        absorbed it — retry later); a reached title maps to a list, which is **empty** when the
+        article has no non-hidden categories OR is reported missing/invalid (reached/settled, zero —
+        not a failure).
         """
         unique = [t for t in dict.fromkeys(titles) if t]
         out: dict[str, list[str]] = {}
-        client = self._client_factory()
-        try:
-            for batch_index, start in enumerate(range(0, len(unique), _BATCH)):
-                if batch_index > 0 and self._pause > 0:
-                    await asyncio.sleep(self._pause)  # polite gap between batches
-                out.update(
-                    await self._fetch_batch(client, unique[start : start + _BATCH])
-                )
-        finally:
-            await client.aclose()
+        transport = self._transport()
+        for batch_index, batch in enumerate(WikimediaTransport.chunk(unique)):
+            if batch_index > 0 and self._pause > 0:
+                await asyncio.sleep(self._pause)  # polite gap between batches
+            out.update(await self._fetch_batch(transport, batch))
         return out
 
     async def _fetch_batch(
-        self, client: httpx.AsyncClient, batch: list[str]
+        self, transport: WikimediaTransport, batch: list[str]
     ) -> dict[str, list[str]]:
-        """Fetch one ≤50-title batch, following ``continue`` tokens until the batch is drained.
+        """Fetch one ≤50-title batch via the shared MediaWiki continuation helper.
 
         ``prop=categories`` paginates across the whole multi-title query (``cllimit`` bounds the
         page, not each title), so a batch of 50 titles with many categories spans several pages;
-        the continue loop accumulates them before returning. The loop is bounded by
-        ``_MAX_CONTINUATIONS`` so a server that echoes a non-advancing ``clcontinue`` cannot hang
-        the run — it degrades to a partial (append-only, best-effort) result instead.
+        ``paginate_mediawiki`` follows the continuation tokens, merges each page's category list,
+        and re-attributes MediaWiki's ``normalized``/``redirects`` hops back to the caller's
+        original input titles (the v0.104.1 false-zero fix) — so a redirect title (e.g. a
+        less-common spelling that points at the canonical article) still resolves to the article
+        that carries the categories, keyed by the caller's original input.
 
-        ``redirects=1`` is set so a redirect title (e.g. a less-common spelling that points at the
-        canonical article) resolves to the article that actually carries the categories; the
-        per-page remap of MediaWiki's ``normalized``/``redirects`` hops keeps the result keyed by
-        the caller's original input title.
+        The transport **raises** :class:`WikidataUnavailable` on a transport/parse failure in any
+        page OR when the continuation exceeds ``_MAX_CONTINUATIONS`` (an explicit incomplete
+        signal, not a silently truncated prefix). This service **absorbs** it per the spec's
+        per-service table: the batch's titles are omitted from the result (a retry-later signal),
+        exactly the omit-on-failure degrade the hand-rolled loop produced before.
         """
-        by_norm = {self._norm(t): t for t in batch}
-        accumulated: dict[str, list[str]] = {}
-        base: dict[str, str] = {
+        base: dict[str, Any] = {
             "action": "query",
             "format": "json",
             "prop": "categories",
             "clshow": "!hidden",
             "cllimit": str(_CLLIMIT),
-            "redirects": "1",  # follow redirect titles to the real article (see below)
+            "redirects": "1",  # follow redirect titles to the real article (hop-remap below)
             "titles": "|".join(batch),
         }
-        cont: dict[str, str] = {}
-        for _ in range(_MAX_CONTINUATIONS):
-            data = await self._get(client, {**base, **cont})
-            query = data.get("query") or {}
-            # With redirects=1 a page is keyed by its *resolved* title: a request for the redirect
-            # "Old Name" comes back as the article "New Name", whose norm is absent from by_norm.
-            # Without remapping, that page fails the by_norm lookup below and the entity is stored
-            # as processed-zero forever (the Feature 084 redirect bug). So fold MediaWiki's own
-            # normalized→redirect hop chain back onto the caller's original input title. Processing
-            # 'normalized' before 'redirects' resolves the (input → canonical → target) chain in
-            # order; re-running it each continuation page is idempotent.
-            if isinstance(query, dict):
-                for hop_key in ("normalized", "redirects"):
-                    hops = query.get(hop_key)
-                    if not isinstance(hops, list):
-                        continue
-                    for hop in hops:
-                        if not isinstance(hop, dict):
-                            continue
-                        origin = by_norm.get(self._norm(str(hop.get("from", ""))))
-                        if origin is not None:
-                            by_norm[self._norm(str(hop.get("to", "")))] = origin
-            pages = query.get("pages") or {}
-            if isinstance(pages, dict):
-                for page in pages.values():
-                    if not isinstance(page, dict):
-                        continue
-                    original = by_norm.get(self._norm(str(page.get("title", ""))))
-                    if original is None:
-                        continue
-                    if "missing" in page or "invalid" in page:
-                        continue  # title not found — omit (unresolvable / retry later)
-                    # Seen → at least an empty list (processed, zero), distinct from omitted.
-                    names = accumulated.setdefault(original, [])
-                    for cat in page.get("categories") or []:
-                        ct = str(cat.get("title", ""))
-                        name = (
-                            ct[len("Category:") :] if ct.startswith("Category:") else ct
-                        )
-                        if name:
-                            names.append(name)
-            cont_block = data.get("continue")
-            if isinstance(cont_block, dict) and "clcontinue" in cont_block:
-                cont = {k: str(v) for k, v in cont_block.items()}
-                continue
-            break
-        return accumulated
+        try:
+            pages = await transport.paginate_mediawiki(
+                self._api_url,
+                params=base,
+                max_pages=_MAX_CONTINUATIONS,
+            )
+        except WikidataUnavailable:
+            # Unreachable OR incomplete (exceeded max_pages) → omit this batch's titles (retry
+            # later). Never a partial set presented as complete, never a false "processed-zero".
+            return {}
+        result: dict[str, list[str]] = {}
+        for original, page in pages.items():
+            # Seen → at least an empty list (processed, zero), distinct from an omitted title.
+            names: list[str] = []
+            for cat in page.get("categories") or []:
+                ct = str(cat.get("title", ""))
+                name = ct[len("Category:") :] if ct.startswith("Category:") else ct
+                if name:
+                    names.append(name)
+            result[original] = names
+        return result
 
     async def wikibase_items_for_categories(
         self, category_titles: Iterable[str]
@@ -179,23 +171,23 @@ class EntityCategoryFetchService:
         Uses ``prop=pageprops&ppprop=wikibase_item`` (the Feature 100 cross-walk's first hop).
         Keys are the caller's exact input titles (e.g. a foreign ``Categoría:…``); a category with
         no Wikidata item is simply absent from the result. Batched ≤50 titles/request and paced
-        between batches, the same etiquette as the category fetch (FR-016). Best-effort: a failed
-        request yields no mapping for its batch rather than raising (FR-014).
+        between batches, the same etiquette as the category fetch (FR-016). Best-effort: an
+        unreachable batch yields no mapping for its titles rather than raising (FR-014) — the
+        transport's ``WikidataUnavailable`` is absorbed here.
         """
         unique = [t for t in dict.fromkeys(category_titles) if t]
         out: dict[str, str] = {}
         if not unique:
             return out
-        client = self._client_factory()
-        try:
-            for batch_index, start in enumerate(range(0, len(unique), _BATCH)):
-                if batch_index > 0 and self._pause > 0:
-                    await asyncio.sleep(self._pause)
-                batch = unique[start : start + _BATCH]
-                by_norm = {self._norm(t): t for t in batch}
-                data = await self._get(
-                    client,
-                    {
+        transport = self._transport()
+        for batch_index, batch in enumerate(WikimediaTransport.chunk(unique)):
+            if batch_index > 0 and self._pause > 0:
+                await asyncio.sleep(self._pause)
+            by_norm = {self._norm(t): t for t in batch}
+            try:
+                data = await transport.get_json(
+                    self._api_url,
+                    params={
                         "action": "query",
                         "format": "json",
                         "prop": "pageprops",
@@ -203,48 +195,26 @@ class EntityCategoryFetchService:
                         "titles": "|".join(batch),
                     },
                 )
-                query = data.get("query") or {}
-                if not isinstance(query, dict):
+            except WikidataUnavailable:
+                continue  # unreachable batch → no mapping for its titles (retry later)
+            query = data.get("query") or {}
+            if not isinstance(query, dict):
+                continue
+            for norm_entry in query.get("normalized") or []:
+                if isinstance(norm_entry, dict):
+                    origin = by_norm.get(self._norm(str(norm_entry.get("from", ""))))
+                    if origin is not None:
+                        by_norm[self._norm(str(norm_entry.get("to", "")))] = origin
+            pages = query.get("pages") or {}
+            if not isinstance(pages, dict):
+                continue
+            for page in pages.values():
+                if not isinstance(page, dict):
                     continue
-                for norm_entry in query.get("normalized") or []:
-                    if isinstance(norm_entry, dict):
-                        origin = by_norm.get(
-                            self._norm(str(norm_entry.get("from", "")))
-                        )
-                        if origin is not None:
-                            by_norm[self._norm(str(norm_entry.get("to", "")))] = origin
-                pages = query.get("pages") or {}
-                if not isinstance(pages, dict):
+                original = by_norm.get(self._norm(str(page.get("title", ""))))
+                if original is None:
                     continue
-                for page in pages.values():
-                    if not isinstance(page, dict):
-                        continue
-                    original = by_norm.get(self._norm(str(page.get("title", ""))))
-                    if original is None:
-                        continue
-                    qid = (page.get("pageprops") or {}).get("wikibase_item")
-                    if isinstance(qid, str) and qid:
-                        out[original] = qid
-        finally:
-            await client.aclose()
+                qid = (page.get("pageprops") or {}).get("wikibase_item")
+                if isinstance(qid, str) and qid:
+                    out[original] = qid
         return out
-
-    async def _get(
-        self, client: httpx.AsyncClient, params: dict[str, str]
-    ) -> dict[str, Any]:
-        """One API call, retrying a transient failure a bounded number of times.
-
-        Returns an empty dict if all attempts fail — the batch then yields no categories for its
-        titles, which the caller reads as "omitted / retry later" rather than an error.
-        """
-        for attempt in range(_MAX_RETRIES):
-            try:
-                resp = await client.get(self._api_url, params=params)
-                resp.raise_for_status()
-                parsed = resp.json()
-                return dict(parsed) if isinstance(parsed, dict) else {}
-            except httpx.HTTPError:
-                if attempt == _MAX_RETRIES - 1:
-                    return {}
-                await asyncio.sleep(min(2**attempt, 5))
-        return {}

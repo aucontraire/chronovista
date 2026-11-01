@@ -151,8 +151,12 @@ class EntityEnrichmentService:
         -----
         Runs detached, so it **never raises** (FR-006): a fetch failure or any unexpected error is
         caught and logged at warning level with the entity id + reason (FR-006a), leaving the entity
-        grounded and its properties to be filled by the next batch run. The done-callback that retires
-        the task handle must therefore never need to inspect an exception.
+        grounded but **without** the properties this run would have fetched. There is no scheduled
+        batch sweeper (verified, Feature 102/FR-016): nothing re-runs enrichment automatically, so an
+        unreachable/transient failure here loses that enrichment until a human manually regrounds the
+        entity (the detail-view Refresh). The transport's bounded retry is the only retry this path
+        gets. The done-callback that retires the task handle must therefore never need to inspect an
+        exception.
 
         Four independent best-effort steps: the Wikidata **properties** write (primary), then the
         Wikipedia **image** fallback (Feature 094 — fills the automated image from a free Commons
@@ -209,8 +213,10 @@ class EntityEnrichmentService:
         except WikidataUnavailable as exc:
             logger.warning(
                 "on-approval enrichment could not reach the knowledge base for "
-                "entity %s (qid=%s): %s — the entity stays grounded; the next batch "
-                "run will fill properties",
+                "entity %s (qid=%s): %s — the entity stays grounded but UNENRICHED; "
+                "no scheduled sweeper exists (Feature 102/FR-016), so these properties "
+                "are lost until a manual reground. The transport already retried within "
+                "its bounded budget before this.",
                 entity_id,
                 qid,
                 exc,
@@ -228,8 +234,13 @@ class EntityEnrichmentService:
         """Best-effort: resolve the DBpedia IRI for ``qid`` and merge it into ``external_ids``.
 
         Never raises and never disturbs the verified Wikidata identifier (the write is a JSONB merge,
-        not a replace). A flaky/unreachable DBpedia endpoint, or an item with no English Wikipedia
-        article, simply leaves no DBpedia link — the batch pipeline can fill it later.
+        not a replace). ``DbpediaResolver.resolve`` now routes through the shared transport, so a
+        transient DBpedia failure is retried within a bounded budget before it gives up; the resolver
+        **absorbs** an exhausted-retry outcome and returns ``None`` (contract preserved), logging the
+        unreachable-vs-genuinely-absent distinction there (Feature 102/FR-006) — this boundary only
+        ever sees ``None``. Either way the entity simply keeps no DBpedia link. There is **no** batch
+        pipeline that fills it later (verified, FR-016): an unreachable run loses the link until a
+        human manually regrounds the entity.
         """
         try:
             link = await self._dbpedia_factory().resolve(qid)

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.107.0] - 2026-11-01
+
+### Fixed
+- **Entity enrichment now retries a transient knowledge-source failure instead of silently losing the result.** DBpedia's SPARQL endpoint is unreliable, and the enrichment that runs on entity approval is a one-shot background task with no scheduled retry pass — so a momentary timeout or connection reset during those few seconds previously left the entity with no DBpedia link (or no Wikidata properties) until someone manually re-grounded it. All knowledge-source fetches now share one bounded retry/backoff policy (a `Retry-After` header is honored but capped, otherwise bounded exponential backoff, up to three attempts total), covering rate limits, server errors, **and** timeouts/connection resets — which is DBpedia's typical failure mode.
+- **An upstream error returned with an HTTP 200 body is no longer mistaken for "nothing found."** Wikidata and MediaWiki report some failures (rate-limited, maxlag, bad params) as an HTTP 200 carrying an error object; this was detected on only one code path. It is now treated as a transient failure everywhere — most visibly, entity candidate search and resolve report "temporarily unavailable" instead of a misleading empty result when the upstream errors.
+
+### Internal
+- **The Wikidata/DBpedia/MediaWiki fetch layer is consolidated behind one shared transport (Feature 102, Phase B1).** The five async knowledge-source services — the Wikidata client, the DBpedia resolver, the entity-category fetch, the category-size fetch, and the page-image fallback — now compose a single `services.wikimedia_transport.WikimediaTransport` instead of each re-rolling the outbound-HTTP scaffolding that had drifted into two silent-wrong-result bugs. The transport owns the outbound identity (one `User-Agent` template with a per-service label), the per-request client lifecycle (plus a `run_sync` entry for future synchronous callers), the unified rate-limit/backoff policy, the unreachable-vs-empty result contract, request chunking, and MediaWiki `clcontinue` continuation (with the normalized/redirect hop re-attribution that prevents false-zero category results). Each service keeps only its endpoint, parameters, and response parsing; none performs its own HTTP scaffolding. Exceeding the continuation bound now raises an explicit incomplete signal rather than silently truncating a listing.
+- **Three architecture fitness tests enforce the single entry point.** They fail CI if a `User-Agent` is assembled outside the shared template (the load-bearing exact-count guard), if MediaWiki `clcontinue` handling appears outside the shared continuation helper, or if a Wikimedia host/endpoint literal appears outside the fetch layer — each mutation-verified. This promotes the single-source invariant to the automated tier (Constitution v1.3.0), built on the Feature 101 pilot.
+- **Corrected docstrings that promised a non-existent "next batch run"** would backfill a failed enrichment — no such scheduled sweeper exists, so the transport's retry is the only retry that path gets. The operator backfill now reports "unreachable" counts separately from "genuinely absent" and exits non-zero when a run is dominated by unreachable fetches, so a whole-run outage is no longer indistinguishable from real absences. No schema change, no migration, no new dependency, no API or CLI contract change.
+
 ## [0.106.0] - 2026-10-31
 
 ### Fixed

@@ -65,6 +65,7 @@ def _make_mock_entity(
     entity.created_at = datetime(2024, 1, 1, tzinfo=UTC)
     entity.status = "active"
     entity.mention_count = 0
+    entity.aliases = [MagicMock()]
     return entity
 
 
@@ -99,6 +100,13 @@ class TestCreateEntityCommand:
 
             mock_entity_repo = AsyncMock()
             mock_entity_repo.create.return_value = mock_entity
+            # Feature 101: the create command routes through the shared core, which calls
+            # find_by_normalized_and_type (default "no collision") and insert_new_entity
+            # (aliased to the create stub so `create.call_args` still describes the insert); the
+            # response reloads via get_with_aliases.
+            mock_entity_repo.find_by_normalized_and_type.return_value = None
+            mock_entity_repo.insert_new_entity = mock_entity_repo.create
+            mock_entity_repo.get_with_aliases.return_value = mock_entity
             MockEntityRepo.return_value = mock_entity_repo
 
             mock_alias_repo = AsyncMock()
@@ -134,6 +142,13 @@ class TestCreateEntityCommand:
 
             mock_entity_repo = AsyncMock()
             mock_entity_repo.create.return_value = mock_entity
+            # Feature 101: the create command routes through the shared core, which calls
+            # find_by_normalized_and_type (default "no collision") and insert_new_entity
+            # (aliased to the create stub so `create.call_args` still describes the insert); the
+            # response reloads via get_with_aliases.
+            mock_entity_repo.find_by_normalized_and_type.return_value = None
+            mock_entity_repo.insert_new_entity = mock_entity_repo.create
+            mock_entity_repo.get_with_aliases.return_value = mock_entity
             MockEntityRepo.return_value = mock_entity_repo
 
             mock_alias_repo = AsyncMock()
@@ -172,6 +187,13 @@ class TestCreateEntityCommand:
 
             mock_entity_repo = AsyncMock()
             mock_entity_repo.create.return_value = mock_entity
+            # Feature 101: the create command routes through the shared core, which calls
+            # find_by_normalized_and_type (default "no collision") and insert_new_entity
+            # (aliased to the create stub so `create.call_args` still describes the insert); the
+            # response reloads via get_with_aliases.
+            mock_entity_repo.find_by_normalized_and_type.return_value = None
+            mock_entity_repo.insert_new_entity = mock_entity_repo.create
+            mock_entity_repo.get_with_aliases.return_value = mock_entity
             MockEntityRepo.return_value = mock_entity_repo
 
             mock_alias_repo = AsyncMock()
@@ -219,6 +241,13 @@ class TestCreateEntityCommand:
 
             mock_entity_repo = AsyncMock()
             mock_entity_repo.create.return_value = mock_entity
+            # Feature 101: the create command routes through the shared core, which calls
+            # find_by_normalized_and_type (default "no collision") and insert_new_entity
+            # (aliased to the create stub so `create.call_args` still describes the insert); the
+            # response reloads via get_with_aliases.
+            mock_entity_repo.find_by_normalized_and_type.return_value = None
+            mock_entity_repo.insert_new_entity = mock_entity_repo.create
+            mock_entity_repo.get_with_aliases.return_value = mock_entity
             MockEntityRepo.return_value = mock_entity_repo
 
             mock_alias_repo = AsyncMock()
@@ -250,16 +279,19 @@ class TestCreateEntityCommand:
 
         with (
             patch("chronovista.cli.entity_commands.db_manager") as mock_db,
-            patch("chronovista.cli.entity_commands.NamedEntityRepository"),
+            patch(
+                "chronovista.cli.entity_commands.NamedEntityRepository"
+            ) as MockEntityRepo,
             patch("chronovista.cli.entity_commands.EntityAliasRepository"),
         ):
             mock_session = AsyncMock()
             mock_db.get_session.return_value = _make_get_session(mock_session)
 
-            # Duplicate check returns an existing entity
-            mock_execute_result = MagicMock()
-            mock_execute_result.scalar_one_or_none.return_value = existing_entity
-            mock_session.execute.return_value = mock_execute_result
+            # The shared core's all-status lookup finds an existing entity → the CLI's
+            # reject policy prints the panel and exits 1 (Feature 101).
+            mock_entity_repo = AsyncMock()
+            mock_entity_repo.find_by_normalized_and_type.return_value = existing_entity
+            MockEntityRepo.return_value = mock_entity_repo
 
             result = runner.invoke(
                 app, ["entities", "create", "Ada Lovelace", "--type", "person"]
@@ -286,9 +318,9 @@ class TestCreateEntityCommand:
         assert result.exit_code == 1, f"Output: {result.output}"
         assert "Invalid Type" in result.output
 
-    def test_create_entity_auto_title_cases_name(self) -> None:
-        """Lowercase input name is title-cased when passed to NamedEntityCreate."""
-        mock_entity = _make_mock_entity(name="Ada Lovelace")
+    def test_create_entity_stores_name_verbatim(self) -> None:
+        """Feature 101 FR-006 bug-fix diff: the name is stored verbatim, not title-cased."""
+        mock_entity = _make_mock_entity(name="ada lovelace")
 
         with (
             patch("chronovista.cli.entity_commands.db_manager") as mock_db,
@@ -308,6 +340,13 @@ class TestCreateEntityCommand:
 
             mock_entity_repo = AsyncMock()
             mock_entity_repo.create.return_value = mock_entity
+            # Feature 101: the create command routes through the shared core, which calls
+            # find_by_normalized_and_type (default "no collision") and insert_new_entity
+            # (aliased to the create stub so `create.call_args` still describes the insert); the
+            # response reloads via get_with_aliases.
+            mock_entity_repo.find_by_normalized_and_type.return_value = None
+            mock_entity_repo.insert_new_entity = mock_entity_repo.create
+            mock_entity_repo.get_with_aliases.return_value = mock_entity
             MockEntityRepo.return_value = mock_entity_repo
 
             mock_alias_repo = AsyncMock()
@@ -322,8 +361,9 @@ class TestCreateEntityCommand:
         assert result.exit_code == 0, f"Output: {result.output}"
         create_call_kwargs = mock_entity_repo.create.call_args[1]
         obj_in = create_call_kwargs["obj_in"]
-        # "ada lovelace".title() == "Ada Lovelace"
-        assert obj_in.canonical_name == "Ada Lovelace"
+        # Current-wrong → corrected: the old code stored `.title()` ("Ada Lovelace"); the name
+        # is now stored verbatim (whitespace-trimmed only), matching every other path (FR-006).
+        assert obj_in.canonical_name == "ada lovelace"
 
     def test_create_entity_empty_normalized_name_exits_code_1(self) -> None:
         """Name that normalizes to empty (e.g. '###') exits with code 1."""
@@ -360,6 +400,13 @@ class TestCreateEntityCommand:
 
             mock_entity_repo = AsyncMock()
             mock_entity_repo.create.return_value = mock_entity
+            # Feature 101: the create command routes through the shared core, which calls
+            # find_by_normalized_and_type (default "no collision") and insert_new_entity
+            # (aliased to the create stub so `create.call_args` still describes the insert); the
+            # response reloads via get_with_aliases.
+            mock_entity_repo.find_by_normalized_and_type.return_value = None
+            mock_entity_repo.insert_new_entity = mock_entity_repo.create
+            mock_entity_repo.get_with_aliases.return_value = mock_entity
             MockEntityRepo.return_value = mock_entity_repo
 
             mock_alias_repo = AsyncMock()
@@ -394,6 +441,13 @@ class TestCreateEntityCommand:
 
             mock_entity_repo = AsyncMock()
             mock_entity_repo.create.return_value = mock_entity
+            # Feature 101: the create command routes through the shared core, which calls
+            # find_by_normalized_and_type (default "no collision") and insert_new_entity
+            # (aliased to the create stub so `create.call_args` still describes the insert); the
+            # response reloads via get_with_aliases.
+            mock_entity_repo.find_by_normalized_and_type.return_value = None
+            mock_entity_repo.insert_new_entity = mock_entity_repo.create
+            mock_entity_repo.get_with_aliases.return_value = mock_entity
             MockEntityRepo.return_value = mock_entity_repo
 
             mock_alias_repo = AsyncMock()
@@ -438,6 +492,13 @@ class TestCreateEntityCommand:
 
             mock_entity_repo = AsyncMock()
             mock_entity_repo.create.return_value = mock_entity
+            # Feature 101: the create command routes through the shared core, which calls
+            # find_by_normalized_and_type (default "no collision") and insert_new_entity
+            # (aliased to the create stub so `create.call_args` still describes the insert); the
+            # response reloads via get_with_aliases.
+            mock_entity_repo.find_by_normalized_and_type.return_value = None
+            mock_entity_repo.insert_new_entity = mock_entity_repo.create
+            mock_entity_repo.get_with_aliases.return_value = mock_entity
             MockEntityRepo.return_value = mock_entity_repo
 
             mock_alias_repo = AsyncMock()

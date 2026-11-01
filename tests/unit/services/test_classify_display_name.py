@@ -46,6 +46,12 @@ def _build_service(tag: MagicMock) -> tuple[TagManagementService, AsyncMock, Asy
     created_entity = MagicMock()
     created_entity.id = _uuid()
     named_entity_repo.create.return_value = created_entity
+    # Feature 101: classify's create path routes through the shared core, which calls
+    # find_by_normalized_and_type (default "no collision" → create path) and insert_new_entity
+    # (aliased to the create stub so `create.call_args` / `create.return_value` keep describing
+    # the insert).
+    named_entity_repo.find_by_normalized_and_type.return_value = None
+    named_entity_repo.insert_new_entity = named_entity_repo.create
 
     entity_alias_repo = AsyncMock()
     created_alias = MagicMock()

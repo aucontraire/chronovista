@@ -1705,10 +1705,15 @@ class TestCreateEntityEndpoint:
                     lambda text: text.strip().lower()
                 )
 
+                # alias_count now reflects the persisted aliases, read back via
+                # get_with_aliases (the dedup lives in the shared core, Feature 101):
+                # canonical + "Ed Turing" + "Turing" = 3.
+                db_entity.aliases = [MagicMock(), MagicMock(), MagicMock()]
                 mock_entity_repo.find_by_normalized_and_type = AsyncMock(
                     return_value=None
                 )
-                mock_entity_repo.create = AsyncMock(return_value=db_entity)
+                mock_entity_repo.insert_new_entity = AsyncMock(return_value=db_entity)
+                mock_entity_repo.get_with_aliases = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())
 
                 response = await client.post(
@@ -1755,10 +1760,14 @@ class TestCreateEntityEndpoint:
                 "chronovista.api.routers.entity_mentions._normalizer"
             ) as mock_normalizer:
                 mock_normalizer.normalize.return_value = "radia perlman"
+                # Response fields come from the reloaded row (get_with_aliases); one
+                # canonical alias, no extras.
+                db_entity.aliases = [MagicMock()]
                 mock_entity_repo.find_by_normalized_and_type = AsyncMock(
                     return_value=None
                 )
-                mock_entity_repo.create = AsyncMock(return_value=db_entity)
+                mock_entity_repo.insert_new_entity = AsyncMock(return_value=db_entity)
+                mock_entity_repo.get_with_aliases = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())
 
                 response = await client.post(
@@ -1908,10 +1917,13 @@ class TestCreateEntityEndpoint:
                 mock_normalizer.normalize.side_effect = (
                     lambda text: text.strip().lower()
                 )
+                # canonical + 1 unique alias (the duplicate is deduped in the core) = 2.
+                db_entity.aliases = [MagicMock(), MagicMock()]
                 mock_entity_repo.find_by_normalized_and_type = AsyncMock(
                     return_value=None
                 )
-                mock_entity_repo.create = AsyncMock(return_value=db_entity)
+                mock_entity_repo.insert_new_entity = AsyncMock(return_value=db_entity)
+                mock_entity_repo.get_with_aliases = AsyncMock(return_value=db_entity)
                 mock_alias_repo.create = AsyncMock(return_value=MagicMock())
 
                 response = await client.post(

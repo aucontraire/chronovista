@@ -20,6 +20,7 @@ Feature 044 — Search Accuracy & Mention Audit (T015)
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -531,3 +532,64 @@ class TestAliasCrudCliGuards:
         )
         assert result.exit_code == 1
         assert "exactly one of --alias or --alias-id" in result.stdout
+
+
+class TestCreateVerbatimCasing:
+    """Feature 101 FR-006 bug-fix diff: the CLI stores the name verbatim, never title-cased.
+
+    Before this feature the create command ran ``name.title()`` — flattening intentional casing
+    and contradicting Feature 057. It now stores ``name.strip()`` and routes through the shared
+    creation core. This asserts the corrected behavior: the ``NamedEntityCreate`` handed to the
+    core preserves the exact input casing (current-wrong "Grace Hopper" → corrected "grace HOPPER").
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    @patch("chronovista.cli.entity_commands.EntityAliasRepository")
+    @patch("chronovista.cli.entity_commands.NamedEntityRepository")
+    @patch(
+        "chronovista.cli.entity_commands.create_and_ground_entity",
+        new_callable=AsyncMock,
+    )
+    @patch("chronovista.cli.entity_commands.db_manager")
+    def test_create_stores_name_verbatim_not_title_cased(
+        self,
+        mock_db_manager: MagicMock,
+        mock_core: AsyncMock,
+        mock_entity_repo_cls: MagicMock,
+        mock_alias_repo_cls: MagicMock,
+        runner: CliRunner,
+    ) -> None:
+        entity_id = _make_uuid()
+        mock_session = AsyncMock()
+
+        async def _one_session() -> Any:
+            yield mock_session
+
+        mock_db_manager.get_session.side_effect = lambda *a, **k: _one_session()
+
+        created = MagicMock()
+        created.id = entity_id
+        mock_core.return_value = created
+
+        reloaded = MagicMock()
+        reloaded.id = entity_id
+        reloaded.canonical_name = "grace HOPPER"
+        reloaded.entity_type = "person"
+        reloaded.description = None
+        reloaded.aliases = [MagicMock()]
+        mock_entity_repo_cls.return_value.get_with_aliases = AsyncMock(
+            return_value=reloaded
+        )
+
+        result = runner.invoke(
+            entity_app, ["create", "grace HOPPER", "--type", "person"]
+        )
+
+        assert result.exit_code == 0, result.output
+        mock_core.assert_awaited_once()
+        obj_in = mock_core.await_args.args[1]
+        assert obj_in.canonical_name == "grace HOPPER"  # verbatim
+        assert obj_in.canonical_name != "Grace Hopper"  # not the old .title() form

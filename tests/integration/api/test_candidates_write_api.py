@@ -121,7 +121,7 @@ async def seeder(
 def no_detached_enrichment() -> Any:
     """Enrichment is best-effort and detached; it opens its own app-level session and
     would reach the network, so it is not part of what this test exercises."""
-    with patch("chronovista.api.routers.candidates._schedule_enrichment") as sched:
+    with patch("chronovista.api.routers.candidates.schedule_enrichment") as sched:
         yield sched
 
 

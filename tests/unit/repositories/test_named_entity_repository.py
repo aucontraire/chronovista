@@ -79,3 +79,21 @@ class TestFindByNameOrAlias:
 
         assert result == (None, None)
         assert mock_session.execute.call_count == 2
+
+
+class TestInsertNewEntity:
+    """Feature 101 FR-001: the uniquely-named insert delegates to the base create primitive."""
+
+    async def test_delegates_to_base_create(self) -> None:
+        """``insert_new_entity`` is a flush-only insert (same semantics as base ``create``),
+        given a unique name so the single-source fitness test can grep for it."""
+        repository = NamedEntityRepository()
+        created = MagicMock()
+        repository.create = AsyncMock(return_value=created)  # type: ignore[method-assign]
+        session = MagicMock(spec=AsyncSession)
+        obj_in = MagicMock()
+
+        result = await repository.insert_new_entity(session, obj_in)
+
+        assert result is created
+        repository.create.assert_awaited_once_with(session, obj_in=obj_in)

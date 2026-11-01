@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.106.0] - 2026-10-31
+
+### Fixed
+- **The CLI `entities create` command now stores the name exactly as typed.** It previously title-cased the name — flattening intentional mixed-case — which contradicted the verbatim-casing rule every other creation path follows. The name is now stored verbatim (whitespace-trimmed only), matching the web, approval, and classification paths.
+- **The CLI `entities create` command now de-duplicates `--alias` values, matching the web path.** A `--alias` equal to the entity's own name, or a repeated `--alias`, previously collided with the alias uniqueness constraint and failed the command with an unhandled database error. Duplicates (by normalized form) are now dropped — the same de-duplication `POST /entities` has always performed — so the command succeeds. (An alias that normalizes to an empty string is still skipped; this now happens silently rather than with a per-alias console notice.)
+- **The offline entity-resolution loader now writes grounding identifiers in the structured shape every reader expects.** It stored a bare identifier string under the `wikidata` key instead of the `{id, verified, status}` record that every `external_ids` reader assumes, so a reader could fail on a loader-created entity. The loader now produces the same structured shape as every other path.
+
+### Internal
+- **Entity creation is consolidated behind one shared core (Feature 101).** All five creation paths — the manual `POST /entities` endpoint, tag→entity classification, candidate approval, the CLI `entities create` command, and the offline resolution loader — now persist through a single `services.entity_creation.create_and_ground_entity` orchestrator that owns the all-status duplicate lookup, the insert via the uniquely-named `NamedEntityRepository.insert_new_entity`, the canonical `NAME_VARIANT` self-alias, and extra-alias de-duplication. Each caller keeps only its own policy: the conflict reaction (reject / supersede / link / skip), the type source, the description source, and the enrichment mode. The core performs no transaction control and no network I/O. Grounding identifiers are built by one `build_grounding` helper, and the two byte-identical `_schedule_enrichment` router helpers are unified into one `schedule_enrichment` in the enrichment service.
+- **Architecture fitness tests enforce the single-entry-point invariant.** Three exact-count guards in `tests/unit/architecture/test_entity_creation_fitness.py` fail CI if an entity is inserted outside the core, a grounding dict is hand-built outside `build_grounding`, or a second enrichment-trigger helper is defined — promoting the invariant from review discipline to an automated check (the Constitution v1.3.0 "Single-Source Operations and Fitness Guards" rule). The collision-across-all-statuses fix (0.105.3) becomes structural: the all-status lookup lives in the core, so no new path can re-introduce an active-only check. No schema change, no new dependency, no API or CLI contract change.
+
 ## [0.105.3] - 2026-10-30
 
 ### Fixed

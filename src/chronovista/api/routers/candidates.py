@@ -58,33 +58,13 @@ from chronovista.services.candidate_suggestion_service import (
 from chronovista.services.entity_enrichment_service import (
     EntityEnrichmentService,
     get_enrichment_service,
+    schedule_enrichment,
 )
 from chronovista.services.tag_management import TagManagementService
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 
 _CHANNEL = "relation"
-
-# Retained handles for detached on-approval enrichment tasks (FR-004, research D1).
-# A bare ``asyncio.create_task`` handle can be garbage-collected mid-flight; the set
-# + done-callback keep it alive until completion (mirrors ``entity_mentions``).
-_enrichment_tasks: set[asyncio.Task[None]] = set()
-
-
-def _schedule_enrichment(
-    service: EntityEnrichmentService, entity_id: uuid.UUID, qid: str
-) -> None:
-    """Schedule the on-approval property fetch as a detached, GC-safe background task.
-
-    ``EntityEnrichmentService`` opens its own session, so the request's session is
-    never held across the enrichment network calls (the held-session deadlock
-    class). ``entity_id`` is normalized to a stdlib ``uuid.UUID``.
-    """
-    normalized_id = uuid.UUID(str(entity_id))
-    task = asyncio.create_task(service.enrich_on_approval(normalized_id, qid))
-    _enrichment_tasks.add(task)
-    task.add_done_callback(_enrichment_tasks.discard)
-
 
 # Retained handles for the detached generation sweep (FR-022), GC-safe like the
 # enrichment tasks above.
@@ -383,7 +363,7 @@ async def approve_candidate(
     if result.outcome == "approved" and result.created_entity_id is not None:
         row = await repo.get(session, parsed_id)
         if row is not None:
-            _schedule_enrichment(
+            schedule_enrichment(
                 enrichment_service, result.created_entity_id, row.wikidata_qid
             )
     return CandidateVerdictResponse(

@@ -158,6 +158,10 @@ from chronovista.repositories.named_entity_repository import (
 )
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.category_coverage import title_from_dbpedia_iri
+from chronovista.services.entity_creation import (
+    build_grounding,
+    create_and_ground_entity,
+)
 from chronovista.services.entity_curation_service import (
     EntityCurationService,
     EntityNameCollisionError,
@@ -169,6 +173,7 @@ from chronovista.services.entity_curation_service import (
 from chronovista.services.entity_enrichment_service import (
     EntityEnrichmentService,
     get_enrichment_service,
+    schedule_enrichment,
 )
 from chronovista.services.entity_mention_scan_service import (
     EntityMentionScanService,
@@ -188,27 +193,6 @@ from chronovista.services.wikidata_client import WikidataClient, WikidataUnavail
 from chronovista.services.wikidata_properties import wikidata_qid
 
 router = APIRouter(dependencies=[Depends(require_auth)])
-
-# Retained handles for detached on-approval enrichment tasks (Feature 068, research D1). A bare
-# ``asyncio.create_task`` handle can be garbage-collected mid-flight, silently dropping the
-# enrichment; the set + done-callback keep it alive until completion (mirrors ``_scan_tasks``).
-_enrichment_tasks: set[asyncio.Task[None]] = set()
-
-
-def _schedule_enrichment(
-    service: EntityEnrichmentService, entity_id: uuid.UUID, qid: str
-) -> None:
-    """Schedule the on-approval property fetch as a detached, GC-safe background task.
-
-    ``entity_id`` is normalized to a stdlib ``uuid.UUID`` so both call sites (create reads a
-    refreshed id; classify reads a pending object's ``uuid_utils.UUID`` default) feed the repository
-    WHERE an identical type — avoiding a latent zero-row silent no-op.
-    """
-    normalized_id = uuid.UUID(str(entity_id))
-    task = asyncio.create_task(service.enrich_on_approval(normalized_id, qid))
-    _enrichment_tasks.add(task)
-    task.add_done_callback(_enrichment_tasks.discard)
-
 
 # Ceiling for the appears-with panel (FR-023a). The default of 12 fills a
 # column without scrolling; this bound exists so "reveal more" cannot walk the
@@ -2865,7 +2849,7 @@ async def classify_tag(
         and result.entity_created
         and resolved_entity_id is not None
     ):
-        _schedule_enrichment(
+        schedule_enrichment(
             enrichment_service, resolved_entity_id, body.approved_identifier.id
         )
 
@@ -2948,15 +2932,36 @@ async def create_entity(
     # human decision and must not be flattened (Feature 057, FR-012).
     canonical_name = body.name.strip()
 
-    # 4. Check for a duplicate across ALL statuses. The unique constraint
-    # uq_named_entity_canonical(canonical_name_normalized, entity_type) is global across
-    # statuses, so a merged/deprecated entity with the same normalized name+type blocks
-    # creation too. An active-only check let that case slip through to an IntegrityError (500)
-    # at insert; returning 409 with the colliding entity (whatever its status) is correct.
-    existing = await entity_repo.find_by_normalized_and_type(
-        session, normalized_name, entity_type_enum.value
+    # 4. Build grounding if the user approved a knowledge-base match (US3, FR-014); otherwise the
+    # entity is created ungrounded (grounding never blocks creation — FR-012). The structured
+    # external_ids shape comes from the one sanctioned builder (Feature 101, FR-003). No DBpedia
+    # call here; that IRI is filled by the back-fill (spec Non-Goals).
+    external_ids: dict[str, Any] = {}
+    if body.approved_identifier is not None:
+        external_ids = build_grounding(
+            body.approved_identifier.source,
+            body.approved_identifier.id,
+            verified=True,
+            status="verified",
+        )
+
+    entity_create = NamedEntityCreate(
+        canonical_name=canonical_name,
+        canonical_name_normalized=normalized_name,
+        entity_type=entity_type_enum,
+        description=body.description,
+        status=TagStatus.ACTIVE,
+        discovery_method=DiscoveryMethod.USER_CREATED,
+        confidence=1.0,
+        external_ids=external_ids,
     )
-    if existing is not None:
+
+    # 5. Persist through the shared creation core (Feature 101, FR-002): all-status duplicate
+    # lookup, insert via the uniquely-named primitive, canonical NAME_VARIANT self-alias, and the
+    # extra aliases deduped by normalized form. Manual POST's policy on a collision is reject-409
+    # with the colliding entity's status — whatever its status (the all-status guard is now
+    # structural, FR-007, so no path can reintroduce the active-only 500).
+    async def _reject_conflict(existing: NamedEntityDB) -> NamedEntityDB | None:
         raise ConflictError(
             message=(
                 f"An entity with normalized name '{normalized_name}' and type "
@@ -2973,74 +2978,37 @@ async def create_entity(
             },
         )
 
-    # 5. Create entity via repository. If the user approved a knowledge-base match, ground the
-    # entity with a human-verified identifier (US3, FR-014); otherwise it is created ungrounded
-    # (grounding never blocks creation — FR-012). No DBpedia call here; that IRI is filled by
-    # the back-fill (spec Non-Goals).
-    external_ids: dict[str, Any] = {}
-    if body.approved_identifier is not None:
-        external_ids[body.approved_identifier.source] = ExternalIdentifier(
-            id=body.approved_identifier.id,
-            verified=True,
-            status="verified",
-        ).model_dump()
-
-    entity_create = NamedEntityCreate(
-        canonical_name=canonical_name,
-        canonical_name_normalized=normalized_name,
-        entity_type=entity_type_enum,
-        description=body.description,
-        status=TagStatus.ACTIVE,
-        discovery_method=DiscoveryMethod.USER_CREATED,
-        confidence=1.0,
-        external_ids=external_ids,
+    db_entity = await create_and_ground_entity(
+        session,
+        entity_create,
+        extra_aliases=body.aliases,
+        on_conflict=_reject_conflict,
+        entity_repo=entity_repo,
+        alias_repo=alias_repo,
     )
-    db_entity = await entity_repo.create(session, obj_in=entity_create)
+    # The reject policy always raises on a collision, so a return is always the new entity.
+    assert db_entity is not None
 
-    # 6. Create canonical name as first alias
-    canonical_alias = EntityAliasCreate(
-        entity_id=db_entity.id,
-        alias_name=canonical_name,
-        alias_name_normalized=normalized_name,
-        alias_type=EntityAliasType.NAME_VARIANT,
-        occurrence_count=0,
-    )
-    await alias_repo.create(session, obj_in=canonical_alias)
-
-    # 7. Create additional aliases, skipping normalized duplicates
-    seen_normalized: set[str] = {normalized_name}
-    for alias_text in body.aliases:
-        alias_normalized = _normalizer.normalize(alias_text)
-        if not alias_normalized or alias_normalized in seen_normalized:
-            continue
-        seen_normalized.add(alias_normalized)
-        alias_create = EntityAliasCreate(
-            entity_id=db_entity.id,
-            alias_name=alias_text.strip(),
-            alias_name_normalized=alias_normalized,
-            alias_type=EntityAliasType.NAME_VARIANT,
-            occurrence_count=0,
-        )
-        await alias_repo.create(session, obj_in=alias_create)
-
-    # 8. Commit and return 201
+    # 6. Commit, then reload with aliases so alias_count reflects what was persisted (the dedup
+    # now lives in the core, FR-001).
     await session.commit()
-    await session.refresh(db_entity)
+    reloaded = await entity_repo.get_with_aliases(session, db_entity.id)
+    assert reloaded is not None
 
-    # 9. If grounded, fetch the entity's curated Wikidata properties in the background so a fresh
+    # 7. If grounded, fetch the entity's curated Wikidata properties in the background so a fresh
     # grounded entity is enriched moments later (Feature 068, FR-005). Detached — the create action
     # returns immediately (SC-003); a failed fetch leaves the entity grounded (FR-006).
     if body.approved_identifier is not None:
-        _schedule_enrichment(
-            enrichment_service, db_entity.id, body.approved_identifier.id
+        schedule_enrichment(
+            enrichment_service, reloaded.id, body.approved_identifier.id
         )
 
     return {
-        "entity_id": str(db_entity.id),
-        "canonical_name": db_entity.canonical_name,
-        "entity_type": db_entity.entity_type,
-        "description": db_entity.description,
-        "alias_count": len(seen_normalized),
+        "entity_id": str(reloaded.id),
+        "canonical_name": reloaded.canonical_name,
+        "entity_type": reloaded.entity_type,
+        "description": reloaded.description,
+        "alias_count": len(reloaded.aliases),
         "grounded": bool(external_ids),
     }
 
@@ -3193,7 +3161,7 @@ async def reground_entity(
             raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
 
     await session.commit()
-    _schedule_enrichment(enrichment_service, parsed_entity_id, qid)
+    schedule_enrichment(enrichment_service, parsed_entity_id, qid)
     return await get_entity_detail(
         entity_id,
         session,

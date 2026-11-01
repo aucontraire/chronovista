@@ -257,9 +257,7 @@ class TestEndToEndRealSeams:
 
         def factory(lang: str) -> EntityCategoryFetchService:
             return EntityCategoryFetchService(
-                client_factory=lambda: httpx.AsyncClient(
-                    transport=httpx.MockTransport(wiki_handler)
-                ),
+                http=httpx.AsyncClient(transport=httpx.MockTransport(wiki_handler)),
                 pause=0.0,
                 language=lang,
             )

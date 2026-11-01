@@ -142,13 +142,18 @@ class _Plan:
         self.sizes: dict[str, int] = {}
         self.skipped_done = 0  # already on the Wikipedia source
         self.unresolvable = 0  # no resolvable article (SC-006)
-        self.fetch_omitted = 0  # fetch failed/missing — retry on a later run
-        self.zero_categories = 0  # article exists but has no non-hidden categories
-        # Replace cohort that is left untouched this run (never replace-to-empty / never on a
-        # failed fetch — the DBpedia categories are kept and retried later).
-        self.replace_skipped_empty = (
-            0  # fetch omitted or zero → keep DBpedia, retry later
-        )
+        # UNREACHABLE: the title was ABSENT from the fetch result because its batch raised
+        # (transport/parse failure, error-in-200, incomplete continuation). This is the sole
+        # unreachable signal — retry on a later run. Counts both cohorts' absent titles.
+        self.fetch_omitted = 0
+        # Reached-settled (ADD cohort): the article was reached and has no non-hidden categories
+        # (a missing/invalid article now returns present-empty, so it lands here too).
+        self.zero_categories = 0
+        # Reached-settled (REPLACE cohort): the fetch came back present-empty (zero categories, or
+        # a missing/invalid article) — never replace-to-empty, so the DBpedia categories are kept.
+        # Reached-settled, NOT unreachable (a replace title whose batch was unreachable is counted
+        # in fetch_omitted instead).
+        self.replace_skipped_empty = 0
         # Aggregate diff across the 373 rewrite (FR-013), by normalized category name.
         self.diff_added = 0
         self.diff_removed = 0
@@ -244,7 +249,13 @@ async def build_plan(
 
     for entity_id, title in replace_titles.items():
         names = fetched.get(title)
-        # Never replace-to-empty: a failed/empty fetch keeps the entity's DBpedia categories.
+        if names is None:
+            # Unreachable: the title's batch raised (absent from the fetch result). Keep the
+            # entity's DBpedia categories and retry later — unreachable, not reached-settled.
+            plan.fetch_omitted += 1
+            continue
+        # Never replace-to-empty: a reached-but-empty fetch (zero categories, or a missing/invalid
+        # article now returned present-empty) keeps the entity's DBpedia categories. Reached-settled.
         if not names:
             plan.replace_skipped_empty += 1
             continue
@@ -270,26 +281,62 @@ async def build_plan(
     return plan
 
 
+def _unreachable_dominates(plan: _Plan) -> bool:
+    """True when transient 'unreachable' omissions outnumber everything actually reached this run.
+
+    The fetch service's omit-vs-present signal carries the distinction (Feature 102/FR-017): a title
+    **absent** from the fetch result is *unreachable* (its batch raised — retry later), while a title
+    **present with an empty list** is *reached-settled* (the article was reached and has no non-hidden
+    categories, or is reported missing/invalid — now returned present-empty, NOT absent). Counting
+    only entities whose fetch was attempted this run (so a re-run's large ``skipped_done`` cohort does
+    not mask an outage), unreachable dominates when more attempted fetches came back unreachable than
+    came back reached (categorized, rewritten, or reached-settled). When it dominates, the low numbers
+    in the summary mean "the source was down", not "there was little to do" — so the run exits
+    non-zero rather than looking like a completed pass (SC-007).
+    """
+    unreachable = plan.fetch_omitted
+    reached = (
+        len(plan.to_add)
+        + len(plan.to_replace)
+        + plan.zero_categories
+        + plan.replace_skipped_empty
+    )
+    return unreachable > 0 and unreachable > reached
+
+
 def _report(plan: _Plan, grounded_count: int) -> None:
     console.print(f"Grounded entities: {grounded_count:,}")
     console.print(f"  already on the Wikipedia source (skipped): {plan.skipped_done:,}")
     console.print(f"  unresolvable article (skipped + reported): {plan.unresolvable:,}")
+    console.print(
+        f"  UNREACHABLE — fetch absent/omitted because the batch raised (transient, retry "
+        f"later): {plan.fetch_omitted:,}"
+    )
     console.print("  ADD (no categories yet):")
     console.print(f"    will receive categories: {len(plan.to_add):,}")
-    console.print(f"    fetch omitted (retry on a later run): {plan.fetch_omitted:,}")
     console.print(
-        f"    article has zero non-hidden categories: {plan.zero_categories:,}"
+        f"    reached-settled — article reached, zero non-hidden categories (or missing/invalid): "
+        f"{plan.zero_categories:,}"
     )
     console.print("  REPLACE (existing DBpedia 373 → Wikipedia namespace):")
     console.print(f"    will be rewritten: {len(plan.to_replace):,}")
     console.print(
-        f"    kept as-is (fetch empty/failed — retry later): {plan.replace_skipped_empty:,}"
+        f"    reached-settled — kept DBpedia as-is (reached but empty/missing): "
+        f"{plan.replace_skipped_empty:,}"
     )
     console.print(
         f"    diff — categories added {plan.diff_added:,} / removed {plan.diff_removed:,} "
         f"/ unchanged {plan.diff_unchanged:,}"
     )
     console.print(f"  distinct new category sizes fetched: {len(plan.sizes):,}")
+    # The two counts side-by-side: unreachable (transient — retry) vs reached-settled (settled).
+    # Conflating them as one "skipped" total would read identically whether the source was down or
+    # the entities truly lack categories — the exact confusion FR-017 exists to prevent.
+    reached_settled_total = plan.zero_categories + plan.replace_skipped_empty
+    console.print(
+        f"  → UNREACHABLE total (transient, retry-eligible): {plan.fetch_omitted:,}  "
+        f"|  reached-settled total (settled): {reached_settled_total:,}"
+    )
 
 
 async def _apply(
@@ -404,15 +451,24 @@ async def run_backfill(apply: bool, confirm_target: str | None) -> int:
     )
     _report(plan, int(grounded_count))
 
+    dominated = _unreachable_dominates(plan)
+    if dominated:
+        console.print(
+            "\n⚠️  UNREACHABLE DOMINATED this run: more attempted category fetches came back "
+            "unreachable (transient/omitted) than returned a definite result. The low numbers "
+            "above reflect an upstream outage, NOT genuine absence — exiting non-zero so this is "
+            "not mistaken for a completed pass (FR-017). Re-run when the source is healthy."
+        )
+
     if not apply:
         console.print(
             "\nDRY RUN — no changes made. Re-run with --apply --confirm-target "
             f"{dbname} to write."
         )
-        return 0
+        return 3 if dominated else 0
 
     await _apply(plan, dbname, cat_repo=cat_repo, assign_repo=assign_repo)
-    return 0
+    return 3 if dominated else 0
 
 
 def build_parser() -> argparse.ArgumentParser:

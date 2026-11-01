@@ -14,7 +14,6 @@ which is distinct from an empty shortlist meaning "no match".
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -29,16 +28,23 @@ from chronovista.services.wikidata_taxonomy import (
     suggest_entity_type,
     type_corroboration,
 )
+from chronovista.services.wikimedia_transport import (
+    WikidataUnavailable as WikidataUnavailable,  # re-export: canonical def lives in transport
+)
+from chronovista.services.wikimedia_transport import (
+    WikimediaTransport,
+    wikimedia_user_agent,
+)
 
 API = "https://www.wikidata.org/w/api.php"
-# Wikimedia's User-Agent policy gates request rate on a compliant UA that carries a contact
-# URL/email: a no-contact UA is throttled to ~10 req/min (429s), a compliant one to ~200 req/min
-# (see ADR-010). A contact-less UA is what threw the backfill's 429s; the contact link (the public
-# repo) is mandatory, not decoration. Mirrors image_cache._IMAGE_FETCH_USER_AGENT.
-USER_AGENT = (
-    "chronovista/1.0 (https://github.com/aucontraire/chronovista; "
-    "personal YouTube-library tool)"
-)
+# The per-client component label for the single-sourced outbound identity (G1/FR-002). Wikimedia's
+# User-Agent policy gates request rate on a contact-bearing UA (~10 vs ~200 req/min, ADR-010); the
+# transport assembles the compliant string (product/version/contact + this label) — no UA is
+# hand-built here. ``USER_AGENT`` is derived from the template (not reassembled) and kept as a
+# module export because out-of-scope callers (``wikipedia_image_fallback``, the gitignored B2
+# scripts) still import it; Phase B1 does not touch those.
+_UA_COMPONENT = "personal YouTube-library tool"
+USER_AGENT = wikimedia_user_agent(_UA_COMPONENT)
 
 # P31→type knowledge now lives in the shared classifier (Feature 098): EXPECTED_INSTANCE_OF is
 # imported/re-exported above and the corroboration rule is delegated below, so the create badge and
@@ -61,15 +67,6 @@ def _type_verification(entity_type: str | None, instance_of: list[str]) -> bool 
 _STUB_MAX_STATEMENTS = 10
 _LABEL_LANGS = "en|mul|en-gb"  # BCP-47 fallback order for FR-016
 _DEFAULT_TIMEOUT = 8.0
-_MAX_RATE_LIMIT_RETRIES = 2
-
-
-class WikidataUnavailable(Exception):
-    """The knowledge base could not be reached (timeout, transport error, or rate-limited).
-
-    Distinct from an empty result: the caller degrades to ungrounded creation and surfaces a
-    'couldn't reach the knowledge base' signal rather than a benign 'no match' (FR-012).
-    """
 
 
 class WikidataClient:
@@ -84,39 +81,29 @@ class WikidataClient:
         self._http = http
         self._timeout = timeout
 
-    def _new_client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
-            headers={"User-Agent": USER_AGENT}, timeout=self._timeout
-        )
+    def _transport(self) -> WikimediaTransport:
+        """The shared outbound transport for this client (FR-001).
 
-    async def _get(self, http: httpx.AsyncClient, **params: Any) -> dict[str, Any]:
-        """One API call, retrying a rate limit within a bounded number of attempts."""
+        Preserves the ``http=None`` injection seam (per-request client by default; the injected
+        client reused when supplied). The transport owns UA assembly, the unified retry/backoff
+        (incl. 429/Retry-After and transient transport errors), non-JSON-200 detection, and the
+        MediaWiki ``{"error":...}``-in-200 detection generalized across the fetch layer (FR-005) —
+        so an upstream error now raises ``WikidataUnavailable`` here instead of returning a
+        misleading empty payload.
+        """
+        return WikimediaTransport(_UA_COMPONENT, http=self._http, timeout=self._timeout)
+
+    async def _call(
+        self, transport: WikimediaTransport, **params: Any
+    ) -> dict[str, Any]:
+        """One Wikidata action-API GET through the transport (adds the JSON ``format`` default).
+
+        Raises ``WikidataUnavailable`` on transport failure, exhausted retries, a non-JSON 200
+        body, or an error object in a 200 body (all now owned by the transport). A reached-but-empty
+        result is returned as data, never raised.
+        """
         params.setdefault("format", "json")
-        for attempt in range(_MAX_RATE_LIMIT_RETRIES + 1):
-            try:
-                resp = await http.get(API, params=params)
-            except httpx.HTTPError as exc:
-                raise WikidataUnavailable(str(exc)) from exc
-            if resp.status_code == 429 and attempt < _MAX_RATE_LIMIT_RETRIES:
-                try:
-                    wait = min(int(resp.headers.get("Retry-After", "1")), 5)
-                except ValueError:
-                    wait = 1
-                await asyncio.sleep(wait)
-                continue
-            try:
-                resp.raise_for_status()
-            except httpx.HTTPError as exc:
-                raise WikidataUnavailable(str(exc)) from exc
-            # A 200 with a non-JSON body (Wikimedia maintenance/HTML/captcha page or a
-            # truncated response under load) raises ValueError/JSONDecodeError, which is NOT
-            # an httpx.HTTPError — translate it so callers degrade instead of failing (FR-011).
-            try:
-                data: dict[str, Any] = resp.json()
-            except ValueError as exc:
-                raise WikidataUnavailable(f"non-JSON response: {exc}") from exc
-            return data
-        raise WikidataUnavailable("rate limited repeatedly")
+        return await transport.get_json(API, params=params)
 
     async def search_candidates(
         self,
@@ -135,29 +122,24 @@ class WikidataClient:
         """
         limit = max(1, limit)
         offset = max(0, offset)
-        http = self._http or self._new_client()
-        owns = self._http is None
-        try:
-            search = await self._get(
-                http,
-                action="wbsearchentities",
-                search=name,
-                language="en",
-                uselang="en",
-                type="item",
-                limit=limit,
-                # `continue` is Wikidata's offset; it is also a Python keyword, so it
-                # can only be passed via dict-unpacking. Omit at offset 0 (page 1).
-                **({"continue": offset} if offset else {}),
-            )
-            hits = [h for h in search.get("search", []) if h.get("id")][:limit]
-            if not hits:
-                return []
-            qids = [str(h["id"]) for h in hits]
-            details = await self._item_details(http, qids)
-        finally:
-            if owns:
-                await http.aclose()
+        transport = self._transport()
+        search = await self._call(
+            transport,
+            action="wbsearchentities",
+            search=name,
+            language="en",
+            uselang="en",
+            type="item",
+            limit=limit,
+            # `continue` is Wikidata's offset; it is also a Python keyword, so it
+            # can only be passed via dict-unpacking. Omit at offset 0 (page 1).
+            **({"continue": offset} if offset else {}),
+        )
+        hits = [h for h in search.get("search", []) if h.get("id")][:limit]
+        if not hits:
+            return []
+        qids = [str(h["id"]) for h in hits]
+        details = await self._item_details(transport, qids)
 
         candidates: list[WikidataCandidate] = []
         for hit in hits:
@@ -189,13 +171,7 @@ class WikidataClient:
         """
         if not qids:
             return {}
-        http = self._http or self._new_client()
-        owns = self._http is None
-        try:
-            details = await self._item_details(http, qids)
-        finally:
-            if owns:
-                await http.aclose()
+        details = await self._item_details(self._transport(), qids)
         return {qid: list(det.get("instance_of") or []) for qid, det in details.items()}
 
     async def fetch_sitelinks(self, qids: list[str]) -> dict[str, dict[str, str]]:
@@ -231,37 +207,34 @@ class WikidataClient:
                 "nostalgiawiki",
             }
         )
-        http = self._http or self._new_client()
-        owns = self._http is None
+        transport = self._transport()
         out: dict[str, dict[str, str]] = {}
-        try:
-            for start in range(0, len(qids), 50):
-                data = await self._get(
-                    http,
-                    action="wbgetentities",
-                    ids="|".join(qids[start : start + 50]),
-                    props="sitelinks",
-                )
-                entities = data.get("entities") or {}
-                for qid, ent in entities.items():
-                    if not isinstance(ent, dict) or "missing" in ent:
-                        continue
-                    sitelinks = ent.get("sitelinks") or {}
-                    wikis: dict[str, str] = {}
-                    for dbname, link in sitelinks.items():
-                        title = link.get("title") if isinstance(link, dict) else None
-                        if (
-                            isinstance(dbname, str)
-                            and dbname.endswith("wiki")
-                            and dbname not in non_wikipedia
-                            and isinstance(title, str)
-                            and title
-                        ):
-                            wikis[dbname] = title
-                    out[str(qid)] = wikis
-        finally:
-            if owns:
-                await http.aclose()
+        for chunk in WikimediaTransport.chunk(
+            qids
+        ):  # 50 ids/request (wbgetentities ceiling)
+            data = await self._call(
+                transport,
+                action="wbgetentities",
+                ids="|".join(chunk),
+                props="sitelinks",
+            )
+            entities = data.get("entities") or {}
+            for qid, ent in entities.items():
+                if not isinstance(ent, dict) or "missing" in ent:
+                    continue
+                sitelinks = ent.get("sitelinks") or {}
+                wikis: dict[str, str] = {}
+                for dbname, link in sitelinks.items():
+                    title = link.get("title") if isinstance(link, dict) else None
+                    if (
+                        isinstance(dbname, str)
+                        and dbname.endswith("wiki")
+                        and dbname not in non_wikipedia
+                        and isinstance(title, str)
+                        and title
+                    ):
+                        wikis[dbname] = title
+                out[str(qid)] = wikis
         return out
 
     async def resolve_candidate(
@@ -277,13 +250,7 @@ class WikidataClient:
         q = qid.strip()
         if not (len(q) >= 2 and q[0] == "Q" and q[1:].isdigit() and int(q[1:]) >= 1):
             return None
-        http = self._http or self._new_client()
-        owns = self._http is None
-        try:
-            details = await self._item_details(http, [q])
-        finally:
-            if owns:
-                await http.aclose()
+        details = await self._item_details(self._transport(), [q])
         det = details.get(q)
         if det is None:
             return None
@@ -326,44 +293,43 @@ class WikidataClient:
         Raises
         ------
         WikidataUnavailable
-            On transport error or rate-limit exhaustion — the caller degrades to "grounded, no
-            properties; the next batch run fills them" (FR-006).
+            On transport error or rate-limit exhaustion (after the transport's bounded retries).
+            The caller degrades to "grounded, no properties" — and, because the enrichment path is
+            one-shot and detached with no scheduled sweeper, those properties are NOT filled by any
+            later batch run; they remain absent until a manual reground. The transport's retry is
+            the only retry this path gets (FR-006/FR-016).
         """
-        http = self._http or self._new_client()
-        owns = self._http is None
-        try:
-            entity_data = await self._get(
-                http,
+        transport = self._transport()
+        entity_data = await self._call(
+            transport,
+            action="wbgetentities",
+            ids=qid,
+            props="claims|descriptions|aliases",
+            languages=wp.LABEL_LANGS,
+        )
+        entity = (entity_data.get("entities") or {}).get(qid) or {}
+        extracted = wp.extract_claims(entity.get("claims") or {})
+        description = wp.pick_description(entity.get("descriptions") or {})
+        aliases = wp.extract_aliases(entity.get("aliases") or {})
+        if not extracted and not description and not aliases:
+            return {}
+
+        labels: dict[str, str] = {}
+        pending = wp.value_qids(extracted)
+        for chunk in WikimediaTransport.chunk(
+            pending
+        ):  # 50 ids/request (wbgetentities ceiling)
+            label_data = await self._call(
+                transport,
                 action="wbgetentities",
-                ids=qid,
-                props="claims|descriptions|aliases",
+                ids="|".join(chunk),
+                props="labels",
                 languages=wp.LABEL_LANGS,
             )
-            entity = (entity_data.get("entities") or {}).get(qid) or {}
-            extracted = wp.extract_claims(entity.get("claims") or {})
-            description = wp.pick_description(entity.get("descriptions") or {})
-            aliases = wp.extract_aliases(entity.get("aliases") or {})
-            if not extracted and not description and not aliases:
-                return {}
-
-            labels: dict[str, str] = {}
-            pending = wp.value_qids(extracted)
-            for i in range(0, len(pending), 50):
-                chunk = pending[i : i + 50]
-                label_data = await self._get(
-                    http,
-                    action="wbgetentities",
-                    ids="|".join(chunk),
-                    props="labels",
-                    languages=wp.LABEL_LANGS,
-                )
-                for vqid, ent in (label_data.get("entities") or {}).items():
-                    text = wp.pick_label(ent.get("labels") or {})
-                    if text:
-                        labels[vqid] = text
-        finally:
-            if owns:
-                await http.aclose()
+            for vqid, ent in (label_data.get("entities") or {}).items():
+                text = wp.pick_label(ent.get("labels") or {})
+                if text:
+                    labels[vqid] = text
 
         set_at = datetime.now(UTC).isoformat()
         properties = wp.assemble_properties(extracted, labels, set_at)
@@ -392,7 +358,7 @@ class WikidataClient:
         return str(hit.get("id", ""))
 
     async def _item_details(
-        self, http: httpx.AsyncClient, qids: list[str]
+        self, transport: WikimediaTransport, qids: list[str]
     ) -> dict[str, dict[str, Any]]:
         """P31 values, statement/sitelink/stub signals, and labels — one call per chunk.
 
@@ -400,10 +366,11 @@ class WikidataClient:
         create path makes one ``wbgetentities`` round-trip per 50 items instead of two.
         """
         out: dict[str, dict[str, Any]] = {}
-        for i in range(0, len(qids), 50):
-            chunk = qids[i : i + 50]
-            data = await self._get(
-                http,
+        for chunk in WikimediaTransport.chunk(
+            qids
+        ):  # 50 ids/request (wbgetentities ceiling)
+            data = await self._call(
+                transport,
                 action="wbgetentities",
                 ids="|".join(chunk),
                 props="claims|sitelinks|labels|descriptions",

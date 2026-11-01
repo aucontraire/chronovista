@@ -2,8 +2,11 @@
 
 A category's *specificity* is measured by its Wikipedia-wide member count — a stable property of
 the category, unlike local library membership which drifts as the library grows. This service
-reads that count from the live English Wikipedia API (``prop=categoryinfo``), batched, with a
-Wikimedia-compliant contact User-Agent.
+reads that count from the live English Wikipedia API (``prop=categoryinfo``), batched, over the
+shared :class:`WikimediaTransport` (Feature 102): the transport owns the Wikimedia-compliant
+contact User-Agent, the per-request client lifecycle, the unified rate-limit/backoff, and the
+unreachable-vs-empty contract; this service owns only the endpoint, the request parameters, and the
+response parsing (FR-009).
 
 It is **name-free**: category names are runtime arguments, never embedded in source. (A gitignored
 reference implementation lives under ``scripts/entity_resolution/``; that tree carries real entity
@@ -14,18 +17,20 @@ feature's research notes.)
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterable
-from typing import Any
+from collections.abc import Iterable
 
 import httpx
 
-WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
-USER_AGENT = (
-    "chronovista/1.0 (https://github.com/aucontraire/chronovista; category-size fetch)"
+from chronovista.services.wikimedia_transport import (
+    WikidataUnavailable,
+    WikimediaTransport,
 )
+
+WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
+# The per-client component label baked into the single-sourced outbound User-Agent (G1/FR-002):
+# the transport assembles the compliant UA from this label; no UA string is hand-built here.
+_UA_COMPONENT = "category-size fetch"
 _DEFAULT_TIMEOUT = 15.0
-_BATCH = 50  # MediaWiki titles-per-request limit for most query modules
-_MAX_RETRIES = 3
 _DEFAULT_PAUSE = 1.0  # polite gap (seconds) between batches — Wikimedia rate etiquette
 
 
@@ -34,18 +39,23 @@ class CategorySizeService:
 
     def __init__(
         self,
-        client_factory: Callable[[], httpx.AsyncClient] | None = None,
+        http: httpx.AsyncClient | None = None,
+        *,
         timeout: float = _DEFAULT_TIMEOUT,
         pause: float = _DEFAULT_PAUSE,
     ) -> None:
+        self._http = http
         self._timeout = timeout
-        self._client_factory = client_factory or self._new_client
         self._pause = pause
 
-    def _new_client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(
-            headers={"User-Agent": USER_AGENT}, timeout=self._timeout
-        )
+    def _transport(self) -> WikimediaTransport:
+        """The shared outbound transport for this service (FR-001).
+
+        Preserves the ``http=None`` injection seam: a per-request client by default, or the injected
+        client reused when one is supplied (tests/DI). UA assembly, the unified retry/backoff, and
+        the unreachable-vs-empty contract all live in the transport.
+        """
+        return WikimediaTransport(_UA_COMPONENT, http=self._http, timeout=self._timeout)
 
     @staticmethod
     def _norm(name: str) -> str:
@@ -61,21 +71,24 @@ class CategorySizeService:
         """
         unique = list(dict.fromkeys(names))
         out: dict[str, int] = {}
-        client = self._client_factory()
-        try:
-            for batch_index, start in enumerate(range(0, len(unique), _BATCH)):
-                if batch_index > 0 and self._pause > 0:
-                    await asyncio.sleep(self._pause)  # polite gap between batches
-                out.update(
-                    await self._fetch_batch(client, unique[start : start + _BATCH])
-                )
-        finally:
-            await client.aclose()
+        transport = self._transport()
+        for batch_index, batch in enumerate(WikimediaTransport.chunk(unique)):
+            if batch_index > 0 and self._pause > 0:
+                await asyncio.sleep(self._pause)  # polite gap between batches
+            out.update(await self._fetch_batch(transport, batch))
         return out
 
     async def _fetch_batch(
-        self, client: httpx.AsyncClient, batch: list[str]
+        self, transport: WikimediaTransport, batch: list[str]
     ) -> dict[str, int]:
+        """Fetch one batch's ``categoryinfo`` sizes, absorbing an unreachable batch as omitted.
+
+        The transport raises :class:`WikidataUnavailable` on transport failure, exhausted retries,
+        a non-JSON/non-object 200 body, or an API-error object in a 200 body. This service
+        **absorbs** it (spec per-service table): the whole batch's names are omitted from the result
+        (a retry-later signal), never recorded as a confirmed "no such size" — exactly the
+        omit-on-failure degrade the hand-rolled retry produced before.
+        """
         by_norm = {self._norm(n): n for n in batch}
         params = {
             "action": "query",
@@ -83,7 +96,12 @@ class CategorySizeService:
             "prop": "categoryinfo",
             "titles": "|".join(f"Category:{n}" for n in batch),
         }
-        data = await self._get(client, params)
+        try:
+            data = await transport.get_json(WIKIPEDIA_API, params=params)
+        except WikidataUnavailable:
+            return (
+                {}
+            )  # unreachable batch → omit its names (retry later), never a false absence
         result: dict[str, int] = {}
         pages = (data.get("query") or {}).get("pages") or {}
         if not isinstance(pages, dict):
@@ -97,23 +115,3 @@ class CategorySizeService:
                 # `size` = total members (pages + subcategories + files).
                 result[original] = int(info.get("size", 0))
         return result
-
-    async def _get(
-        self, client: httpx.AsyncClient, params: dict[str, str]
-    ) -> dict[str, Any]:
-        """One API call, retrying a transient failure a bounded number of times.
-
-        Returns an empty dict if all attempts fail — the batch then yields no sizes, which the
-        caller records as "unknown" rather than an error.
-        """
-        for attempt in range(_MAX_RETRIES):
-            try:
-                resp = await client.get(WIKIPEDIA_API, params=params)
-                resp.raise_for_status()
-                parsed = resp.json()
-                return dict(parsed) if isinstance(parsed, dict) else {}
-            except httpx.HTTPError:
-                if attempt == _MAX_RETRIES - 1:
-                    return {}
-                await asyncio.sleep(min(2**attempt, 5))
-        return {}

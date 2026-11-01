@@ -14,9 +14,11 @@ from uuid import UUID
 import httpx
 import pytest
 
+import chronovista.services.wikimedia_transport as wt
 from chronovista.models.wikipedia_image import FallbackOutcome
+from chronovista.services.wikimedia_transport import wikimedia_user_agent
 from chronovista.services.wikipedia_image_fallback import (
-    USER_AGENT,
+    _UA_COMPONENT,
     WikipediaImageFallback,
 )
 
@@ -24,6 +26,17 @@ pytestmark = pytest.mark.asyncio
 
 _EID = UUID("00000000-0000-7000-8000-000000000001")
 _QID = "Q000001"
+
+
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Patch the transport's backoff sleep: Feature 102 retries transport errors/429s with bounded
+    backoff, so without this a transport-error path would incur real 1s+2s waits."""
+
+    async def instant(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(wt.asyncio, "sleep", instant)
 
 
 def _transport(
@@ -94,22 +107,35 @@ def _service(transport: httpx.MockTransport) -> WikipediaImageFallback:
 
 
 class TestUserAgent:
-    """Wikimedia denies (403) a UA with no contact — the service reuses the compliant UA (FR-008)."""
+    """Wikimedia denies (403) a UA with no contact — Feature 102 single-sources it via the
+    transport template (G1), so the service names only its component label and the live package
+    version is baked in (an expected flip from the old hand-assembled ``chronovista/1.0`` literal).
+    """
 
-    async def test_user_agent_identifies_tool_and_contact(self) -> None:
-        assert "chronovista" in USER_AGENT
-        assert (
-            ("http://" in USER_AGENT)
-            or ("https://" in USER_AGENT)
-            or ("@" in USER_AGENT)
-        )
+    async def test_component_label_is_distinct_and_descriptive(self) -> None:
+        # Feature 102 Phase 5 (SC-002): the label is this service's OWN descriptive name, no longer
+        # the Wikidata client's generic "personal YouTube-library tool" it used to reuse — so all
+        # five in-scope services' component labels are present AND distinct.
+        assert _UA_COMPONENT == "page-image fallback"
 
-    async def test_new_client_sends_the_user_agent(self) -> None:
-        client = WikipediaImageFallback()._new_client()
-        try:
-            assert client.headers["User-Agent"] == USER_AGENT
-        finally:
-            await client.aclose()
+    async def test_user_agent_is_template_produced_and_carries_contact(self) -> None:
+        ua = wikimedia_user_agent(_UA_COMPONENT)
+        assert "chronovista/" in ua  # product/version segment
+        assert ("http://" in ua) or ("https://" in ua) or ("@" in ua)
+        assert _UA_COMPONENT in ua  # the per-client component label survives (FR-002)
+
+    async def test_requests_carry_the_templated_user_agent(self) -> None:
+        seen: dict[str, str | None] = {}
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            seen["ua"] = request.headers.get("User-Agent")
+            return httpx.Response(
+                200,
+                json={"entities": {_QID: {"sitelinks": {"enwiki": {"title": "X"}}}}},
+            )
+
+        await _service(httpx.MockTransport(respond)).evaluate(_EID, _QID)
+        assert seen["ua"] == wikimedia_user_agent(_UA_COMPONENT)
 
 
 class TestGate:

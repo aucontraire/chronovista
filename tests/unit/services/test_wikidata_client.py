@@ -15,11 +15,13 @@ import httpx
 import pytest
 
 from chronovista.services.wikidata_client import (
+    _UA_COMPONENT,
     USER_AGENT,
     WikidataClient,
     WikidataUnavailable,
     _type_verification,
 )
+from chronovista.services.wikimedia_transport import wikimedia_user_agent
 
 pytestmark = pytest.mark.asyncio
 
@@ -49,22 +51,34 @@ class TestTypeVerification:
 
 
 class TestUserAgentPolicy:
-    """Wikimedia gates request rate on a contact-bearing User-Agent (ADR-010: 10 vs 200 req/min)."""
+    """Wikimedia gates request rate on a contact-bearing User-Agent (ADR-010: 10 vs 200 req/min).
 
-    def test_user_agent_carries_a_contact_link(self) -> None:
-        # A no-contact UA is throttled to ~10 req/min (429s under the backfill's pace); the contact
-        # URL/email is mandatory, not decoration.
-        assert "chronovista" in USER_AGENT.lower()
+    Feature 102 moved UA assembly into the shared transport template (G1); the client only names
+    its component label, and ``USER_AGENT`` is now derived from the template rather than a
+    hand-assembled ``chronovista/1.0 (...)`` literal — so it carries the LIVE package version.
+    """
+
+    def test_user_agent_is_template_produced_and_carries_contact(self) -> None:
+        # Single-sourced from the template with this client's component label (was a hand-assembled
+        # literal). The live version is now baked in (expected — no longer the static "1.0").
+        assert wikimedia_user_agent(_UA_COMPONENT) == USER_AGENT
+        assert "chronovista/" in USER_AGENT  # product/version segment
+        # A no-contact UA is throttled to ~10 req/min (429s); the contact URL/email is mandatory.
         assert "http" in USER_AGENT.lower() or "@" in USER_AGENT
+        assert (
+            _UA_COMPONENT in USER_AGENT
+        )  # the distinct per-client label survives (FR-002)
 
-    def test_new_client_sends_the_user_agent(self) -> None:
-        client = WikidataClient()._new_client()
-        try:
-            assert client.headers.get("User-Agent") == USER_AGENT
-        finally:
-            # _new_client returns an un-entered AsyncClient; drop the reference without awaiting
-            # aclose (no connections were opened).
-            del client
+    async def test_requests_carry_the_templated_user_agent(self) -> None:
+        seen: dict[str, Any] = {}
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            seen["ua"] = request.headers.get("User-Agent")
+            return httpx.Response(200, json={"search": []})
+
+        client = _client(httpx.MockTransport(respond))
+        await client.search_candidates("x", "person", limit=5)
+        assert seen["ua"] == wikimedia_user_agent(_UA_COMPONENT)
 
 
 def _entities_details() -> dict[str, Any]:
@@ -228,6 +242,24 @@ class TestEmptyVsUnavailable:
         )
         with pytest.raises(WikidataUnavailable):
             await client.fetch_instance_of(["Q42"])
+
+    async def test_error_object_in_200_raises_unavailable(self) -> None:
+        # Feature 102/FR-005 BEHAVIOR FLIP: a MediaWiki {"error":...} returned INSIDE an HTTP 200
+        # body is now treated as unreachable on the Wikidata client too — the safeguard used to
+        # exist only in wikipedia_image_fallback. BEFORE: the old `_get` returned the error-200 as
+        # data, so search_candidates read search.get("search", []) -> [] and reported a MISLEADING
+        # empty list (indistinguishable from a true no-match). AFTER: the transport raises, so the
+        # API boundary surfaces `unavailable: true` instead of a false absence.
+        def error_200(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200, json={"error": {"code": "maxlag", "info": "please wait"}}
+            )
+
+        client = WikidataClient(
+            http=httpx.AsyncClient(transport=httpx.MockTransport(error_200))
+        )
+        with pytest.raises(WikidataUnavailable):
+            await client.search_candidates("X", "person", limit=5)
 
 
 class TestOffsetPaging:

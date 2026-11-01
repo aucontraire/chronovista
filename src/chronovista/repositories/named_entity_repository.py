@@ -190,6 +190,20 @@ class NamedEntityRepository(
         )
         return result.scalar_one_or_none()
 
+    async def insert_new_entity(
+        self, session: AsyncSession, obj_in: NamedEntityCreate
+    ) -> NamedEntityDB:
+        """Insert a brand-new named-entity row (``session.add`` + ``flush``; no commit).
+
+        The **only** sanctioned entry point for creating a ``named_entities`` row (Feature 101,
+        FR-001). Uniquely named so the single-source architecture fitness test is a one-line
+        exact-count search — the inherited generic
+        :meth:`BaseSQLAlchemyRepository.create` matches ~60 unrelated call sites and is not
+        greppable. Same insert semantics as the base ``create`` (flush-only; the caller owns the
+        transaction boundary, FR-011).
+        """
+        return await self.create(session, obj_in=obj_in)
+
     async def get_with_aliases(
         self, session: AsyncSession, id: uuid.UUID
     ) -> NamedEntityDB | None:

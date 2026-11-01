@@ -63,8 +63,18 @@ def mock_tag_alias_repo() -> AsyncMock:
 
 @pytest.fixture
 def mock_named_entity_repo() -> AsyncMock:
-    """Provide a mock NamedEntityRepository with async method stubs."""
-    return AsyncMock()
+    """Provide a mock NamedEntityRepository with async method stubs.
+
+    Feature 101: classify's create path now routes through the shared
+    ``create_and_ground_entity`` core, which calls ``find_by_normalized_and_type`` (the
+    all-status duplicate lookup) and ``insert_new_entity`` (the insert). Default the lookup to
+    "no collision" (create path) and alias ``insert_new_entity`` to the same stub as ``create``
+    so a test's ``create.return_value`` / ``create.assert_called_once`` keep describing the insert.
+    """
+    repo = AsyncMock()
+    repo.find_by_normalized_and_type = AsyncMock(return_value=None)
+    repo.insert_new_entity = repo.create
+    return repo
 
 
 @pytest.fixture

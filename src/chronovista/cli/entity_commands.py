@@ -51,6 +51,7 @@ from chronovista.repositories.entity_alias_repository import EntityAliasReposito
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.services import wikidata_properties as wp
+from chronovista.services.entity_creation import create_and_ground_entity
 from chronovista.services.entity_enrichment_loader import (
     load_enrichment,
     parse_ledger,
@@ -156,21 +157,18 @@ def create_entity(
             )
             raise typer.Exit(code=1)
 
-        # Auto-title-case canonical name for entity-producing types
-        canonical_name = name.title() if not name.istitle() else name
+        # Store the name verbatim (whitespace-trimmed only) — casing is a human decision and must
+        # not be flattened (Feature 057 / Feature 101 FR-006; fixes the prior .title() bug).
+        canonical_name = name.strip()
 
         entity_repo = NamedEntityRepository()
         alias_repo = EntityAliasRepository()
 
         async for session in db_manager.get_session(echo=False):
-            # Check for duplicate: same normalized name + entity type
-            existing = await session.execute(
-                select(NamedEntityDB).where(
-                    NamedEntityDB.canonical_name_normalized == normalized_name,
-                    NamedEntityDB.entity_type == entity_type.value,
-                )
-            )
-            if existing.scalar_one_or_none() is not None:
+            # Route creation through the shared core (Feature 101, FR-002). The CLI's policy on a
+            # name+type collision is reject (print + exit 1). The core owns the all-status lookup,
+            # the insert, the canonical NAME_VARIANT self-alias, and extra-alias dedup.
+            async def _reject(existing: NamedEntityDB) -> NamedEntityDB | None:
                 console.print(
                     Panel(
                         f"[red]A named entity with normalized name "
@@ -182,7 +180,6 @@ def create_entity(
                 )
                 raise typer.Exit(code=1)
 
-            # Create the named entity
             entity_create = NamedEntityCreate(
                 canonical_name=canonical_name,
                 canonical_name_normalized=normalized_name,
@@ -191,51 +188,28 @@ def create_entity(
                 discovery_method=DiscoveryMethod.USER_CREATED,
                 confidence=1.0,
             )
-            new_entity = await entity_repo.create(session, obj_in=entity_create)
-
-            # Create canonical name as an alias (same pattern as classify)
-            canonical_alias_create = EntityAliasCreate(
-                entity_id=new_entity.id,
-                alias_name=canonical_name,
-                alias_name_normalized=normalized_name,
-                alias_type=EntityAliasType.NAME_VARIANT,
-                occurrence_count=0,
+            new_entity = await create_and_ground_entity(
+                session,
+                entity_create,
+                extra_aliases=alias or [],
+                on_conflict=_reject,
+                entity_repo=entity_repo,
+                alias_repo=alias_repo,
             )
-            await alias_repo.create(session, obj_in=canonical_alias_create)
-
-            alias_count = 1  # canonical name alias
-
-            # Create additional aliases
-            if alias:
-                for alias_text in alias:
-                    normalized_alias = normalizer.normalize(alias_text)
-                    if normalized_alias is None:
-                        console.print(
-                            f"[yellow]Skipping alias '{alias_text}' "
-                            f"(normalizes to empty).[/yellow]"
-                        )
-                        continue
-
-                    alias_create = EntityAliasCreate(
-                        entity_id=new_entity.id,
-                        alias_name=alias_text,
-                        alias_name_normalized=normalized_alias,
-                        alias_type=EntityAliasType.NAME_VARIANT,
-                        occurrence_count=0,
-                    )
-                    await alias_repo.create(session, obj_in=alias_create)
-                    alias_count += 1
+            assert new_entity is not None  # the reject policy exits on a collision
 
             await session.commit()
+            reloaded = await entity_repo.get_with_aliases(session, new_entity.id)
+            assert reloaded is not None
 
-            # Display result
+            # Display result; alias count reflects the persisted aliases (dedup is in the core).
             details = (
-                f"[bold]ID:[/bold] {new_entity.id}\n"
-                f"[bold]Name:[/bold] {new_entity.canonical_name}\n"
-                f"[bold]Type:[/bold] {new_entity.entity_type}\n"
+                f"[bold]ID:[/bold] {reloaded.id}\n"
+                f"[bold]Name:[/bold] {reloaded.canonical_name}\n"
+                f"[bold]Type:[/bold] {reloaded.entity_type}\n"
                 f"[bold]Description:[/bold] "
-                f"{new_entity.description or '(none)'}\n"
-                f"[bold]Aliases:[/bold] {alias_count}"
+                f"{reloaded.description or '(none)'}\n"
+                f"[bold]Aliases:[/bold] {len(reloaded.aliases)}"
             )
 
             console.print(

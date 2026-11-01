@@ -176,6 +176,7 @@ nav:
       - Transcript whitespace normalization: architecture/transcript-whitespace-normalization.md
       - Resumable entity scan: architecture/entity-scan-resumability.md
       - Seed-and-grow discovery: architecture/seed-and-grow.md
+      - Entity creation core: architecture/entity-creation-core.md
   - Contributing:
       - Overview: development/index.md
       - Setup: development/setup.md

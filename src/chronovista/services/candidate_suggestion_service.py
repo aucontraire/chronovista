@@ -21,15 +21,13 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.models.candidate_suggestion import (
     CandidateSuggestionCreate,
     RelationCandidateRow,
 )
-from chronovista.models.entity_alias import EntityAliasCreate
-from chronovista.models.entity_enrichment import ExternalIdentifier
 from chronovista.models.enums import (
     DiscoveryMethod,
-    EntityAliasType,
     EntityType,
     ReviewStatus,
     SourceChannel,
@@ -43,6 +41,10 @@ from chronovista.repositories.candidate_suggestion_repository import (
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.video_repository import VideoRepository
+from chronovista.services.entity_creation import (
+    build_grounding,
+    create_and_ground_entity,
+)
 from chronovista.services.entity_enrichment_service import EntityEnrichmentService
 from chronovista.services.entity_mention_scan_service import (
     _build_entity_pattern,
@@ -549,57 +551,40 @@ class CandidateSuggestionService:
         # and the created entity's type, so they cannot disagree. Only reached for a PENDING
         # candidate (the not-pending paths return above), so no wasted lookup on a decided one.
         type_value = await self.reverify_type(qid, candidate.type_hint)
-        # Name+type collision with ANY existing entity (uq_named_entity_canonical is
-        # global across statuses) → supersede, never attempt a create that would raise
-        # IntegrityError and dead-end the candidate (adversarial M1).
-        existing = await self._entities.find_by_normalized_and_type(
-            session, normalized, type_value
+        # Route creation through the shared core (Feature 101, FR-002/005). The core owns the
+        # all-status duplicate lookup; approve's policy on a collision is SUPERSEDE — record the
+        # colliding entity (uq_named_entity_canonical is global across statuses) and finalize a
+        # SUPERSEDED verdict below, never attempting a create that would IntegrityError and
+        # dead-end the candidate (adversarial M1). Grounding uses the one sanctioned builder
+        # (FR-003).
+        entity_create = NamedEntityCreate(
+            canonical_name=candidate.label,
+            canonical_name_normalized=normalized,
+            entity_type=EntityType(type_value),
+            status=TagStatus.ACTIVE,
+            discovery_method=DiscoveryMethod.USER_CREATED,
+            confidence=1.0,
+            external_ids=build_grounding(
+                "wikidata", qid, verified=True, status="verified"
+            ),
         )
-        if existing is not None:
-            await self._candidates.set_verdict(
-                session,
-                candidate_id=candidate_id,
-                review_status=ReviewStatus.SUPERSEDED,
-                reviewed_by=reviewed_by,
-                reviewed_at=now,
-                created_entity_id=existing.id,
-            )
-            return VerdictResult(
-                outcome="superseded",
-                candidate_id=candidate_id,
-                created_entity_id=existing.id,
-                detail="An entity with this name and type already exists",
-            )
+        collision: NamedEntityDB | None = None
+
+        async def _supersede(found: NamedEntityDB) -> NamedEntityDB | None:
+            nonlocal collision
+            collision = found
+            return found
 
         try:
-            external_ids = {
-                "wikidata": ExternalIdentifier(
-                    id=qid, verified=True, status="verified"
-                ).model_dump()
-            }
-            db_entity = await self._entities.create(
+            created = await create_and_ground_entity(
                 session,
-                obj_in=NamedEntityCreate(
-                    canonical_name=candidate.label,
-                    canonical_name_normalized=normalized,
-                    entity_type=EntityType(type_value),
-                    status=TagStatus.ACTIVE,
-                    discovery_method=DiscoveryMethod.USER_CREATED,
-                    confidence=1.0,
-                    external_ids=external_ids,
-                ),
+                entity_create,
+                on_conflict=_supersede,
+                entity_repo=self._entities,
+                alias_repo=self._aliases,
             )
-            await self._aliases.create(
-                session,
-                obj_in=EntityAliasCreate(
-                    entity_id=db_entity.id,
-                    alias_name=candidate.label,
-                    alias_name_normalized=normalized,
-                    alias_type=EntityAliasType.NAME_VARIANT,
-                    occurrence_count=0,
-                ),
-            )
-            await session.commit()
+            if collision is None:
+                await session.commit()
         except Exception as exc:  # noqa: BLE001 - surfaced to the operator (FR-015)
             await session.rollback()
             return VerdictResult(
@@ -607,6 +592,25 @@ class CandidateSuggestionService:
                 candidate_id=candidate_id,
                 detail=f"Entity creation failed; candidate left pending: {exc}",
             )
+
+        if collision is not None:
+            await self._candidates.set_verdict(
+                session,
+                candidate_id=candidate_id,
+                review_status=ReviewStatus.SUPERSEDED,
+                reviewed_by=reviewed_by,
+                reviewed_at=now,
+                created_entity_id=collision.id,
+            )
+            return VerdictResult(
+                outcome="superseded",
+                candidate_id=candidate_id,
+                created_entity_id=collision.id,
+                detail="An entity with this name and type already exists",
+            )
+
+        assert created is not None  # create path: the core returns the new entity
+        db_entity = created
 
         # Enrichment is best-effort and never rolls back the creation (FR-009). Guard
         # locally so the "best-effort" contract does not depend on the collaborator

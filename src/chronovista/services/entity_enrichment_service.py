@@ -25,6 +25,7 @@ Graceful degradation (FR-006/FR-006a) is added in US2 (``enrich_on_approval`` ha
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import Callable
@@ -431,3 +432,28 @@ def get_enrichment_service() -> EntityEnrichmentService:
 
         _enrichment_service = EntityEnrichmentService(db_manager.get_session_factory())
     return _enrichment_service
+
+
+# Retained handles for detached on-approval enrichment tasks (Feature 068, research D1). A bare
+# ``asyncio.create_task`` handle can be garbage-collected mid-flight, silently dropping the
+# enrichment; the set + done-callback keep it alive until completion.
+_enrichment_tasks: set[asyncio.Task[None]] = set()
+
+
+def schedule_enrichment(
+    service: EntityEnrichmentService, entity_id: uuid.UUID, qid: str
+) -> None:
+    """Schedule the on-approval property fetch as a detached, GC-safe background task.
+
+    The single enrichment-trigger definition (Feature 101, FR-004) — unified here, in the
+    enrichment domain owner, from the two byte-identical router copies. ``EntityEnrichmentService``
+    opens its own session, so the request's session is never held across the enrichment network
+    calls (the held-session deadlock class). ``entity_id`` is normalized to a stdlib ``uuid.UUID``
+    so both call sites (create reads a refreshed id; classify reads a pending object's
+    ``uuid_utils.UUID`` default) feed the repository an identical type — avoiding a latent
+    zero-row silent no-op.
+    """
+    normalized_id = uuid.UUID(str(entity_id))
+    task = asyncio.create_task(service.enrich_on_approval(normalized_id, qid))
+    _enrichment_tasks.add(task)
+    task.add_done_callback(_enrichment_tasks.discard)

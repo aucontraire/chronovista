@@ -10,7 +10,7 @@ All tests require the integration database (chronovista_integration_test).
 Each test seeds its own entity and cleans up in FK-reverse order (audit-log
 rows before the entity) to preserve isolation from other integration files.
 
-The background fact fetch (``_schedule_enrichment``) is patched to a no-op so
+The background fact fetch (``schedule_enrichment``) is patched to a no-op so
 these tests exercise the synchronous re-link contract only — never real
 Wikidata network I/O — and leave no dangling task. The fetch-side behaviour is
 covered separately by the service unit tests and the graceful-degradation test.
@@ -69,7 +69,7 @@ def _authenticated():
 def _no_background_fetch():
     """Patch the detached enrichment scheduler to a no-op (no real network)."""
     return patch(
-        "chronovista.api.routers.entity_mentions._schedule_enrichment",
+        "chronovista.api.routers.entity_mentions.schedule_enrichment",
         lambda *a, **k: None,
     )
 

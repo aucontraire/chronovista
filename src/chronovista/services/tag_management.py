@@ -1235,6 +1235,7 @@ class TagManagementService:
         """
         from chronovista.models.entity_alias import EntityAliasCreate
         from chronovista.models.named_entity import NamedEntityCreate
+        from chronovista.services.entity_creation import create_and_ground_entity
 
         # 1. Validate tag is active
         tag = await self._validate_active_tag(session, normalized_form)
@@ -1330,47 +1331,57 @@ class TagManagementService:
                 tag.entity_id = target_entity.id
                 linked_existing_entity_id = target_entity.id
             else:
-                # 4. Check if a named_entity already exists with same name/type.
-                # Key the lookup on the SAME normalized value the entity will be
-                # stored with (``entity_display_normalized``) — when a custom
-                # display_name is supplied it may normalize differently from the
-                # tag, so matching on ``tag.normalized_form`` here could miss an
-                # existing entity and then hit the global-unique IntegrityError.
-                existing_entity_result = await session.execute(
-                    select(NamedEntityDB).where(
-                        NamedEntityDB.canonical_name_normalized
-                        == entity_display_normalized,
-                        NamedEntityDB.entity_type == entity_type.value,
-                    )
+                # 4. Route creation through the shared core (Feature 101, FR-002/005). The core
+                # owns the all-status duplicate lookup, keyed on the SAME normalized value the
+                # entity will be stored with (``entity_display_normalized``) — when a custom
+                # display_name is supplied it may normalize differently from the tag, so matching
+                # on ``tag.normalized_form`` here could miss an existing entity and then hit the
+                # global-unique IntegrityError. Classify's policy on a name+type collision is
+                # LINK: point the tag at the existing entity and create no new row. Grounding
+                # (Feature 067, US3) applies only on the create path; linking leaves the existing
+                # entity's own identifiers alone.
+                entity_description = description or reason
+                entity_create = NamedEntityCreate(
+                    canonical_name=entity_display_name,
+                    canonical_name_normalized=entity_display_normalized,
+                    entity_type=entity_type,
+                    description=entity_description,
+                    discovery_method=DiscoveryMethod.USER_CREATED,
+                    confidence=1.0,
+                    external_ids=external_ids or {},
                 )
-                existing_entity = existing_entity_result.scalar_one_or_none()
+                linked_on_conflict: NamedEntityDB | None = None
 
-                if existing_entity is not None:
-                    # Link to existing entity by name match
-                    tag.entity_type = entity_type.value
-                    tag.entity_id = existing_entity.id
-                    linked_existing_entity_id = existing_entity.id
+                async def _link(found: NamedEntityDB) -> NamedEntityDB | None:
+                    nonlocal linked_on_conflict
+                    linked_on_conflict = found
+                    return found
+
+                entity = await create_and_ground_entity(
+                    session,
+                    entity_create,
+                    on_conflict=_link,
+                    entity_repo=self._named_entity_repo,
+                    alias_repo=self._entity_alias_repo,
+                )
+                assert entity is not None
+                tag.entity_type = entity_type.value
+                tag.entity_id = entity.id
+                if linked_on_conflict is not None:
+                    linked_existing_entity_id = entity.id
                 else:
-                    # Create new NamedEntity. Grounding (Feature 067, US3) applies only
-                    # here — when a *new* entity is created from the tag; linking to or
-                    # matching an existing entity leaves that entity's own identifiers alone.
-                    entity_description = description or reason
-                    entity_create = NamedEntityCreate(
-                        canonical_name=entity_display_name,
-                        canonical_name_normalized=entity_display_normalized,
-                        entity_type=entity_type,
-                        description=entity_description,
-                        discovery_method=DiscoveryMethod.USER_CREATED,
-                        confidence=1.0,
-                        external_ids=external_ids or {},
-                    )
-                    new_entity = await self._named_entity_repo.create(
-                        session, obj_in=entity_create
-                    )
-                    tag.entity_type = entity_type.value
-                    tag.entity_id = new_entity.id
-                    created_entity_id = new_entity.id
+                    created_entity_id = entity.id
                     entity_created = True
+                    # The core created the canonical NAME_VARIANT self-alias; capture its id so
+                    # entity_alias_count and the undo rollback_data match the pre-refactor
+                    # behavior (the alias block below now runs only for the name-match link).
+                    self_alias = (
+                        await self._entity_alias_repo.get_by_entity_and_normalized(
+                            session, entity.id, entity_display_normalized
+                        )
+                    )
+                    if self_alias is not None:
+                        created_entity_alias_ids.append(self_alias.id)
 
             # Create self-alias (entity display name as name_variant).
             # Tag aliases are NOT copied — they represent YouTube tag
@@ -1383,7 +1394,11 @@ class TagManagementService:
             # nothing like a name anyone says aloud. Writing it here produced
             # zero-occurrence entries on entities the caller only meant to point
             # a tag at, and polluted the detection ruleset (issue #183, FR-004).
-            if link_entity_id is None:
+            # The create path's canonical self-alias is now made inside the shared core
+            # (Feature 101) and its id captured above. Here we only add a self-alias when the tag
+            # was LINKED to an existing entity by name match (nothing was created) — that entity
+            # may still be missing this display name as a detectable variant.
+            if link_entity_id is None and not entity_created:
                 entity_id_for_aliases = tag.entity_id
                 self_norm = (
                     normalizer.normalize(entity_display_name)

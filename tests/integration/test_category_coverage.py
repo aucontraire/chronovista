@@ -8,7 +8,9 @@ All titles/category names are neutral placeholders (Constitution VI).
 
 from __future__ import annotations
 
+import contextlib
 import uuid
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import pytest
@@ -66,6 +68,23 @@ def _u(value: object) -> uuid.UUID:
     return uuid.UUID(str(value))
 
 
+def _same_session_factory(session: AsyncSession) -> Callable[[], Any]:
+    """A ``session_factory`` whose ``async with`` yields the test's own ``session`` and does NOT
+    close it on exit.
+
+    ``categorize_entity`` now opens its OWN short write session via the injected factory (the 094
+    held-session fix). These seam tests seed via ``session.flush()`` and read back through the same
+    ``db_session``, so the write must land in that same transaction — hence the yield-and-don't-close
+    factory. ``categorize_entity`` commits it (the flushed seed rows become durable; the schema is
+    dropped at fixture teardown)."""
+
+    @contextlib.asynccontextmanager
+    async def _cm() -> AsyncIterator[AsyncSession]:
+        yield session
+
+    return _cm
+
+
 async def _uncategorized_entity(
     session: AsyncSession, name: str, title: str
 ) -> uuid.UUID:
@@ -99,10 +118,10 @@ async def _run_add(
 ) -> str | None:
     # These entities resolve via their stored DBpedia IRI, so the QID is unused here (None).
     return await cc.categorize_entity(
-        session,
         entity_id,
         None,
         external_ids,
+        session_factory=_same_session_factory(session),  # type: ignore[arg-type]
         fetch_service=fetch,  # type: ignore[arg-type]
         resolver=_NoResolver(),  # type: ignore[arg-type]
         cat_repo=cat_repo,
@@ -192,10 +211,10 @@ class TestAddPathThroughBridge:
                 return None
 
         title = await cc.categorize_entity(
-            db_session,
             entity.id,
             "Q999999",
             {"wikidata": {"id": "Q999999"}},
+            session_factory=_same_session_factory(db_session),  # type: ignore[arg-type]
             fetch_service=_StubFetch({}),  # type: ignore[arg-type]
             resolver=_ResolvesNothing(),  # type: ignore[arg-type]
             cat_repo=cat_repo,

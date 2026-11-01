@@ -154,13 +154,22 @@ class TestStoreCategories:
         service._repo = MagicMock()
         service._repo.get = AsyncMock(return_value=entity)
 
-        with patch.object(ees, "categorize_entity", AsyncMock()) as categorize:
+        with patch.object(
+            ees, "categorize_entity", AsyncMock(return_value="Placeholder")
+        ) as categorize:
             await service._store_categories(uuid.uuid4(), "Q000001")
 
         categorize.assert_awaited_once()
         # Add-only: the on-approval path must never replace an entity's categories (FR-004).
         assert categorize.await_args.kwargs["replace"] is False
-        session.commit.assert_awaited_once()
+        # The seam hands categorize_entity the session FACTORY, not an open session — so the
+        # network runs session-less and categorize opens its own short write session (094).
+        assert (
+            categorize.await_args.kwargs["session_factory"] is service._session_factory
+        )
+        # The seam's own session is a read-only lookup — it must NOT commit (categorize_entity
+        # commits its own short write session; a cancel mid-fetch leaves nothing idle-in-txn).
+        session.commit.assert_not_awaited()
 
     async def test_store_categories_swallows_failure(
         self, caplog: pytest.LogCaptureFixture

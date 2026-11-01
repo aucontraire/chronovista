@@ -291,28 +291,30 @@ class EntityEnrichmentService:
         lesson); a short write session persists the single add-only result.
         """
         try:
-            resolved_title: str | None = None
-            has_dbpedia_iri = False
+            # 1. Short READ session: load the entity's external_ids, then CLOSE it before any
+            #    network. categorize_entity does its resolve/fetch/size-prefetch session-less and
+            #    opens its own short write session (the 094 deadlock lesson — see its docstring).
             async with self._session_factory() as session:
                 existing = await self._repo.get(session, entity_id)
                 if existing is None:
                     return
                 external_ids = existing.external_ids or {}
-                dbpedia = external_ids.get("dbpedia")
-                has_dbpedia_iri = isinstance(dbpedia, dict) and bool(dbpedia.get("id"))
-                resolved_title = await categorize_entity(
-                    session,
-                    entity_id,
-                    qid,
-                    external_ids,
-                    fetch_service=self._category_fetch_factory(),
-                    resolver=self._dbpedia_factory(),
-                    cat_repo=self._cat_repo,
-                    assign_repo=self._assign_repo,
-                    size_service=self._size_factory(),
-                    replace=False,
-                )
-                await session.commit()
+            dbpedia = external_ids.get("dbpedia")
+            has_dbpedia_iri = isinstance(dbpedia, dict) and bool(dbpedia.get("id"))
+
+            # 2. Resolve → fetch → short write, holding NO session across the network.
+            resolved_title = await categorize_entity(
+                entity_id,
+                qid,
+                external_ids,
+                session_factory=self._session_factory,
+                fetch_service=self._category_fetch_factory(),
+                resolver=self._dbpedia_factory(),
+                cat_repo=self._cat_repo,
+                assign_repo=self._assign_repo,
+                size_service=self._size_factory(),
+                replace=False,
+            )
             if resolved_title is not None or has_dbpedia_iri:
                 # Either the English path handled it, OR a stored DBpedia IRI means the entity HAS
                 # an English article (DBpedia is English-Wikipedia-derived) and is out of scope for

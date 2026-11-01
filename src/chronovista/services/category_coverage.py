@@ -27,7 +27,7 @@ from typing import Any
 
 import httpx
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from chronovista.repositories.entity_category_repository import EntityCategoryRepository
 from chronovista.repositories.wikipedia_category_repository import (
@@ -196,11 +196,11 @@ async def store_categories_for_entity(
 
 
 async def categorize_entity(
-    session: AsyncSession,
     entity_id: uuid.UUID,
     qid: str | None,
     external_ids: dict[str, Any],
     *,
+    session_factory: async_sessionmaker[AsyncSession],
     fetch_service: EntityCategoryFetchService,
     resolver: DbpediaResolver,
     cat_repo: WikipediaCategoryRepository,
@@ -214,12 +214,25 @@ async def categorize_entity(
     building blocks (:func:`resolve_article_title`, :func:`store_categories_for_entity`) but batches
     the fetch across many entities for rate-efficiency.
 
+    **Holds no DB session across the network** (the Feature 094 deadlock lesson). Title resolution,
+    the category fetch, AND the global-size pre-fetch all run session-less; only then does a short
+    write session (opened from ``session_factory``) persist the result and commit. This matters
+    because this runs inside a detached ``asyncio.create_task`` that can be cancelled at any
+    ``await``: holding a session across the (possibly slow/hung) Wikipedia/Wikidata calls would
+    leave an ``idle in transaction`` connection on cancellation, deadlocking any later ``DROP``/DDL
+    on ``named_entities``/``entity_mentions`` — exactly what broke the integration suite before the
+    secondary enrichment steps were split this way (mirrors ``_store_wikipedia_image``). The sizes
+    are pre-fetched and handed to :func:`store_categories_for_entity` as ``sizes=`` so its own
+    size-fill does no network while the session is open.
+
     Returns the resolved article title, or ``None`` if the entity was skipped — either because no
     article resolved (SC-006) or because the fetch omitted the title (a failure; the entity is left
     as-is and retried on a later run, FR-008). A title that exists with zero non-hidden categories
     is *not* a skip: it is stored as processed-zero (add-only) / left intact (replace, via the
     safety invariant).
     """
+    # Session-less network: resolve the article, fetch its categories, and pre-fetch global sizes
+    # — no DB session is held across any of these awaits (see docstring, Feature 094).
     title = await resolve_article_title(external_ids, qid, resolver)
     if title is None:
         return None
@@ -227,15 +240,20 @@ async def categorize_entity(
     names = fetched.get(title)
     if names is None:
         return None  # fetch omitted this title (failure) — leave as-is, retry later
-    await store_categories_for_entity(
-        session,
-        entity_id,
-        names,
-        cat_repo=cat_repo,
-        assign_repo=assign_repo,
-        size_service=size_service,
-        replace=replace,
-    )
+    sizes = await size_service.sizes_for(names) if names else {}
+    # Short write session: pre-fetched sizes mean store_categories_for_entity makes NO network call
+    # while the connection is held.
+    async with session_factory() as session:
+        await store_categories_for_entity(
+            session,
+            entity_id,
+            names,
+            cat_repo=cat_repo,
+            assign_repo=assign_repo,
+            sizes=sizes,
+            replace=replace,
+        )
+        await session.commit()
     return title
 
 

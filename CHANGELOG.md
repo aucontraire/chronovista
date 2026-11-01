@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.107.1] - 2026-11-01
+
+### Fixed
+- **On-approval category enrichment no longer holds a database session open across its Wikimedia network calls.** The entity-category step ran its article resolve, category fetch, and size fetch while holding the write session; because enrichment runs as a detached background task that can be cancelled at any `await`, a cancellation mid-fetch could leave an `idle in transaction` connection and deadlock later schema operations on the entity tables. The step now does all of its network session-less and persists in a short write session (pre-fetching category sizes so the write holds no network) — matching the pattern the image-fallback and foreign-category-crosswalk steps already followed. No behavior change to what gets stored; a regression test asserts no session is held while the network runs.
+
 ## [0.107.0] - 2026-11-01
 
 ### Fixed

@@ -425,7 +425,7 @@ Canonical tag form with normalization and entity linking.
 
 - CHECK `chk_canonical_tag_alias_count_positive`: `alias_count >= 0`
 - CHECK `chk_canonical_tag_canonical_form_not_empty`: `canonical_form != ''`
-- CHECK `chk_canonical_tag_entity_type_valid`: `entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other', 'topic', 'descriptor') OR entity_type IS NULL`
+- CHECK `chk_canonical_tag_entity_type_valid`: `entity_type IN ('person', 'organization', 'place', 'event', 'work', 'product', 'technical_term', 'concept', 'other', 'topic', 'descriptor') OR entity_type IS NULL`
 - CHECK `chk_canonical_tag_status_valid`: `status IN ('active', 'merged', 'deprecated')`
 - CHECK `chk_canonical_tag_video_count_non_negative`: `video_count >= 0`
 
@@ -530,7 +530,7 @@ Named entities extracted from video tags (people, places, organizations, etc.).
 - CHECK `chk_entity_confidence_range`: `confidence >= 0.0 AND confidence <= 1.0`
 - CHECK `chk_entity_discovery_method_valid`: `discovery_method IN ('manual', 'spacy_ner', 'tag_bootstrap', 'llm_extraction', 'user_created')`
 - CHECK `chk_entity_status_valid`: `status IN ('active', 'merged', 'deprecated')`
-- CHECK `chk_entity_type_valid`: `entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other')`
+- CHECK `chk_entity_type_valid`: `entity_type IN ('person', 'organization', 'place', 'event', 'work', 'product', 'technical_term', 'concept', 'other')`
 - CHECK `chk_named_entity_image_source_valid`: `image_source_preference IN ('manual', 'wikidata')`
 
 **Indexes:**
@@ -727,7 +727,7 @@ Proposed, not-yet-created entity queued for human review (Feature 096).
 - CHECK `chk_candidate_source_channel_valid`: `source_channel IN ('relation', 'tag_seed', 'category')`
 - CHECK `chk_candidate_token_count_positive`: `token_count >= 1`
 - CHECK `chk_candidate_triage_valid`: `triage IN ('worth_review', 'likely_eliminable', 'grounds_nowhere')`
-- CHECK `chk_candidate_type_hint_valid`: `type_hint IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other')`
+- CHECK `chk_candidate_type_hint_valid`: `type_hint IN ('person', 'organization', 'place', 'event', 'work', 'product', 'technical_term', 'concept', 'other')`
 
 **Indexes:**
 

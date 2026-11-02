@@ -14,7 +14,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.models.entity_video_exclusion import EntityVideoExclusion
-from chronovista.models.enums import ENTITY_PRODUCING_TYPES, EntityType
+from chronovista.models.enums import (
+    ENTITY_PRODUCING_TYPES,
+    ENTITY_TAG_TYPES,
+    EntityType,
+)
 
 
 class VideoEntitySummary(BaseModel):
@@ -1032,18 +1036,8 @@ class UpdateEntityRequest(BaseModel):
 # Scan request / response schemas (Feature 038 API)
 # ---------------------------------------------------------------------------
 
-_VALID_ENTITY_TYPES = {
-    "person",
-    "organization",
-    "place",
-    "event",
-    "work",
-    "technical_term",
-    "topic",
-    "descriptor",
-    "concept",
-    "other",
-}
+# Single source of truth: chronovista.models.enums.ENTITY_TAG_TYPES (tag-inclusive set).
+_VALID_ENTITY_TYPES = frozenset(ENTITY_TAG_TYPES)
 
 
 _VALID_SCAN_SOURCES = {"transcript", "title", "description"}

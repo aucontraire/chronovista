@@ -18,6 +18,9 @@ import { render, screen } from '@testing-library/react';
 import { EntityTypeBadge } from '../EntityTypeBadge';
 import { EntityName } from '../EntityName';
 import {
+  ENTITY_PRODUCING_TYPES,
+  ENTITY_TYPE_TABS,
+  ENTITY_TYPE_TOOLTIPS,
   ENTITY_TYPE_COLORS,
   ENTITY_TYPE_LABELS,
   ENTITY_TYPE_FALLBACK_COLOR,
@@ -29,6 +32,7 @@ const ALL_TYPES = [
   'place',
   'event',
   'work',
+  'product',
   'technical_term',
   'concept',
   'other',
@@ -52,6 +56,30 @@ describe('EntityTypeBadge (FR-025, FR-026, FR-027, FR-028)', () => {
     // Guards against a ninth type being added to the palette without this
     // suite noticing (FR-026: none added, none changed).
     expect(Object.keys(ENTITY_TYPE_COLORS).sort()).toEqual([...ALL_TYPES].sort());
+  });
+
+  it('renders product as a defined type, not the neutral fallback (Feature 103)', () => {
+    const { container } = render(<EntityTypeBadge entityType="product" />);
+    const badge = container.firstElementChild;
+
+    expect(badge).toHaveTextContent('Product');
+    expect(badge).toHaveClass('bg-fuchsia-100', 'text-fuchsia-700');
+    expect(badge).not.toHaveClass('bg-slate-100');
+    expect(ENTITY_TYPE_COLORS.product).not.toBe(ENTITY_TYPE_FALLBACK_COLOR);
+    // Distinct from every other type's palette.
+    const others = Object.entries(ENTITY_TYPE_COLORS)
+      .filter(([k]) => k !== 'product')
+      .map(([, v]) => v);
+    expect(others).not.toContain(ENTITY_TYPE_COLORS.product);
+  });
+
+  it('offers product as a filter tab, a create option, and a tooltip (Feature 103)', () => {
+    expect(ENTITY_TYPE_TABS).toContainEqual({ value: 'product', label: 'Product' });
+    expect(ENTITY_PRODUCING_TYPES).toContain('product');
+    expect(ENTITY_TYPE_TOOLTIPS.product).toBeTruthy();
+    // Ordered after "work", matching the backend.
+    const values = ENTITY_TYPE_TABS.map((t) => t.value);
+    expect(values.indexOf('product')).toBe(values.indexOf('work') + 1);
   });
 
   it('falls back to the neutral treatment for an unrecognised type (FR-028)', () => {

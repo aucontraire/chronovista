@@ -26,6 +26,8 @@ from chronovista.db.models import TagAlias as TagAliasDB
 from chronovista.db.models import TagOperationLog as TagOperationLogDB
 from chronovista.db.models import VideoTag
 from chronovista.models.enums import (
+    ENTITY_PRODUCING_TYPES,
+    TAG_ONLY_ENTITY_TYPES,
     DiscoveryMethod,
     EntityAliasType,
     EntityType,
@@ -1274,18 +1276,10 @@ class TagManagementService:
             tag.entity_type = None
             tag.entity_id = None
 
-        # 3. Determine entity-producing vs tag-only types
-        entity_producing_types = {
-            EntityType.PERSON,
-            EntityType.ORGANIZATION,
-            EntityType.PLACE,
-            EntityType.EVENT,
-            EntityType.WORK,
-            EntityType.TECHNICAL_TERM,
-            EntityType.CONCEPT,
-            EntityType.OTHER,
-        }
-        tag_only_types = {EntityType.TOPIC, EntityType.DESCRIPTOR}
+        # 3. Determine entity-producing vs tag-only types.
+        # Single source: chronovista.models.enums.ENTITY_PRODUCING_TYPES / TAG_ONLY_ENTITY_TYPES.
+        entity_producing_types = {EntityType(t) for t in ENTITY_PRODUCING_TYPES}
+        tag_only_types = {EntityType(t) for t in TAG_ONLY_ENTITY_TYPES}
 
         created_entity_id: uuid.UUID | None = None
         linked_existing_entity_id: uuid.UUID | None = None

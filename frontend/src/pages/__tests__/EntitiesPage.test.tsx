@@ -590,6 +590,7 @@ describe("EntitiesPage", () => {
         "Place",
         "Event",
         "Work",
+        "Product",
         "Technical Term",
         "Concept",
         "Other",

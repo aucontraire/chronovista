@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.108.0] - 2026-11-02
+
+### Added
+- **New `product` entity type.** The named-entity taxonomy gains `product` — an OntoNotes/schema.org peer of person/organization/place/event/work — covering software, apps, online/streaming/user-generated-content platforms, social-networking services, chatbots, and large language models. A product can be created, classified, filtered, and displayed (with its own badge) everywhere the existing entity types are, and entities that were misfiled as `organization` or `work` are reclassified to `product` through the existing offline, reviewable, reversible backfill. The classifier recognizes a reviewed, narrowly-drawn set of product classification classes; generic `website`/`news website` classes deliberately remain `organization`. Adding the type edits only the single-source entity-type vocabulary plus one schema migration (the single-source invariant, verified by an extended fitness guard); two pre-existing hand-maintained type lists were folded into that single source so the invariant now holds in fact.
+
 ## [0.107.2] - 2026-11-01
 
 ### Fixed

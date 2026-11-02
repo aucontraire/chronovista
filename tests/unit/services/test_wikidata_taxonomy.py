@@ -59,7 +59,8 @@ class TestOrganizationDemotionFixClasses:
     """Classes that previously classified to OTHER and so were demoted from the heuristic's
     'organization' guess at approval. All now map to ORGANIZATION, which is both what lets the
     repair re-type the affected entities and what keeps them inside corroboration coverage.
-    (Platform/software classes are intentionally NOT here — they await a future `product` type.)
+    (Platform/software/app classes are NOT here — they now live in
+    INSTANCE_OF_BY_TYPE[PRODUCT], Feature 103.)
     """
 
     @pytest.mark.parametrize(
@@ -421,3 +422,68 @@ class TestExtensionZeroRegression:
             for q in qids:
                 assert q not in seen, f"{q} assigned to both {seen.get(q)} and {etype}"
                 seen[q] = etype
+
+
+class TestClassifyProductFeature103:
+    """Feature 103: the narrow `product` anchor set classifies to PRODUCT; organization still
+    outranks product (dual-classed companies stay organization); product does NOT corroborate
+    (#271-safe — its anchor set is a deliberate floor); website/news-site stay organization.
+    """
+
+    _PRODUCT_ANCHORS = [
+        "Q620615",  # mobile app
+        "Q3220391",  # social networking service
+        "Q19967801",  # online service
+        "Q559856",  # online video platform
+        "Q118140435",  # very large online platform
+        "Q122759350",  # user-generated content platform
+        "Q59152282",  # video streaming service
+        "Q723685",  # video on demand
+        "Q870780",  # chatbot
+        "Q133284163",  # generative artificial intelligence chatbot
+        "Q116961403",  # conversational AI
+        "Q115305900",  # large language model
+        "Q124629760",  # family of large language models
+        "Q116777014",  # generative pre-trained transformer
+        "Q117246174",  # generative artificial intelligence
+        "Q7397",  # software
+        "Q40056",  # computer program
+        "Q189053",  # command-line interface
+        "Q56277524",  # personal knowledge base
+        "Q14644",  # spyware
+        "Q1344897",  # whistleblower platform
+        "Q351764",  # e-commerce payment system
+    ]
+
+    @pytest.mark.parametrize("qid", _PRODUCT_ANCHORS)
+    def test_anchor_classifies_to_product(self, qid: str) -> None:
+        assert classify_entity_type([qid]) == EntityType.PRODUCT
+        assert suggest_entity_type([qid]) == "product"
+
+    def test_anchor_set_is_the_reviewed_22(self) -> None:
+        # Pins the reviewed set (data-model §3): 17 core + 5 resolved-IN borderline.
+        assert INSTANCE_OF_BY_TYPE[EntityType.PRODUCT] == frozenset(
+            self._PRODUCT_ANCHORS
+        )
+        assert len(self._PRODUCT_ANCHORS) == 22
+
+    def test_organization_outranks_product(self) -> None:
+        # A company that also carries a product class stays organization (FR-004).
+        assert classify_entity_type(["Q4830453", "Q620615"]) == EntityType.ORGANIZATION
+        assert classify_entity_type(["Q620615", "Q4830453"]) == EntityType.ORGANIZATION
+
+    def test_product_outranks_lower_types(self) -> None:
+        # product sits directly below organization, above place/event/work/concept.
+        assert classify_entity_type(["Q620615", "Q6256"]) == EntityType.PRODUCT
+        assert classify_entity_type(["Q620615", "Q11424"]) == EntityType.PRODUCT
+
+    def test_website_and_news_site_are_not_product(self) -> None:
+        # website stays organization; news website is no anchor → OTHER (never product), so
+        # Direction A keeps a news-site entity's stored type. SC-001: neither is re-typed.
+        assert classify_entity_type(["Q35127"]) == EntityType.ORGANIZATION
+        assert classify_entity_type(["Q17232649"]) == EntityType.OTHER
+
+    def test_product_corroboration_is_neutral(self) -> None:
+        # Deliberate floor → product must NOT corroborate, or it would flash "type may differ".
+        assert type_corroboration("product", ["Q620615"]) is None
+        assert "product" not in EXPECTED_INSTANCE_OF

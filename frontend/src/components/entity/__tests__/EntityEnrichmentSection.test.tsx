@@ -541,6 +541,43 @@ describe('EntityEnrichmentSection — property rendering (Feature 079, US3)', ()
       expect(screen.queryByText(/related to/i)).not.toBeInTheDocument();
     });
 
+    describe('credit groups are gated on the property, not entity_type (Feature 103, FR-007/SC-003)', () => {
+      const CREDIT_GROUPS = ['cast', 'director', 'producer', 'screenwriter', 'composer'];
+
+      it('offers no credit group to a product whose data has no credit property', () => {
+        mockWikidataEntityMap({ data: {} });
+        renderSection({
+          entityType: 'product',
+          enrichment: makeEnrichment({
+            // A non-credit relation keeps the relations list rendering, so the absence
+            // assertions below are not satisfied vacuously by empty data.
+            properties: { owned_by: propBlock(['Placeholder Owner'], { qids: ['Q00000701'] }) },
+          }),
+        });
+
+        expect(screen.getByTestId('relation-group-owned_by')).toBeInTheDocument();
+        for (const key of CREDIT_GROUPS) {
+          expect(screen.queryByTestId(`relation-group-${key}`)).not.toBeInTheDocument();
+        }
+      });
+
+      it('control: a work whose data has credit properties DOES render the credit groups', () => {
+        mockWikidataEntityMap({ data: {} });
+        renderSection({
+          entityType: 'work',
+          enrichment: makeEnrichment({
+            properties: {
+              cast_member: propBlock(['Placeholder Person A'], { qids: ['Q00000601'] }),
+              director: propBlock(['Placeholder Person C'], { qids: ['Q00000603'] }),
+            },
+          }),
+        });
+
+        expect(screen.getByTestId('relation-group-cast')).toBeInTheDocument();
+        expect(screen.getByTestId('relation-group-director')).toBeInTheDocument();
+      });
+    });
+
     it('labels grouped relations specifically and attributes them to Wikidata', () => {
       mockWikidataEntityMap({ data: {} });
       renderSection({

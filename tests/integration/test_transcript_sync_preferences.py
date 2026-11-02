@@ -18,6 +18,7 @@ Test Coverage:
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -249,10 +250,12 @@ class TestSyncTranscriptsFluentPreferences:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ] * 10
+
+        @asynccontextmanager
+        async def _session_scope(*args: object, **kwargs: object):
+            yield mock_session
+
+        mock_db_manager.session = _session_scope
 
         # Mock video repository to return test video
         mock_video_repo.search_videos = AsyncMock(return_value=[test_video])
@@ -351,10 +354,12 @@ class TestSyncTranscriptsLearningPreferences:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ] * 10
+
+        @asynccontextmanager
+        async def _session_scope(*args: object, **kwargs: object):
+            yield mock_session
+
+        mock_db_manager.session = _session_scope
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[test_video])
@@ -442,10 +447,12 @@ class TestSyncTranscriptsLearningPreferences:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ] * 10
+
+        @asynccontextmanager
+        async def _session_scope(*args: object, **kwargs: object):
+            yield mock_session
+
+        mock_db_manager.session = _session_scope
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[test_video])
@@ -534,10 +541,12 @@ class TestSyncTranscriptsCuriousAndExcludePreferences:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ] * 10
+
+        @asynccontextmanager
+        async def _session_scope(*args: object, **kwargs: object):
+            yield mock_session
+
+        mock_db_manager.session = _session_scope
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[test_video])
@@ -620,10 +629,12 @@ class TestSyncTranscriptsCuriousAndExcludePreferences:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ] * 10
+
+        @asynccontextmanager
+        async def _session_scope(*args: object, **kwargs: object):
+            yield mock_session
+
+        mock_db_manager.session = _session_scope
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[test_video])
@@ -710,10 +721,12 @@ class TestSyncTranscriptsNoPreferences:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ] * 10
+
+        @asynccontextmanager
+        async def _session_scope(*args: object, **kwargs: object):
+            yield mock_session
+
+        mock_db_manager.session = _session_scope
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[test_video])
@@ -797,10 +810,12 @@ class TestSyncTranscriptsLanguageFlagOverride:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ] * 10
+
+        @asynccontextmanager
+        async def _session_scope(*args: object, **kwargs: object):
+            yield mock_session
+
+        mock_db_manager.session = _session_scope
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[test_video])
@@ -894,10 +909,12 @@ class TestSyncTranscriptsMixedPreferences:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session
-        ] * 10
+
+        @asynccontextmanager
+        async def _session_scope(*args: object, **kwargs: object):
+            yield mock_session
+
+        mock_db_manager.session = _session_scope
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[test_video])

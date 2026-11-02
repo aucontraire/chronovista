@@ -265,7 +265,7 @@ async def _recover_single_video(
 
         exit_code = 1
         try:
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 result = await recover_video(
                     session=session,
                     video_id=video_id,
@@ -331,7 +331,7 @@ async def _recover_batch(
     VideoRepository()
 
     exit_code = 1
-    async for session in db_manager.get_session(echo=False):
+    async with db_manager.session(echo=False) as session:
         # Query unavailable videos (ordered by unavailability_first_detected ASC NULLS LAST, then created_at ASC)
         from sqlalchemy import asc, select
 
@@ -363,73 +363,76 @@ async def _recover_batch(
                 )
             )
             exit_code = 0
-            break
-
-        console.print(
-            Panel(
-                f"[cyan]Found {len(videos)} unavailable video(s) to recover[/cyan]",
-                title="Batch Recovery",
-                border_style="cyan",
+        else:
+            console.print(
+                Panel(
+                    f"[cyan]Found {len(videos)} unavailable video(s) to recover[/cyan]",
+                    title="Batch Recovery",
+                    border_style="cyan",
+                )
             )
-        )
 
-        # T053: Process videos with delay
-        results: list[RecoveryResult] = []
+            # T053: Process videos with delay
+            results: list[RecoveryResult] = []
 
-        for i, video in enumerate(videos):
-            try:
-                recovery_result = await recover_video(
-                    session=session,
-                    video_id=video.video_id,
-                    cdx_client=cdx_client,
-                    page_parser=page_parser,
-                    rate_limiter=rate_limiter,
-                    dry_run=dry_run,
-                    from_year=start_year,
-                    to_year=end_year,
-                )
-                results.append(recovery_result)
-
-                # Show progress
-                console.print(
-                    f"[dim]Progress: {i + 1}/{len(videos)} - "
-                    f"{'✓' if recovery_result.success else '✗'} {video.video_id}[/dim]"
-                )
-
-                # T053: Apply delay between videos (except after last video)
-                if i < len(videos) - 1 and delay > 0:
-                    await asyncio.sleep(delay)
-
-            except CDXError as e:
-                console.print(f"[red]CDX error for {video.video_id}: {e.message}[/red]")
-                # T053: Continue past failures
-                results.append(
-                    RecoveryResult(
+            for i, video in enumerate(videos):
+                try:
+                    recovery_result = await recover_video(
+                        session=session,
                         video_id=video.video_id,
-                        success=False,
-                        failure_reason="cdx_error",
-                        duration_seconds=0.0,
+                        cdx_client=cdx_client,
+                        page_parser=page_parser,
+                        rate_limiter=rate_limiter,
+                        dry_run=dry_run,
+                        from_year=start_year,
+                        to_year=end_year,
                     )
-                )
-                continue
-            except Exception as e:
-                console.print(f"[red]Unexpected error for {video.video_id}: {e}[/red]")
-                results.append(
-                    RecoveryResult(
-                        video_id=video.video_id,
-                        success=False,
-                        failure_reason="unexpected_error",
-                        duration_seconds=0.0,
+                    results.append(recovery_result)
+
+                    # Show progress
+                    console.print(
+                        f"[dim]Progress: {i + 1}/{len(videos)} - "
+                        f"{'✓' if recovery_result.success else '✗'} {video.video_id}[/dim]"
                     )
-                )
-                continue
 
-        # T055: Display summary report
-        _display_batch_summary(results, dry_run)
+                    # T053: Apply delay between videos (except after last video)
+                    if i < len(videos) - 1 and delay > 0:
+                        await asyncio.sleep(delay)
 
-        # Exit based on results
-        success_count = sum(1 for r in results if r.success)
-        exit_code = 0 if success_count > 0 else 1
+                except CDXError as e:
+                    console.print(
+                        f"[red]CDX error for {video.video_id}: {e.message}[/red]"
+                    )
+                    # T053: Continue past failures
+                    results.append(
+                        RecoveryResult(
+                            video_id=video.video_id,
+                            success=False,
+                            failure_reason="cdx_error",
+                            duration_seconds=0.0,
+                        )
+                    )
+                    continue
+                except Exception as e:
+                    console.print(
+                        f"[red]Unexpected error for {video.video_id}: {e}[/red]"
+                    )
+                    results.append(
+                        RecoveryResult(
+                            video_id=video.video_id,
+                            success=False,
+                            failure_reason="unexpected_error",
+                            duration_seconds=0.0,
+                        )
+                    )
+                    continue
+
+            # T055: Display summary report
+            _display_batch_summary(results, dry_run)
+
+            # Exit based on results
+            success_count = sum(1 for r in results if r.success)
+            exit_code = 0 if success_count > 0 else 1
 
     raise typer.Exit(code=exit_code)
 
@@ -641,12 +644,7 @@ def recover_filmot_command(
 
     async def _run() -> None:
         client = FilmotClient()
-        # No `raise typer.Exit` inside this loop: exiting an `async for` early
-        # throws GeneratorExit at the suspended yield, so the session context
-        # manager's commit never runs. `database.py` documents the hazard by
-        # name. Falling off the end of the loop leaves the generator to close
-        # itself, and success is the absence of an exception.
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             result = await run_filmot_recovery(
                 session, client, limit=limit, dry_run=dry_run
             )

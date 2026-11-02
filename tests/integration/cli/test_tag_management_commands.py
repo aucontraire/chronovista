@@ -12,14 +12,15 @@ These tests mock the database layer and the TagManagementService to verify:
 - Interactive undo list output formatting
 
 NOTE: The CLI commands use asyncio.run() internally. Tests remain synchronous
-and mock db_manager.get_session so no real database connection is needed.
+and mock db_manager.session so no real database connection is needed.
 Pattern mirrors tests/integration/cli/test_tag_normalize_commands.py.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -41,16 +42,17 @@ runner = CliRunner()
 _OP_ID = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
 
-def _make_get_session(mock_session: AsyncMock) -> Any:
+def _make_session(mock_session: AsyncMock) -> Any:
     """
-    Return an async generator factory that yields *mock_session* once,
-    matching the signature of db_manager.get_session(echo=False).
+    Return an async context-manager factory that yields *mock_session* once,
+    matching the signature of db_manager.session(echo=False).
     """
 
-    async def _gen(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+    @asynccontextmanager
+    async def _scope(*args: Any, **kwargs: Any) -> AsyncIterator[AsyncSession]:
         yield mock_session
 
-    return _gen()
+    return _scope
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +83,7 @@ class TestMergeCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.merge.return_value = mock_result
@@ -111,7 +113,7 @@ class TestMergeCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.merge.return_value = mock_result
@@ -147,7 +149,7 @@ class TestMergeCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.merge.return_value = mock_result
@@ -179,7 +181,7 @@ class TestMergeCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.merge.return_value = mock_result
@@ -223,7 +225,7 @@ class TestMergeCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.merge.return_value = mock_result
@@ -248,7 +250,7 @@ class TestMergeCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.merge.side_effect = ValueError("Tag 'nonexistent' not found")
@@ -269,7 +271,7 @@ class TestMergeCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.merge.side_effect = ValueError("Tag 'nonexistent' not found")
@@ -291,7 +293,7 @@ class TestMergeCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.merge.side_effect = ValueError(
@@ -360,7 +362,7 @@ class TestSplitCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.split.return_value = mock_result
@@ -396,7 +398,7 @@ class TestSplitCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.split.return_value = mock_result
@@ -435,7 +437,7 @@ class TestSplitCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.split.return_value = mock_result
@@ -482,7 +484,7 @@ class TestSplitCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.split.return_value = mock_result
@@ -516,7 +518,7 @@ class TestSplitCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.split.side_effect = ValueError(
@@ -539,7 +541,7 @@ class TestSplitCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.split.side_effect = ValueError(
@@ -613,7 +615,7 @@ class TestRenameCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.rename.return_value = mock_result
@@ -641,7 +643,7 @@ class TestRenameCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.rename.return_value = mock_result
@@ -672,7 +674,7 @@ class TestRenameCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.rename.return_value = mock_result
@@ -704,7 +706,7 @@ class TestRenameCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.rename.side_effect = ValueError("Tag 'nonexistent' not found")
@@ -725,7 +727,7 @@ class TestRenameCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.rename.side_effect = ValueError(
@@ -803,7 +805,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.undo.return_value = mock_result
@@ -830,7 +832,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.undo.return_value = mock_result
@@ -859,7 +861,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.undo.return_value = mock_result
@@ -886,7 +888,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.undo.return_value = mock_result
@@ -908,7 +910,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.list_recent_operations.return_value = [log_entry]
@@ -931,7 +933,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.list_recent_operations.return_value = []
@@ -951,7 +953,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_factory.return_value = mock_service
@@ -969,7 +971,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_factory.return_value = mock_service
@@ -987,7 +989,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_factory.return_value = mock_service
@@ -1005,7 +1007,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.undo.side_effect = ValueError(
@@ -1028,7 +1030,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.undo.side_effect = UndoNotImplementedError(
@@ -1052,7 +1054,7 @@ class TestUndoCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.list_recent_operations.return_value = [log_entry]
@@ -1100,7 +1102,7 @@ class TestClassifyCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
@@ -1132,7 +1134,7 @@ class TestClassifyCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
@@ -1167,7 +1169,7 @@ class TestClassifyCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
@@ -1201,7 +1203,7 @@ class TestClassifyCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.classify_top_unclassified.return_value = [tag1, tag2]
@@ -1223,7 +1225,7 @@ class TestClassifyCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.classify_top_unclassified.return_value = []
@@ -1254,7 +1256,7 @@ class TestClassifyCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
@@ -1277,7 +1279,7 @@ class TestClassifyCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_factory.return_value = mock_service
@@ -1299,7 +1301,7 @@ class TestClassifyCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_factory.return_value = mock_service
@@ -1341,7 +1343,7 @@ class TestClassifyCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.classify.side_effect = ValueError(
@@ -1376,7 +1378,7 @@ class TestClassifyCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
@@ -1453,7 +1455,7 @@ class TestCollisionsCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.get_collisions.return_value = [collision]
@@ -1476,7 +1478,7 @@ class TestCollisionsCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.get_collisions.return_value = [collision]
@@ -1502,7 +1504,7 @@ class TestCollisionsCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.get_collisions.return_value = []
@@ -1525,7 +1527,7 @@ class TestCollisionsCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.get_collisions.return_value = []
@@ -1545,7 +1547,7 @@ class TestCollisionsCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.get_collisions.return_value = []
@@ -1580,7 +1582,7 @@ class TestCollisionsCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.get_collisions.return_value = collisions
@@ -1627,7 +1629,7 @@ class TestDeprecateCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.deprecate.return_value = mock_result
@@ -1655,7 +1657,7 @@ class TestDeprecateCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.deprecate.return_value = mock_result
@@ -1686,7 +1688,7 @@ class TestDeprecateCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.deprecate.return_value = mock_result
@@ -1716,7 +1718,7 @@ class TestDeprecateCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.list_deprecated.return_value = [tag1]
@@ -1737,7 +1739,7 @@ class TestDeprecateCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.list_deprecated.return_value = []
@@ -1769,7 +1771,7 @@ class TestDeprecateCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.deprecate.side_effect = ValueError(
@@ -1790,7 +1792,7 @@ class TestDeprecateCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.deprecate.side_effect = ValueError(
@@ -1837,7 +1839,7 @@ class TestDeprecateCommand:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_service = AsyncMock()
             mock_service.undo.return_value = undo_result
@@ -1882,7 +1884,7 @@ class TestInputNormalization:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.merge.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -1917,7 +1919,7 @@ class TestInputNormalization:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.merge.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -1952,7 +1954,7 @@ class TestInputNormalization:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.merge.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -2000,7 +2002,7 @@ class TestInputNormalization:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.split.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -2038,7 +2040,7 @@ class TestInputNormalization:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.rename.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -2076,7 +2078,7 @@ class TestInputNormalization:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.deprecate.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -2110,7 +2112,7 @@ class TestInputNormalization:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -2144,7 +2146,7 @@ class TestInputNormalization:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.merge.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -2193,7 +2195,7 @@ class TestClassifyDescriptionAndAutoCase:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -2235,7 +2237,7 @@ class TestClassifyDescriptionAndAutoCase:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -2280,7 +2282,7 @@ class TestClassifyDescriptionAndAutoCase:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -2321,7 +2323,7 @@ class TestClassifyDescriptionAndAutoCase:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
             mock_factory.return_value = mock_service
@@ -2361,7 +2363,7 @@ class TestClassifyDescriptionAndAutoCase:
             ) as mock_factory,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
             mock_service = AsyncMock()
             mock_service.classify.return_value = mock_result
             mock_factory.return_value = mock_service

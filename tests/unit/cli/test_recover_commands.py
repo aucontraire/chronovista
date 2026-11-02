@@ -9,6 +9,7 @@ dry-run mode, summary reports, and dependency checks.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -31,14 +32,21 @@ def create_async_mock_recover(result: RecoveryResult):
     return mock_recover_async
 
 
-def create_async_mock_session() -> tuple[AsyncGenerator[AsyncMock, None], AsyncMock]:
-    """Create an async context manager mock for db_manager.get_session."""
+def create_async_mock_session() -> tuple[Any, AsyncMock]:
+    """Create an async context manager mock for db_manager.session.
+
+    Returns an ``@asynccontextmanager`` factory to assign to
+    ``db_manager.session.side_effect`` and the yielded session mock.
+    """
     mock_session = AsyncMock()
 
-    async def mock_session_gen() -> AsyncGenerator[AsyncMock, None]:
+    @asynccontextmanager
+    async def mock_session_cm(
+        *args: Any, **kwargs: Any
+    ) -> AsyncGenerator[AsyncMock, None]:
         yield mock_session
 
-    return mock_session_gen(), mock_session
+    return mock_session_cm, mock_session
 
 
 def create_mock_video_db(
@@ -85,16 +93,16 @@ class TestRecoverArgumentParsing:
         )
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_limit_ignored_with_video_id(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that --limit is ignored when using --video-id."""
         # This test verifies the command accepts both flags but limit is ignored
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -169,16 +177,16 @@ class TestSingleVideoRecovery:
     """T045: Single-video recovery command tests."""
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_invokes_orchestrator_with_correct_video_id(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that single-video recovery invokes orchestrator correctly."""
         # Setup mocks
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -202,15 +210,15 @@ class TestSingleVideoRecovery:
         assert call_args[1]["video_id"] == "dQw4w9WgXcQ"
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_displays_rich_progress_and_result_table(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that single-video recovery displays progress and results."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -235,7 +243,7 @@ class TestSingleVideoRecovery:
         assert "Success" in result.stdout or "✓" in result.stdout
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     @patch("chronovista.cli.commands.recover.CDXClient")
     @patch("chronovista.cli.commands.recover.PageParser")
     @patch("chronovista.cli.commands.recover.RateLimiter")
@@ -244,12 +252,12 @@ class TestSingleVideoRecovery:
         mock_rate_limiter: MagicMock,
         mock_page_parser: MagicMock,
         mock_cdx_client: MagicMock,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that successful recovery returns exit code 0."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -269,15 +277,15 @@ class TestSingleVideoRecovery:
         assert result.exit_code == 0
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_exit_code_1_on_failure(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that failed recovery returns exit code 1."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -300,15 +308,15 @@ class TestBatchRecovery:
     """T046: Batch recovery command tests."""
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_queries_unavailable_videos_ordered_correctly(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that batch mode queries unavailable videos with correct ordering."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         # Create mock video
         mock_video = create_mock_video_db("dQw4w9WgXcQ", AvailabilityStatus.DELETED)
@@ -334,15 +342,15 @@ class TestBatchRecovery:
         assert result.exit_code == 0
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_respects_limit(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that --limit parameter is respected in batch mode."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         # Create 1 mock video (limit applied at SQL level)
         mock_video = create_mock_video_db("dQw4w9WgXcQ")
@@ -369,16 +377,16 @@ class TestBatchRecovery:
 
     @patch("chronovista.cli.commands.recover.asyncio.sleep")
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_applies_delay_between_videos(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
         mock_sleep: AsyncMock,
     ) -> None:
         """Test that --delay is applied between videos in batch mode."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         # Create 2 mock videos
         mock_videos = [
@@ -434,15 +442,15 @@ class TestBatchRecovery:
         mock_sleep.assert_called_with(2.5)
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_continues_past_individual_failures(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that batch mode continues after individual video failures."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         # Create 3 mock videos
         mock_videos = [
@@ -495,14 +503,14 @@ class TestBatchRecovery:
         # Should exit with 0 because at least one succeeded
         assert result.exit_code == 0
 
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_zero_unavailable_videos_shows_message(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
     ) -> None:
         """Test that zero unavailable videos shows informational message."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         # Setup session to return empty list
         setup_batch_query_mock(session, [])
@@ -520,15 +528,15 @@ class TestDryRunMode:
     """T047: Dry-run mode tests."""
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_cdx_queries_made_in_dry_run(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that CDX queries are made in dry-run mode."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -552,15 +560,15 @@ class TestDryRunMode:
         assert call_kwargs["dry_run"] is True
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_displays_snapshot_availability_report(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that dry-run displays snapshot availability report."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -591,15 +599,15 @@ class TestSummaryReport:
     """T048: Summary report tests."""
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_displays_summary_counts(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that summary displays attempted/succeeded/failed counts."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         # Create 3 mock videos
         mock_videos = [
@@ -657,15 +665,15 @@ class TestSummaryReport:
         assert "3" in result.stdout and "2" in result.stdout
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_includes_per_video_result_table(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that summary includes per-video result table."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_video = create_mock_video_db("dQw4w9WgXcQ")
         setup_batch_query_mock(session, [mock_video])
@@ -714,7 +722,7 @@ class TestDependencyChecks:
     @patch("chronovista.cli.commands.recover.SELENIUM_AVAILABLE", False)
     @patch("chronovista.cli.commands.recover.BEAUTIFULSOUP_AVAILABLE", True)
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     @patch("chronovista.cli.commands.recover.CDXClient")
     @patch("chronovista.cli.commands.recover.PageParser")
     @patch("chronovista.cli.commands.recover.RateLimiter")
@@ -723,12 +731,12 @@ class TestDependencyChecks:
         mock_rate_limiter: MagicMock,
         mock_page_parser: MagicMock,
         mock_cdx_client: MagicMock,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that missing selenium shows warning but continues."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -755,17 +763,17 @@ class TestErrorHandling:
     """Test error handling in recovery commands."""
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_cdx_error_returns_network_error_code(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that CDXError returns EXIT_CODE_NETWORK_ERROR."""
         from chronovista.exceptions import EXIT_CODE_NETWORK_ERROR, CDXError
 
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         async def mock_recover_raises_cdx_error(*args, **kwargs):
             raise CDXError("CDX API timeout", video_id="dQw4w9WgXcQ", status_code=504)
@@ -781,17 +789,17 @@ class TestErrorHandling:
         assert "cdx" in result.stdout.lower()
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_page_parse_error_returns_exit_code_1(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that PageParseError returns exit code 1."""
         from chronovista.exceptions import PageParseError
 
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         async def mock_recover_raises_parse_error(*args, **kwargs):
             raise PageParseError(
@@ -811,17 +819,17 @@ class TestErrorHandling:
         assert "pars" in result.stdout.lower() or "error" in result.stdout.lower()
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_batch_cdx_error_continues_with_other_videos(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that batch mode continues after CDXError on individual video."""
         from chronovista.exceptions import CDXError
 
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         # Create 2 mock videos
         mock_videos = [
@@ -932,15 +940,15 @@ class TestYearFilterValidation:
         assert result.exit_code != 2 or "start-year" not in result.stdout.lower()
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_start_year_passed_to_orchestrator(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that --start-year is threaded through to recover_video as from_year."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -964,15 +972,15 @@ class TestYearFilterValidation:
         assert call_kwargs.get("to_year") is None
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_end_year_passed_to_orchestrator(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that --end-year is threaded through to recover_video as to_year."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -996,15 +1004,15 @@ class TestYearFilterValidation:
         assert call_kwargs["to_year"] == 2020
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_both_years_passed_to_orchestrator(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that both --start-year and --end-year are threaded through."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -1037,15 +1045,15 @@ class TestYearFilterValidation:
         assert call_kwargs["to_year"] == 2020
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_batch_mode_passes_years_to_orchestrator(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that year flags in batch mode are threaded to recover_video."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_video = create_mock_video_db("dQw4w9WgXcQ")
         setup_batch_query_mock(session, [mock_video])
@@ -1086,15 +1094,15 @@ class TestChannelRecoveryDisplay:
     """T027 + T028: Channel recovery display tests."""
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_single_result_with_channel_recovery(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that single result displays channel recovery info when channel_recovered=True."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -1122,15 +1130,15 @@ class TestChannelRecoveryDisplay:
         assert "subscriber_count" in result.stdout
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_single_result_without_channel_recovery(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that single result does not show channel info when channel_recovered=False."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -1160,15 +1168,15 @@ class TestChannelRecoveryDisplay:
         assert len(channel_recovery_lines) == 0
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_single_result_with_channel_failure(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that single result displays channel failure reason."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -1194,15 +1202,15 @@ class TestChannelRecoveryDisplay:
         assert "no_snapshots_found" in result.stdout
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_batch_summary_with_channel_section(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that batch summary includes channel recovery section with correct counts."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         # Create 3 mock videos
         mock_videos = [
@@ -1270,15 +1278,15 @@ class TestChannelRecoveryDisplay:
         assert "subscriber_count" in result.stdout
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_batch_summary_zero_channels(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that batch summary hides channel section when no channels attempted."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         # Create 2 mock videos
         mock_videos = [
@@ -1329,15 +1337,15 @@ class TestChannelRecoveryDisplay:
         assert "channels recovered:" not in result.stdout.lower()
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_dry_run_with_channel_candidates(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that dry-run displays channel recovery candidates."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(
@@ -1366,15 +1374,15 @@ class TestChannelRecoveryDisplay:
         assert "UC987654321098765432109" in result.stdout
 
     @patch("chronovista.cli.commands.recover.recover_video")
-    @patch("chronovista.cli.commands.recover.db_manager.get_session")
+    @patch("chronovista.cli.commands.recover.db_manager.session")
     def test_dry_run_without_channel_candidates(
         self,
-        mock_get_session: MagicMock,
+        mock_session: MagicMock,
         mock_recover: MagicMock,
     ) -> None:
         """Test that dry-run does not show channel candidates section when list is empty."""
-        session_gen, session = create_async_mock_session()
-        mock_get_session.return_value = session_gen
+        session_cm, session = create_async_mock_session()
+        mock_session.side_effect = session_cm
 
         mock_recover.side_effect = create_async_mock_recover(
             RecoveryResult(

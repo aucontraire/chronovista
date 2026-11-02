@@ -12,6 +12,7 @@ unusable *system* is a failure.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -41,7 +42,7 @@ def _invoke(runner: CliRunner, result: FilmotRecoveryResult, *args: str):
         async def _sessions(*_a, **_kw):
             yield AsyncMock()
 
-        db.get_session = _sessions
+        db.session = asynccontextmanager(_sessions)
         invocation = runner.invoke(recover_app, ["filmot", *args])
         invocation.run_mock = run  # type: ignore[attr-defined]
         return invocation

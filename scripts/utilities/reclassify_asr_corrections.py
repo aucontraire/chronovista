@@ -712,7 +712,7 @@ examples:
 
 async def _run(args: argparse.Namespace) -> None:
     """Async entry point — obtains a single DB session and dispatches to mode."""
-    async for session in db_manager.get_session(echo=False):
+    async with db_manager.session(echo=False) as session:
         if args.batch_id is not None:
             await run_batch_override(
                 session=session,
@@ -725,9 +725,6 @@ async def _run(args: argparse.Namespace) -> None:
         else:
             # Default: --audit
             await run_audit(session=session)
-
-        # Break after first (and only) session — the generator yields exactly one.
-        break
 
 
 def main() -> None:

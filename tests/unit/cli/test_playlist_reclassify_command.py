@@ -7,6 +7,7 @@ core-logic module.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -20,11 +21,12 @@ runner = CliRunner()
 def _patch_env(monkeypatch, regulars: list[SimpleNamespace]) -> AsyncMock:
     session = AsyncMock()
 
-    async def fake_get_session(echo: bool = False):  # type: ignore[no-untyped-def]
+    @asynccontextmanager
+    async def fake_session(echo: bool = False):  # type: ignore[no-untyped-def]
         yield session
 
     monkeypatch.setattr(
-        mod, "DatabaseManager", lambda: SimpleNamespace(get_session=fake_get_session)
+        mod, "DatabaseManager", lambda: SimpleNamespace(session=fake_session)
     )
     repo = AsyncMock()
     repo.get_playlists_by_type = AsyncMock(return_value=regulars)

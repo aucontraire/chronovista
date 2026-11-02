@@ -132,7 +132,7 @@ def list(
         db_manager = DatabaseManager()
 
         try:
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Determine which playlists to fetch
                 if linked and unlinked:
                     # If both flags are set, show all playlists
@@ -240,7 +240,7 @@ def show(
         db_manager = DatabaseManager()
 
         try:
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Try to look up playlist by internal ID or YouTube ID
                 playlist = None
 
@@ -547,7 +547,7 @@ def hidden() -> None:
         db_manager = DatabaseManager()
 
         try:
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 playlists = await repository.get_hidden_playlists(session)
 
                 if not playlists:
@@ -654,7 +654,7 @@ def restore(
         db_manager = DatabaseManager()
 
         try:
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 hidden_playlists = await repository.get_hidden_playlists(session)
                 hidden_ids = {p.playlist_id for p in hidden_playlists}
 
@@ -739,7 +739,7 @@ def reclassify(
         db_manager = DatabaseManager()
 
         try:
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 counts = await _reclassify(session, repository, dry_run=dry_run)
                 total = sum(counts.values())
 

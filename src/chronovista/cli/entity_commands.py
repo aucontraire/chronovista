@@ -164,7 +164,7 @@ def create_entity(
         entity_repo = NamedEntityRepository()
         alias_repo = EntityAliasRepository()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Route creation through the shared core (Feature 101, FR-002). The CLI's policy on a
             # name+type collision is reject (print + exit 1). The core owns the all-status lookup,
             # the insert, the canonical NAME_VARIANT self-alias, and extra-alias dedup.
@@ -251,7 +251,7 @@ def add_alias(
             )
             raise typer.Exit(code=1)
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Look up entity by normalized name
             result = await session.execute(
                 select(NamedEntityDB).where(
@@ -466,7 +466,7 @@ def remove_alias(
         normalizer = TagNormalizationService()
         alias_repo = EntityAliasRepository()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             entity, found = await _resolve_entity_and_alias(
                 session,
                 normalizer,
@@ -563,7 +563,7 @@ def edit_alias(
         normalizer = TagNormalizationService()
         alias_repo = EntityAliasRepository()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             entity, found = await _resolve_entity_and_alias(
                 session,
                 normalizer,
@@ -640,15 +640,15 @@ def backfill_alias_links(
 
     async def _run() -> None:
         mention_repo = EntityMentionRepository()
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             linked, remaining = await mention_repo.backfill_alias_links(
                 session, apply=apply
             )
             if apply:
                 await session.commit()
             else:
-                # Dry-run does only reads, but get_session() auto-commits on
-                # scope exit — roll back explicitly so nothing can slip through.
+                # Dry-run does only reads, but the session scope auto-commits
+                # on exit — roll back explicitly so nothing can slip through.
                 await session.rollback()
 
             verb = "Linked" if apply else "Would link"
@@ -728,7 +728,7 @@ def list_entities(
                 )
                 raise typer.Exit(code=1) from None
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Build query
             query = select(NamedEntityDB).where(NamedEntityDB.status == "active")
 
@@ -872,7 +872,7 @@ def add_exclusion(
             )
             raise typer.Exit(code=1)
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Look up entity by normalized canonical name (case-insensitive)
             result = await session.execute(
                 select(NamedEntityDB).where(
@@ -971,7 +971,7 @@ def remove_exclusion(
             )
             raise typer.Exit(code=1)
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Look up entity by normalized canonical name (case-insensitive)
             result = await session.execute(
                 select(NamedEntityDB).where(
@@ -1025,7 +1025,7 @@ def backfill_descriptions(
     async def _run() -> None:
         import uuid as uuid_mod
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Find classify operations (operation_type='create') with a reason,
             # where the created entity still has description = NULL.
             # rollback_data->'created_entity_id' holds the entity UUID string.
@@ -1222,7 +1222,7 @@ def backfill_wikidata_properties(
         client = WikidataClient()
         repo = NamedEntityRepository()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             grounded = list(await repo.list_wikidata_grounded(session))
             if limit is not None:
                 grounded = grounded[:limit]
@@ -1321,7 +1321,7 @@ def backfill_wikidata_properties(
                     )
                 )
             else:
-                # Dry run makes no writes; roll back explicitly since get_session auto-commits on exit.
+                # Dry run makes no writes; roll back explicitly since the session scope auto-commits on exit.
                 await session.rollback()
                 console.print(
                     Panel(
@@ -1408,7 +1408,7 @@ def backfill_wikipedia_images(
         fallback = WikipediaImageFallback()
         repo = NamedEntityRepository()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             candidates = list(
                 await repo.list_grounded_without_image(
                     session, entity_type=entity_type, limit=limit
@@ -1538,7 +1538,7 @@ def backfill_wikipedia_images(
                     )
                 )
             else:
-                # Dry run makes no writes; roll back explicitly (get_session auto-commits on exit).
+                # Dry run makes no writes; roll back explicitly (the session scope auto-commits on exit).
                 await session.rollback()
                 console.print(
                     Panel(
@@ -1559,7 +1559,7 @@ async def _recount_counters(
 
     Returns ``(entities_recomputed, entity_counters_changed, alias_counters_changed)``.
 
-    The explicit ``rollback``/``commit`` is REQUIRED, not cosmetic: ``db_manager.get_session``
+    The explicit ``rollback``/``commit`` is REQUIRED, not cosmetic: ``db_manager.session``
     commits on normal scope exit, so a dry-run that merely *avoids* calling ``commit`` would still
     have its pending UPDATEs auto-committed when the session scope closes — i.e. the "preview" would
     silently write. Rolling back makes dry-run truly side-effect-free regardless of the ambient
@@ -1620,7 +1620,7 @@ def recount(
     """
 
     async def _run() -> None:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             recomputed, entities_changed, aliases_changed = await _recount_counters(
                 session, dry_run=dry_run
             )
@@ -1900,7 +1900,7 @@ def scan_entities(
         effective_entity_ids: list[uuid.UUID] | None = None
 
         if parsed_entity_uuid is not None:
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 db_entity = await session.get(NamedEntityDB, parsed_entity_uuid)
                 if db_entity is None:
                     console.print(
@@ -1937,7 +1937,7 @@ def scan_entities(
             #
             # Pinning the set up front makes the scope identical for every phase
             # regardless of what earlier phases wrote.
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 mention_repo = EntityMentionRepository()
                 effective_entity_ids = (
                     await mention_repo.get_entities_with_zero_mentions(
@@ -2310,7 +2310,7 @@ def entity_stats(
 
         repo = EntityMentionRepository()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             stats = await repo.get_statistics(session, entity_type=entity_type)
 
             # Overview panel
@@ -2436,7 +2436,7 @@ def load_enrichment_command(
 
         records = parse_ledger(ledger)
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             report = await load_enrichment(session, records, apply=apply)
             if apply:
                 await session.commit()

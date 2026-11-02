@@ -1,5 +1,6 @@
 """Unit tests for API dependencies."""
 
+from contextlib import asynccontextmanager
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
@@ -18,11 +19,12 @@ class TestGetDb:
 
         mock_session = AsyncMock()
 
-        async def mock_get_session():
+        @asynccontextmanager
+        async def mock_session_scope(*args, **kwargs):
             yield mock_session
 
         with patch("chronovista.api.deps.db_manager") as mock_db:
-            mock_db.get_session = mock_get_session
+            mock_db.session = mock_session_scope
 
             async for session in get_db():
                 assert session == mock_session
@@ -33,11 +35,12 @@ class TestGetDb:
 
         mock_session = AsyncMock()
 
-        async def mock_get_session():
+        @asynccontextmanager
+        async def mock_session_scope(*args, **kwargs):
             yield mock_session
 
         with patch("chronovista.api.deps.db_manager") as mock_db:
-            mock_db.get_session = mock_get_session
+            mock_db.session = mock_session_scope
 
             # First call
             async for session in get_db():
@@ -53,12 +56,13 @@ class TestGetDb:
         """Test that get_db propagates database connection errors."""
         from chronovista.api.deps import get_db
 
-        async def mock_get_session():
+        @asynccontextmanager
+        async def mock_session_scope(*args, **kwargs):
             raise ConnectionError("Database unavailable")
             yield  # type: ignore[unreachable]  # Unreachable, but needed for async generator syntax
 
         with patch("chronovista.api.deps.db_manager") as mock_db:
-            mock_db.get_session = mock_get_session
+            mock_db.session = mock_session_scope
 
             with pytest.raises(ConnectionError, match="Database unavailable"):
                 async for _session in get_db():

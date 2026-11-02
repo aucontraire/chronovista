@@ -11,6 +11,8 @@ Tests cover:
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
@@ -19,6 +21,16 @@ from chronovista.cli.commands.seed import seed_app
 from chronovista.services.enrichment.seeders import CategorySeedResult, TopicSeedResult
 
 runner = CliRunner()
+
+
+def _session_cm(session: AsyncMock):  # type: ignore[no-untyped-def]
+    """Build an async context manager mimicking ``db_manager.session(...)``."""
+
+    @asynccontextmanager
+    async def _cm(*args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
+        yield session
+
+    return _cm
 
 
 class TestTopicsCommandHelp:
@@ -92,7 +104,7 @@ class TestTopicsCommandNormalRun:
         """Test successful topic seeding."""
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock seeder from container
         mock_seeder = AsyncMock()
@@ -122,7 +134,7 @@ class TestTopicsCommandNormalRun:
         """Test topic seeding with some errors."""
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock seeder from container
         mock_seeder = AsyncMock()
@@ -156,9 +168,7 @@ class TestTopicsCommandNormalRun:
     ) -> None:
         """Test handling of database errors."""
         # Mock database session error
-        mock_db_manager.get_session.side_effect = Exception(
-            "Database connection failed"
-        )
+        mock_db_manager.session.side_effect = Exception("Database connection failed")
 
         result = runner.invoke(seed_app, ["topics"])
 
@@ -178,7 +188,7 @@ class TestTopicsCommandForceFlag:
         """Test that --force deletes existing topics and re-seeds."""
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock seeder from container
         mock_seeder = AsyncMock()
@@ -279,7 +289,7 @@ class TestCategoriesCommandNormalRun:
         """Test successful category seeding."""
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock seeder from container
         mock_seeder = AsyncMock()
@@ -313,7 +323,7 @@ class TestCategoriesCommandNormalRun:
         """Test category seeding with custom regions."""
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock seeder from container
         mock_seeder = AsyncMock()
@@ -349,7 +359,7 @@ class TestCategoriesCommandNormalRun:
         """Test handling of API errors."""
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock seeder to raise API error from container
         mock_seeder = AsyncMock()
@@ -372,7 +382,7 @@ class TestCategoriesCommandNormalRun:
         """Test graceful degradation with regional API failures."""
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock seeder from container
         mock_seeder = AsyncMock()
@@ -408,7 +418,7 @@ class TestCategoriesCommandForceFlag:
         """Test that --force deletes existing categories and re-seeds."""
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock seeder from container
         mock_seeder = AsyncMock()
@@ -447,7 +457,7 @@ class TestSeedCommandOutputFormatting:
         """Test that topics command outputs formatted results table."""
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock seeder from container
         mock_seeder = AsyncMock()
@@ -479,7 +489,7 @@ class TestSeedCommandOutputFormatting:
         """Test that categories command outputs quota usage."""
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock seeder from container
         mock_seeder = AsyncMock()
@@ -513,7 +523,7 @@ class TestSeedCommandExitCodes:
     ) -> None:
         """Test that successful seeding exits with code 0."""
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         mock_seeder = AsyncMock()
         mock_container.create_topic_seeder.return_value = mock_seeder
@@ -537,7 +547,7 @@ class TestSeedCommandExitCodes:
     ) -> None:
         """Test that seeding with errors exits with code 1."""
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         mock_seeder = AsyncMock()
         mock_container.create_topic_seeder.return_value = mock_seeder
@@ -568,7 +578,7 @@ class TestSeedCommandExitCodes:
     ) -> None:
         """Test that API errors exit with code 2."""
         mock_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         mock_seeder = AsyncMock()
         mock_container.create_category_seeder.return_value = mock_seeder

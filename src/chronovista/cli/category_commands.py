@@ -144,7 +144,7 @@ def list_categories(
             category_repo = VideoCategoryRepository()
             video_repo = VideoRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Get categories
                 if assignable_only:
                     categories = await category_repo.get_assignable(session)
@@ -213,7 +213,7 @@ def show_category(
             category_repo = VideoCategoryRepository()
             video_repo = VideoRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 resolved_category = await resolve_category_identifier(
                     session, category_repo, category
                 )
@@ -281,7 +281,7 @@ def videos_by_category(
             category_repo = VideoCategoryRepository()
             video_repo = VideoRepository()
 
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 # Resolve category by ID or name
                 resolved_category = await resolve_category_identifier(
                     session, category_repo, category

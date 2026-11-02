@@ -162,7 +162,7 @@ async def test_backfill_write_path_merges_and_detail_endpoint_reflects_it(
         merged = wp.merge_wikidata_blocks(current, _FRESH)
         assert merged != current  # a change IS waiting — this isn't a vacuous dry run
         # Exercise the write, then roll back rather than commit — the dry-run discipline the
-        # command itself follows (get_session auto-commits on scope exit, so a dry run must roll
+        # command itself follows (the session scope auto-commits on exit, so a dry run must roll
         # back explicitly rather than merely skip the commit call).
         await repo.replace_properties(s, stale_id, properties=merged)
         await s.rollback()

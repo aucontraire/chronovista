@@ -79,7 +79,7 @@ def topics(
             )
 
             # Perform seeding
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 result = await seeder.seed(session, force=force)
 
                 # Display results
@@ -244,7 +244,7 @@ def categories(
             )
 
             # Perform seeding
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 result = await seeder.seed(session, regions=region_list, force=force)
 
                 # Display per-region progress (simulated - actual fetching happens inside seeder)

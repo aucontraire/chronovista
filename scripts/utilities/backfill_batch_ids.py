@@ -297,7 +297,7 @@ async def run_backfill(dry_run: bool, window_seconds: float) -> int:
         Exit code: 0 on success, 1 on error.
     """
     try:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             console.print("[dim]Fetching unassigned corrections...[/dim]")
             corrections = await fetch_unassigned_corrections(session)
 
@@ -388,9 +388,6 @@ async def run_backfill(dry_run: bool, window_seconds: float) -> int:
                 ts_batches=len(ts_batches),
                 ts_corrections=ts_count,
             )
-
-            # Break after first session yield.
-            break
 
         return 0
 

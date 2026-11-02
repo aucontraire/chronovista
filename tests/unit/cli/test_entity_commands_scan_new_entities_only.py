@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -50,11 +51,9 @@ def _make_scan_result(**kwargs: Any) -> MagicMock:
     return result
 
 
-def _session_generator() -> AsyncGenerator[Any, None]:
-    async def _gen() -> AsyncGenerator[Any, None]:
-        yield AsyncMock()
-
-    return _gen()
+@asynccontextmanager
+async def _session_cm(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+    yield AsyncMock()
 
 
 def _run_coro(coro: object) -> None:
@@ -85,8 +84,8 @@ class TestNewEntitiesOnlyScopeIsStable:
 
         with (
             patch(
-                "chronovista.cli.entity_commands.db_manager.get_session",
-                return_value=_session_generator(),
+                "chronovista.cli.entity_commands.db_manager.session",
+                new=_session_cm,
             ),
             patch(
                 "chronovista.cli.entity_commands.EntityMentionScanService",
@@ -141,8 +140,8 @@ class TestNewEntitiesOnlyScopeIsStable:
 
         with (
             patch(
-                "chronovista.cli.entity_commands.db_manager.get_session",
-                return_value=_session_generator(),
+                "chronovista.cli.entity_commands.db_manager.session",
+                new=_session_cm,
             ),
             patch(
                 "chronovista.cli.entity_commands.EntityMentionScanService",
@@ -205,8 +204,8 @@ class TestNewEntitiesOnlyScopeIsStable:
 
         with (
             patch(
-                "chronovista.cli.entity_commands.db_manager.get_session",
-                return_value=_session_generator(),
+                "chronovista.cli.entity_commands.db_manager.session",
+                new=_session_cm,
             ),
             patch(
                 "chronovista.cli.entity_commands.EntityMentionScanService",

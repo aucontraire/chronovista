@@ -108,7 +108,7 @@ async def process_watch_history_batch(
     user_video_repository = container.create_user_video_repository()
 
     # Process entire batch in single session to avoid foreign key issues
-    async for session in db_manager.get_session():
+    async with db_manager.session() as session:
         for entry in batch:
             try:
                 # First, ensure channel exists
@@ -445,7 +445,7 @@ async def _sync_playlist_items(
 
             console.print(f"   [dim]Found {len(items)} items[/dim]")
 
-            async for session in db_manager.get_session():
+            async with db_manager.session() as session:
                 for item in items:
                     try:
                         # Transform to PlaylistMembershipCreate
@@ -562,7 +562,7 @@ def playlists(
         # Get repository from container
         playlist_repository = container.create_playlist_repository()
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             for playlist_data in youtube_playlists:
                 try:
                     # Transform YouTube API data using DataTransformers
@@ -800,7 +800,7 @@ def transcripts(
         using_preferences = False
         language_override = len(language) > 0 and language != ["en"]
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             from chronovista.services.identity_service import IdentityService
 
             user_id = await IdentityService().resolve(session)
@@ -840,7 +840,7 @@ def transcripts(
         # Determine which videos to process
         videos_to_process: list[VideoDB] = []
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             if video_id:
                 # Process specific video IDs
                 console.print(
@@ -978,7 +978,7 @@ def transcripts(
                 # Check if transcript already exists (skip if not forcing)
                 if not force:
                     skip_video = False
-                    async for session in db_manager.get_session():
+                    async with db_manager.session() as session:
                         for lang in languages_to_download:
                             existing = (
                                 await video_transcript_repository.get_by_composite_key(
@@ -1006,7 +1006,7 @@ def transcripts(
                         )
 
                         # Store transcript in database
-                        async for session in db_manager.get_session():
+                        async with db_manager.session() as session:
                             # Check if updating or creating
                             existing = (
                                 await video_transcript_repository.get_by_composite_key(
@@ -1150,7 +1150,7 @@ def topics(
         topic_category_repository = container.create_topic_category_repository()
 
         # Process and save categories to database
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             for category in categories:
                 try:
                     # Use transformer to create the model
@@ -1234,7 +1234,7 @@ def all(
                 # Get repository from container
                 topic_category_repository = container.create_topic_category_repository()
 
-                async for session in db_manager.get_session(echo=False):
+                async with db_manager.session(echo=False) as session:
                     for category in categories:
                         try:
                             # Use transformer to create the model
@@ -1449,7 +1449,7 @@ def channel(
             topic_category_repository = container.create_topic_category_repository()
 
             # Validate topic exists
-            async for session in db_manager.get_session():
+            async with db_manager.session() as session:
                 if not await topic_category_repository.exists(session, topic):
                     from chronovista.cli.sync.base import display_error
 
@@ -1486,7 +1486,7 @@ def channel(
         topic_category_repository = container.create_topic_category_repository()
 
         # Save to database using repository
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             existing = await channel_repository.exists(session, channel_data.id)
             saved_channel = await channel_repository.create_or_update(
                 session, channel_create
@@ -1620,7 +1620,7 @@ async def _create_videos_with_channels(
     # Collect unique missing channel IDs
     missing_channel_ids: set[str] = set()
 
-    async for session in db_manager.get_session():
+    async with db_manager.session() as session:
         for video in videos_to_create:
             snippet = video.snippet
             if snippet and snippet.channel_id:
@@ -1636,7 +1636,7 @@ async def _create_videos_with_channels(
             )
 
             # Create all channels using DataTransformers
-            async for session in db_manager.get_session():
+            async with db_manager.session() as session:
                 for channel_data in channel_details:
                     # Use DataTransformers for channel creation
                     channel_create_obj = DataTransformers.extract_channel_create(
@@ -1667,7 +1667,7 @@ async def _create_videos_with_channels(
             display_warning(f"Could not batch fetch channel details: {e}")
 
     # Now create all videos using DataTransformers
-    async for session in db_manager.get_session():
+    async with db_manager.session() as session:
         for video_data in videos_to_create:
             snippet = video_data.snippet
             statistics = video_data.statistics
@@ -1917,7 +1917,7 @@ def liked(
             topic_category_repository = container.create_topic_category_repository()
 
             # Validate topic exists
-            async for session in db_manager.get_session():
+            async with db_manager.session() as session:
                 if not await topic_category_repository.exists(session, topic):
                     display_error(
                         f"Invalid topic ID: {topic}\n"
@@ -1957,7 +1957,7 @@ def liked(
         existing_video_ids: list[str] = []
         missing_video_ids: list[str] = []
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             for video_data in liked_videos:
                 video_id = video_data.id
                 if await video_repository.exists(session, video_id):
@@ -1992,7 +1992,7 @@ def liked(
                 f"[blue]💾 Updating liked status for {len(existing_video_ids)} videos...[/blue]"
             )
 
-            async for session in db_manager.get_session():
+            async with db_manager.session() as session:
                 # Batch update liked status for existing videos
                 await user_video_repository.update_like_status_batch(
                     session=session,
@@ -2047,7 +2047,7 @@ def liked(
             )
 
             # Update liked status for newly created videos
-            async for session in db_manager.get_session():
+            async with db_manager.session() as session:
                 for video_id in [v.video_id for v in created_videos]:
                     await user_video_repository.record_like(
                         session=session,

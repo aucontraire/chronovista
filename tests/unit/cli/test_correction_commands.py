@@ -11,6 +11,7 @@ Feature 036 — Batch Correction Tools (T012–T026)
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -197,7 +198,7 @@ class TestFindReplaceCommand:
         async def _session_gen(*_a, **_kw):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -230,7 +231,7 @@ class TestFindReplaceCommand:
         async def _session_gen(*_a, **_kw):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         previews = [
             ("vid1", 10, 5.0, "the quick brown fox", "the slow brown fox"),
@@ -272,7 +273,7 @@ class TestFindReplaceCommand:
         async def _session_gen(*_a, **_kw):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         # Generate 10 previews
         previews = [
@@ -318,7 +319,7 @@ class TestFindReplaceCommand:
         async def _session_gen(*_a, **_kw):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         previews = [
             ("vid1", 10, 5.0, "old text", "new text"),
@@ -355,7 +356,7 @@ class TestFindReplaceCommand:
         async def _session_gen(*_a, **_kw):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         previews = [
             ("vid1", 10, 5.0, "old text", "new text"),
@@ -409,7 +410,7 @@ class TestFindReplaceCommand:
         async def _session_gen(*_a, **_kw):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         previews = [("vid1", 10, 5.0, "old text", "new text")]
         live_result = BatchCorrectionResult(
@@ -460,7 +461,7 @@ class TestFindReplaceCommand:
         async def _session_gen(*_a, **_kw):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         previews = [("vid1", 10, 5.0, "old text", "new text")]
         live_result = BatchCorrectionResult(
@@ -504,7 +505,7 @@ class TestFindReplaceCommand:
         async def _session_gen(*_a, **_kw):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -541,7 +542,7 @@ class TestFindReplaceCommand:
         async def _session_gen(*_a, **_kw):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         previews = [("vid1", 10, 5.0, "old text", "new text")]
 
@@ -633,12 +634,12 @@ class TestHelperFunctions:
 
 
 def _mock_session_gen(mock_session: AsyncMock):
-    """Create an async generator that yields *mock_session*."""
+    """Create an async context manager that yields *mock_session*."""
 
     async def _gen(*_a, **_kw):
         yield mock_session
 
-    return _gen
+    return asynccontextmanager(_gen)
 
 
 # ======================================================================
@@ -667,7 +668,7 @@ class TestRebuildTextCommand:
     ) -> None:
         """Test dry-run displays a preview table with transcript info."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [
             {
@@ -708,7 +709,7 @@ class TestRebuildTextCommand:
     ) -> None:
         """Test dry-run with no corrected transcripts shows message."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -728,7 +729,7 @@ class TestRebuildTextCommand:
     def test_live_mode_summary(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test live mode prints rebuilt count and segments processed."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [
             {
@@ -761,7 +762,7 @@ class TestRebuildTextCommand:
     def test_live_zero_transcripts(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test live mode with no corrected transcripts exits cleanly."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -783,7 +784,7 @@ class TestRebuildTextCommand:
     ) -> None:
         """Test that --video-id options are forwarded to the service."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -842,7 +843,7 @@ class TestExportCommand:
     def test_csv_stdout(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test CSV export to stdout."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         csv_data = "id,video_id\n1,vid1\n"
 
@@ -865,7 +866,7 @@ class TestExportCommand:
     def test_json_stdout(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test JSON export to stdout."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         json_data = '[{"id": "1", "video_id": "vid1"}]'
 
@@ -887,7 +888,7 @@ class TestExportCommand:
     def test_file_output(self, mock_db: MagicMock, runner: CliRunner, tmp_path) -> None:
         """Test export writes to file when --output is specified."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         csv_data = "id,video_id\n1,vid1\n"
         out_file = tmp_path / "export.csv"
@@ -965,7 +966,7 @@ class TestStatsCommand:
     def test_displays_stats_panel(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test that stats command displays panel with metrics."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         stats = CorrectionStats(
             total_corrections=150,
@@ -1006,7 +1007,7 @@ class TestStatsCommand:
     ) -> None:
         """Test that type breakdown table is displayed."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         stats = CorrectionStats(
             total_corrections=50,
@@ -1037,7 +1038,7 @@ class TestStatsCommand:
     def test_displays_top_videos(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test that top videos table is displayed."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         stats = CorrectionStats(
             total_corrections=50,
@@ -1069,7 +1070,7 @@ class TestStatsCommand:
     ) -> None:
         """Test that videos with no title show '(no title)' placeholder."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         stats = CorrectionStats(
             total_corrections=10,
@@ -1099,7 +1100,7 @@ class TestStatsCommand:
     ) -> None:
         """Test that --language is forwarded to the service."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         stats = CorrectionStats(
             total_corrections=0,
@@ -1146,7 +1147,7 @@ class TestPatternsCommand:
     ) -> None:
         """Test that patterns command displays table with pattern rows."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         patterns = [
             CorrectionPattern(
@@ -1184,7 +1185,7 @@ class TestPatternsCommand:
     ) -> None:
         """Test that each row includes a suggested find-replace command."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         patterns = [
             CorrectionPattern(
@@ -1220,7 +1221,7 @@ class TestPatternsCommand:
     ) -> None:
         """Test that empty pattern list shows appropriate message."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -1239,7 +1240,7 @@ class TestPatternsCommand:
     ) -> None:
         """Test that --min-occurrences is forwarded to the service."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -1259,7 +1260,7 @@ class TestPatternsCommand:
     def test_long_text_truncated(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test that long original/corrected text is end-truncated."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         patterns = [
             CorrectionPattern(
@@ -1328,7 +1329,7 @@ class TestBatchRevertCommand:
     def test_dry_run_preview(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test dry-run displays preview table and summary."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [
             ("vid1", 10, 5.0, "corrected text one"),
@@ -1359,7 +1360,7 @@ class TestBatchRevertCommand:
     def test_dry_run_zero_matches(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test dry-run with zero matches prints appropriate message."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -1381,7 +1382,7 @@ class TestBatchRevertCommand:
     ) -> None:
         """Test that denying confirmation aborts the operation."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [("vid1", 10, 5.0, "some text")]
 
@@ -1406,7 +1407,7 @@ class TestBatchRevertCommand:
     ) -> None:
         """Test that --yes skips the confirmation prompt."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [("vid1", 10, 5.0, "some text")]
         live_result = BatchCorrectionResult(
@@ -1439,7 +1440,7 @@ class TestBatchRevertCommand:
     def test_summary_table_content(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test that the summary table contains expected metric labels."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [("vid1", 10, 5.0, "some text")]
         live_result = BatchCorrectionResult(
@@ -1475,7 +1476,7 @@ class TestBatchRevertCommand:
     def test_live_zero_matches(self, mock_db: MagicMock, runner: CliRunner) -> None:
         """Test live mode with zero matches prints message and exits 0."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -1531,7 +1532,7 @@ class TestCrossSegmentDryRunDisplay:
         The column header "Type" must appear in the output.
         """
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         # Two consecutive segments from same video form a cross-segment pair
         # (vid001, seg 156 → seg 157). vid002 seg 42 is standalone.
@@ -1613,7 +1614,7 @@ class TestCrossSegmentDryRunDisplay:
         parentheses, e.g. "(1 cross-segment pairs)".
         """
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         # One cross-segment pair (vid001, seg 156–157) + one standalone (vid002, seg 42)
         mock_previews = [
@@ -1688,7 +1689,7 @@ class TestCrossSegmentDryRunDisplay:
         suffix to confirm that cross-segment matching was attempted.
         """
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         # All standalone segments — no adjacent same-video consecutive pairs
         mock_previews = [
@@ -1805,7 +1806,7 @@ class TestBatchRevertBatchIdFlag:
     ) -> None:
         """--batch-id dry-run forwards the parsed UUID to batch_revert."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [
             ("vid1", 10, 5.0, "teh quick fox", False),
@@ -1840,7 +1841,7 @@ class TestBatchRevertBatchIdFlag:
     ) -> None:
         """--batch-id dry-run with no corrections prints batch-specific message."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -1868,7 +1869,7 @@ class TestBatchRevertBatchIdFlag:
     ) -> None:
         """--batch-id dry-run with matches shows preview table and batch summary."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [
             ("vid1", 10, 5.0, "teh quick fox", False),
@@ -1909,7 +1910,7 @@ class TestBatchRevertBatchIdFlag:
     ) -> None:
         """--batch-id live mode calls batch_revert (dry_run=False) with batch_id."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [("vid1", 10, 5.0, "some text")]
         live_result = BatchCorrectionResult(
@@ -1952,7 +1953,7 @@ class TestBatchRevertBatchIdFlag:
     ) -> None:
         """--batch-id live mode with no matches shows batch-specific message."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         with patch(
             "chronovista.cli.correction_commands.BatchCorrectionService"
@@ -2020,7 +2021,7 @@ class TestBatchRevertBatchIdFlag:
     ) -> None:
         """When batch_revert reports skipped segments, the summary table shows them."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [
             ("vid1", 10, 5.0, "some corrected text"),
@@ -2065,7 +2066,7 @@ class TestBatchRevertBatchIdFlag:
     ) -> None:
         """Pattern-mode batch-revert also reports skipped segments in summary."""
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen(mock_session)
+        mock_db.session = _mock_session_gen(mock_session)
 
         previews = [("vid1", 10, 5.0, "some text")]
         live_result = BatchCorrectionResult(
@@ -2105,12 +2106,12 @@ class TestBatchRevertBatchIdFlag:
 
 
 def _mock_session_gen_for_analyze(mock_session: AsyncMock):
-    """Create an async generator that yields *mock_session* for analyze-diffs tests."""
+    """Create an async context manager yielding *mock_session* for analyze-diffs tests."""
 
     async def _gen(*_a, **_kw):
         yield mock_session
 
-    return _gen
+    return asynccontextmanager(_gen)
 
 
 def _make_correction_mock(
@@ -2162,7 +2163,7 @@ class TestAnalyzeDiffsCommand:
         "Frequency", and "Associated Entities".
         """
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
+        mock_db.session = _mock_session_gen_for_analyze(mock_session)
 
         correction = _make_correction_mock(
             original_text="Lovelase",
@@ -2207,7 +2208,7 @@ class TestAnalyzeDiffsCommand:
         frequency of 3 for that pair in the output.
         """
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
+        mock_db.session = _mock_session_gen_for_analyze(mock_session)
 
         corrections = [
             _make_correction_mock(
@@ -2253,7 +2254,7 @@ class TestAnalyzeDiffsCommand:
         no corrections were found to analyze and exit cleanly.
         """
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
+        mock_db.session = _mock_session_gen_for_analyze(mock_session)
 
         # No-op: original equals corrected
         noop = _make_correction_mock(
@@ -2297,7 +2298,7 @@ class TestAnalyzeDiffsCommand:
         name is returned it must appear in the table output.
         """
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
+        mock_db.session = _mock_session_gen_for_analyze(mock_session)
 
         import uuid
 
@@ -2353,7 +2354,7 @@ class TestAnalyzeDiffsCommand:
         that no corrections were found.
         """
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
+        mock_db.session = _mock_session_gen_for_analyze(mock_session)
 
         with (
             patch(
@@ -2388,7 +2389,7 @@ class TestAnalyzeDiffsCommand:
         output must indicate no analyzable corrections were found.
         """
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
+        mock_db.session = _mock_session_gen_for_analyze(mock_session)
 
         revert_correction = _make_correction_mock(
             original_text="Lovelace",
@@ -2428,7 +2429,7 @@ class TestAnalyzeDiffsCommand:
         must suppress both and show a "no diffs" message.
         """
         mock_session = AsyncMock()
-        mock_db.get_session = _mock_session_gen_for_analyze(mock_session)
+        mock_db.session = _mock_session_gen_for_analyze(mock_session)
 
         corrections = [
             _make_correction_mock(
@@ -2572,7 +2573,7 @@ class TestDetectBoundariesCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         phonetic_match = _PM(
             original_text="Jonsun",
@@ -2615,7 +2616,7 @@ class TestDetectBoundariesCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         phonetic_match = _PM(
             original_text="Chomskee",
@@ -2663,7 +2664,7 @@ class TestDetectBoundariesCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         phonetic_match = _PM(
             original_text="Chomskee",
@@ -2701,7 +2702,7 @@ class TestDetectBoundariesCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_matcher_cls.return_value = MagicMock()
 
@@ -2734,7 +2735,7 @@ class TestDetectBoundariesCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_matcher_instance = MagicMock()
         mock_matcher_instance.match_entity = AsyncMock(return_value=[])
@@ -2767,7 +2768,7 @@ class TestDetectBoundariesCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_matcher_instance = MagicMock()
         mock_matcher_instance.match_entity = AsyncMock(return_value=[])
@@ -2800,7 +2801,7 @@ class TestDetectBoundariesCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_matcher_instance = MagicMock()
         mock_matcher_instance.match_entity = AsyncMock(return_value=[])
@@ -2834,7 +2835,7 @@ class TestDetectBoundariesCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         phonetic_match = _PM(
             original_text="Jonsun",
@@ -2887,7 +2888,7 @@ class TestDetectBoundariesCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_matcher_instance = MagicMock()
         mock_matcher_instance.match_entity = AsyncMock(return_value=[])
@@ -2982,7 +2983,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[candidate])
@@ -3021,7 +3022,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[candidate])
@@ -3051,7 +3052,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[candidate])
@@ -3079,7 +3080,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[candidate])
@@ -3112,7 +3113,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=candidates)
@@ -3144,7 +3145,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=candidates)
@@ -3176,7 +3177,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[])
@@ -3204,7 +3205,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[])
@@ -3233,7 +3234,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[])
@@ -3258,7 +3259,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[])
@@ -3287,7 +3288,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[])
@@ -3312,7 +3313,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[])
@@ -3341,7 +3342,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[])
@@ -3369,7 +3370,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=[])
@@ -3407,7 +3408,7 @@ class TestSuggestCrossSegmentCommand:
         async def _session_gen(*_a: object, **_kw: object):
             yield mock_session
 
-        mock_db.get_session = _session_gen
+        mock_db.session = asynccontextmanager(_session_gen)
 
         mock_discovery_instance = MagicMock()
         mock_discovery_instance.discover = AsyncMock(return_value=candidates)

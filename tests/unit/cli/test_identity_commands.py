@@ -5,6 +5,7 @@ Sync tests (CliRunner) covering command glue around the tested service core.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -26,11 +27,12 @@ _INV = IdentityInvariants(distinct_watched_videos=10, liked_count=3, rewatch_sum
 def _patch_db(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     session = AsyncMock()
 
-    async def fake_get_session(echo: bool = False):  # type: ignore[no-untyped-def]
+    @asynccontextmanager
+    async def fake_session(echo: bool = False):  # type: ignore[no-untyped-def]
         yield session
 
     monkeypatch.setattr(
-        mod, "DatabaseManager", lambda: SimpleNamespace(get_session=fake_get_session)
+        mod, "DatabaseManager", lambda: SimpleNamespace(session=fake_session)
     )
 
 
@@ -112,21 +114,21 @@ def test_repair_noop_when_single_identity(monkeypatch) -> None:  # type: ignore[
 
 
 def _patch_db_tracking_resumption(monkeypatch, state):  # type: ignore[no-untyped-def]
-    """Patch DatabaseManager with a generator that records normal resumption.
+    """Patch DatabaseManager with a session scope that records clean completion.
 
-    ``state["resumed"]`` is set only if execution continues *past* the yield —
-    i.e. the command let the generator finish. If the command instead exits the
-    ``async for`` body early (``return``/``sys.exit``), the generator is
-    abandoned, GeneratorExit is thrown at the yield, and the flag stays False.
+    ``state["resumed"]`` is set only if the context manager resumes *past* the
+    yield — i.e. the command drove the ``async with`` block to a normal exit so
+    the scope's commit/close ran deterministically (no deferred teardown).
     """
     session = AsyncMock()
 
-    async def fake_get_session(echo: bool = False):  # type: ignore[no-untyped-def]
+    @asynccontextmanager
+    async def fake_session(echo: bool = False):  # type: ignore[no-untyped-def]
         yield session
         state["resumed"] = True
 
     monkeypatch.setattr(
-        mod, "DatabaseManager", lambda: SimpleNamespace(get_session=fake_get_session)
+        mod, "DatabaseManager", lambda: SimpleNamespace(session=fake_session)
     )
 
 

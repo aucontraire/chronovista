@@ -80,7 +80,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     AsyncSession
         An async SQLAlchemy session for database operations.
     """
-    async for session in db_manager.get_session():
+    async with db_manager.session() as session:
         yield session
 
 

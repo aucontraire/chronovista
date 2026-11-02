@@ -27,6 +27,22 @@ from chronovista.services.topic_analytics_service import TopicAnalyticsService
 from tests.factories.id_factory import TestIds
 
 
+def _wire_empty_result(mock_async_session: AsyncMock) -> None:
+    """Make a mocked session return empty query results.
+
+    The service converged from ``async for session in db_manager.get_session()``
+    (which could yield zero sessions and skip the body) to
+    ``async with db_manager.session()`` (which always enters the body). Smoke
+    tests that only assert the return type must now supply an executable
+    session result so the query body completes and returns an empty collection.
+    """
+    empty_result = MagicMock()
+    empty_result.fetchall.return_value = []
+    empty_result.fetchone.return_value = None
+    empty_result.scalar.return_value = 0
+    mock_async_session.execute = AsyncMock(return_value=empty_result)
+
+
 class TestTopicAnalyticsServiceInitialization:
     """Tests for service initialization."""
 
@@ -121,12 +137,13 @@ class TestTopicAnalyticsServicePopularityAnalysis:
     ) -> None:
         """Test getting popular topics by video count."""
         with patch(
-            "chronovista.config.database.db_manager.get_session"
+            "chronovista.config.database.db_manager.session"
         ) as mock_get_session:
             mock_async_session = AsyncMock()
 
-            # Mock the async iterator pattern used by get_session
-            mock_get_session.return_value.__aiter__.return_value = [mock_async_session]
+            # Mock the async context manager pattern used by db_manager.session()
+            mock_get_session.return_value.__aenter__.return_value = mock_async_session
+            mock_get_session.return_value.__aexit__ = AsyncMock()
 
             # Mock total counts queries results
             mock_total_result = MagicMock()
@@ -166,12 +183,11 @@ class TestTopicAnalyticsServicePopularityAnalysis:
         self, service: TopicAnalyticsService
     ) -> None:
         """Test getting popular topics by channel count."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             result = await service.get_popular_topics(metric="channels", limit=5)
 
@@ -181,12 +197,11 @@ class TestTopicAnalyticsServicePopularityAnalysis:
         self, service: TopicAnalyticsService
     ) -> None:
         """Test getting popular topics by combined metric."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             result = await service.get_popular_topics(metric="combined", limit=10)
 
@@ -205,12 +220,11 @@ class TestTopicAnalyticsServiceRelationshipAnalysis:
         self, service: TopicAnalyticsService
     ) -> None:
         """Test successful topic relationships retrieval."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             # Mock repository get method
             mock_topic = MagicMock()
@@ -233,12 +247,11 @@ class TestTopicAnalyticsServiceRelationshipAnalysis:
         self, service: TopicAnalyticsService
     ) -> None:
         """Test successful topic overlap calculation."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             # Mock topic repository returns
             mock_topic1 = MagicMock()
@@ -272,12 +285,11 @@ class TestTopicAnalyticsServiceAnalyticsSummary:
 
     async def test_get_analytics_summary(self, service: TopicAnalyticsService) -> None:
         """Test getting analytics summary."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             # Mock the get_popular_topics method
             mock_popular_topics = [
@@ -319,12 +331,11 @@ class TestTopicAnalyticsServiceSimilarTopics:
 
     async def test_get_similar_topics(self, service: TopicAnalyticsService) -> None:
         """Test getting similar topics."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             # Mock repository get method
             mock_topic = MagicMock()
@@ -356,12 +367,11 @@ class TestTopicAnalyticsServiceDiscoveryAnalysis:
         self, service: TopicAnalyticsService
     ) -> None:
         """Test getting topic discovery analysis."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             result = await service.get_topic_discovery_analysis(
                 limit_topics=20, min_interactions=2
@@ -406,11 +416,12 @@ class TestTopicAnalyticsServiceTrends:
             new=AsyncMock(return_value=mock_popular_topics),
         ):
             with patch(
-                "chronovista.config.database.db_manager.get_session"
+                "chronovista.config.database.db_manager.session"
             ) as mock_session:
                 mock_async_session = AsyncMock()
                 mock_session.return_value.__aenter__.return_value = mock_async_session
                 mock_session.return_value.__aexit__ = AsyncMock()
+                _wire_empty_result(mock_async_session)
 
                 result = await service.get_topic_trends(
                     period="monthly", limit_topics=20, months_back=12
@@ -435,11 +446,12 @@ class TestTopicAnalyticsServiceInsights:
             service, "get_similar_topics", new=AsyncMock(return_value=[])
         ):
             with patch(
-                "chronovista.config.database.db_manager.get_session"
+                "chronovista.config.database.db_manager.session"
             ) as mock_session:
                 mock_async_session = AsyncMock()
                 mock_session.return_value.__aenter__.return_value = mock_async_session
                 mock_session.return_value.__aexit__ = AsyncMock()
+                _wire_empty_result(mock_async_session)
 
                 result = await service.get_topic_insights(
                     user_id="test_user", limit_per_category=5
@@ -570,12 +582,11 @@ class TestTopicAnalyticsServiceEngagement:
         self, service: TopicAnalyticsService
     ) -> None:
         """Test getting topic engagement scores."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             result = await service.get_topic_engagement_scores(topic_id=None, limit=20)
 
@@ -586,12 +597,11 @@ class TestTopicAnalyticsServiceEngagement:
         self, service: TopicAnalyticsService
     ) -> None:
         """Test getting channel engagement by topic."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             result = await service.get_channel_engagement_by_topic(
                 topic_id=TestIds.MUSIC_TOPIC, limit=10
@@ -613,12 +623,11 @@ class TestTopicAnalyticsServiceEdgeCases:
         self, service: TopicAnalyticsService
     ) -> None:
         """Test topic relationships for nonexistent topic."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             # Mock repository to return None (topic doesn't exist)
             with patch.object(
@@ -643,12 +652,11 @@ class TestTopicAnalyticsServiceEdgeCases:
         self, service: TopicAnalyticsService
     ) -> None:
         """Test popular topics with empty database."""
-        with patch(
-            "chronovista.config.database.db_manager.get_session"
-        ) as mock_session:
+        with patch("chronovista.config.database.db_manager.session") as mock_session:
             mock_async_session = AsyncMock()
             mock_session.return_value.__aenter__.return_value = mock_async_session
             mock_session.return_value.__aexit__ = AsyncMock()
+            _wire_empty_result(mock_async_session)
 
             # Mock empty query results
             mock_result = MagicMock()

@@ -6,12 +6,13 @@ grounding through the shared ``build_grounding`` helper and persists the structu
 ``{id, verified, status}`` dump every ``external_ids`` reader expects (SC-003). This is the
 explicit current-wrong → corrected diff FR-009 requires.
 
-``db_manager.get_session`` is pointed at the shared test session. Placeholder name/QID only.
+``db_manager.session`` is pointed at the shared test session. Placeholder name/QID only.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -35,12 +36,13 @@ _QID = "Q90000001"
 
 @pytest.fixture
 def wired(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Point the script's ``db_manager.get_session`` at the shared test session."""
+    """Point the script's ``db_manager.session`` at the shared test session."""
 
-    async def _get_session(**_: Any) -> AsyncIterator[AsyncSession]:
+    @asynccontextmanager
+    async def _session(*_: Any, **__: Any) -> AsyncIterator[AsyncSession]:
         yield db_session
 
-    monkeypatch.setattr(db_manager, "get_session", _get_session)
+    monkeypatch.setattr(db_manager, "session", _session)
 
 
 async def _cleanup(session: AsyncSession) -> None:

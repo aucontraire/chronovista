@@ -93,7 +93,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Get total counts for percentage calculations
             total_videos_query = select(
                 func.count(func.distinct(self.video_topic_repository.model.video_id))
@@ -272,9 +272,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, popular_topics)
             return popular_topics
 
-        # This should never be reached, but added for mypy
-        return []
-
     async def get_topic_relationships(
         self, topic_id: TopicId, min_confidence: float = 0.1, limit: int = 10
     ) -> TopicRelationships:
@@ -302,7 +299,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Get source topic info
             source_topic = await self.topic_category_repository.get(session, topic_id)
             if not source_topic:
@@ -406,16 +403,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, result)
             return result
 
-        # This should never be reached, but added for mypy
-        return TopicRelationships(
-            source_topic_id=topic_id,
-            source_category_name=f"Unknown Topic {topic_id}",
-            total_videos=0,
-            total_channels=0,
-            relationships=[],
-            analysis_date=datetime.now().isoformat(),
-        )
-
     async def calculate_topic_overlap(
         self, topic1_id: TopicId, topic2_id: TopicId
     ) -> TopicOverlap:
@@ -439,7 +426,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Get topic names
             topic1 = await self.topic_category_repository.get(session, topic1_id)
             topic2 = await self.topic_category_repository.get(session, topic2_id)
@@ -561,24 +548,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, result)
             return result
 
-        # This should never be reached, but added for mypy
-        return TopicOverlap(
-            topic1_id=topic1_id,
-            topic1_name=f"Topic {topic1_id}",
-            topic2_id=topic2_id,
-            topic2_name=f"Topic {topic2_id}",
-            topic1_videos=0,
-            topic2_videos=0,
-            shared_videos=0,
-            video_overlap_percentage=Decimal("0.0"),
-            topic1_channels=0,
-            topic2_channels=0,
-            shared_channels=0,
-            channel_overlap_percentage=Decimal("0.0"),
-            jaccard_similarity=Decimal("0.0"),
-            overlap_strength="none",
-        )
-
     async def get_analytics_summary(self) -> TopicAnalyticsSummary:
         """
         Get overall topic analytics summary.
@@ -593,7 +562,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Get total counts
             total_topics_query = select(func.count()).select_from(TopicCategory)
             total_topics_result = await session.execute(total_topics_query)
@@ -672,17 +641,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, result)
             return result
 
-        # This should never be reached, but added for mypy
-        return TopicAnalyticsSummary(
-            total_topics=0,
-            total_videos=0,
-            total_channels=0,
-            most_popular_topics=[],
-            topic_distribution={},
-            analysis_date=datetime.now().isoformat(),
-            coverage_percentage=Decimal("0.0"),
-        )
-
     async def get_similar_topics(
         self, topic_id: TopicId, min_similarity: float = 0.5, limit: int = 10
     ) -> list[TopicPopularity]:
@@ -710,7 +668,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Get source topic info
             source_topic = await self.topic_category_repository.get(session, topic_id)
             if not source_topic:
@@ -861,9 +819,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, result_topics)
             return result_topics
 
-        # This should never be reached, but added for mypy
-        return []
-
     async def get_topic_discovery_analysis(
         self, limit_topics: int = 20, min_interactions: int = 2
     ) -> TopicDiscoveryAnalysis:
@@ -889,7 +844,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Get total users with interactions
             total_users_query = select(
                 func.count(func.distinct(UserVideo.user_id))
@@ -1098,16 +1053,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, result)
             return result
 
-        # This should never be reached, but added for mypy
-        return TopicDiscoveryAnalysis(
-            total_users=0,
-            total_discoveries=0,
-            discovery_paths=[],
-            top_entry_topics=[],
-            high_retention_topics=[],
-            analysis_date=datetime.now().isoformat(),
-        )
-
     async def get_topic_trends(
         self, period: str = "monthly", limit_topics: int = 20, months_back: int = 12
     ) -> list[TopicTrend]:
@@ -1135,7 +1080,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Define period format and interval based on period parameter
             # Note: PostgreSQL date_trunc() uses 'month', 'week', 'day' (not 'monthly', etc.)
             if period == "monthly":
@@ -1286,9 +1231,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, trends)
             return trends
 
-        # This should never be reached, but added for mypy
-        return []
-
     async def get_topic_insights(
         self, user_id: str | None = None, limit_per_category: int = 5
     ) -> TopicInsightCollection:
@@ -1311,10 +1253,9 @@ class TopicAnalyticsService:
         if user_id is None:
             from .identity_service import IdentityService
 
-            async for _session in db_manager.get_session():
+            async with db_manager.session() as _session:
                 user_id = await IdentityService().resolve(_session)
-                break
-        assert user_id is not None  # resolved above (get_session always yields)
+        assert user_id is not None  # resolved above (session always yields)
 
         cache_key = self._get_cache_key(
             "topic_insights", user_id, str(limit_per_category)
@@ -1323,7 +1264,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Get user's topic exploration stats
             user_stats_query = text(
                 """
@@ -1663,20 +1604,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, result)
             return result
 
-        # This should never be reached, but added for mypy
-        return TopicInsightCollection(
-            user_id=user_id,
-            total_watched_hours=Decimal("0.0"),
-            topics_explored=0,
-            emerging_interests=[],
-            dominant_interests=[],
-            underexplored_topics=[],
-            similar_recommendations=[],
-            diversity_score=Decimal("0.0"),
-            exploration_trend="stable",
-            analysis_date=datetime.now().isoformat(),
-        )
-
     async def generate_topic_graph_dot(
         self, min_confidence: float = 0.1, max_topics: int = 50
     ) -> str:
@@ -1702,7 +1629,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for _session in db_manager.get_session():
+        async with db_manager.session() as _session:
             # Get popular topics to build graph around
             popular_topics = await self.get_popular_topics(
                 metric="combined", limit=max_topics
@@ -1795,9 +1722,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, dot_content)
             return dot_content
 
-        # Fallback
-        return 'digraph TopicGraph {\n  "Error generating graph";\n}'
-
     async def generate_topic_graph_json(
         self, min_confidence: float = 0.1, max_topics: int = 50
     ) -> dict[str, Any]:
@@ -1823,7 +1747,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for _session in db_manager.get_session():
+        async with db_manager.session() as _session:
             # Get popular topics to build graph around
             popular_topics = await self.get_popular_topics(
                 metric="combined", limit=max_topics
@@ -1917,13 +1841,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, graph_data)
             return graph_data
 
-        # Fallback
-        return {
-            "nodes": [],
-            "links": [],
-            "metadata": {"error": "Failed to generate graph"},
-        }
-
     async def get_topic_engagement_scores(
         self, topic_id: TopicId | None = None, limit: int = 20
     ) -> list[dict[str, Any]]:
@@ -1947,7 +1864,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Build query for engagement metrics
             query = (
                 select(
@@ -2038,8 +1955,6 @@ class TopicAnalyticsService:
             self._cache_result(cache_key, engagement_scores)
             return engagement_scores
 
-        return []
-
     async def get_channel_engagement_by_topic(
         self, topic_id: TopicId, limit: int = 10
     ) -> list[dict[str, Any]]:
@@ -2063,7 +1978,7 @@ class TopicAnalyticsService:
         if cached_result:
             return cached_result  # type: ignore
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             query = (
                 select(
                     Channel.channel_id,
@@ -2125,8 +2040,6 @@ class TopicAnalyticsService:
             # Cache and return results
             self._cache_result(cache_key, channel_engagement)
             return channel_engagement
-
-        return []
 
     def clear_cache(self) -> None:
         """Clear all cached analytics results."""

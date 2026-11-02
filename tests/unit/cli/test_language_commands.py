@@ -8,6 +8,7 @@ module, including helper functions, database operations, and CLI commands.
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -418,9 +419,12 @@ class TestGetPreferences:
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
             # Setup async context manager
             mock_session = AsyncMock()
-            mock_db_manager.get_session.return_value.__aiter__ = AsyncMock(
-                return_value=iter([mock_session])
-            )
+
+            @asynccontextmanager
+            async def mock_session_cm(*args, **kwargs):  # type: ignore[no-untyped-def]
+                yield mock_session
+
+            mock_db_manager.session = mock_session_cm
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -439,9 +443,12 @@ class TestGetPreferences:
         """Test _get_preferences returns empty list for user with no prefs."""
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
             mock_session = AsyncMock()
-            mock_db_manager.get_session.return_value.__aiter__ = AsyncMock(
-                return_value=iter([mock_session])
-            )
+
+            @asynccontextmanager
+            async def mock_session_cm(*args, **kwargs):  # type: ignore[no-untyped-def]
+                yield mock_session
+
+            mock_db_manager.session = mock_session_cm
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -971,13 +978,14 @@ class TestLanguageRemoveCommand:
         mock_pref.auto_download_transcripts = True
         mock_pref.learning_goal = None
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -1010,13 +1018,14 @@ class TestLanguageRemoveCommand:
         mock_pref.auto_download_transcripts = True
         mock_pref.learning_goal = None
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -1054,13 +1063,14 @@ class TestLanguageRemoveCommand:
         mock_pref_4.language_code = "fr"
         mock_pref_4.priority = 4
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -1088,13 +1098,14 @@ class TestLanguageRemoveCommand:
     ) -> None:
         """T061: Test remove non-existent language shows message."""
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -1120,13 +1131,14 @@ class TestLanguageRemoveCommand:
         mock_pref.preference_type = LanguagePreferenceType.LEARNING.value
         mock_pref.priority = 1
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -1225,13 +1237,14 @@ class TestLanguageResetCommand:
             ),
         ]
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -1298,13 +1311,14 @@ class TestLanguageResetCommand:
             ),
         ]
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -1348,13 +1362,14 @@ class TestLanguageResetCommand:
             )
         ]
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -1396,13 +1411,14 @@ class TestLanguageResetCommand:
             )
         ]
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -1440,13 +1456,14 @@ class TestLanguageResetCommand:
             )
         ]
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"
@@ -1472,13 +1489,14 @@ class TestLanguageResetCommand:
     def test_reset_no_preferences_shows_message(self, runner: CliRunner) -> None:
         """Test reset with no preferences shows message and exits 0."""
 
+        @asynccontextmanager
         async def mock_get_session():
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
             yield mock_session
 
         with patch("chronovista.cli.language_commands.db_manager") as mock_db_manager:
-            mock_db_manager.get_session = mock_get_session
+            mock_db_manager.session = mock_get_session
 
             with patch(
                 "chronovista.cli.language_commands.UserLanguagePreferenceRepository"

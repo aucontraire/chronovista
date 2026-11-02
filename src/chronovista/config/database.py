@@ -74,18 +74,18 @@ class DatabaseManager:
     async def session(self, echo: bool | None = None) -> AsyncIterator[AsyncSession]:
         """Session scope that commits on success and rolls back on failure.
 
-        Prefer this over :meth:`get_session`. Because it is a context manager,
-        leaving the block early — ``return``, ``break``, an exception — is
-        ordinary control flow, and the commit still runs::
+        The single supported way to open a session. Because it is a context
+        manager, leaving the block early — ``return``, ``break``, an exception
+        — is ordinary control flow, and the commit still runs::
 
             async with db_manager.session() as session:
                 await repo.create(session, obj_in=thing)
                 return thing          # committed
 
-        The generator form cannot offer that. Exiting an ``async for`` loop
-        early throws ``GeneratorExit`` at the suspended ``yield``, so the
-        ``await session.commit()`` after it never runs and the write is lost
-        with no error at the call site.
+        An ``async for`` over a session *generator* could not offer that:
+        exiting the loop early throws ``GeneratorExit`` at the suspended
+        ``yield``, so the trailing ``await session.commit()`` never runs and
+        the write is lost with no error at the call site (issue #189, #233).
 
         ``except BaseException`` rather than ``except Exception``: both
         ``GeneratorExit`` and ``asyncio.CancelledError`` derive from
@@ -129,19 +129,6 @@ class DatabaseManager:
                 if temp_engine is not None:
                     await temp_engine.dispose()
 
-    async def get_session(
-        self, echo: bool | None = None
-    ) -> AsyncGenerator[AsyncSession, None]:
-        """Generator form of :meth:`session`, for FastAPI's ``Depends``.
-
-        FastAPI dependencies must be generators, so this form has to exist. It
-        carries the early-exit hazard described in :meth:`session`: consumers
-        writing ``async for s in db_manager.get_session(): ... break`` skip the
-        commit. New code should use ``async with db_manager.session()``.
-        """
-        async with self.session(echo=echo) as session:
-            yield session
-
     async def close(self) -> None:
         """Close database connections."""
         if self._engine is not None:
@@ -173,7 +160,7 @@ db_manager = DatabaseManager()
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """Dependency for getting database session."""
-    async for session in db_manager.get_session():
+    async with db_manager.session() as session:
         yield session
 
 

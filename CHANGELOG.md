@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.109.0] - 2026-11-02
+
+### Added
+- **New `law` entity type.** The named-entity taxonomy gains `law` — an OntoNotes peer for named legal instruments (statutes, acts of legislation, treaties). A `law` can be created, classified, filtered, and displayed (with its own badge) everywhere the existing types are, and legal-instrument entities previously misfiled as `work` are reclassified to `law` through the existing offline, reversible backfill. The classifier recognizes a narrow, reviewed set of legal-instrument classes; broad `document`/`agreement` classes and court decisions deliberately stay at their current type. `law` outranks `work` in classification precedence, so a treaty or statute is never left as a creative work. Added via the single-source entity-type vocabulary plus one schema migration — no duplicate lists.
+
 ## [0.108.0] - 2026-11-02
 
 ### Added

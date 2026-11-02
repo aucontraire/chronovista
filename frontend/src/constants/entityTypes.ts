@@ -14,7 +14,7 @@
 
 /**
  * Human-readable display label for each entity_type value from the backend.
- * Covers all 9 entity-producing types.
+ * Covers all 10 entity-producing types.
  */
 export const ENTITY_TYPE_LABELS: Record<string, string> = {
   person: "Person",
@@ -23,6 +23,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   event: "Event",
   work: "Work",
   product: "Product",
+  law: "Law",
   technical_term: "Technical Term",
   concept: "Concept",
   other: "Other",
@@ -46,6 +47,7 @@ export const ENTITY_TYPE_COLORS: Record<string, string> = {
   event: "bg-amber-100 text-amber-700 border-amber-200",
   work: "bg-sky-100 text-sky-700 border-sky-200",
   product: "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200",
+  law: "bg-lime-100 text-lime-700 border-lime-200",
   technical_term: "bg-teal-100 text-teal-700 border-teal-200",
   concept: "bg-rose-100 text-rose-700 border-rose-200",
   other: "bg-slate-100 text-slate-700 border-slate-200",
@@ -98,6 +100,7 @@ export const ENTITY_TYPE_TABS: Array<{ value: string; label: string }> = [
   { value: "event", label: "Event" },
   { value: "work", label: "Work" },
   { value: "product", label: "Product" },
+  { value: "law", label: "Law" },
   { value: "technical_term", label: "Technical Term" },
   { value: "concept", label: "Concept" },
   { value: "other", label: "Other" },
@@ -124,9 +127,11 @@ export const ENTITY_TYPE_TOOLTIPS: Record<string, string> = {
   event:
     "A named historical, political, or cultural event. Examples: January 6th, Bretton Woods Conference, Arab Spring",
   work:
-    "A created artifact: book, film, law, treaty, software, or named project. Examples: The Wealth of Nations, Citizens United, GPT-4",
+    "A creative work: a book, film, TV series, musical work, or video game. Examples: a novel, a documentary, a studio album",
   product:
     "A named software product, app, platform, service, chatbot, or model. Examples: a mobile app, a search engine, a large language model",
+  law:
+    "A named legal instrument: a statute, act of legislation, or treaty. Examples: a data protection act, a trade treaty, a civil rights statute",
   technical_term:
     "A specific named method, technique, or mechanism from a specialized domain. Examples: GraphRAG, quantitative easing, filibuster",
   concept:
@@ -140,7 +145,7 @@ export const ENTITY_TYPE_TOOLTIPS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 /**
- * The 9 entity_type keys that can appear as the `entity_type` field on a
+ * The 10 entity_type keys that can appear as the `entity_type` field on a
  * NamedEntity record returned from the backend.
  *
  * Use this array in selectors, validators, and any component that needs to
@@ -154,6 +159,7 @@ export const ENTITY_PRODUCING_TYPES: string[] = [
   "event",
   "work",
   "product",
+  "law",
   "technical_term",
   "concept",
   "other",

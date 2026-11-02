@@ -12,11 +12,7 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
-from chronovista.models.enums import (
-    ENTITY_PRODUCING_TYPES,
-    ENTITY_TAG_TYPES,
-    entity_type_in_clause,
-)
+from chronovista.models.enums import entity_type_in_clause
 
 _MIGRATION = (
     Path(__file__).resolve().parents[2]
@@ -67,9 +63,21 @@ def test_downgrade_is_a_true_inverse_without_product() -> None:
     assert "'product'" not in m._OLD_TAG_INCLUSIVE
     # Structural: tag-inclusive = producing + the two tag-only values.
     assert m._OLD_TAG_INCLUSIVE == m._OLD_PRODUCING + ", 'topic', 'descriptor'"
-    # The old producing set is exactly today's producing set minus product.
+    # The 103 downgrade baseline is the FIXED pre-product vocabulary — independent of any type
+    # added LATER (e.g. `law` in 104), so it is pinned to literals, never derived from the live
+    # (ever-growing) tuple.
+    pre_product = {
+        "person",
+        "organization",
+        "place",
+        "event",
+        "work",
+        "technical_term",
+        "concept",
+        "other",
+    }
     old_values = {v.strip().strip("'") for v in m._OLD_PRODUCING.split(",")}
-    assert old_values == set(ENTITY_PRODUCING_TYPES) - {"product"}
-    assert {v.strip().strip("'") for v in m._OLD_TAG_INCLUSIVE.split(",")} == set(
-        ENTITY_TAG_TYPES
-    ) - {"product"}
+    assert old_values == pre_product
+    assert {v.strip().strip("'") for v in m._OLD_TAG_INCLUSIVE.split(",")} == (
+        pre_product | {"topic", "descriptor"}
+    )

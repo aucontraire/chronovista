@@ -591,6 +591,7 @@ describe("EntitiesPage", () => {
         "Event",
         "Work",
         "Product",
+        "Law",
         "Technical Term",
         "Concept",
         "Other",

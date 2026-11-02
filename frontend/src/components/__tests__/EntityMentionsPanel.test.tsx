@@ -411,6 +411,21 @@ describe("EntityMentionsPanel", () => {
     });
   });
 
+  describe("Law entity type", () => {
+    it("renders a 'Laws' heading after 'Products'", () => {
+      const entities = [
+        createEntity({ entity_id: "l1", entity_type: "law", canonical_name: "Sample Act" }),
+        createEntity({ entity_id: "pr1", entity_type: "product", canonical_name: "Sample Product" }),
+      ];
+      renderPanel({ entities });
+      const headingTexts = screen
+        .getAllByRole("heading", { level: 4 })
+        .map((h) => h.textContent ?? "");
+      expect(headingTexts).toContain("Laws");
+      expect(headingTexts.indexOf("Products")).toBeLessThan(headingTexts.indexOf("Laws"));
+    });
+  });
+
   describe("Unknown entity type", () => {
     it("renders a generic label for unknown entity types", () => {
       const entities = [

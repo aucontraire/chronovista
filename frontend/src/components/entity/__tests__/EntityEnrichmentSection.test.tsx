@@ -561,6 +561,23 @@ describe('EntityEnrichmentSection — property rendering (Feature 079, US3)', ()
         }
       });
 
+      it('offers no credit group to a law whose data has no credit property (Feature 104)', () => {
+        mockWikidataEntityMap({ data: {} });
+        renderSection({
+          entityType: 'law',
+          enrichment: makeEnrichment({
+            // A non-credit relation keeps the relations list rendering, so the absence
+            // assertions below are not satisfied vacuously by empty data.
+            properties: { owned_by: propBlock(['Placeholder Owner'], { qids: ['Q00000702'] }) },
+          }),
+        });
+
+        expect(screen.getByTestId('relation-group-owned_by')).toBeInTheDocument();
+        for (const key of CREDIT_GROUPS) {
+          expect(screen.queryByTestId(`relation-group-${key}`)).not.toBeInTheDocument();
+        }
+      });
+
       it('control: a work whose data has credit properties DOES render the credit groups', () => {
         mockWikidataEntityMap({ data: {} });
         renderSection({

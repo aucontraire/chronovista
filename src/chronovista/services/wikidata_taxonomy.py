@@ -151,6 +151,17 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
             "Q351764",  # e-commerce payment system
         }
     ),
+    # Feature 104: narrow `law` anchor set — named legal instruments (statutes, acts, treaties)
+    # observed on work-typed entities. Broad `document`/`agreement` and the Supreme-Court-decision
+    # class are deliberately excluded (see spec). Grows from the corpus; closure is a later track.
+    EntityType.LAW: frozenset(
+        {
+            "Q7748",  # law
+            "Q476068",  # Act of Congress in the United States
+            "Q131569",  # treaty
+            "Q134083781",  # foreign agents law
+        }
+    ),
     # TECHNICAL_TERM: no dependable P31 anchor yet → resolves to OTHER until grown.
 }
 
@@ -161,6 +172,7 @@ _PRECEDENCE: tuple[EntityType, ...] = (
     EntityType.PRODUCT,
     EntityType.PLACE,
     EntityType.EVENT,
+    EntityType.LAW,
     EntityType.WORK,
     EntityType.CONCEPT,
     EntityType.TECHNICAL_TERM,

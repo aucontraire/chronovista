@@ -33,6 +33,7 @@ const ALL_TYPES = [
   'event',
   'work',
   'product',
+  'law',
   'technical_term',
   'concept',
   'other',
@@ -80,6 +81,28 @@ describe('EntityTypeBadge (FR-025, FR-026, FR-027, FR-028)', () => {
     // Ordered after "work", matching the backend.
     const values = ENTITY_TYPE_TABS.map((t) => t.value);
     expect(values.indexOf('product')).toBe(values.indexOf('work') + 1);
+  });
+
+  it('renders law as a defined type, not the neutral fallback (Feature 104)', () => {
+    const { container } = render(<EntityTypeBadge entityType="law" />);
+    const badge = container.firstElementChild;
+
+    expect(badge).toHaveTextContent('Law');
+    expect(badge).toHaveClass('bg-lime-100', 'text-lime-700');
+    expect(badge).not.toHaveClass('bg-slate-100');
+    expect(ENTITY_TYPE_COLORS.law).not.toBe(ENTITY_TYPE_FALLBACK_COLOR);
+    const others = Object.entries(ENTITY_TYPE_COLORS)
+      .filter(([k]) => k !== 'law')
+      .map(([, v]) => v);
+    expect(others).not.toContain(ENTITY_TYPE_COLORS.law);
+  });
+
+  it('offers law as a filter tab, a create option, and a tooltip (Feature 104)', () => {
+    expect(ENTITY_TYPE_TABS).toContainEqual({ value: 'law', label: 'Law' });
+    expect(ENTITY_PRODUCING_TYPES).toContain('law');
+    expect(ENTITY_TYPE_TOOLTIPS.law).toBeTruthy();
+    const values = ENTITY_TYPE_TABS.map((t) => t.value);
+    expect(values.indexOf('law')).toBe(values.indexOf('product') + 1);
   });
 
   it('falls back to the neutral treatment for an unrecognised type (FR-028)', () => {

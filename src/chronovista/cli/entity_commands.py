@@ -41,6 +41,7 @@ from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TagOperationLog as TagOperationLogDB
 from chronovista.models.entity_alias import EntityAliasCreate
 from chronovista.models.enums import (
+    ENTITY_PRODUCING_TYPES,
     DiscoveryMethod,
     EntityAliasType,
     EntityType,
@@ -76,16 +77,8 @@ entity_app = typer.Typer(
 
 # Entity types that are valid for standalone entity creation.
 # "topic" and "descriptor" are tag-only types, not entity types.
-_ENTITY_PRODUCING_TYPES = {
-    "person",
-    "organization",
-    "place",
-    "event",
-    "work",
-    "technical_term",
-    "concept",
-    "other",
-}
+# Single source of truth: chronovista.models.enums.ENTITY_PRODUCING_TYPES.
+_ENTITY_PRODUCING_TYPES = frozenset(ENTITY_PRODUCING_TYPES)
 
 
 @entity_app.command("create")
@@ -96,10 +89,7 @@ def create_entity(
     type_str: str = typer.Option(
         ...,
         "--type",
-        help=(
-            "Entity type. Valid values: person, organization, place, "
-            "event, work, technical_term, concept, other."
-        ),
+        help=("Entity type. Valid values: " + ", ".join(ENTITY_PRODUCING_TYPES) + "."),
     ),
     description: str | None = typer.Option(
         None,
@@ -121,7 +111,7 @@ def create_entity(
                 Panel(
                     f"[red]Entity type '{type_str}' is not valid for entities.[/red]\n"
                     "Only entity-producing types are allowed: "
-                    "person, organization, place, event, work, technical_term, concept, other",
+                    + ", ".join(ENTITY_PRODUCING_TYPES),
                     title="Invalid Type",
                     border_style="red",
                 )

@@ -36,7 +36,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func, text
 from uuid_utils import uuid7
 
-from chronovista.models.enums import TagOperationType
+from chronovista.models.enums import TagOperationType, entity_type_in_clause
 
 # `TranscriptSegment` declares a column named `text`, which shadows the imported
 # `text()` inside that class body. This alias is how its `__table_args__` reach
@@ -1036,7 +1036,7 @@ class NamedEntity(Base):
             name="chk_named_entity_image_source_valid",
         ),
         CheckConstraint(
-            "entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other')",
+            entity_type_in_clause("entity_type", include_tag_only=False),
             name="chk_entity_type_valid",
         ),
         CheckConstraint(
@@ -1187,7 +1187,8 @@ class CanonicalTag(Base):
     # Table constraints
     __table_args__ = (
         CheckConstraint(
-            "entity_type IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other', 'topic', 'descriptor') OR entity_type IS NULL",
+            entity_type_in_clause("entity_type", include_tag_only=True)
+            + " OR entity_type IS NULL",
             name="chk_canonical_tag_entity_type_valid",
         ),
         CheckConstraint(
@@ -1341,7 +1342,7 @@ class CandidateSuggestion(Base):
             name="chk_candidate_review_status_valid",
         ),
         CheckConstraint(
-            "type_hint IN ('person', 'organization', 'place', 'event', 'work', 'technical_term', 'concept', 'other')",
+            entity_type_in_clause("type_hint", include_tag_only=False),
             name="chk_candidate_type_hint_valid",
         ),
         CheckConstraint("wikidata_qid ~ '^Q[0-9]+$'", name="chk_candidate_qid_format"),

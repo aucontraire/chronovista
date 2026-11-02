@@ -314,6 +314,56 @@ class EntityType(str, Enum):
     OTHER = "other"
 
 
+# ---------------------------------------------------------------------------
+# Canonical entity-type value lists (single source of truth).
+#
+# These back every place the entity-type vocabulary is spelled out: the API/CLI
+# entity-producing validators, the CLI ``--type`` help/error text, and the three
+# ``CheckConstraint`` strings in ``db/models.py`` (via ``entity_type_in_clause``).
+# Do NOT re-inline these values anywhere else — a fitness guard enforces one home.
+#
+# The order is fixed to match the historical CHECK-constraint SQL so generated
+# constraints stay byte-identical (Alembic autogenerate must propose no change);
+# it is deliberately NOT the ``EntityType`` declaration order. ``topic`` and
+# ``descriptor`` are tag-only types (valid on canonical_tags, never on standalone
+# entities), so they are excluded from the entity-producing list.
+# ---------------------------------------------------------------------------
+ENTITY_PRODUCING_TYPES: tuple[str, ...] = (
+    "person",
+    "organization",
+    "place",
+    "event",
+    "work",
+    "technical_term",
+    "concept",
+    "other",
+)
+TAG_ONLY_ENTITY_TYPES: tuple[str, ...] = ("topic", "descriptor")
+ENTITY_TAG_TYPES: tuple[str, ...] = ENTITY_PRODUCING_TYPES + TAG_ONLY_ENTITY_TYPES
+
+
+def entity_type_in_clause(column: str, *, include_tag_only: bool) -> str:
+    """Render a byte-stable ``<column> IN ('a', 'b', ...)`` CHECK-constraint fragment.
+
+    Parameters
+    ----------
+    column : str
+        The column the constraint targets (e.g. ``"entity_type"`` or ``"type_hint"``).
+    include_tag_only : bool
+        When ``True`` the tag-only types (``topic``/``descriptor``) are included —
+        used by the ``canonical_tags`` constraint; entity/candidate constraints omit them.
+
+    Returns
+    -------
+    str
+        SQL of the form ``<column> IN ('person', 'organization', ...)`` with the
+        values in their canonical (history-matching) order.
+    """
+    values = ENTITY_TAG_TYPES if include_tag_only else ENTITY_PRODUCING_TYPES
+    rendered = ", ".join(f"'{value}'" for value in values)
+    return f"{column} IN ({rendered})"
+
+
 class EntityAliasType(str, Enum):
     """Types of alias relationships between entity names."""
 

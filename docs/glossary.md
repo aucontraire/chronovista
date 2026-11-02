@@ -106,7 +106,7 @@ Project-specific terminology used throughout chronovista documentation and code.
 :   A self-contained JSON snapshot stored in `tag_operation_logs.rollback_data` that captures everything needed to undo an operation without reading other tables. For example, a merge operation's rollback data includes the source canonical IDs, alias reassignments, and previous counts.
 
 **Entity Classification**
-:   Assigning an `entity_type` to a canonical tag (e.g., person, organization, place). Entity-producing types (person, organization, place, event, work, product, technical_term) create a `named_entities` record and copy tag aliases as `entity_aliases`. Tag-only types (topic, descriptor) set `entity_type` on the canonical tag without creating entity records.
+:   Assigning an `entity_type` to a canonical tag (e.g., person, organization, place). Entity-producing types (person, organization, place, event, work, product, law, technical_term) create a `named_entities` record and copy tag aliases as `entity_aliases`. Tag-only types (topic, descriptor) set `entity_type` on the canonical tag without creating entity records.
 
 **Deprecated Tag**
 :   A canonical tag with `status = 'deprecated'`. Excluded from search and browse results but all data (aliases, video links) is preserved. Deprecation is reversible via `tags undo`.

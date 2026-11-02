@@ -487,3 +487,38 @@ class TestClassifyProductFeature103:
         # Deliberate floor → product must NOT corroborate, or it would flash "type may differ".
         assert type_corroboration("product", ["Q620615"]) is None
         assert "product" not in EXPECTED_INSTANCE_OF
+
+
+class TestClassifyLawFeature104:
+    """Feature 104: the narrow `law` anchor set classifies to LAW; law outranks work (a treaty/
+    statute that also carries a work class resolves to law); law does NOT corroborate; broad
+    document/agreement and the Supreme-Court-decision class are NOT law."""
+
+    _LAW_ANCHORS = ["Q7748", "Q476068", "Q131569", "Q134083781"]
+
+    @pytest.mark.parametrize("qid", _LAW_ANCHORS)
+    def test_anchor_classifies_to_law(self, qid: str) -> None:
+        assert classify_entity_type([qid]) == EntityType.LAW
+        assert suggest_entity_type([qid]) == "law"
+
+    def test_anchor_set_is_the_reviewed_four(self) -> None:
+        assert INSTANCE_OF_BY_TYPE[EntityType.LAW] == frozenset(self._LAW_ANCHORS)
+
+    @pytest.mark.parametrize("qid", _LAW_ANCHORS)
+    def test_law_outranks_work(self, qid: str) -> None:
+        # Any law anchor co-occurring with a work-of-art class (Q386724 = work) resolves to law,
+        # in both argument orders (FR-004 — a statute/treaty is never left as a creative work).
+        assert classify_entity_type([qid, "Q386724"]) == EntityType.LAW
+        assert classify_entity_type(["Q386724", qid]) == EntityType.LAW
+
+    def test_broad_and_scotus_classes_are_not_law(self) -> None:
+        # Narrow scope (FR-003/FR-010): broad document/agreement and a court decision are excluded.
+        assert classify_entity_type(["Q2006324"]) == EntityType.OTHER  # agreement
+        assert classify_entity_type(["Q49848"]) == EntityType.OTHER  # document
+        assert (
+            classify_entity_type(["Q19692072"]) == EntityType.OTHER
+        )  # decision of SCOTUS (resolved OUT)
+
+    def test_law_corroboration_is_neutral(self) -> None:
+        assert type_corroboration("law", ["Q7748"]) is None
+        assert "law" not in EXPECTED_INSTANCE_OF

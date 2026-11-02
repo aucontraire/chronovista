@@ -402,3 +402,96 @@ async def test_product_apply_entity_type_only_and_capture(
     restored = await _types(db_session, product_seeded)
     assert restored["P"] == "organization"
     assert restored["Q"] == "work"
+
+
+# ---------------------------------------------------------------------------
+# Feature 104: the `law` anchor set flips work-typed legal instruments to law and excludes
+# broad document/agreement + the Supreme-Court-decision class (narrow boundary).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def law_seeded(db_session: AsyncSession) -> dict[str, uuid.UUID]:
+    # L1: work, P31 = treaty                     -> law   (ACTIONABLE work->law)
+    # L2: work, P31 = law                        -> law   (ACTIONABLE work->law)
+    # L3: work, P31 = work-of-art + treaty       -> law   (precedence law>work; ACTIONABLE)
+    # L4: work, P31 = agreement + document        -> OTHER (broad only; kept at work)
+    # L5: work, P31 = decision of SCOTUS (only)   -> OTHER (resolved OUT; kept at work)
+    ents = {
+        "L1": _entity("Placeholder L1", "work", ["Q131569"]),
+        "L2": _entity("Placeholder L2", "work", ["Q7748"]),
+        "L3": _entity("Placeholder L3", "work", ["Q386724", "Q131569"]),
+        "L4": _entity("Placeholder L4", "work", ["Q2006324", "Q49848"]),
+        "L5": _entity("Placeholder L5", "work", ["Q19692072"]),
+    }
+    for e in ents.values():
+        db_session.add(e)
+    await db_session.commit()
+    return {k: v.id for k, v in ents.items()}
+
+
+async def test_law_compute_changes_flips_law_excludes_broad_and_scotus(
+    wired: None, law_seeded: dict[str, uuid.UUID]
+) -> None:
+    """SC-001: treaty/law (and a work+treaty via precedence) flip work->law; broad
+    document/agreement and the SCOTUS-decision class are held at work."""
+    changes = {
+        c.entity_id: (c.old_type, c.new_type)
+        for c in bet._compute_changes(await bet._load())
+        if c.entity_id in law_seeded.values()
+    }
+    assert changes == {
+        law_seeded["L1"]: ("work", "law"),
+        law_seeded["L2"]: ("work", "law"),
+        law_seeded["L3"]: ("work", "law"),
+    }
+    for held in ("L4", "L5"):
+        assert law_seeded[held] not in changes
+
+
+async def test_law_apply_entity_type_only_and_restore(
+    wired: None,
+    law_seeded: dict[str, uuid.UUID],
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """FR-006 + SC-005 for law: apply flips only entity_type (+updated_at); the capture restores work."""
+    l1_before = (
+        await db_session.execute(
+            select(NamedEntity).where(NamedEntity.id == law_seeded["L1"])
+        )
+    ).scalar_one()
+    before = {c.name: getattr(l1_before, c.name) for c in NamedEntity.__table__.columns}
+
+    dbname = (await db_session.execute(select(text("current_database()")))).scalar_one()
+    only = {str(law_seeded["L1"]), str(law_seeded["L2"]), str(law_seeded["L3"])}
+    assert await bet._run(apply=True, confirm_target=dbname, only=only) == 0
+
+    db_session.expire_all()
+    l1_after = (
+        await db_session.execute(
+            select(NamedEntity).where(NamedEntity.id == law_seeded["L1"])
+        )
+    ).scalar_one()
+    after = {c.name: getattr(l1_after, c.name) for c in NamedEntity.__table__.columns}
+    assert after["entity_type"] == "law"
+    changed = {k for k in before if before[k] != after[k]}
+    assert changed <= {
+        "entity_type",
+        "updated_at",
+    }, f"FR-006 violated; also changed: {changed - {'entity_type', 'updated_at'}}"
+    capture = next((tmp_path / "backups").glob("entity_type_backfill_*.json"))
+    recorded = {
+        r["entity_id"]: (r["old_type"], r["new_type"])
+        for r in json.loads(capture.read_text())
+    }
+    assert recorded[str(law_seeded["L1"])] == ("work", "law")
+    for eid_str, (old_type, _new) in recorded.items():
+        await db_session.execute(
+            update(NamedEntity)
+            .where(NamedEntity.id == uuid.UUID(eid_str))
+            .values(entity_type=old_type)
+        )
+    await db_session.commit()
+    db_session.expire_all()
+    assert (await _types(db_session, law_seeded))["L1"] == "work"

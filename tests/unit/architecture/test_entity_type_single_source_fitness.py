@@ -122,18 +122,18 @@ def test_generated_check_sql_is_byte_identical_to_history() -> None:
     """
     assert entity_type_in_clause("entity_type", include_tag_only=False) == (
         "entity_type IN ('person', 'organization', 'place', 'event', 'work', "
-        "'product', 'technical_term', 'concept', 'other')"
+        "'product', 'law', 'technical_term', 'concept', 'other')"
     )
     assert entity_type_in_clause("entity_type", include_tag_only=True) + (
         " OR entity_type IS NULL"
     ) == (
         "entity_type IN ('person', 'organization', 'place', 'event', 'work', "
-        "'product', 'technical_term', 'concept', 'other', 'topic', 'descriptor') "
+        "'product', 'law', 'technical_term', 'concept', 'other', 'topic', 'descriptor') "
         "OR entity_type IS NULL"
     )
     assert entity_type_in_clause("type_hint", include_tag_only=False) == (
         "type_hint IN ('person', 'organization', 'place', 'event', 'work', "
-        "'product', 'technical_term', 'concept', 'other')"
+        "'product', 'law', 'technical_term', 'concept', 'other')"
     )
 
 

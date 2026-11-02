@@ -308,6 +308,7 @@ class EntityType(str, Enum):
     EVENT = "event"
     WORK = "work"
     PRODUCT = "product"
+    LAW = "law"
     TECHNICAL_TERM = "technical_term"
     TOPIC = "topic"
     DESCRIPTOR = "descriptor"
@@ -336,6 +337,7 @@ ENTITY_PRODUCING_TYPES: tuple[str, ...] = (
     "event",
     "work",
     "product",
+    "law",
     "technical_term",
     "concept",
     "other",

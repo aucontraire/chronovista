@@ -122,15 +122,96 @@ def test_generated_check_sql_is_byte_identical_to_history() -> None:
     """
     assert entity_type_in_clause("entity_type", include_tag_only=False) == (
         "entity_type IN ('person', 'organization', 'place', 'event', 'work', "
-        "'technical_term', 'concept', 'other')"
+        "'product', 'technical_term', 'concept', 'other')"
     )
     assert entity_type_in_clause("entity_type", include_tag_only=True) + (
         " OR entity_type IS NULL"
     ) == (
         "entity_type IN ('person', 'organization', 'place', 'event', 'work', "
-        "'technical_term', 'concept', 'other', 'topic', 'descriptor') OR entity_type IS NULL"
+        "'product', 'technical_term', 'concept', 'other', 'topic', 'descriptor') "
+        "OR entity_type IS NULL"
     )
     assert entity_type_in_clause("type_hint", include_tag_only=False) == (
         "type_hint IN ('person', 'organization', 'place', 'event', 'work', "
-        "'technical_term', 'concept', 'other')"
+        "'product', 'technical_term', 'concept', 'other')"
     )
+
+
+# ---------------------------------------------------------------------------
+# Feature 103 (FR-012): the two literal mirrors the SQL-fragment guards above could NOT see
+# — a set of entity-type *strings* (the scan-request validator in api/schemas/entity_mentions)
+# and a set of EntityType *members* (tag promotion in services/tag_management) — were folded
+# into the single source. These guards make a re-inline a reviewable, failing diff. Honest-
+# duplication guards, not evasion-proof (per the module docstring caveat).
+# ---------------------------------------------------------------------------
+
+_TYPE_NAMES = frozenset(ENTITY_TAG_TYPES)
+
+
+def _brace_collection_bodies(text: str) -> Iterator[str]:
+    """Yield the inner text of each innermost ``{...}`` collection literal in ``text``.
+
+    ``[^{}]`` matches newlines, so multi-line sets are captured; nesting resolves to the
+    innermost braces, which is what we want (a QID ``frozenset({...})`` yields its QID body,
+    never the enclosing dict).
+    """
+    for match in re.finditer(r"\{([^{}]*)\}", text):
+        yield match.group(1)
+
+
+def test_no_reinlined_entity_type_string_set() -> None:
+    """No live module re-inlines the vocabulary as a set of entity-type *string* literals.
+
+    Catches the former ``_VALID_ENTITY_TYPES = {"person", ...}`` (scan validator). QID sets are
+    not caught (``Q620615`` is not a type name); ``enums.py`` is the one legitimate home.
+    Threshold 6 avoids flagging incidental small literals.
+    """
+    offenders = []
+    for path in _py_files():
+        if path.name == "enums.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for body in _brace_collection_bodies(text):
+            literals = set(re.findall(r"""['"]([a-z_]+)['"]""", body))
+            if len(literals & _TYPE_NAMES) >= 6:
+                offenders.append(str(path.relative_to(_REPO_ROOT)))
+                break
+    assert offenders == [], (
+        "A module re-inlined the entity-type vocabulary as a set of string literals instead "
+        f"of deriving from enums.ENTITY_TAG_TYPES/ENTITY_PRODUCING_TYPES; offenders: {offenders}"
+    )
+
+
+def test_no_reinlined_entity_type_member_set() -> None:
+    """No live module re-inlines the vocabulary as a set of ``EntityType`` *members*.
+
+    Catches the former ``{EntityType.PERSON, EntityType.ORGANIZATION, ...}`` (tag promotion).
+    Counts only *set elements* — an ``EntityType.X`` preceded by ``{``/``,``/start and followed
+    by ``,``/``}`` — so a dict mapping keys to EntityType *values* (e.g. the relation→type map
+    in candidate_suggestion_service, ``"ceo": EntityType.PERSON``) is NOT flagged, and dict
+    *keys* (``EntityType.X:`` in INSTANCE_OF_BY_TYPE) are skipped by the trailing lookahead.
+    (``_PRECEDENCE`` is a tuple, not a ``{...}`` set, so it is never scanned.)
+    """
+    offenders = []
+    for path in _py_files():
+        if path.name == "enums.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for body in _brace_collection_bodies(text):
+            # A set element is preceded by '{'/','/start; a dict VALUE is preceded by ':'.
+            tokens = re.findall(r"([:{,]?)\s*EntityType\.\w+\s*(?=[,}]|$)", body)
+            if len([t for t in tokens if t != ":"]) >= 6:
+                offenders.append(str(path.relative_to(_REPO_ROOT)))
+                break
+    assert offenders == [], (
+        "A module re-inlined the entity-type vocabulary as a set of EntityType members instead "
+        f"of deriving from enums.ENTITY_PRODUCING_TYPES/TAG_ONLY_ENTITY_TYPES; offenders: {offenders}"
+    )
+
+
+def test_scan_validator_is_derived_from_single_source() -> None:
+    """The scan-request validator's allowed set equals the single-source tag-inclusive vocabulary."""
+    from chronovista.api.schemas.entity_mentions import _VALID_ENTITY_TYPES
+
+    assert frozenset(ENTITY_TAG_TYPES) == _VALID_ENTITY_TYPES
+    assert "product" in _VALID_ENTITY_TYPES

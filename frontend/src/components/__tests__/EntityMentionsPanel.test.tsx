@@ -396,6 +396,21 @@ describe("EntityMentionsPanel", () => {
     });
   });
 
+  describe("Product entity type", () => {
+    it("renders a 'Products' heading after 'Works'", () => {
+      const entities = [
+        createEntity({ entity_id: "pr1", entity_type: "product", canonical_name: "Sample Product" }),
+        createEntity({ entity_id: "w1", entity_type: "work", canonical_name: "Sample Work" }),
+      ];
+      renderPanel({ entities });
+      const headingTexts = screen
+        .getAllByRole("heading", { level: 4 })
+        .map((h) => h.textContent ?? "");
+      expect(headingTexts).toContain("Products");
+      expect(headingTexts.indexOf("Works")).toBeLessThan(headingTexts.indexOf("Products"));
+    });
+  });
+
   describe("Unknown entity type", () => {
     it("renders a generic label for unknown entity types", () => {
       const entities = [

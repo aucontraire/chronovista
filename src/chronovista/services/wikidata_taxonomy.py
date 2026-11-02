@@ -76,8 +76,9 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
             "Q561068",  # specialty channel
             # Classes that previously classified to OTHER and so were demoted from the heuristic's
             # 'organization' guess at approval (reverify OTHER-guard fix). A rock band (musical
-            # ensemble ⊂ organization) is included; platform/software classes are deliberately NOT
-            # here — they await a future `product` entity type rather than being forced into org.
+            # ensemble ⊂ organization) is included. Platform/software/app classes now live in
+            # INSTANCE_OF_BY_TYPE[PRODUCT] (Feature 103); `website` (Q35127) and `news website`
+            # (Q17232649) deliberately STAY organization (the narrow product boundary).
             "Q484652",  # international organization
             "Q1127126",  # military alliance
             "Q124964",  # coalition
@@ -121,6 +122,35 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
             "Q2738074",  # political movement
         }
     ),
+    # Feature 103: narrow `product` anchor set — observed P31 leaf classes on misfiled
+    # organization/work entities. Website/news-website classes are deliberately excluded
+    # (they stay organization). Grows from the corpus; subclass closure is a later track.
+    EntityType.PRODUCT: frozenset(
+        {
+            "Q620615",  # mobile app
+            "Q3220391",  # social networking service
+            "Q19967801",  # online service
+            "Q559856",  # online video platform
+            "Q118140435",  # very large online platform
+            "Q122759350",  # user-generated content platform
+            "Q59152282",  # video streaming service
+            "Q723685",  # video on demand
+            "Q870780",  # chatbot
+            "Q133284163",  # generative artificial intelligence chatbot
+            "Q116961403",  # conversational AI
+            "Q115305900",  # large language model
+            "Q124629760",  # family of large language models
+            "Q116777014",  # generative pre-trained transformer
+            "Q117246174",  # generative artificial intelligence
+            "Q7397",  # software
+            "Q40056",  # computer program
+            "Q189053",  # command-line interface
+            "Q56277524",  # personal knowledge base
+            "Q14644",  # spyware
+            "Q1344897",  # whistleblower platform
+            "Q351764",  # e-commerce payment system
+        }
+    ),
     # TECHNICAL_TERM: no dependable P31 anchor yet → resolves to OTHER until grown.
 }
 
@@ -128,6 +158,7 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
 _PRECEDENCE: tuple[EntityType, ...] = (
     EntityType.PERSON,
     EntityType.ORGANIZATION,
+    EntityType.PRODUCT,
     EntityType.PLACE,
     EntityType.EVENT,
     EntityType.WORK,

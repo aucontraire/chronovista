@@ -301,3 +301,104 @@ async def test_only_refuses_unknown_id(
         await bet._run(apply=True, confirm_target=dbname, only={str(uuid.uuid4())}) == 2
     )
     assert await _types(db_session, seeded) == before
+
+
+# ---------------------------------------------------------------------------
+# Feature 103: the `product` anchor set flips product-class entities and excludes
+# website/news-site (the narrow boundary). The tool's apply/capture/idempotency/FR-006
+# mechanics are proven feature-agnostically above; these add the product classification.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def product_seeded(db_session: AsyncSession) -> dict[str, uuid.UUID]:
+    # P: organization, P31 = mobile app             -> product        (ACTIONABLE org->product)
+    # Q: work,         P31 = large language model   -> product        (ACTIONABLE work->product)
+    # R: organization, P31 = business + mobile app  -> organization   (dual-classed; precedence; HELD)
+    # S: organization, P31 = website                -> organization   (website stays; agrees; HELD)
+    # T: organization, P31 = news website           -> OTHER          (undeterminable; kept, FR-005)
+    ents = {
+        "P": _entity("Placeholder P", "organization", ["Q620615"]),
+        "Q": _entity("Placeholder Q", "work", ["Q115305900"]),
+        "R": _entity("Placeholder R", "organization", ["Q4830453", "Q620615"]),
+        "S": _entity("Placeholder S", "organization", ["Q35127"]),
+        "T": _entity("Placeholder T", "organization", ["Q17232649"]),
+    }
+    for e in ents.values():
+        db_session.add(e)
+    await db_session.commit()
+    return {k: v.id for k, v in ents.items()}
+
+
+async def test_product_compute_changes_flips_product_excludes_website(
+    wired: None, product_seeded: dict[str, uuid.UUID]
+) -> None:
+    """SC-001: only genuine product-class entities flip; website/news-site/dual-classed are held."""
+    changes = {
+        c.entity_id: (c.old_type, c.new_type)
+        for c in bet._compute_changes(await bet._load())
+        if c.entity_id in product_seeded.values()
+    }
+    assert changes == {
+        product_seeded["P"]: ("organization", "product"),
+        product_seeded["Q"]: ("work", "product"),
+    }
+    for held in ("R", "S", "T"):
+        assert product_seeded[held] not in changes
+
+
+async def test_product_apply_entity_type_only_and_capture(
+    wired: None,
+    product_seeded: dict[str, uuid.UUID],
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """FR-006 + SC-005 for product: applying flips only entity_type (+updated_at) and writes a
+    reversible capture recording each product flip (the restore source)."""
+    p_before = (
+        await db_session.execute(
+            select(NamedEntity).where(NamedEntity.id == product_seeded["P"])
+        )
+    ).scalar_one()
+    before = {c.name: getattr(p_before, c.name) for c in NamedEntity.__table__.columns}
+
+    dbname = (await db_session.execute(select(text("current_database()")))).scalar_one()
+    # Scope to the two product corrections (apply-all over the shared test DB could also touch
+    # unrelated rows); --only mirrors the reviewed-subset path.
+    only = {str(product_seeded["P"]), str(product_seeded["Q"])}
+    assert await bet._run(apply=True, confirm_target=dbname, only=only) == 0
+
+    db_session.expire_all()
+    p_after = (
+        await db_session.execute(
+            select(NamedEntity).where(NamedEntity.id == product_seeded["P"])
+        )
+    ).scalar_one()
+    after = {c.name: getattr(p_after, c.name) for c in NamedEntity.__table__.columns}
+    assert after["entity_type"] == "product"
+    changed = {k for k in before if before[k] != after[k]}
+    assert changed <= {
+        "entity_type",
+        "updated_at",
+    }, f"FR-006 violated; also changed: {changed - {'entity_type', 'updated_at'}}"
+    capture = next((tmp_path / "backups").glob("entity_type_backfill_*.json"))
+    recorded = {
+        r["entity_id"]: (r["old_type"], r["new_type"])
+        for r in json.loads(capture.read_text())
+    }
+    assert recorded[str(product_seeded["P"])] == ("organization", "product")
+    assert recorded[str(product_seeded["Q"])] == ("work", "product")
+
+    # SC-005: replaying the capture (id → old_type) returns every affected entity to its prior
+    # type — the capture is a working restore source, not merely a record of what changed.
+    for eid_str, (old_type, _new) in recorded.items():
+        await db_session.execute(
+            update(NamedEntity)
+            .where(NamedEntity.id == uuid.UUID(eid_str))
+            .values(entity_type=old_type)
+        )
+    await db_session.commit()
+    db_session.expire_all()
+    restored = await _types(db_session, product_seeded)
+    assert restored["P"] == "organization"
+    assert restored["Q"] == "work"

@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from chronovista.api.schemas.responses import PaginationMeta
 from chronovista.models.entity_video_exclusion import EntityVideoExclusion
-from chronovista.models.enums import EntityType
+from chronovista.models.enums import ENTITY_PRODUCING_TYPES, EntityType
 
 
 class VideoEntitySummary(BaseModel):
@@ -521,16 +521,8 @@ class ExclusionPatternRequest(BaseModel):
 # Entity creation & duplicate-check schemas (Feature 051)
 # ---------------------------------------------------------------------------
 
-_ENTITY_PRODUCING_TYPES = {
-    "person",
-    "organization",
-    "place",
-    "event",
-    "work",
-    "technical_term",
-    "concept",
-    "other",
-}
+# Single source of truth: chronovista.models.enums.ENTITY_PRODUCING_TYPES.
+_ENTITY_PRODUCING_TYPES = frozenset(ENTITY_PRODUCING_TYPES)
 
 
 class ExistingEntityInfo(BaseModel):

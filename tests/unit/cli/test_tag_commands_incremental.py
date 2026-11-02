@@ -16,6 +16,7 @@ References
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -78,10 +79,11 @@ class TestIncrementalFlag:
             # Provide an async generator that yields a session
             mock_session = AsyncMock()
 
+            @asynccontextmanager
             async def fake_get_session(**kwargs: Any):
                 yield mock_session
 
-            mock_db.get_session.return_value = fake_get_session()
+            mock_db.session = fake_get_session
 
             result = runner.invoke(tag_app, ["normalize", "--incremental"])
 
@@ -108,6 +110,7 @@ class TestIncrementalFlag:
 
         mock_session = AsyncMock()
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any):
             yield mock_session
 
@@ -122,7 +125,7 @@ class TestIncrementalFlag:
             ),
             patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
-            mock_db.get_session.return_value = fake_get_session()
+            mock_db.session = fake_get_session
             result = runner.invoke(tag_app, ["normalize", "--incremental"])
 
         assert result.exit_code == 0
@@ -149,6 +152,7 @@ class TestBackwardCompatibility:
 
         mock_session = AsyncMock()
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any):
             yield mock_session
 
@@ -163,7 +167,7 @@ class TestBackwardCompatibility:
             ),
             patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
-            mock_db.get_session.return_value = fake_get_session()
+            mock_db.session = fake_get_session
             result = runner.invoke(tag_app, ["normalize"])
 
         assert result.exit_code == 0
@@ -181,6 +185,7 @@ class TestBackwardCompatibility:
 
         mock_session = AsyncMock()
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any):
             yield mock_session
 
@@ -195,7 +200,7 @@ class TestBackwardCompatibility:
             ),
             patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
-            mock_db.get_session.return_value = fake_get_session()
+            mock_db.session = fake_get_session
             result = runner.invoke(tag_app, ["normalize", "--no-incremental"])
 
         assert result.exit_code == 0
@@ -252,6 +257,7 @@ class TestIncrementalDryRun:
 
         mock_session = AsyncMock()
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any):
             yield mock_session
 
@@ -266,7 +272,7 @@ class TestIncrementalDryRun:
             ),
             patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
-            mock_db.get_session.return_value = fake_get_session()
+            mock_db.session = fake_get_session
             result = runner.invoke(tag_app, ["normalize", "--incremental", "--dry-run"])
 
         assert result.exit_code == 0
@@ -305,6 +311,7 @@ class TestIncrementalDryRun:
 
         mock_session = AsyncMock()
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any):
             yield mock_session
 
@@ -319,7 +326,7 @@ class TestIncrementalDryRun:
             ),
             patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
-            mock_db.get_session.return_value = fake_get_session()
+            mock_db.session = fake_get_session
             result = runner.invoke(tag_app, ["normalize", "--incremental", "--dry-run"])
 
         assert result.exit_code == 0
@@ -361,6 +368,7 @@ class TestIncrementalDryRun:
 
         mock_session = AsyncMock()
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any):
             yield mock_session
 
@@ -375,7 +383,7 @@ class TestIncrementalDryRun:
             ),
             patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
-            mock_db.get_session.return_value = fake_get_session()
+            mock_db.session = fake_get_session
             result = runner.invoke(tag_app, ["normalize", "--incremental", "--dry-run"])
 
         assert result.exit_code == 0
@@ -409,6 +417,7 @@ class TestIncrementalNoUnresolvedTags:
 
         mock_session = AsyncMock()
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any):
             yield mock_session
 
@@ -423,7 +432,7 @@ class TestIncrementalNoUnresolvedTags:
             ),
             patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
-            mock_db.get_session.return_value = fake_get_session()
+            mock_db.session = fake_get_session
             result = runner.invoke(tag_app, ["normalize", "--incremental"])
 
         assert result.exit_code == 0
@@ -447,6 +456,7 @@ class TestIncrementalNoUnresolvedTags:
 
         mock_session = AsyncMock()
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any):
             yield mock_session
 
@@ -461,7 +471,7 @@ class TestIncrementalNoUnresolvedTags:
             ),
             patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
-            mock_db.get_session.return_value = fake_get_session()
+            mock_db.session = fake_get_session
             result = runner.invoke(tag_app, ["normalize", "--incremental"])
 
         assert result.exit_code == 0
@@ -493,6 +503,7 @@ class TestIncrementalLiveOutput:
 
         mock_session = AsyncMock()
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any):
             yield mock_session
 
@@ -507,7 +518,7 @@ class TestIncrementalLiveOutput:
             ),
             patch("chronovista.cli.tag_commands.db_manager") as mock_db,
         ):
-            mock_db.get_session.return_value = fake_get_session()
+            mock_db.session = fake_get_session
             result = runner.invoke(tag_app, ["normalize", "--incremental"])
 
         assert result.exit_code == 0

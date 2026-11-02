@@ -405,9 +405,9 @@ class TestFoldedRecount:
 
 
 class TestRecountDryRunSeam:
-    """The recount command's dry-run must NOT persist — the real get_session seam.
+    """The recount command's dry-run must NOT persist — the real session seam.
 
-    Regression for a bug found in deployment: ``db_manager.get_session`` commits on normal scope
+    Regression for a bug found in deployment: ``db_manager.session`` commits on normal scope
     exit, so a dry-run that merely skipped ``commit`` still auto-committed its pending UPDATEs. The
     CLI unit test mocked the session and only checked "commit not called", so it missed the ambient
     auto-commit (a mocked collaborator cannot fail the way the real one does). ``_recount_counters``

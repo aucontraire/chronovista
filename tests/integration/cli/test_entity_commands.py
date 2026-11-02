@@ -12,14 +12,15 @@ EntityAliasRepository to verify:
 - Alias creation count (canonical alias + additional aliases)
 
 NOTE: The CLI commands use asyncio.run() internally. Tests remain synchronous
-and mock db_manager.get_session so no real database connection is needed.
+and mock db_manager.session so no real database connection is needed.
 Pattern mirrors tests/integration/cli/test_tag_management_commands.py.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -38,16 +39,17 @@ runner = CliRunner()
 _OP_ID = uuid.UUID("12345678-1234-5678-1234-567812345678")
 
 
-def _make_get_session(mock_session: AsyncMock) -> Any:
+def _make_session(mock_session: AsyncMock) -> Any:
     """
-    Return an async generator factory that yields *mock_session* once,
-    matching the signature of db_manager.get_session(echo=False).
+    Return an async context-manager factory that yields *mock_session* once,
+    matching the signature of db_manager.session(echo=False).
     """
 
-    async def _gen(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+    @asynccontextmanager
+    async def _scope(*args: Any, **kwargs: Any) -> AsyncIterator[AsyncSession]:
         yield mock_session
 
-    return _gen()
+    return _scope
 
 
 def _make_mock_entity(
@@ -91,7 +93,7 @@ class TestCreateEntityCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             # Duplicate check returns None (no existing entity)
             mock_execute_result = MagicMock()
@@ -134,7 +136,7 @@ class TestCreateEntityCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_execute_result = MagicMock()
             mock_execute_result.scalar_one_or_none.return_value = None
@@ -179,7 +181,7 @@ class TestCreateEntityCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_execute_result = MagicMock()
             mock_execute_result.scalar_one_or_none.return_value = None
@@ -233,7 +235,7 @@ class TestCreateEntityCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_execute_result = MagicMock()
             mock_execute_result.scalar_one_or_none.return_value = None
@@ -285,7 +287,7 @@ class TestCreateEntityCommand:
             patch("chronovista.cli.entity_commands.EntityAliasRepository"),
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             # The shared core's all-status lookup finds an existing entity → the CLI's
             # reject policy prints the panel and exits 1 (Feature 101).
@@ -332,7 +334,7 @@ class TestCreateEntityCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_execute_result = MagicMock()
             mock_execute_result.scalar_one_or_none.return_value = None
@@ -392,7 +394,7 @@ class TestCreateEntityCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_execute_result = MagicMock()
             mock_execute_result.scalar_one_or_none.return_value = None
@@ -433,7 +435,7 @@ class TestCreateEntityCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_execute_result = MagicMock()
             mock_execute_result.scalar_one_or_none.return_value = None
@@ -484,7 +486,7 @@ class TestCreateEntityCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_execute_result = MagicMock()
             mock_execute_result.scalar_one_or_none.return_value = None
@@ -536,7 +538,7 @@ class TestListEntitiesCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             # Call 1: main query returns entities
             entities_result = MagicMock()
@@ -567,7 +569,7 @@ class TestListEntitiesCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entities_result = MagicMock()
             entities_result.scalars.return_value.all.return_value = [entity1, entity2]
@@ -599,7 +601,7 @@ class TestListEntitiesCommand:
         """When no entities match the criteria, 'No Entities' panel is shown."""
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entities_result = MagicMock()
             entities_result.scalars.return_value.all.return_value = []
@@ -620,7 +622,7 @@ class TestListEntitiesCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entities_result = MagicMock()
             entities_result.scalars.return_value.all.return_value = [mock_entity]
@@ -647,7 +649,7 @@ class TestListEntitiesCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entities_result = MagicMock()
             entities_result.scalars.return_value.all.return_value = [mock_entity]
@@ -681,7 +683,7 @@ class TestListEntitiesCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entities_result = MagicMock()
             entities_result.scalars.return_value.all.return_value = [mock_entity]
@@ -718,7 +720,7 @@ class TestListEntitiesCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entities_result = MagicMock()
             entities_result.scalars.return_value.all.return_value = [mock_entity]
@@ -748,7 +750,7 @@ class TestListEntitiesCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entities_result = MagicMock()
             entities_result.scalars.return_value.all.return_value = [mock_entity]
@@ -829,7 +831,7 @@ class TestBackfillDescriptionsCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             # First execute = main query, second and third = per-row entity lookups
             mock_session.execute.side_effect = [
@@ -877,7 +879,7 @@ class TestBackfillDescriptionsCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_session.execute.side_effect = [
                 main_result,
@@ -899,7 +901,7 @@ class TestBackfillDescriptionsCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_session.execute.return_value = main_result
 
@@ -923,7 +925,7 @@ class TestBackfillDescriptionsCommand:
 
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             mock_session.execute.side_effect = [main_result, entity_result]
 
@@ -960,7 +962,7 @@ class TestAddAliasCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             # First execute: entity lookup returns entity
             entity_result = MagicMock()
@@ -996,7 +998,7 @@ class TestAddAliasCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entity_result = MagicMock()
             entity_result.scalar_one_or_none.return_value = mock_entity
@@ -1036,7 +1038,7 @@ class TestAddAliasCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entity_result = MagicMock()
             entity_result.scalar_one_or_none.return_value = mock_entity
@@ -1077,7 +1079,7 @@ class TestAddAliasCommand:
         """When entity does not exist, exits with code 1."""
         with patch("chronovista.cli.entity_commands.db_manager") as mock_db:
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entity_result = MagicMock()
             entity_result.scalar_one_or_none.return_value = None
@@ -1103,7 +1105,7 @@ class TestAddAliasCommand:
             ) as MockAliasRepo,
         ):
             mock_session = AsyncMock()
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session(mock_session)
 
             entity_result = MagicMock()
             entity_result.scalar_one_or_none.return_value = mock_entity

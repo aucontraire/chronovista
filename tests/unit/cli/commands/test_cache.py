@@ -8,6 +8,7 @@ parameters, exit codes, and error handling.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -100,6 +101,7 @@ class TestCacheWarmCommand:
     ):
         """Test `warm --dry-run` shows counts without downloading."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -109,7 +111,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -133,6 +135,7 @@ class TestCacheWarmCommand:
     ):
         """Test `warm --type channels` only warms channels."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -142,7 +145,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -159,6 +162,7 @@ class TestCacheWarmCommand:
     ):
         """Test `warm --type videos` only warms videos."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -168,7 +172,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -183,6 +187,7 @@ class TestCacheWarmCommand:
     def test_warm_type_all_warms_both(self, mock_db_session, mock_image_cache_service):
         """Test `warm --type all` warms both channels and videos."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -192,7 +197,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -210,6 +215,7 @@ class TestCacheWarmCommand:
     ):
         """Test `warm --type entities` only warms entity portraits (Feature 079)."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -219,7 +225,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -237,6 +243,7 @@ class TestCacheWarmCommand:
     ):
         """Test `warm --limit 5` passes limit to service."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -246,7 +253,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -266,6 +273,7 @@ class TestCacheWarmCommand:
     ):
         """Test `warm --delay 1.0` passes delay to service."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -275,7 +283,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -340,6 +348,7 @@ class TestCacheWarmCommand:
             side_effect=mock_warm_videos_with_failures
         )
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -349,7 +358,7 @@ class TestCacheWarmCommand:
                 return_value=service_with_failures,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -362,6 +371,7 @@ class TestCacheWarmCommand:
     ):
         """Test `warm` with all successes exits with code 0."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -371,7 +381,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -409,6 +419,7 @@ class TestCacheWarmCommand:
 
         service_with_no_urls.warm_videos = AsyncMock(side_effect=mock_warm_videos_no_op)
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -418,7 +429,7 @@ class TestCacheWarmCommand:
                 return_value=service_with_no_urls,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -434,6 +445,7 @@ class TestCacheWarmCommand:
     ):
         """Test default quality for video thumbnails is mqdefault."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -443,7 +455,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -458,6 +470,7 @@ class TestCacheWarmCommand:
     def test_warm_quality_hqdefault(self, mock_db_session, mock_image_cache_service):
         """Test `warm --quality hqdefault` passes correct quality to service."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -467,7 +480,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -484,6 +497,7 @@ class TestCacheWarmCommand:
     def test_warm_default_type_is_all(self, mock_db_session, mock_image_cache_service):
         """Test default --type is 'all' (both channels and videos)."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -493,7 +507,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -508,6 +522,7 @@ class TestCacheWarmCommand:
     def test_warm_default_delay_is_0_5(self, mock_db_session, mock_image_cache_service):
         """Test default --delay is 0.5 seconds."""
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield mock_db_session
 
@@ -517,7 +532,7 @@ class TestCacheWarmCommand:
                 return_value=mock_image_cache_service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -740,6 +755,7 @@ class TestCachePurgeCommand:
         service.count_unavailable_cached = AsyncMock(side_effect=mock_count_unavailable)
         service.purge = AsyncMock(side_effect=mock_purge)
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield AsyncMock()
 
@@ -749,7 +765,7 @@ class TestCachePurgeCommand:
                 return_value=service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -776,6 +792,7 @@ class TestCachePurgeCommand:
         service.count_unavailable_cached = AsyncMock(side_effect=mock_count_unavailable)
         service.purge = AsyncMock(side_effect=mock_purge)
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield AsyncMock()
 
@@ -785,7 +802,7 @@ class TestCachePurgeCommand:
                 return_value=service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -810,6 +827,7 @@ class TestCachePurgeCommand:
         service.count_unavailable_cached = AsyncMock(side_effect=mock_count_unavailable)
         service.purge = AsyncMock(side_effect=mock_purge)
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield AsyncMock()
 
@@ -819,7 +837,7 @@ class TestCachePurgeCommand:
                 return_value=service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -844,6 +862,7 @@ class TestCachePurgeCommand:
         service.count_unavailable_cached = AsyncMock(side_effect=mock_count_unavailable)
         service.purge = AsyncMock(side_effect=mock_purge)
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield AsyncMock()
 
@@ -853,7 +872,7 @@ class TestCachePurgeCommand:
                 return_value=service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -886,6 +905,7 @@ class TestCachePurgeCommand:
         service.count_unavailable_cached = AsyncMock(side_effect=mock_count_unavailable)
         service.purge = AsyncMock(side_effect=mock_purge)
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield AsyncMock()
 
@@ -895,7 +915,7 @@ class TestCachePurgeCommand:
                 return_value=service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -920,6 +940,7 @@ class TestCachePurgeCommand:
         service.count_unavailable_cached = AsyncMock(side_effect=mock_count_unavailable)
         service.purge = AsyncMock(side_effect=mock_purge)
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield AsyncMock()
 
@@ -929,7 +950,7 @@ class TestCachePurgeCommand:
                 return_value=service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -953,6 +974,7 @@ class TestCachePurgeCommand:
         service.count_unavailable_cached = AsyncMock(side_effect=mock_count_unavailable)
         service.purge = AsyncMock(side_effect=mock_purge)
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield AsyncMock()
 
@@ -962,7 +984,7 @@ class TestCachePurgeCommand:
                 return_value=service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -988,6 +1010,7 @@ class TestCachePurgeCommand:
         service.count_unavailable_cached = AsyncMock(side_effect=mock_count_unavailable)
         service.purge = AsyncMock(side_effect=mock_purge)
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield AsyncMock()
 
@@ -997,7 +1020,7 @@ class TestCachePurgeCommand:
                 return_value=service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):
@@ -1024,6 +1047,7 @@ class TestCachePurgeCommand:
         service.count_unavailable_cached = AsyncMock(side_effect=mock_count_unavailable)
         service.purge = AsyncMock(side_effect=mock_purge)
 
+        @asynccontextmanager
         async def mock_get_session(*args, **kwargs):
             yield AsyncMock()
 
@@ -1033,7 +1057,7 @@ class TestCachePurgeCommand:
                 return_value=service,
             ),
             patch(
-                "chronovista.cli.commands.cache.db_manager.get_session",
+                "chronovista.cli.commands.cache.db_manager.session",
                 side_effect=mock_get_session,
             ),
         ):

@@ -1,5 +1,6 @@
 """Integration tests for health endpoint."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime
 from unittest.mock import patch
 
@@ -216,12 +217,13 @@ class TestHealthEndpointDatabaseFailure:
         """Test health endpoint returns 200 even when database is unavailable."""
 
         # Mock db_manager to raise exception
-        async def mock_get_session():
+        @asynccontextmanager
+        async def mock_get_session(*args, **kwargs):
             raise ConnectionError("Database unavailable")
             yield  # type: ignore[unreachable]  # Unreachable
 
         with patch("chronovista.api.routers.health.db_manager") as mock_db:
-            mock_db.get_session = mock_get_session
+            mock_db.session = mock_get_session
 
             response = await async_client.get("/api/v1/health")
             assert response.status_code == 200
@@ -232,12 +234,13 @@ class TestHealthEndpointDatabaseFailure:
         """Test health shows database as disconnected when connection fails."""
 
         # Mock db_manager to raise exception
-        async def mock_get_session():
+        @asynccontextmanager
+        async def mock_get_session(*args, **kwargs):
             raise ConnectionError("Database unavailable")
             yield  # type: ignore[unreachable]
 
         with patch("chronovista.api.routers.health.db_manager") as mock_db:
-            mock_db.get_session = mock_get_session
+            mock_db.session = mock_get_session
 
             response = await async_client.get("/api/v1/health")
             data = response.json()
@@ -250,12 +253,13 @@ class TestHealthEndpointDatabaseFailure:
         """Test status is unhealthy when database is disconnected."""
 
         # Mock db_manager to raise exception
-        async def mock_get_session():
+        @asynccontextmanager
+        async def mock_get_session(*args, **kwargs):
             raise ConnectionError("Database unavailable")
             yield  # type: ignore[unreachable]
 
         with patch("chronovista.api.routers.health.db_manager") as mock_db:
-            mock_db.get_session = mock_get_session
+            mock_db.session = mock_get_session
 
             response = await async_client.get("/api/v1/health")
             data = response.json()
@@ -268,12 +272,13 @@ class TestHealthEndpointDatabaseFailure:
         """Test database latency is None when database is disconnected."""
 
         # Mock db_manager to raise exception
-        async def mock_get_session():
+        @asynccontextmanager
+        async def mock_get_session(*args, **kwargs):
             raise ConnectionError("Database unavailable")
             yield  # type: ignore[unreachable]
 
         with patch("chronovista.api.routers.health.db_manager") as mock_db:
-            mock_db.get_session = mock_get_session
+            mock_db.session = mock_get_session
 
             response = await async_client.get("/api/v1/health")
             data = response.json()

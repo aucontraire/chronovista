@@ -2,6 +2,7 @@
 Tests for database configuration and connection management.
 """
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -84,7 +85,7 @@ class TestDatabaseManager:
         assert mock_sessionmaker.call_count == 1
 
     def test_get_session_factory_dependency(self):
-        """Test that get_session depends on session factory."""
+        """Test that the session factory method is reachable and memoized."""
         manager = DatabaseManager()
 
         # Mock the session factory method
@@ -204,10 +205,13 @@ def test_global_db_manager():
 @pytest.mark.asyncio
 async def test_get_db_session():
     """Test database session dependency."""
-    with patch.object(db_manager, "get_session") as mock_get_session:
-        mock_session = AsyncMock()
-        mock_get_session.return_value.__aiter__.return_value = [mock_session]
+    mock_session = AsyncMock()
 
+    @asynccontextmanager
+    async def mock_session_scope(*args, **kwargs):
+        yield mock_session
+
+    with patch.object(db_manager, "session", mock_session_scope):
         async for session in get_db_session():
             assert session == mock_session
             break

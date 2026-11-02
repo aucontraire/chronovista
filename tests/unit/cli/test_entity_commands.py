@@ -20,6 +20,7 @@ Feature 044 — Search Accuracy & Mention Audit (T015)
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -465,8 +466,9 @@ class TestScanAuditFlag:
 # ---------------------------------------------------------------------------
 
 
-async def _one_session():  # type: ignore[no-untyped-def]
-    """Async generator yielding a stub session (never used by the guards)."""
+@asynccontextmanager
+async def _one_session(*args, **kwargs):  # type: ignore[no-untyped-def]
+    """Async context manager yielding a stub session (never used by the guards)."""
     yield MagicMock()
 
 
@@ -503,7 +505,7 @@ class TestAliasCrudCliGuards:
     def test_remove_alias_requires_exactly_one_selector_neither(
         self, mock_db_manager: MagicMock, runner: CliRunner
     ) -> None:
-        mock_db_manager.get_session.side_effect = lambda *a, **k: _one_session()
+        mock_db_manager.session = _one_session
         result = runner.invoke(entity_app, ["remove-alias", "Some Entity"])
         assert result.exit_code == 1
         assert "exactly one of --alias or --alias-id" in result.stdout
@@ -512,7 +514,7 @@ class TestAliasCrudCliGuards:
     def test_remove_alias_requires_exactly_one_selector_both(
         self, mock_db_manager: MagicMock, runner: CliRunner
     ) -> None:
-        mock_db_manager.get_session.side_effect = lambda *a, **k: _one_session()
+        mock_db_manager.session = _one_session
         result = runner.invoke(
             entity_app,
             ["remove-alias", "Some Entity", "--alias", "x", "--alias-id", "abc"],
@@ -526,7 +528,7 @@ class TestAliasCrudCliGuards:
     ) -> None:
         # A valid change field so we pass the no-change guard and reach the
         # selector guard inside the session loop.
-        mock_db_manager.get_session.side_effect = lambda *a, **k: _one_session()
+        mock_db_manager.session = _one_session
         result = runner.invoke(
             entity_app, ["edit-alias", "Some Entity", "--new-name", "Y"]
         )
@@ -565,10 +567,11 @@ class TestCreateVerbatimCasing:
         entity_id = _make_uuid()
         mock_session = AsyncMock()
 
-        async def _one_session() -> Any:
+        @asynccontextmanager
+        async def _one_session(*args: Any, **kwargs: Any) -> Any:
             yield mock_session
 
-        mock_db_manager.get_session.side_effect = lambda *a, **k: _one_session()
+        mock_db_manager.session = _one_session
 
         created = MagicMock()
         created.id = entity_id

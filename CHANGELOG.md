@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.107.1] - 2026-11-01
+## [0.107.2] - 2026-11-01
+
+### Fixed
+- **`chronovista enrich run` (and other commands) no longer print a spurious `GeneratorExit` traceback after succeeding.** Commands drove their work with `async for session in db_manager.get_session(...): … return`, and leaving that loop early threw `GeneratorExit` at the suspended yield, deferring the connection's cleanup to interpreter shutdown where it logged a stack trace — cosmetic (exit code 0, work done) but alarming to read. Every call site now uses the context-manager form `async with db_manager.session(...)`, where an early `return`/`break`/`raise` is ordinary control flow and the commit/rollback is deterministic. The old `get_session` generator is removed so the footgun cannot recur, and an architecture fitness test keeps it from being reintroduced. No change to what any command does or persists (verified, including a real-database test that a `--dry-run` recount still persists nothing).
 
 ### Fixed
 - **On-approval category enrichment no longer holds a database session open across its Wikimedia network calls.** The entity-category step ran its article resolve, category fetch, and size fetch while holding the write session; because enrichment runs as a detached background task that can be cancelled at any `await`, a cancellation mid-fetch could leave an `idle in transaction` connection and deadlock later schema operations on the entity tables. The step now does all of its network session-less and persists in a short write session (pre-fetching category sizes so the write holds no network) — matching the pattern the image-fallback and foreign-category-crosswalk steps already followed. No behavior change to what gets stored; a regression test asserts no session is held while the network runs.

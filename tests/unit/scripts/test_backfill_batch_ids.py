@@ -16,6 +16,7 @@ References
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -648,8 +649,8 @@ class TestRunBackfillDryRun:
             yield mock_session
 
         with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_fake_session_gen,
+            "scripts.utilities.backfill_batch_ids.db_manager.session",
+            side_effect=asynccontextmanager(_fake_session_gen),
         ):
             exit_code = await run_backfill(dry_run=True, window_seconds=5.0)
 
@@ -681,8 +682,8 @@ class TestRunBackfillDryRun:
             yield mock_session
 
         with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_fake_session_gen,
+            "scripts.utilities.backfill_batch_ids.db_manager.session",
+            side_effect=asynccontextmanager(_fake_session_gen),
         ):
             await run_backfill(dry_run=True, window_seconds=5.0)
 
@@ -702,8 +703,8 @@ class TestRunBackfillDryRun:
             yield mock_session
 
         with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_fake_session_gen,
+            "scripts.utilities.backfill_batch_ids.db_manager.session",
+            side_effect=asynccontextmanager(_fake_session_gen),
         ):
             exit_code = await run_backfill(dry_run=True, window_seconds=5.0)
 
@@ -744,8 +745,8 @@ class TestRunBackfillLiveMode:
             yield mock_session
 
         with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_fake_session_gen,
+            "scripts.utilities.backfill_batch_ids.db_manager.session",
+            side_effect=asynccontextmanager(_fake_session_gen),
         ):
             exit_code = await run_backfill(dry_run=False, window_seconds=5.0)
 
@@ -761,8 +762,8 @@ class TestRunBackfillLiveMode:
             yield  # type: ignore[unreachable]  # make it a generator
 
         with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_broken_session_gen,
+            "scripts.utilities.backfill_batch_ids.db_manager.session",
+            side_effect=asynccontextmanager(_broken_session_gen),
         ):
             exit_code = await run_backfill(dry_run=False, window_seconds=5.0)
 
@@ -780,8 +781,8 @@ class TestRunBackfillLiveMode:
             yield mock_session
 
         with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_fake_session_gen,
+            "scripts.utilities.backfill_batch_ids.db_manager.session",
+            side_effect=asynccontextmanager(_fake_session_gen),
         ):
             exit_code = await run_backfill(dry_run=False, window_seconds=5.0)
 
@@ -815,8 +816,8 @@ class TestRunBackfillLiveMode:
             yield mock_session
 
         with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_fake_session_gen,
+            "scripts.utilities.backfill_batch_ids.db_manager.session",
+            side_effect=asynccontextmanager(_fake_session_gen),
         ):
             exit_code = await run_backfill(dry_run=False, window_seconds=5.0)
 
@@ -861,8 +862,8 @@ class TestProgressReporting:
 
         with (
             patch(
-                "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-                side_effect=_fake_session_gen,
+                "scripts.utilities.backfill_batch_ids.db_manager.session",
+                side_effect=asynccontextmanager(_fake_session_gen),
             ),
             patch(
                 "scripts.utilities.backfill_batch_ids._display_summary",
@@ -917,8 +918,8 @@ class TestProgressReporting:
 
         with (
             patch(
-                "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-                side_effect=_fake_session_gen,
+                "scripts.utilities.backfill_batch_ids.db_manager.session",
+                side_effect=asynccontextmanager(_fake_session_gen),
             ),
             patch(
                 "scripts.utilities.backfill_batch_ids._display_summary",
@@ -998,8 +999,8 @@ class TestExitCodes:
             yield mock_session
 
         with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_gen,
+            "scripts.utilities.backfill_batch_ids.db_manager.session",
+            side_effect=asynccontextmanager(_gen),
         ):
             code = await run_backfill(dry_run=False, window_seconds=5.0)
 
@@ -1013,8 +1014,8 @@ class TestExitCodes:
             yield  # type: ignore[unreachable]  # make it an async generator
 
         with patch(
-            "scripts.utilities.backfill_batch_ids.db_manager.get_session",
-            side_effect=_broken,
+            "scripts.utilities.backfill_batch_ids.db_manager.session",
+            side_effect=asynccontextmanager(_broken),
         ):
             code = await run_backfill(dry_run=False, window_seconds=5.0)
 

@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -178,12 +179,13 @@ class TestEntityIdEntityNotFound:
         mock_db_manager.get_session_factory.return_value = MagicMock()
 
         # session.get returns None → entity not found
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any) -> AsyncGenerator[Any, None]:
             session = AsyncMock()
             session.get = AsyncMock(return_value=None)
             yield session
 
-        mock_db_manager.get_session.return_value = fake_get_session()
+        mock_db_manager.session = fake_get_session
 
         with patch(
             "chronovista.cli.entity_commands.asyncio.run",
@@ -209,12 +211,13 @@ class TestEntityIdEntityNotFound:
         valid_uuid = str(_make_uuid())
         mock_db_manager.get_session_factory.return_value = MagicMock()
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any) -> AsyncGenerator[Any, None]:
             session = AsyncMock()
             session.get = AsyncMock(return_value=None)
             yield session
 
-        mock_db_manager.get_session.return_value = fake_get_session()
+        mock_db_manager.session = fake_get_session
 
         with patch(
             "chronovista.cli.entity_commands.asyncio.run",
@@ -252,12 +255,13 @@ class TestEntityIdInactiveEntity:
 
         merged_entity = _make_entity_mock(status="merged")
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any) -> AsyncGenerator[Any, None]:
             session = AsyncMock()
             session.get = AsyncMock(return_value=merged_entity)
             yield session
 
-        mock_db_manager.get_session.return_value = fake_get_session()
+        mock_db_manager.session = fake_get_session
 
         with patch(
             "chronovista.cli.entity_commands.asyncio.run",
@@ -285,12 +289,13 @@ class TestEntityIdInactiveEntity:
 
         deprecated_entity = _make_entity_mock(status="deprecated")
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any) -> AsyncGenerator[Any, None]:
             session = AsyncMock()
             session.get = AsyncMock(return_value=deprecated_entity)
             yield session
 
-        mock_db_manager.get_session.return_value = fake_get_session()
+        mock_db_manager.session = fake_get_session
 
         with patch(
             "chronovista.cli.entity_commands.asyncio.run",
@@ -318,12 +323,13 @@ class TestEntityIdInactiveEntity:
 
         inactive_entity = _make_entity_mock(status="merged")
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any) -> AsyncGenerator[Any, None]:
             session = AsyncMock()
             session.get = AsyncMock(return_value=inactive_entity)
             yield session
 
-        mock_db_manager.get_session.return_value = fake_get_session()
+        mock_db_manager.session = fake_get_session
 
         with patch(
             "chronovista.cli.entity_commands.asyncio.run",
@@ -365,12 +371,13 @@ class TestEntityIdTakesPrecedenceOverFilters:
 
         active_entity = _make_entity_mock(entity_id=entity_uuid, status="active")
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any) -> AsyncGenerator[Any, None]:
             session = AsyncMock()
             session.get = AsyncMock(return_value=active_entity)
             yield session
 
-        mock_db_manager.get_session.return_value = fake_get_session()
+        mock_db_manager.session = fake_get_session
 
         captured_scan_kwargs: list[dict[str, Any]] = []
 
@@ -418,12 +425,13 @@ class TestEntityIdTakesPrecedenceOverFilters:
 
         active_entity = _make_entity_mock(entity_id=entity_uuid, status="active")
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any) -> AsyncGenerator[Any, None]:
             session = AsyncMock()
             session.get = AsyncMock(return_value=active_entity)
             yield session
 
-        mock_db_manager.get_session.return_value = fake_get_session()
+        mock_db_manager.session = fake_get_session
 
         captured_scan_kwargs: list[dict[str, Any]] = []
 
@@ -473,12 +481,13 @@ class TestEntityIdTakesPrecedenceOverFilters:
 
         active_entity = _make_entity_mock(entity_id=entity_uuid, status="active")
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any) -> AsyncGenerator[Any, None]:
             session = AsyncMock()
             session.get = AsyncMock(return_value=active_entity)
             yield session
 
-        mock_db_manager.get_session.return_value = fake_get_session()
+        mock_db_manager.session = fake_get_session
 
         captured_scan_kwargs: list[dict[str, Any]] = []
 
@@ -535,12 +544,13 @@ class TestEntityIdWithVideoId:
 
         active_entity = _make_entity_mock(entity_id=entity_uuid, status="active")
 
+        @asynccontextmanager
         async def fake_get_session(**kwargs: Any) -> AsyncGenerator[Any, None]:
             session = AsyncMock()
             session.get = AsyncMock(return_value=active_entity)
             yield session
 
-        mock_db_manager.get_session.return_value = fake_get_session()
+        mock_db_manager.session = fake_get_session
 
         captured_scan_kwargs: list[dict[str, Any]] = []
 

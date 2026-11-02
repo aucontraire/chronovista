@@ -129,8 +129,7 @@ class TestSyncChannelCommand:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock repository methods
         mock_channel_repo.exists = AsyncMock(return_value=False)
@@ -182,8 +181,7 @@ class TestSyncChannelCommand:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock topic exists check
         mock_topic_category_repo.exists = AsyncMock(return_value=True)
@@ -222,8 +220,7 @@ class TestSyncPlaylistsCommand:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock repository methods
         mock_playlist_repo.exists = AsyncMock(return_value=False)
@@ -290,11 +287,7 @@ class TestSyncPlaylistsCommand:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock repository methods
         mock_playlist_repo.exists = AsyncMock(return_value=False)
@@ -344,8 +337,7 @@ class TestSyncTopicsCommand:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock repository methods
         mock_topic_category_repo.exists = AsyncMock(return_value=False)
@@ -400,11 +392,7 @@ class TestSyncLikedCommand:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock repository methods
         mock_video_repo.exists = AsyncMock(return_value=True)
@@ -449,8 +437,7 @@ class TestSyncLikedCommand:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock repository methods
         mock_video_repo.exists = AsyncMock(return_value=True)
@@ -504,8 +491,7 @@ class TestSyncAllCommand:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock repository methods
         mock_topic_category_repo.exists = AsyncMock(return_value=False)
@@ -544,8 +530,7 @@ class TestProcessWatchHistoryBatch:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock repository methods
         mock_channel_repo.get_by_channel_id = AsyncMock(return_value=None)

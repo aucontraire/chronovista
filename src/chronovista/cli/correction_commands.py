@@ -240,7 +240,7 @@ def find_replace(
     service = _create_batch_correction_service()
 
     async def _run() -> None:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # ---- T027: Unscoped cross-segment warning (FR-014) ----
             if cross_segment and not language and not channel and not video_id:
                 segment_repo = TranscriptSegmentRepository()
@@ -590,7 +590,7 @@ def rebuild_text(
     service = _create_batch_correction_service()
 
     async def _run() -> None:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             if dry_run:
                 previews = await service.rebuild_text(
                     session,
@@ -743,7 +743,7 @@ def export_corrections(
     service = _create_batch_correction_service()
 
     async def _run() -> None:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -791,7 +791,7 @@ def stats(
     service = _create_batch_correction_service()
 
     async def _run() -> None:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             result = await service.get_statistics(
                 session,
                 language=language,
@@ -870,7 +870,7 @@ def patterns(
     service = _create_batch_correction_service()
 
     async def _run() -> None:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             result = await service.get_patterns(
                 session,
                 min_occurrences=min_occurrences,
@@ -1020,7 +1020,7 @@ def batch_revert(
     service = _create_batch_correction_service()
 
     async def _run() -> None:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             if dry_run:
                 previews = await service.batch_revert(
                     session,
@@ -1227,7 +1227,7 @@ def analyze_diffs(
     correction_repo = TranscriptCorrectionRepository()
 
     async def _run() -> None:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Fetch all non-revert corrections
             corrections = await correction_repo.get_all_filtered(session)
 
@@ -1363,7 +1363,7 @@ def detect_boundaries(
     matcher = PhoneticMatcher(entity_mention_repo=entity_mention_repo)
 
     async def _run() -> None:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Load entities (optionally filtered by name)
             stmt = (
                 sa_select(NamedEntityDB)
@@ -1497,7 +1497,7 @@ def suggest_cross_segment(
     discovery = CrossSegmentDiscovery(batch_service=service)
 
     async def _run() -> None:
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             candidates = await discovery.discover(
                 session,
                 min_corrections=min_corrections,

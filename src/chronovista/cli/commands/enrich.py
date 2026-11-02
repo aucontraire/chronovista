@@ -12,7 +12,7 @@ and logging to file for auditing purposes.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 import typer
@@ -374,7 +374,7 @@ def enrich_videos(
             include_playlists=include_playlists
         )
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Acquire lock
             try:
                 await service.lock.acquire(session, force=force)
@@ -768,30 +768,6 @@ def enrich_videos(
                 # Release lock
                 await service.lock.release(session)
 
-        # Return empty report if we exit early (e.g., due to lock issues)
-
-        from chronovista.models.enrichment_report import EnrichmentSummary
-
-        return (
-            EnrichmentReport(
-                timestamp=datetime.now(UTC),
-                priority=priority,
-                summary=EnrichmentSummary(
-                    videos_processed=0,
-                    videos_updated=0,
-                    videos_deleted=0,
-                    channels_created=0,
-                    tags_created=0,
-                    topic_associations=0,
-                    categories_assigned=0,
-                    errors=0,
-                    quota_used=0,
-                ),
-                details=[],
-            ),
-            False,  # No partial success if we exit early
-        )
-
     # Run the enrichment and get the report
     report, has_partial_success = asyncio.run(run_enrichment())
 
@@ -935,7 +911,7 @@ def show_status() -> None:
         # Create enrichment service using container
         service = container.create_enrichment_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # Fetch status - no lock required (read-only operation)
             status = await service.get_status(session)
 
@@ -1167,7 +1143,7 @@ def enrich_channels(
         # Create enrichment service using container
         service = container.create_enrichment_service()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             # T028: Acquire lock with --force support (FR-016/017/019)
             try:
                 await service.lock.acquire(session, force=force)
@@ -1289,13 +1265,6 @@ def enrich_channels(
             finally:
                 # Release lock
                 await service.lock.release(session)
-
-        # Return empty result if we exit early
-
-        return ChannelEnrichmentResult(
-            started_at=datetime.now(UTC),
-            completed_at=datetime.now(UTC),
-        )
 
     # Run the enrichment
     asyncio.run(run_channel_enrichment())

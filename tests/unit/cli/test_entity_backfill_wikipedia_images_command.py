@@ -1,6 +1,6 @@
 """Unit tests for the ``entities backfill-wikipedia-images`` command wiring (Feature 093, T009).
 
-The command's orchestration — dry-run rollback (``get_session`` auto-commits on scope exit, so a
+The command's orchestration — dry-run rollback (``db_manager.session`` auto-commits on scope exit, so a
 dry run MUST roll back explicitly), the pre-change backup, the dev-DSN refusal, per-entity commit on
 apply, the ``source:"wikipedia"`` write ONLY on a STORED outcome, and the per-outcome counting — is
 tested here with ``db_manager``, ``NamedEntityRepository`` and ``WikipediaImageFallback`` all mocked
@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -28,11 +29,14 @@ from chronovista.models.wikipedia_image import FallbackOutcome, FallbackResult
 runner = CliRunner()
 
 
-def _make_get_session(mock_session: AsyncMock) -> Any:
-    async def _gen(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+def _make_session_cm(mock_session: AsyncMock) -> Any:
+    """Async context-manager factory matching ``db_manager.session(echo=False)``."""
+
+    @asynccontextmanager
+    async def _cm(*args: Any, **kwargs: Any) -> AsyncGenerator[AsyncSession, None]:
         yield mock_session
 
-    return _gen()
+    return _cm
 
 
 def _candidate(
@@ -72,7 +76,7 @@ class TestDryRun:
                 "chronovista.cli.entity_commands.WikipediaImageFallback"
             ) as MockFallback,
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[ent])
             MockRepo.return_value = repo
@@ -95,7 +99,7 @@ class TestDryRun:
             patch("chronovista.cli.entity_commands.NamedEntityRepository") as MockRepo,
             patch("chronovista.cli.entity_commands.WikipediaImageFallback"),
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[])
             MockRepo.return_value = repo
@@ -113,7 +117,7 @@ class TestDryRun:
             patch("chronovista.cli.entity_commands.NamedEntityRepository") as MockRepo,
             patch("chronovista.cli.entity_commands.WikipediaImageFallback"),
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[])
             MockRepo.return_value = repo
@@ -149,7 +153,7 @@ class TestApply:
                 "chronovista.cli.entity_commands.WikipediaImageFallback"
             ) as MockFallback,
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[ent])
             repo.replace_properties = AsyncMock(return_value=1)
@@ -195,7 +199,7 @@ class TestApply:
                 "chronovista.cli.entity_commands.WikipediaImageFallback"
             ) as MockFallback,
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[ent])
             MockRepo.return_value = repo
@@ -225,7 +229,7 @@ class TestApply:
             mock_settings.effective_database_url = (
                 "postgresql+asyncpg://u:p@localhost:5434/chronovista_dev"
             )
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[ent])
             MockRepo.return_value = repo
@@ -244,7 +248,7 @@ class TestApply:
             patch("chronovista.cli.entity_commands.NamedEntityRepository") as MockRepo,
             patch("chronovista.cli.entity_commands.WikipediaImageFallback"),
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[ent])
             MockRepo.return_value = repo
@@ -272,7 +276,7 @@ class TestApply:
             mock_settings.effective_database_url = (
                 "postgresql+asyncpg://u:p@prod-host:5435/chronovista"
             )
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[ent])
             MockRepo.return_value = repo
@@ -298,7 +302,7 @@ class TestApply:
                 "chronovista.cli.entity_commands.WikipediaImageFallback"
             ) as MockFallback,
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[ent])
             MockRepo.return_value = repo
@@ -325,7 +329,7 @@ class TestOutcomeCounting:
                 "chronovista.cli.entity_commands.WikipediaImageFallback"
             ) as MockFallback,
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[e1, e2, e3])
             MockRepo.return_value = repo
@@ -363,7 +367,7 @@ class TestOutcomeCounting:
                 "chronovista.cli.entity_commands.WikipediaImageFallback"
             ) as MockFallback,
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_grounded_without_image = AsyncMock(return_value=[e1, e2])
             MockRepo.return_value = repo

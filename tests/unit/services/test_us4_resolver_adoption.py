@@ -29,13 +29,15 @@ def test_language_commands_expose_resolver_helpers() -> None:
 def test_topic_insights_resolves_when_user_id_none() -> None:
     # Behavioural: get_topic_insights(None) resolves the canonical identity.
     import asyncio
+    from contextlib import asynccontextmanager
     from unittest.mock import AsyncMock, MagicMock, patch
 
     from chronovista.services.topic_analytics_service import TopicAnalyticsService
 
     svc = TopicAnalyticsService()
 
-    async def _fake_sessions():  # type: ignore[no-untyped-def]
+    @asynccontextmanager
+    async def _fake_session(*args, **kwargs):  # type: ignore[no-untyped-def]
         yield MagicMock()
 
     with (
@@ -45,7 +47,7 @@ def test_topic_insights_resolves_when_user_id_none() -> None:
             new=AsyncMock(return_value="UCresolved0000000000000"),
         ) as mock_resolve,
     ):
-        mock_dbm.get_session.return_value = _fake_sessions()
+        mock_dbm.session = _fake_session
         # Short-circuit the heavy query path via the cache after resolution.
         svc._get_cached_result = MagicMock(return_value=MagicMock())  # type: ignore[method-assign]
 

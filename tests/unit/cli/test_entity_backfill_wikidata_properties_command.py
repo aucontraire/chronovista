@@ -5,7 +5,7 @@ test (T013, ``tests/integration/api/test_entity_wikidata_backfill_capture.py``) 
 not exercise:
 
 (a) Dry run performs an explicit ``session.rollback()`` and never writes
-    (``NamedEntityRepository.replace_properties`` is never called) — ``db_manager.get_session``
+    (``NamedEntityRepository.replace_properties`` is never called) — ``db_manager.session``
     auto-commits on scope exit, so a dry run that merely skipped ``commit()`` would still persist.
 (b) ``--apply`` writes the pre-change backup JSON file before any write, containing exactly the
     id + prior ``properties`` of every entity in scope.
@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -43,13 +44,14 @@ _FRESH_BAG: dict[str, Any] = {
 }
 
 
-def _make_get_session(mock_session: AsyncMock) -> Any:
-    """Async generator factory matching ``db_manager.get_session(echo=False)``."""
+def _make_session_cm(mock_session: AsyncMock) -> Any:
+    """Async context-manager factory matching ``db_manager.session(echo=False)``."""
 
-    async def _gen(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+    @asynccontextmanager
+    async def _cm(*args: Any, **kwargs: Any) -> AsyncGenerator[AsyncSession, None]:
         yield mock_session
 
-    return _gen()
+    return _cm
 
 
 def _make_grounded_entity(
@@ -77,7 +79,7 @@ class TestBackfillWikidataPropertiesDryRun:
             patch("chronovista.cli.entity_commands.NamedEntityRepository") as MockRepo,
             patch("chronovista.cli.entity_commands.WikidataClient") as MockClient,
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_wikidata_grounded = AsyncMock(return_value=[fake_entity])
             MockRepo.return_value = repo
@@ -102,7 +104,7 @@ class TestBackfillWikidataPropertiesDryRun:
             patch("chronovista.cli.entity_commands.NamedEntityRepository") as MockRepo,
             patch("chronovista.cli.entity_commands.WikidataClient"),
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_wikidata_grounded = AsyncMock(return_value=[])
             MockRepo.return_value = repo
@@ -140,7 +142,7 @@ class TestBackfillWikidataPropertiesApply:
             patch("chronovista.cli.entity_commands.NamedEntityRepository") as MockRepo,
             patch("chronovista.cli.entity_commands.WikidataClient") as MockClient,
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_wikidata_grounded = AsyncMock(return_value=[fake_entity])
             repo.replace_properties = AsyncMock(return_value=1)
@@ -185,7 +187,7 @@ class TestBackfillWikidataPropertiesApply:
             mock_settings.effective_database_url = (
                 "postgresql+asyncpg://u:p@localhost:5434/chronovista_dev"
             )
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_wikidata_grounded = AsyncMock(return_value=[fake_entity])
             MockRepo.return_value = repo
@@ -209,7 +211,7 @@ class TestBackfillWikidataPropertiesApply:
             patch("chronovista.cli.entity_commands.NamedEntityRepository") as MockRepo,
             patch("chronovista.cli.entity_commands.WikidataClient"),
         ):
-            mock_db.get_session.return_value = _make_get_session(mock_session)
+            mock_db.session = _make_session_cm(mock_session)
             repo = AsyncMock()
             repo.list_wikidata_grounded = AsyncMock(return_value=[fake_entity])
             MockRepo.return_value = repo

@@ -131,7 +131,7 @@ def peek_data(
                     topic_category_repository = (
                         container.create_topic_category_repository()
                     )
-                    async for session in db_manager.get_session():
+                    async with db_manager.session() as session:
                         if not await topic_category_repository.exists(
                             session, topic_filter
                         ):
@@ -696,7 +696,7 @@ async def _apply_topic_filters(
         # Validate topic filter if provided
         if topic_filter:
             topic_category_repository = container.create_topic_category_repository()
-            async for session in db_manager.get_session():
+            async with db_manager.session() as session:
                 if not await topic_category_repository.exists(session, topic_filter):
                     console.print(
                         Panel(
@@ -2361,7 +2361,7 @@ def seed_database(
                         )
 
                 # Perform seeding with database session (disable SQL logging for clean progress)
-                async for session in db_manager.get_session(echo=False):
+                async with db_manager.session(echo=False) as session:
                     if incremental:
                         result = await seeding_service.seed_incrementally(
                             session,
@@ -2745,7 +2745,7 @@ def recover_metadata(
 
                 recovery_service = TakeoutRecoveryService()
 
-                async for session in db_manager.get_session(echo=False):
+                async with db_manager.session(echo=False) as session:
                     result = await recovery_service.recover_from_historical_takeouts(
                         session, takeout_dir, options
                     )

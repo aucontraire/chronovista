@@ -88,7 +88,7 @@ def segment_command(
     async def _query() -> int:
         """Query segment at timestamp."""
         # Get database session
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Check transcript exists
             transcript_repo = VideoTranscriptRepository()
             transcript = await transcript_repo.get_by_composite_key(
@@ -143,9 +143,6 @@ def segment_command(
 
             return EXIT_SUCCESS
 
-        # Fallback if session loop doesn't execute
-        return EXIT_SUCCESS
-
     exit_code = run_sync_operation(_query, "Transcript Segment Query")
     if exit_code is not None:
         raise typer.Exit(exit_code)
@@ -193,7 +190,7 @@ def context_command(
 
     async def _query() -> int:
         """Query context window around timestamp."""
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Check transcript exists
             transcript_repo = VideoTranscriptRepository()
             transcript = await transcript_repo.get_by_composite_key(
@@ -251,9 +248,6 @@ def context_command(
 
             return EXIT_SUCCESS
 
-        # Fallback if session loop doesn't execute
-        return EXIT_SUCCESS
-
     exit_code = run_sync_operation(_query, "Transcript Context Query")
     if exit_code is not None:
         raise typer.Exit(exit_code)
@@ -303,7 +297,7 @@ def range_command(
 
     async def _query() -> int:
         """Query segments in range."""
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             # Check transcript exists
             transcript_repo = VideoTranscriptRepository()
             transcript = await transcript_repo.get_by_composite_key(
@@ -361,9 +355,6 @@ def range_command(
                 console.print(format_segments_srt(pydantic_segments))
 
             return EXIT_SUCCESS
-
-        # Fallback if session loop doesn't execute
-        return EXIT_SUCCESS
 
     exit_code = run_sync_operation(_query, "Transcript Range Query")
     if exit_code is not None:

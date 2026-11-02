@@ -39,7 +39,7 @@ def status() -> None:
         user_video_repo = UserVideoRepository()
         db_manager = DatabaseManager()
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             identity = await identity_repo.get_identity(session)
             distinct = await user_video_repo.list_distinct_user_ids(session)
 
@@ -88,62 +88,65 @@ def repair(
     async def repair_async() -> None:
         service = IdentityService()
         db_manager = DatabaseManager()
-        # Never `return`/`sys.exit()` from inside the `async for` below: that
-        # abandons the session generator mid-yield, so its cleanup (commit /
-        # close / engine dispose) is forced to run during loop teardown and
-        # prints a CancelledError traceback after an otherwise-successful run.
-        # Record the outcome instead and act once the loop has finished.
+        # Record a domain failure and report it once the session scope has
+        # closed, so the database-error path stays outside the session's
+        # commit/rollback boundary.
         failure: IdentityError | None = None
 
         try:
-            async for session in db_manager.get_session(echo=False):
+            async with db_manager.session(echo=False) as session:
                 try:
                     report = await service.repair(session, dry_run=dry_run)
                 except IdentityError as exc:
                     failure = exc
-                    continue
-
-                header = (
-                    "[bold]Identity repair (dry-run)[/bold] — no changes written"
-                    if dry_run
-                    else "[bold]Identity repair[/bold] — applied"
-                )
-                console.print(
-                    Panel(header, border_style="yellow" if dry_run else "green")
-                )
-
-                if not report.placeholder_user_ids:
-                    console.print(
-                        "[dim]Only one identity present — nothing to merge.[/dim]"
+                else:
+                    header = (
+                        "[bold]Identity repair (dry-run)[/bold] — no changes written"
+                        if dry_run
+                        else "[bold]Identity repair[/bold] — applied"
                     )
-                    continue
+                    console.print(
+                        Panel(header, border_style="yellow" if dry_run else "green")
+                    )
 
-                table = Table(show_header=True, header_style="bold")
-                table.add_column("Field")
-                table.add_column("Value", justify="right")
-                table.add_row("Survivor identity", report.canonical_user_id)
-                table.add_row(
-                    "Merged (placeholders)", ", ".join(report.placeholder_user_ids)
-                )
-                table.add_row("Rows merged (overlap)", str(report.user_videos.merged))
-                table.add_row("Rows deleted (overlap)", str(report.user_videos.deleted))
-                table.add_row("Rows re-keyed", str(report.user_videos.rekeyed))
-                table.add_row(
-                    "Distinct watched videos",
-                    f"{report.invariants_before.distinct_watched_videos} → "
-                    f"{report.invariants_after.distinct_watched_videos}",
-                )
-                table.add_row(
-                    "Liked count",
-                    f"{report.invariants_before.liked_count} → "
-                    f"{report.invariants_after.liked_count}",
-                )
-                if report.pre_image_path:
-                    table.add_row("Pre-image", report.pre_image_path)
-                console.print(table)
+                    if not report.placeholder_user_ids:
+                        console.print(
+                            "[dim]Only one identity present — nothing to merge.[/dim]"
+                        )
+                    else:
+                        table = Table(show_header=True, header_style="bold")
+                        table.add_column("Field")
+                        table.add_column("Value", justify="right")
+                        table.add_row("Survivor identity", report.canonical_user_id)
+                        table.add_row(
+                            "Merged (placeholders)",
+                            ", ".join(report.placeholder_user_ids),
+                        )
+                        table.add_row(
+                            "Rows merged (overlap)", str(report.user_videos.merged)
+                        )
+                        table.add_row(
+                            "Rows deleted (overlap)", str(report.user_videos.deleted)
+                        )
+                        table.add_row("Rows re-keyed", str(report.user_videos.rekeyed))
+                        table.add_row(
+                            "Distinct watched videos",
+                            f"{report.invariants_before.distinct_watched_videos} → "
+                            f"{report.invariants_after.distinct_watched_videos}",
+                        )
+                        table.add_row(
+                            "Liked count",
+                            f"{report.invariants_before.liked_count} → "
+                            f"{report.invariants_after.liked_count}",
+                        )
+                        if report.pre_image_path:
+                            table.add_row("Pre-image", report.pre_image_path)
+                        console.print(table)
 
-                if dry_run:
-                    console.print("[dim]Re-run without --dry-run to apply.[/dim]")
+                        if dry_run:
+                            console.print(
+                                "[dim]Re-run without --dry-run to apply.[/dim]"
+                            )
         except KeyboardInterrupt:
             console.print("\n[yellow]Operation cancelled by user[/yellow]")
             sys.exit(1)
@@ -197,12 +200,11 @@ def reset(
             )
             sys.exit(1)
 
-        # See the note in `repair_async`: never exit the loop body early, or the
-        # session generator is abandoned mid-yield and its teardown noise lands
-        # on top of the command's output.
+        # Record a domain failure and report it once the session scope has
+        # closed, mirroring `repair_async`.
         failure: IdentityError | None = None
 
-        async for session in db_manager.get_session(echo=False):
+        async with db_manager.session(echo=False) as session:
             try:
                 report = await service.reset_identity(
                     session,
@@ -211,18 +213,19 @@ def reset(
                 )
             except IdentityError as exc:
                 failure = exc
-                continue
-
-            header = (
-                "[bold]Identity reset (dry-run)[/bold] — no changes written"
-                if dry_run
-                else "[bold]Identity reset[/bold] — applied"
-            )
-            console.print(Panel(header, border_style="yellow" if dry_run else "green"))
-            console.print(
-                f"Identity is now [bold]{report.canonical_user_id}[/bold] "
-                f"(re-keyed {report.user_videos.rekeyed} rows)."
-            )
+            else:
+                header = (
+                    "[bold]Identity reset (dry-run)[/bold] — no changes written"
+                    if dry_run
+                    else "[bold]Identity reset[/bold] — applied"
+                )
+                console.print(
+                    Panel(header, border_style="yellow" if dry_run else "green")
+                )
+                console.print(
+                    f"Identity is now [bold]{report.canonical_user_id}[/bold] "
+                    f"(re-keyed {report.user_videos.rekeyed} rows)."
+                )
 
         if failure is not None:
             console.print(Panel(f"[red]{failure}[/red]", border_style="red"))

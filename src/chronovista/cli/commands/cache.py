@@ -183,7 +183,7 @@ async def _warm_async(
     if dry_run:
         console.print("[yellow]Dry run - no images will be downloaded.[/yellow]\n")
 
-    async for session in db_manager.get_session(echo=False):
+    async with db_manager.session(echo=False) as session:
         # --- Warm channels ---
         if type_ in ("channels", "all"):
             channel_result = await _warm_channels(
@@ -719,7 +719,7 @@ async def _purge_async(*, type_: str, force: bool) -> None:
 
     # Check for unavailable content warning
     unavailable_count = 0
-    async for session in db_manager.get_session(echo=False):
+    async with db_manager.session(echo=False) as session:
         unavailable_count = await service.count_unavailable_cached(
             session=session,
             type_=type_,

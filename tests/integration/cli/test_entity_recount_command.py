@@ -9,7 +9,8 @@ avoid a nested event loop; the assertion is on whether ``session.commit`` was aw
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -21,11 +22,12 @@ from chronovista.cli.main import app
 runner = CliRunner()
 
 
-def _make_get_session(mock_session: AsyncMock) -> Any:
-    async def _gen(echo: bool = False) -> AsyncGenerator[AsyncSession, None]:
+def _make_session(mock_session: AsyncMock) -> Any:
+    @asynccontextmanager
+    async def _scope(*args: Any, **kwargs: Any) -> AsyncIterator[AsyncSession]:
         yield mock_session
 
-    return _gen()
+    return _scope
 
 
 def _empty_result() -> MagicMock:
@@ -45,7 +47,7 @@ def _run_recount(*args: str) -> tuple[Any, AsyncMock]:
         patch("chronovista.cli.entity_commands.db_manager") as mock_db,
         patch("chronovista.cli.entity_commands.EntityMentionRepository") as MockRepo,
     ):
-        mock_db.get_session.return_value = _make_get_session(mock_session)
+        mock_db.session = _make_session(mock_session)
         repo = AsyncMock()
         repo.update_entity_counters = AsyncMock(return_value=0)
         repo.update_alias_counters = AsyncMock(return_value=0)
@@ -58,8 +60,9 @@ class TestRecountCommand:
     def test_dry_run_rolls_back_and_does_not_commit(self) -> None:
         result, session = _run_recount("--dry-run")
         assert result.exit_code == 0, result.output
-        # Dry-run must ROLL BACK explicitly (not merely skip commit) — get_session auto-commits on
-        # scope exit, so a skipped commit alone would still persist. This is the deployment bug.
+        # Dry-run must ROLL BACK explicitly (not merely skip commit) — the session scope
+        # auto-commits on exit, so a skipped commit alone would still persist. This is the
+        # deployment bug.
         assert session.rollback.await_count == 1
         assert session.commit.await_count == 0
         assert "dry run" in result.output.lower()

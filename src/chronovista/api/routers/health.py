@@ -62,9 +62,8 @@ async def health_check() -> HealthResponse:
     db_latency_ms: int | None = None
     try:
         start = time.monotonic()
-        async for session in db_manager.get_session():
+        async with db_manager.session() as session:
             await session.execute(text("SELECT 1"))
-            break
         db_latency_ms = int((time.monotonic() - start) * 1000)
         db_status = "connected"
     except Exception:

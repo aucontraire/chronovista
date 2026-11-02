@@ -115,8 +115,7 @@ class TestEnrichRunCommandContainerIntegration:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -163,8 +162,7 @@ class TestEnrichRunCommandContainerIntegration:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -214,8 +212,7 @@ class TestEnrichRunCommandContainerIntegration:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -284,8 +281,7 @@ class TestEnrichStatusCommandContainerIntegration:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock enrichment service methods
         mock_enrichment_service.get_status = AsyncMock()
@@ -344,8 +340,7 @@ class TestEnrichChannelsCommandContainerIntegration:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -427,8 +422,7 @@ class TestAutoSeedFlagContainerIntegration:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -494,8 +488,7 @@ class TestAutoSeedFlagContainerIntegration:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()
@@ -564,11 +557,7 @@ class TestSyncLikesFlagContainerIntegration:
 
         # Mock database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session.return_value.__aenter__.return_value = mock_session
 
         # Mock enrichment service methods
         mock_enrichment_service.lock = AsyncMock()

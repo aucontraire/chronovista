@@ -17,6 +17,9 @@ Test organization:
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -33,6 +36,20 @@ from chronovista.models.enums import (
 from chronovista.models.transcript_source import TranscriptSource
 from chronovista.models.video_transcript import EnhancedVideoTranscriptBase
 from chronovista.services.transcript_service import TranscriptNotFoundError
+
+
+def _session_cm(session: Any) -> Any:
+    """Return an async context manager that yields the given session.
+
+    Mirrors ``db_manager.session(...)`` which is now an async CM (commits on
+    normal exit); the previous ``get_session`` async generator is gone.
+    """
+
+    @asynccontextmanager
+    async def _cm(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+        yield session
+
+    return _cm
 
 
 @pytest.fixture
@@ -170,11 +187,7 @@ class TestSyncTranscriptsDryRun:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock repository to return videos without transcripts
 
@@ -221,11 +234,7 @@ class TestSyncTranscriptsDryRun:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock repository to return videos
         mock_video_repo.search_videos = AsyncMock(return_value=mock_video_db_list)
@@ -266,11 +275,7 @@ class TestSyncTranscriptsDryRun:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock repository - use get_multi for force mode
         mock_video_repo.get_multi = AsyncMock(return_value=mock_video_db_list)
@@ -317,13 +322,7 @@ class TestSyncTranscriptsVideoIdFilter:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock repository to return specific video
         mock_video_repo.get_by_video_id = AsyncMock(return_value=mock_video_db)
@@ -373,14 +372,7 @@ class TestSyncTranscriptsVideoIdFilter:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Create multiple video mocks
         video1 = MagicMock(spec=VideoDB)
@@ -433,8 +425,7 @@ class TestSyncTranscriptsVideoIdFilter:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock repository to return None (video not found)
         mock_video_repo.get_by_video_id = AsyncMock(return_value=None)
@@ -505,14 +496,7 @@ class TestSyncTranscriptsDownload:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[mock_video_db])
@@ -565,12 +549,7 @@ class TestSyncTranscriptsDownload:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[mock_video_db])
@@ -620,12 +599,7 @@ class TestSyncTranscriptsDownload:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[mock_video_db])
@@ -685,13 +659,7 @@ class TestSyncTranscriptsErrorHandling:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[mock_video_db])
@@ -740,11 +708,7 @@ class TestSyncTranscriptsErrorHandling:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[mock_video_db])
@@ -790,8 +754,7 @@ class TestSyncTranscriptsFlags:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [mock_session]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Create a large list of videos
         many_videos = mock_video_db_list * 10  # 30 videos
@@ -838,14 +801,7 @@ class TestSyncTranscriptsFlags:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock video repository to return videos using get_multi (force mode)
         mock_video_repo.get_multi = AsyncMock(return_value=[mock_video_db])
@@ -902,13 +858,7 @@ class TestSyncTranscriptsFlags:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[mock_video_db])
@@ -968,11 +918,7 @@ class TestSyncTranscriptsNoVideosToProcess:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock repository to return empty list (all videos have transcripts)
         mock_video_repo.search_videos = AsyncMock(return_value=[])
@@ -1023,14 +969,7 @@ class TestSyncTranscriptsSummaryTable:
 
         # Setup database session
         mock_session = AsyncMock()
-        mock_db_manager.get_session = AsyncMock()
-        mock_db_manager.get_session.return_value.__aiter__.return_value = [
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-            mock_session,
-        ]
+        mock_db_manager.session = _session_cm(mock_session)
 
         # Mock video repository
         mock_video_repo.search_videos = AsyncMock(return_value=[mock_video_db])

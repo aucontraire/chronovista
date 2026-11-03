@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.110.0] - 2026-11-03
+
+### Changed
+- **Event classification widened to real conflict/war/disaster classes.** The `event` type now recognizes the carried-level Wikidata classes that named happenings actually hold — wars (including civil, proxy, world, and total war and wars of aggression), armed/political/international/ethnic conflicts, military operations, offensives, invasions and raids, massacres and other mass-atrocity classes, terrorist attacks and hijackings, revolutions, hurricanes, and general political events — chosen by an offline ancestry walk and reviewed by hand. Interval classes (e.g. historical periods) and recurring-event classes (holidays, festivals) are deliberately excluded. The change re-types no existing entities (every matching stored entity was already an `event`); it makes future candidates and the corroboration badge classify these correctly. `event` remains outside corroboration coverage, so the change cannot surface a false "type may differ".
+
 ## [0.109.0] - 2026-11-02
 
 ### Added

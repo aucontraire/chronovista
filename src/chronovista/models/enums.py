@@ -321,8 +321,10 @@ class EntityType(str, Enum):
     - ``product`` deviates in *scope*: it covers online/digital **services**
       (social-networking / streaming / online services, platforms, chatbots,
       LLMs), which OntoNotes PRODUCT explicitly *excludes* ("objects, vehicles,
-      foods, etc. — not services"). Physical-object products are in scope by
-      definition but currently unanchored.
+      foods, etc. — not services"). Physical-object products (cars, foods,
+      devices) are **deliberately out of scope** (decided 2026-11-02): this is a
+      narrowed, digital-only ``product``, not an incomplete one — do not add
+      physical-object anchor classes.
     """
 
     PERSON = "person"

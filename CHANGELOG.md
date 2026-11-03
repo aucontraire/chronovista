@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-11-03
+
+### Changed
+- **Candidate generation no longer seeds from categorically-untypeable relations.** `award_received` and `position_held` are still mined as relation *facts*, but they no longer seed review-queue candidates: their targets (awards, offices) have no entity type and never will under the OntoNotes contract, so seeding them produced ~3,000 unfilable `other` candidates (a 0.03% approval rate). A regression test pins the exclusion. `part_of` is deliberately retained — its event targets now classify via P31 (v0.110.0).
+
+### Added
+- **`scripts/utilities/sweep_untypeable_candidates.py`** — clears the pending unfilable candidates already in the queue (there is no self-cleaning path), marking them `rejected` with a `policy:untypeable-relation` marker in `reviewed_by` so a bulk policy action stays distinguishable from a human verdict. Dry-run by default; `--apply` requires `--confirm-target`; writes a reversible id capture.
+
 ## [0.111.0] - 2026-11-03
 
 ### Added

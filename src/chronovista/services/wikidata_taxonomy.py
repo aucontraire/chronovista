@@ -99,6 +99,40 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
             "Q1190554",  # occurrence
             "Q13418847",  # historical event
             "Q934744",  # political scandal (Feature 099)
+            # Carried-level event classes (2026-11 widening). Chosen by an offline occurrence-
+            # ancestry walk over the observed P31 classes (paths read by eye; the time-interval
+            # branch e.g. `historical period` and the recurring-event branch e.g. holidays/
+            # festivals are deliberately excluded — the latter defers the nesting/recurrence
+            # problem). War / armed-conflict family:
+            "Q198",  # war
+            "Q103495",  # world war
+            "Q8465",  # civil war
+            "Q864113",  # proxy war
+            "Q201424",  # nuclear warfare
+            "Q124042044",  # hypothetical war
+            "Q154605",  # total war
+            "Q474138",  # war of aggression
+            "Q350604",  # armed conflict
+            "Q11422542",  # international conflict
+            "Q108809873",  # political conflict
+            "Q766875",  # ethnic conflict
+            # Military actions:
+            "Q645883",  # military operation
+            "Q2001676",  # offensive
+            "Q467011",  # invasion
+            "Q476807",  # military raid
+            # Violence / atrocity / upheaval:
+            "Q3199915",  # massacre
+            "Q750215",  # mass murder
+            "Q173462",  # crime against humanity
+            "Q217327",  # suicide attack
+            "Q25917186",  # coordinated terrorist attack
+            "Q898712",  # aircraft hijacking
+            "Q42750320",  # border incident
+            "Q10931",  # revolution
+            # Natural disaster + general political happening:
+            "Q34439356",  # hurricane
+            "Q30111082",  # political event
         }
     ),
     EntityType.WORK: frozenset(

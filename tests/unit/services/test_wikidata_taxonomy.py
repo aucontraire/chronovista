@@ -101,6 +101,53 @@ class TestClassifyPrecedence:
         assert classify_entity_type(instance_of) == expected
 
 
+class TestEventAnchorWidening:
+    """2026-11 event widening: carried-level war/conflict/attack/disaster classes that real
+    Wikidata items actually hold as P31 (the superclass `occurrence` anchor is dead under flat
+    matching). Members chosen by an offline occurrence-ancestry walk; the time-interval branch
+    (e.g. historical period) and the recurring-event branch (holidays/festivals) are excluded.
+    Re-types zero stored rows (the 5 matching entities were already typed `event`).
+    """
+
+    @pytest.mark.parametrize(
+        "qid",
+        [
+            "Q198",  # war
+            "Q103495",  # world war
+            "Q8465",  # civil war
+            "Q864113",  # proxy war
+            "Q154605",  # total war
+            "Q350604",  # armed conflict
+            "Q11422542",  # international conflict
+            "Q108809873",  # political conflict
+            "Q766875",  # ethnic conflict
+            "Q645883",  # military operation
+            "Q2001676",  # offensive
+            "Q467011",  # invasion
+            "Q476807",  # military raid
+            "Q3199915",  # massacre
+            "Q173462",  # crime against humanity
+            "Q25917186",  # coordinated terrorist attack
+            "Q898712",  # aircraft hijacking
+            "Q10931",  # revolution
+            "Q34439356",  # hurricane
+            "Q30111082",  # political event
+        ],
+    )
+    def test_carried_level_class_maps_to_event(self, qid: str) -> None:
+        assert classify_entity_type([qid]) == EntityType.EVENT
+
+    def test_conflict_beats_law_by_precedence(self) -> None:
+        # A long-running conflict can carry a conflict class and (rarely) a law-ish class; EVENT
+        # sits above LAW in _PRECEDENCE, so the happening wins. (Treaty Q131569 -> law.)
+        assert classify_entity_type(["Q198", "Q131569"]) == EntityType.EVENT
+
+    def test_event_widening_does_not_corroborate(self) -> None:
+        # EVENT stays out of _CORROBORATION_TYPES, so widening cannot regress #271.
+        assert classify_entity_type(["Q198"]) == EntityType.EVENT
+        assert type_corroboration("event", ["Q198"]) is None
+
+
 class TestClassifyDeterminism:
     def test_order_independent(self) -> None:
         assert classify_entity_type(["Q5", "Q6256"]) == classify_entity_type(

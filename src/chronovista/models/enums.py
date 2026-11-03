@@ -300,7 +300,30 @@ class LanguageCode(str, Enum):
 
 
 class EntityType(str, Enum):
-    """Types of named entities extracted from tags."""
+    """Named-entity types — the project's single governing vocabulary.
+
+    Entities are recognized from transcripts, titles, descriptions and manual
+    creation (not only tags). The vocabulary **tracks OntoNotes** as its single
+    governing standard: a type's *existence* is decided against OntoNotes, its
+    *anchor set* (``wikidata_taxonomy.INSTANCE_OF_BY_TYPE``) is grown from the
+    corpus, and its *timing* is decided by cost. Choosing OntoNotes is
+    load-bearing, not stylistic — the NER output already emits OntoNotes labels,
+    so a future NER producer needs no translation layer.
+
+    Deviations from straight OntoNotes adoption (recorded so they are not
+    mistakenly "fixed" later):
+
+    - ``place`` merges OntoNotes GPE / LOC / FAC into one type.
+    - NORP and LANGUAGE are deliberately absent (not earned by the corpus).
+    - ``concept``, ``technical_term``, ``topic``, ``descriptor`` and ``other``
+      are local additions with no OntoNotes peer (``topic``/``descriptor`` are
+      tag-only).
+    - ``product`` deviates in *scope*: it covers online/digital **services**
+      (social-networking / streaming / online services, platforms, chatbots,
+      LLMs), which OntoNotes PRODUCT explicitly *excludes* ("objects, vehicles,
+      foods, etc. — not services"). Physical-object products are in scope by
+      definition but currently unanchored.
+    """
 
     PERSON = "person"
     ORGANIZATION = "organization"

@@ -215,3 +215,27 @@ def test_scan_validator_is_derived_from_single_source() -> None:
 
     assert frozenset(ENTITY_TAG_TYPES) == _VALID_ENTITY_TYPES
     assert "product" in _VALID_ENTITY_TYPES
+
+
+def test_entity_type_docstring_names_governing_standard() -> None:
+    """The OntoNotes governing contract must stay in COMMITTED code, not a gitignored spec.
+
+    This guards a *decision*, not a value: the enum tracks OntoNotes, and that criterion
+    (which decides whether a type exists) lived only in ``specs/`` — which is gitignored —
+    across Features 098/099/103/104. Its absence from committed code rendered a real
+    measurement unreadable (a span-vs-stored type-gate that couldn't see that this
+    ``product`` means digital services while OntoNotes PRODUCT means physical objects),
+    costing several correction rounds. That receipt — not a hypothesis of future confusion —
+    is what earns this one sentence a guard, the Rule of Three applied to prose. The other
+    ~forty sentences in that docstring have not bitten, so they are not guarded.
+
+    ``or ""`` is load-bearing, not defensive noise: ``python -OO`` strips docstrings, making
+    ``__doc__`` ``None``. The project runs pytest without ``-OO`` so it won't trip here, but
+    the fallback keeps the failure (if it ever ran under ``-OO``) pointing at the right cause.
+    """
+    doc = EntityType.__doc__ or ""
+    assert "OntoNotes" in doc, (
+        "The OntoNotes governing-standard contract has been dropped from EntityType's "
+        "docstring. It is the only committed statement of what the entity-type vocabulary "
+        "tracks (specs/ is gitignored); restore it rather than letting the rule evaporate."
+    )

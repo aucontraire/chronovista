@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.111.0] - 2026-11-03
+
+### Added
+- **`chronovista entities ground` command.** Grounds an *existing* entity to a Wikidata QID and enriches it (properties/P31, Wikipedia image, DBpedia id, Wikipedia categories), reusing the on-approval enrichment seam. Fills the gap between `entities create` (which makes an ungrounded entity) and candidate approval (which only grounds candidates generated from graph neighbours) — neither could link a known entity to a QID you name. Resolves the entity by UUID or by canonical name + `--type`; the Wikidata link is written through the single `build_grounding` constructor; enrichment is best-effort and never rolls back the grounding.
+
 ## [0.110.0] - 2026-11-03
 
 ### Changed

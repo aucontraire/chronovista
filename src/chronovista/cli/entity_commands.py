@@ -52,11 +52,15 @@ from chronovista.repositories.entity_alias_repository import EntityAliasReposito
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.services import wikidata_properties as wp
-from chronovista.services.entity_creation import create_and_ground_entity
+from chronovista.services.entity_creation import (
+    build_grounding,
+    create_and_ground_entity,
+)
 from chronovista.services.entity_enrichment_loader import (
     load_enrichment,
     parse_ledger,
 )
+from chronovista.services.entity_enrichment_service import get_enrichment_service
 from chronovista.services.entity_mention_scan_service import (
     EntityMentionScanService,
     ScanResult,
@@ -206,6 +210,119 @@ def create_entity(
                 Panel(
                     details,
                     title="[green]Entity Created[/green]",
+                    border_style="green",
+                )
+            )
+
+    asyncio.run(_run())
+
+
+@entity_app.command("ground")
+def ground_entity(
+    name_or_id: str = typer.Argument(
+        ..., help="Entity id (UUID) or exact canonical name to ground."
+    ),
+    qid: str = typer.Option(
+        ..., "--wikidata", help="Wikidata QID to ground to, e.g. Q42."
+    ),
+    type_str: str | None = typer.Option(
+        None,
+        "--type",
+        help="Entity type — required only when resolving by name (to disambiguate).",
+    ),
+) -> None:
+    """Ground an EXISTING entity to a Wikidata QID, then enrich it.
+
+    Fills the gap between ``entities create`` (which makes an *ungrounded* entity) and the
+    candidate-approval path (which only grounds candidates it generated from graph neighbours):
+    neither can link a known entity to a QID you name. This sets the structured ``wikidata``
+    grounding via the sole ``build_grounding`` constructor and runs the same on-approval
+    enrichment (properties/P31, Wikipedia image, DBpedia id, Wikipedia categories). Enrichment is
+    best-effort and never rolls back the grounding.
+    """
+
+    async def _run() -> None:
+        if not (qid.startswith("Q") and qid[1:].isdigit()):
+            console.print(
+                Panel(
+                    f"[red]'{qid}' is not a Wikidata QID (expected Q followed by digits).[/red]",
+                    title="Invalid --wikidata",
+                    border_style="red",
+                )
+            )
+            raise typer.Exit(code=1)
+
+        entity_repo = NamedEntityRepository()
+        async with db_manager.session() as session:
+            # Resolve by UUID if the argument parses as one, else by canonical name + type.
+            entity = None
+            try:
+                parsed_id = uuid.UUID(name_or_id)
+            except ValueError:
+                parsed_id = None
+            if parsed_id is not None:
+                entity = await entity_repo.get(session, parsed_id)
+            else:
+                if type_str is None:
+                    console.print(
+                        Panel(
+                            "[red]Resolving by name requires --type to disambiguate.[/red]",
+                            title="Missing --type",
+                            border_style="red",
+                        )
+                    )
+                    raise typer.Exit(code=1)
+                normalized = TagNormalizationService().normalize(name_or_id)
+                if normalized is not None:
+                    entity = await entity_repo.find_by_normalized_and_type(
+                        session, normalized, type_str
+                    )
+
+            if entity is None:
+                console.print(
+                    Panel(
+                        f"[red]No entity found for '{name_or_id}'"
+                        + (f" (type '{type_str}')." if type_str else ".")
+                        + "[/red]",
+                        title="Not Found",
+                        border_style="red",
+                    )
+                )
+                raise typer.Exit(code=1)
+
+            entity_id = entity.id
+            # The sole sanctioned grounding constructor (FR-003); add_external_id merges it in,
+            # preserving any other identifiers already present.
+            await entity_repo.add_external_id(
+                session,
+                entity_id,
+                source="wikidata",
+                identifier=build_grounding(
+                    "wikidata", qid, verified=True, status="verified"
+                )["wikidata"],
+            )
+            await session.commit()
+
+        # Enrichment opens its own session and never raises (best-effort, FR-006).
+        await get_enrichment_service().enrich_on_approval(entity_id, qid)
+
+        async with db_manager.session(echo=False) as session:
+            reloaded = await entity_repo.get_with_aliases(session, entity_id)
+            assert reloaded is not None
+            props = reloaded.properties or {}
+            wikidata = (reloaded.external_ids or {}).get("wikidata", {})
+            details = (
+                f"[bold]ID:[/bold] {reloaded.id}\n"
+                f"[bold]Name:[/bold] {reloaded.canonical_name}\n"
+                f"[bold]Type:[/bold] {reloaded.entity_type}\n"
+                f"[bold]Wikidata:[/bold] {wikidata.get('id', '(none)')}\n"
+                f"[bold]Description:[/bold] {reloaded.description or '(none)'}\n"
+                f"[bold]Properties:[/bold] {len(props)} field(s)"
+            )
+            console.print(
+                Panel(
+                    details,
+                    title="[green]Entity Grounded[/green]",
                     border_style="green",
                 )
             )

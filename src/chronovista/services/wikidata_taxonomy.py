@@ -95,7 +95,7 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
     ),
     EntityType.EVENT: frozenset(
         {
-            "Q1656682",  # event
+            "Q1656682",  # planned event (Wikidata relabel — narrower than the bare name implies)
             "Q1190554",  # occurrence
             "Q13418847",  # historical event
             "Q934744",  # political scandal (Feature 099)

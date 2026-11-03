@@ -123,7 +123,9 @@ INSTANCE_OF_BY_TYPE: dict[EntityType, frozenset[str]] = {
         }
     ),
     # Feature 103: narrow `product` anchor set — observed P31 leaf classes on misfiled
-    # organization/work entities. Website/news-website classes are deliberately excluded
+    # organization/work entities. NOTE: this `product` covers digital products & online
+    # *services*, which OntoNotes PRODUCT explicitly excludes — a deliberate scope deviation
+    # (see EntityType docstring). Website/news-website classes are deliberately excluded
     # (they stay organization). Grows from the corpus; subclass closure is a later track.
     EntityType.PRODUCT: frozenset(
         {

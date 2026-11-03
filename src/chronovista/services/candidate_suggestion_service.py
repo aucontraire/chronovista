@@ -107,6 +107,26 @@ _RELATION_TARGET_TYPE: dict[str, EntityType] = {
 }
 
 
+# Relations whose TARGETS are categorically untypeable: awards and offices have no EntityType slot,
+# and under the OntoNotes contract never will (there is no AWARD/TITLE type). They are still mined
+# as relation FACTS (RELATIONS, via backfill_entity_relations) but must NOT seed candidates —
+# seeding them minted ~3,000 unfilable `other` candidates (0.03% approval). `part_of` is deliberately
+# NOT here: its targets are heterogeneous and P31-first now types its event targets (v0.110.0).
+# This is a pinned denylist, not the general mechanism (Rule of Three not yet met). Computable form
+# if a third such relation recurs: an integration check that no seeded relation exceeds ~50% `other`
+# — the empty middle of the observed bimodal split (every mapped relation <=1.5%, these two ~99%).
+_UNTYPEABLE_SEED_RELATIONS: frozenset[str] = frozenset(
+    {"award_received", "position_held"}
+)
+
+
+def _seed_relation_fields() -> list[str]:
+    """Relations to seed candidates from: the mined ``RELATIONS`` set minus the categorically-
+    untypeable ones. Fact-mining (``RELATIONS`` itself) is untouched — only candidate seeding.
+    """
+    return sorted(set(RELATIONS.values()) - _UNTYPEABLE_SEED_RELATIONS)
+
+
 class GenerationSummary(BaseModel):
     """Outcome of a generation run (Feature 096)."""
 
@@ -311,7 +331,7 @@ class CandidateSuggestionService:
             )
 
         rows = await self._candidates.emit_relation_candidates(
-            session, relation_fields=sorted(set(RELATIONS.values()))
+            session, relation_fields=_seed_relation_fields()
         )
         corpus = await self._videos.get_all_title_description(session)
         index = _CorpusIndex(corpus)
@@ -403,7 +423,7 @@ class CandidateSuggestionService:
         class). ``generate`` then receives the pre-fetched ``instance_of_map``.
         """
         rows = await self._candidates.emit_relation_candidates(
-            session, relation_fields=sorted(set(RELATIONS.values()))
+            session, relation_fields=_seed_relation_fields()
         )
         return sorted({row.wikidata_qid for row in rows})
 

@@ -33,7 +33,7 @@ class TestClassifySingleType:
             (["Q3624078"], EntityType.PLACE),  # sovereign state
             (["Q515"], EntityType.PLACE),  # city
             (["Q43229"], EntityType.ORGANIZATION),  # organization
-            (["Q1656682"], EntityType.EVENT),  # event
+            (["Q198"], EntityType.EVENT),  # war
             (["Q11424"], EntityType.WORK),  # film
             (["Q151885"], EntityType.CONCEPT),  # concept
         ],
@@ -91,8 +91,8 @@ class TestClassifyPrecedence:
         [
             (["Q5", "Q43229"], EntityType.PERSON),  # person beats organization
             (["Q43229", "Q6256"], EntityType.ORGANIZATION),  # org beats place
-            (["Q6256", "Q1656682"], EntityType.PLACE),  # place beats event
-            (["Q1656682", "Q11424"], EntityType.EVENT),  # event beats work
+            (["Q6256", "Q198"], EntityType.PLACE),  # place beats event
+            (["Q198", "Q11424"], EntityType.EVENT),  # event beats work
         ],
     )
     def test_highest_precedence_wins(
@@ -194,15 +194,15 @@ class TestCorroboration:
     def test_non_corroboration_types_are_neutral(self, entity_type: str) -> None:
         # Even though classification KNOWS these anchors, corroboration stays neutral (None),
         # never "may differ" — this is what keeps the create badge from regressing #271.
-        assert type_corroboration(entity_type, ["Q1656682"]) is None
+        assert type_corroboration(entity_type, ["Q198"]) is None
 
 
 class TestCorroborationDecoupledFromClassification:
     def test_event_classifies_but_does_not_corroborate(self) -> None:
         # The crux of Feature 098: classification widened to cover event, but corroboration
         # for event remains neutral so sparsely-anchored types cannot flash "type may differ".
-        assert classify_entity_type(["Q1656682"]) == EntityType.EVENT
-        assert type_corroboration("event", ["Q1656682"]) is None
+        assert classify_entity_type(["Q198"]) == EntityType.EVENT
+        assert type_corroboration("event", ["Q198"]) is None
 
 
 class TestTypeVerificationDelegates:
@@ -215,7 +215,7 @@ class TestTypeVerificationDelegates:
         assert _type_verification("person", ["Q6256"]) is False
 
     def test_event_neutral(self) -> None:
-        assert _type_verification("event", ["Q1656682"]) is None
+        assert _type_verification("event", ["Q198"]) is None
 
 
 class TestSuggestEntityType:
@@ -262,7 +262,7 @@ class TestClassifyIfDeterminate:
             (["Q5"], EntityType.PERSON),  # human
             (["Q6256"], EntityType.PLACE),  # country
             (["Q43229"], EntityType.ORGANIZATION),  # organization
-            (["Q1656682"], EntityType.EVENT),  # event
+            (["Q198"], EntityType.EVENT),  # war
             (["Q11424"], EntityType.WORK),  # film
             (["Q151885"], EntityType.CONCEPT),  # concept
         ],
@@ -286,7 +286,7 @@ class TestClassifyIfDeterminate:
 
     @pytest.mark.parametrize(
         "instance_of",
-        [[], ["Q999999999"], ["Q5"], ["Q6256"], ["Q43229"], ["Q1656682"]],
+        [[], ["Q999999999"], ["Q5"], ["Q6256"], ["Q43229"], ["Q198"]],
     )
     def test_suggest_entity_type_is_the_string_view(
         self, instance_of: list[str]
@@ -448,7 +448,7 @@ class TestExtensionZeroRegression:
             (["Q5"], EntityType.PERSON),  # human
             (["Q6256"], EntityType.PLACE),  # country
             (["Q43229"], EntityType.ORGANIZATION),  # organization
-            (["Q1656682"], EntityType.EVENT),  # event
+            (["Q198"], EntityType.EVENT),  # war
             (["Q11424"], EntityType.WORK),  # film
             (["Q151885"], EntityType.CONCEPT),  # concept
             (

@@ -53,6 +53,7 @@ import type {
 import { socialProfileUrl } from "../../api/entityMentions";
 import { useRegroundEntity } from "../../hooks/useRegroundEntity";
 import { useWikidataEntityMap } from "../../hooks/useEntityMentions";
+import relationFields from "../../generated/relation-fields.json";
 import { WikidataGroundingPicker } from "./WikidataGroundingPicker";
 import { relationGroupForField } from "./relationGroups";
 
@@ -87,56 +88,15 @@ function humanizePropertyKey(key: string): string {
     .join(" ");
 }
 
-function formatPropertyValues(value: EntityPropertyValue): string {
-  return (value.values ?? []).join(", ");
-}
 
 /** Relation properties (Feature 079): values are labels, `qids` the aligned Wikidata QIDs. */
-const RELATION_KEYS = new Set([
-  "spouse",
-  "father",
-  "mother",
-  "child",
-  "sibling",
-  "place_of_death",
-  "field_of_work",
-  "part_of",
-  "unmarried_partner",
-  "significant_person",
-  // Feature 082: additional item-valued Wikidata relations. These are stored with
-  // aligned `qids` (verified in prod), so routing them through RelationsBlock gives
-  // the same in-app link (library entity) / external Wikidata link / plain-text
-  // behavior; previously they fell through to genericEntries as comma-joined text.
-  "employer",
-  "educated_at",
-  "country",
-  "member_of",
-  "political_party",
-  "place_of_birth",
-  "position_held",
-  "subclass_of",
-  // Feature 087: founder (P112) — newly captured; render it as a forward relation too.
-  "founder",
-  // Feature 088: creative-work credits (P161/P57/P162/P58/P86), forward on a work's page.
-  "cast_member",
-  "director",
-  "producer",
-  "screenwriter",
-  "composer",
-  // Feature 095: additional forward relationships (attribute fields stay in the generic list).
-  "award_received",
-  "notable_work",
-  "participant_in",
-  "parent_organization",
-  "child_organization",
-  "owned_by",
-  "chairperson",
-  "ceo",
-  "affiliation",
-  "creator",
-  "production_company",
-  "original_broadcaster",
-]);
+// Feature 105 (ADR 014): the linkable-relation set is DERIVED from the committed
+// `relation-fields.json` (generated from the backend `RELATIONS` single source), not a
+// hand-maintained literal — so a newly-captured relation can never silently fall back to unlinked
+// static text (bug B). Freshness is enforced by test_relation_fields_parity.py. Item-valued
+// ATTRIBUTES (country, religion_or_worldview, political_ideology, …) are NOT relations; they render
+// in the generic attributes block, which also links QID-backed values (see GenericProperties).
+const RELATION_KEYS = new Set<string>(relationFields.relations);
 
 /** Social/web properties (Feature 079): a single handle value, linked via a fixed URL pattern. */
 // The social/web property keys, kept in sync with `socialProfileUrl` (api/entityMentions).
@@ -265,6 +225,68 @@ function RelationsBlock({
         ))}
       </dl>
     </div>
+  );
+}
+
+/**
+ * Renders the non-relation, non-social, non-reference properties — the item-valued ATTRIBUTES
+ * (religion_or_worldview, political_ideology, industry, country, …) and literal attributes. Feature
+ * 105 (bug B): item-valued values carry aligned `qids`, so each links to its local entity page when
+ * the QID resolves, else to wikidata.org, else plain text — the same per-item logic RelationsBlock
+ * uses. Literal attributes (no qid) stay plain text. Previously every value here was dead text.
+ */
+function GenericProperties({
+  entries,
+}: {
+  entries: Array<[string, EntityPropertyValue]>;
+}) {
+  const qids = Array.from(new Set(entries.flatMap(([, value]) => getQids(value))));
+  const wikidataMap = useWikidataEntityMap(qids);
+
+  return (
+    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+      {entries.map(([key, value]) => {
+        const qidsForKey = getQids(value);
+        const values = value.values ?? [];
+        return (
+          <div key={key} className="flex flex-col">
+            <dt className="text-xs font-medium text-gray-500">
+              {humanizePropertyKey(key)}
+            </dt>
+            <dd className="text-sm text-gray-800">
+              {values.map((label, i) => {
+                const qid = qidsForKey[i];
+                const match = qid ? wikidataMap.data[qid] : undefined;
+                return (
+                  <span key={`${key}-${i}`}>
+                    {i > 0 ? ", " : ""}
+                    {match ? (
+                      <Link
+                        to={`/entities/${match.entity_id}`}
+                        className="text-indigo-700 hover:underline"
+                      >
+                        {label}
+                      </Link>
+                    ) : qid ? (
+                      <a
+                        href={`https://www.wikidata.org/wiki/${qid}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-700 hover:underline"
+                      >
+                        {label}
+                      </a>
+                    ) : (
+                      <span>{label}</span>
+                    )}
+                  </span>
+                );
+              })}
+            </dd>
+          </div>
+        );
+      })}
+    </dl>
   );
 }
 
@@ -719,18 +741,7 @@ export function EntityEnrichmentSection({
         ) : (
           <div className="space-y-4">
             {hasGenericProperties && (
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                {genericEntries.map(([key, value]) => (
-                  <div key={key} className="flex flex-col">
-                    <dt className="text-xs font-medium text-gray-500">
-                      {humanizePropertyKey(key)}
-                    </dt>
-                    <dd className="text-sm text-gray-800">
-                      {formatPropertyValues(value)}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
+              <GenericProperties entries={genericEntries} />
             )}
 
             {relationEntries.length > 0 && (

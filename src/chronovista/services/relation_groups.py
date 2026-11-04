@@ -26,6 +26,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from chronovista.services.wikidata_properties import RELATIONS
+
 
 class RelationGroup(BaseModel):
     """One displayed relationship: the synonymous source fields it unions + its label/attribution."""
@@ -224,7 +226,31 @@ RELATION_GROUPS: tuple[RelationGroup, ...] = (
     ),
 )
 
-# Flat set of every field the reverse query searches (de-duplicated), for the repository's WHERE.
+# Feature 105 (ADR 014): the reverse query searches EVERY captured relation — derived from
+# ``RELATIONS`` (the single source), NOT only the curated-group fields — so newly-captured edges
+# (and ``educated_at``, long ungrouped) surface in the Referenced-By panel. The curated
+# ``RELATION_GROUPS`` above still give precise inverse labels; a field with no curated group gets a
+# humanized fallback label at the endpoint. The exporter/discovery use ``RELATIONS`` directly;
+# this keeps the inverse view on the same single source instead of a hand-maintained subset.
+# Hub/weak-signal edges whose INVERSE is a firehose list, not a relationship (wayfinder ticket 05):
+# "everyone born in / located in this place" or "every subclass of this class". Excluded from the
+# inverse search even though captured, exactly as the pre-105 curated list excluded them.
+_HUB_INBOUND_EXCLUSIONS: frozenset[str] = frozenset(
+    {
+        "place_of_birth",
+        "place_of_death",
+        "location",
+        "located_in_admin",
+        "location_of_formation",
+        "subclass_of",
+    }
+)
 INBOUND_FIELDS: tuple[str, ...] = tuple(
-    dict.fromkeys(f for g in RELATION_GROUPS for f in g.member_fields)
+    sorted(set(RELATIONS.values()) - _HUB_INBOUND_EXCLUSIONS)
+)
+
+# The fields that carry a curated inverse label; everything else in INBOUND_FIELDS is surfaced with
+# a humanized fallback (see entity_mentions.get_referenced_by).
+CURATED_INBOUND_FIELDS: frozenset[str] = frozenset(
+    f for g in RELATION_GROUPS for f in g.member_fields
 )

@@ -270,6 +270,59 @@ class TestReferencedBy:
                 )
                 await s.commit()
 
+    async def test_feature_105_educated_at_backfills_additively_and_surfaces_alumni(
+        self,
+        async_client: AsyncClient,
+        integration_session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        # Feature 105 end-to-end across the REAL merge_properties seam, for a NEW edge with NO curated
+        # RELATION_GROUP (educated_at). Covers T007 (additive mutation + forward read-back) AND T016c
+        # (FR-024 humanized fallback inverse): (a) educated_at is merged onto a person who already has
+        # a prior block → the person's detail mirrors `properties` verbatim (prior preserved, new added),
+        # and (b) the SCHOOL's reverse page finally lists that person — under a HUMANIZED fallback group
+        # — because educated_at is now in the derived INBOUND_FIELDS (the schools-show-no-alumni bug).
+        school_qid = "Q105SCHOOL"
+        prior = {
+            "member_of": _rel("Q105ORG")
+        }  # a pre-existing block the merge must preserve
+        async with integration_session_factory() as s:
+            school = await _entity(
+                s, "f105-school", external_ids={"wikidata": {"id": school_qid}}
+            )
+            alum = await _entity(s, "f105-alum", properties=dict(prior))
+            await s.commit()
+        try:
+            async with integration_session_factory() as s:
+                await NamedEntityRepository().merge_properties(
+                    s, alum, {"educated_at": _rel(school_qid)}
+                )
+                await s.commit()
+
+            detail = await async_client.get(f"/api/v1/entities/{alum}")
+            assert detail.status_code == 200, detail.text
+            props = detail.json()["data"]["enrichment"]["properties"]
+            assert (
+                props["member_of"] == prior["member_of"]
+            )  # additive: prior block intact
+            assert props["educated_at"] == _rel(school_qid)  # new edge added exactly
+
+            resp = await async_client.get(f"/api/v1/entities/{school}/referenced-by")
+            assert resp.status_code == 200
+            groups = {g["key"]: g for g in resp.json()["data"]}
+            assert "inbound_educated_at" in groups, resp.json()
+            grp = groups["inbound_educated_at"]
+            assert {_u(m["entity_id"]) for m in grp["members"]} == {alum}
+            assert (
+                grp["label"] == "Educated At"
+            )  # humanized fallback (no curated inverse label)
+            assert "Wikidata" in grp["attribution"]
+        finally:
+            async with integration_session_factory() as s:
+                await s.execute(
+                    delete(NamedEntityDB).where(NamedEntityDB.id.in_([school, alum]))
+                )
+                await s.commit()
+
     async def test_members_carry_instance_of_for_the_filter(
         self,
         async_client: AsyncClient,

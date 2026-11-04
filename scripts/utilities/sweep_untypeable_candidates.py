@@ -38,7 +38,13 @@ import pathlib
 from sqlalchemy import text
 
 from chronovista.config.database import db_manager
-from chronovista.services.candidate_suggestion_service import _UNTYPEABLE_SEED_RELATIONS
+
+# The categorically-untypeable relations this one-time sweep targets. Defined here (no longer
+# imported from the service): Feature 105 made candidate seeding an explicit ``SEED_ALLOWLIST``
+# and removed the denylist from the seeding path, so this historical sweep keeps its own copy.
+_UNTYPEABLE_SEED_RELATIONS: frozenset[str] = frozenset(
+    {"award_received", "position_held"}
+)
 
 POLICY_MARKER = "policy:untypeable-relation"
 BACKUPS = pathlib.Path(__file__).resolve().parents[2] / "backups"

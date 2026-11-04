@@ -33,6 +33,14 @@ Preview without writing anything:
 chronovista candidates generate --dry-run
 ```
 
+!!! note "Capturing a relationship is not the same as seeding from it"
+    chronovista *captures* many relationship types from Wikidata and stores them on
+    your entities (they power the entity pages and the knowledge graph), but only an
+    explicit, curated **allowlist** of relationship types *seeds* review candidates.
+    The rest are kept as facts without ever adding to your queue — capturing is free,
+    while seeding has a review cost, so the two are governed separately. Expanding
+    what is captured never changes your queue on its own.
+
 ## 2. Review the queue
 
 ```bash
@@ -48,7 +56,15 @@ chronovista candidates list --triage worth_review   # the bucket worth your time
 chronovista candidates list --min-tokens 2          # hide single-word names
 chronovista candidates list --type person --sort corroboration
 chronovista candidates list --possible-duplicate    # only name-collision flags
+chronovista candidates list --relation influenced_by # every candidate from one relationship
 ```
+
+The `--relation <field>` filter returns **every** pending candidate discovered
+through that relationship — regardless of score or triage bucket. This matters
+because some relationships (ideologies, influences, event roles) are named in
+speech but rarely in video titles, so their candidates score near zero and sink to
+the bottom of the default ranking. Filtering by the relationship surfaces the whole
+set so you can review it on its own terms. An unknown field lists the valid ones.
 
 Each row shows the score, corpus presence (`sal`), how many of your entities point
 at it (`corrob`), its triage bucket, and a `⚠` when its name collides with an

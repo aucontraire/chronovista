@@ -186,7 +186,11 @@ from chronovista.services.image_validation import (
     read_and_validate,
 )
 from chronovista.services.phonetic_matcher import PhoneticMatcher
-from chronovista.services.relation_groups import INBOUND_FIELDS, RELATION_GROUPS
+from chronovista.services.relation_groups import (
+    CURATED_INBOUND_FIELDS,
+    INBOUND_FIELDS,
+    RELATION_GROUPS,
+)
 from chronovista.services.tag_management import TagManagementService
 from chronovista.services.tag_normalization import TagNormalizationService
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
@@ -1445,6 +1449,37 @@ async def get_referenced_by(
                     key=group.key,
                     label=group.label,
                     attribution=group.attribution,
+                    members=members[:MAX_REFERENCED_BY_PER_GROUP],
+                    member_count=len(members),
+                )
+            )
+
+    # Feature 105 (FR-024): fields with no curated RELATION_GROUP still surface, under a humanized
+    # fallback label — so newly-captured edges (and educated_at) appear in the inverse view instead
+    # of being silently dropped. One group per leftover field, name-ordered like the curated ones.
+    leftover_fields = sorted(
+        {f for m in matches for f in m.matched_fields} - CURATED_INBOUND_FIELDS
+    )
+    for field in leftover_fields:
+        members = [
+            ReferencedByEntity(
+                entity_id=m.entity_id,
+                entity_type=m.entity_type,
+                canonical_name=m.canonical_name,
+                instance_of=m.instance_of,
+            )
+            for m in matches
+            if m.entity_id != parsed_entity_id and field in m.matched_fields
+        ]
+        if members:
+            humanized = field.replace("_", " ")
+            data.append(
+                ReferencedByGroup(
+                    key=f"inbound_{field}",
+                    label=humanized.title(),
+                    attribution=(
+                        f"Listed by Wikidata as having a '{humanized}' relation to this entity"
+                    ),
                     members=members[:MAX_REFERENCED_BY_PER_GROUP],
                     member_count=len(members),
                 )

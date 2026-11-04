@@ -30,6 +30,7 @@ from chronovista.repositories.entity_alias_repository import EntityAliasReposito
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.candidate_suggestion_service import CandidateSuggestionService
+from chronovista.services.wikidata_properties import RELATIONS
 
 candidate_app = typer.Typer(
     name="candidates",
@@ -127,12 +128,26 @@ def list_candidates(
         "--possible-duplicate",
         help="Only candidates flagged as a possible duplicate",
     ),
+    relation: str | None = typer.Option(
+        None,
+        "--relation",
+        help="Filter by the originating relation field (e.g. influenced_by) — finds the set "
+        "regardless of score/triage, so a newly-seeded zero-scoring set is reviewable",
+    ),
     sort: str = typer.Option(
         "score", "--sort", help="score | corroboration | salience"
     ),
     limit: int = typer.Option(50, "--limit", help="Max rows to show"),
 ) -> None:
     """Show the ranked pending candidate queue."""
+
+    if relation is not None and relation not in set(RELATIONS.values()):
+        typer.echo(
+            f"Unknown --relation {relation!r}. Valid relations:\n  "
+            + ", ".join(sorted(set(RELATIONS.values()))),
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     async def run() -> None:
         async with db_manager.session() as session:
@@ -143,6 +158,7 @@ def list_candidates(
                 type_hint=type_hint,
                 min_token_count=min_tokens,
                 possible_duplicate=possible_duplicate if possible_duplicate else None,
+                relation=relation,
                 sort=sort,
                 limit=limit,
             )

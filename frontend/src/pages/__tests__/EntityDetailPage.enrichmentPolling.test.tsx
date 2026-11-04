@@ -97,6 +97,15 @@ vi.mock("../../hooks/useEntityMentions", () => ({
     isSuccess: false,
     reset: vi.fn(),
   })),
+  // EntityEnrichmentSection (rendered within the page) now resolves relation QIDs to
+  // local entities via this hook (Feature 105 QID-link display). An empty map lets the
+  // section render with Wikidata/plain fallbacks, which is all these polling tests need.
+  useWikidataEntityMap: vi.fn(() => ({
+    data: {},
+    isLoading: false,
+    isError: false,
+    error: null,
+  })),
 }));
 
 vi.mock("../../components/corrections/PhoneticVariantsSection", () => ({

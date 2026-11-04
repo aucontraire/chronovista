@@ -716,7 +716,10 @@ describe('EntityEnrichmentSection — property rendering (Feature 079, US3)', ()
       );
     });
 
-    it('renders a new attribute (industry) as plain text, not in the Relations block', () => {
+    it('renders a QID-backed attribute (industry) as a link in the attributes block, not in Relations', () => {
+      // Feature 105 (bug B fixed): an item-valued ATTRIBUTE carries an aligned QID, so it links
+      // (to Wikidata here, since the QID does not resolve to a library entity) instead of rendering
+      // as dead static text — and still sits outside the Relations block (it is not a relation).
       mockWikidataEntityMap({ data: {} });
       renderSection({
         enrichment: makeEnrichment({
@@ -726,10 +729,65 @@ describe('EntityEnrichmentSection — property rendering (Feature 079, US3)', ()
         }),
       });
 
-      expect(screen.getByText('Placeholder Industry')).toBeInTheDocument();
       expect(screen.queryByText('Relations')).not.toBeInTheDocument();
-      expect(screen.queryByRole('link', { name: 'Placeholder Industry' })).not.toBeInTheDocument();
-      expect(screen.queryByText(/Listed by Wikidata/)).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Placeholder Industry' })).toHaveAttribute(
+        'href',
+        'https://www.wikidata.org/wiki/Q00000902'
+      );
+    });
+
+    it('renders a QID-backed attribute as an internal link when the QID resolves to a library entity', () => {
+      // The other half of bug B: a resolvable QID links to the local entity page.
+      mockWikidataEntityMap({
+        data: { Q00000902: { entity_id: 'ent-industry', canonical_name: 'Placeholder Industry' } },
+      });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            industry: propBlock(['Placeholder Industry'], { qids: ['Q00000902'] }),
+          },
+        }),
+      });
+
+      expect(screen.getByRole('link', { name: 'Placeholder Industry' })).toHaveAttribute(
+        'href',
+        '/entities/ent-industry'
+      );
+    });
+
+    it('renders a newly-captured relation with no curated label under a humanized heading (Feature 105)', () => {
+      // influenced_by is a RELATION (derived into RELATION_KEYS from relation-fields.json) but has
+      // no curated relationGroups.ts label → the forward display falls back to a humanized heading,
+      // and the value still links. This is the humanized-fallback contract for the ~68 new edges.
+      mockWikidataEntityMap({ data: {} });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            influenced_by: propBlock(['Placeholder Thinker'], { qids: ['Q00000903'] }),
+          },
+        }),
+      });
+
+      expect(screen.getByText('Relations')).toBeInTheDocument();
+      expect(screen.getByText(/influenced by/i)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Placeholder Thinker' })).toHaveAttribute(
+        'href',
+        'https://www.wikidata.org/wiki/Q00000903'
+      );
+    });
+
+    it('renders a literal attribute (no QID) as plain text, not a link', () => {
+      mockWikidataEntityMap({ data: {} });
+      renderSection({
+        enrichment: makeEnrichment({
+          properties: {
+            birth_name: propBlock(['Placeholder Name']),
+          },
+        }),
+      });
+
+      expect(screen.getByText('Placeholder Name')).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Placeholder Name' })).not.toBeInTheDocument();
     });
   });
 

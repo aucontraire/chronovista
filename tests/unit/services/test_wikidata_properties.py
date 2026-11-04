@@ -481,6 +481,76 @@ class TestKindGrouping:
         "P1142": "political_ideology",
         "P1387": "political_alignment",
         "P2388": "head_position",
+        # Feature 105 — discovery-edge capture expansion (ADR 014). The snapshot is a DRIFT
+        # SENTINEL (catches an unintended registry change), updated deliberately on each expansion.
+        "P3095": "practiced_by",
+        "P1269": "facet_of",
+        "P461": "opposite_of",
+        "P5004": "in_opposition_to",
+        "P3712": "has_goal",
+        "P1535": "used_by",
+        "P3938": "named_by",
+        "P61": "discoverer_or_inventor",
+        "P710": "participant",
+        "P8031": "perpetrator",
+        "P533": "target",
+        "P1840": "investigated_by",
+        "P828": "has_cause",
+        "P1542": "has_effect",
+        "P1537": "contributing_factor_of",
+        "P276": "location",
+        "P1038": "relative",
+        "P737": "influenced_by",
+        "P1066": "student_of",
+        "P184": "doctoral_advisor",
+        "P6872": "has_written_for",
+        "P607": "participated_in_conflict",
+        "P3602": "candidacy_in_election",
+        "P1411": "nominated_for",
+        "P135": "movement",
+        "P1399": "convicted_of",
+        "P945": "allegiance",
+        "P53": "family",
+        "P937": "work_location",
+        "P8324": "funder",
+        "P3320": "board_member",
+        "P3461": "designated_as_terrorist_by",
+        "P2652": "partnership_with",
+        "P1037": "director_manager",
+        "P137": "operator",
+        "P98": "editor",
+        "P5769": "editor_in_chief",
+        "P1365": "replaces",
+        "P155": "follows",
+        "P156": "followed_by",
+        "P131": "located_in_admin",
+        "P1056": "product_or_material_produced",
+        "P1431": "executive_producer",
+        "P344": "director_of_photography",
+        "P1040": "film_editor",
+        "P674": "characters",
+        "P144": "based_on",
+        "P840": "narrative_location",
+        "P750": "distributed_by",
+        "P50": "author",
+        "P123": "publisher",
+        "P2438": "narrator",
+        "P371": "presenter",
+        "P3092": "film_crew_member",
+        "P180": "depicts",
+        "P1877": "after_a_work_by",
+        "P138": "named_after",
+        "P527": "has_part",
+        "P793": "significant_event",
+        "P921": "main_subject",
+        "P740": "location_of_formation",
+        "P1891": "signatory",
+        "P2579": "studied_by",
+        "P6": "head_of_government",
+        "P35": "head_of_state",
+        "P194": "legislative_body",
+        "P208": "executive_body",
+        "P209": "highest_judicial_authority",
     }
     _WANTED_LITERAL_SNAPSHOT = {
         "P569": "birth_date",
@@ -611,3 +681,20 @@ class TestFeature095Extraction:
         # A record with none of the new facts yields no new keys (best-effort capture, no error).
         out = extract_claims({"P31": [_item_snak("Q5")]})
         assert set(out) == {"instance_of"}
+
+    def test_feature_105_edges_captured_and_extract(self) -> None:
+        # Representative new discovery edges (Feature 105) across types are captured as item-valued
+        # relations and extract from a claims blob with no extra request.
+        sample = {
+            "P737": "influenced_by",
+            "P710": "participant",
+            "P3095": "practiced_by",
+            "P8324": "funder",
+            "P1431": "executive_producer",
+            "P6": "head_of_government",
+        }
+        for pid, field in sample.items():
+            assert RELATIONS[pid] == field
+        out = extract_claims({pid: [_item_snak("Q9")] for pid in sample})
+        for field in sample.values():
+            assert out[field]["qids"] == ["Q9"], field

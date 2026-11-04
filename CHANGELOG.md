@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.113.0] - 2026-11-04
+
+### Added
+- **Explicit candidate seed allowlist.** Candidate generation now seeds from an explicit `SEED_ALLOWLIST` instead of an opt-out denylist, with two permanent mutation-verified fitness guards (baseline-containment and subset) so the governing set cannot silently drift. 26 new high-signal relations (the concept/ideology vein, event edges, work credits, small org edges) now seed review candidates; the expensive person/place-institution relations are captured but held capture-only.
+- **`candidates list --relation <field>`** — filter the pending queue by originating relation, returning the complete set for that relation regardless of score or triage, so a newly-seeded low-scoring set is reviewable (it would otherwise bury in `grounds_nowhere`).
+- **Wikidata property-capture expansion.** 68 new discovery-edge relations added to the capture registry across person/org/place/work/concept/event. Capturing is free (it only stops discarding a claim already fetched) and adds no review candidates on its own; backfilled additively onto existing entities.
+- **`scripts/utilities/price_property_candidates.py`** and **`scripts/utilities/gen_relation_fields.py`** — property-candidate pricing and the generator for the committed frontend relation-membership JSON.
+
+### Fixed
+- **Item-valued entity properties now render as links.** On entity pages, item-valued attributes (occupation, country, ideologies, …) previously rendered as static text, ignoring the stored QIDs. They now linkify to the internal entity or to Wikidata, driven by a committed relation-membership JSON derived from the property registry.
+- **The "Referenced by" inverse view now reflects captured relations.** It previously searched only a hand-maintained field list, so newly-captured edges (and `educated_at`) were invisible in it; its search set is now derived from the captured relations with a humanized-label fallback.
+
+### Changed
+- **Graph export node-attribute projection is derived** from the attribute property-groups rather than a hand-maintained list, with consistency guards that fail the export on registry drift. Relation edges continue to derive from the full capture set, so captured-but-not-seeded relations still appear in the graph.
+
 ## [0.112.0] - 2026-11-03
 
 ### Changed

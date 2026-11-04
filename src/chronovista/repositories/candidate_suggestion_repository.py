@@ -183,6 +183,7 @@ class CandidateSuggestionRepository(
         type_hint: str | None = None,
         min_token_count: int | None = None,
         possible_duplicate: bool | None = None,
+        relation: str | None = None,
         sort: str = "score",
         skip: int = 0,
         limit: int = 50,
@@ -209,6 +210,13 @@ class CandidateSuggestionRepository(
                 )
             else:
                 filters.append(CandidateSuggestionDB.possible_duplicate_of_id.is_(None))
+        if relation is not None:
+            # Feature 105 (FR-014): JSONB containment — the candidate's provenance relations array
+            # contains this field. `?` tests element existence in the `provenance->'relations'` array,
+            # so a zero-scoring newly-seeded candidate is findable regardless of ranking/triage.
+            filters.append(
+                CandidateSuggestionDB.provenance["relations"].op("?")(relation)
+            )
 
         total_result = await session.execute(
             select(func.count()).select_from(CandidateSuggestionDB).where(*filters)

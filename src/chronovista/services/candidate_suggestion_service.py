@@ -53,7 +53,6 @@ from chronovista.services.entity_mention_scan_service import (
 )
 from chronovista.services.tag_normalization import TagNormalizationService
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
-from chronovista.services.wikidata_properties import RELATIONS
 from chronovista.services.wikidata_taxonomy import suggest_entity_type
 
 # Tokens for the inverted index (drops punctuation and underscores), matching the
@@ -115,16 +114,96 @@ _RELATION_TARGET_TYPE: dict[str, EntityType] = {
 # This is a pinned denylist, not the general mechanism (Rule of Three not yet met). Computable form
 # if a third such relation recurs: an integration check that no seeded relation exceeds ~50% `other`
 # — the empty middle of the observed bimodal split (every mapped relation <=1.5%, these two ~99%).
-_UNTYPEABLE_SEED_RELATIONS: frozenset[str] = frozenset(
-    {"award_received", "position_held"}
+# Candidate SEEDING is governed by an EXPLICIT allowlist (Feature 105, ADR 014): a relation seeds
+# review candidates only if it is named here. Capture-only is the safe default — adding a field to
+# ``RELATIONS`` (capture / fact-mining) does NOT seed it unless it is also listed below. This
+# replaced the prior opt-out ``RELATIONS − denylist`` derivation, which would have seeded every
+# newly-captured relation by default. Two permanent, mutation-verified fitness guards
+# (``tests/unit/architecture/test_seed_allowlist_fitness.py``) protect it: baseline-containment
+# (the originally-effective relations never silently drop out and strand their candidates) and
+# subset (every entry is a real ``RELATIONS`` value; no competing denylist governs seeding).
+# REVERSAL (demote a seeded relation): remove it here (stops future minting) + policy-reject its
+# existing rows with a ``reviewed_by`` marker distinct from a human verdict (v0.112.0 precedent,
+# ADR 014 D2) — the upsert never deletes, so existing rows persist until that sweep.
+SEED_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # 33 baseline relations — exactly those that seeded before the opt-out→allowlist flip
+        # (every ``RELATIONS`` value except the categorically-untypeable ``award_received`` /
+        # ``position_held``, whose targets have no ``EntityType`` slot — v0.112.0).
+        "employer",
+        "educated_at",
+        "member_of",
+        "place_of_birth",
+        "place_of_death",
+        "father",
+        "mother",
+        "spouse",
+        "child",
+        "sibling",
+        "political_party",
+        "part_of",
+        "subclass_of",
+        "founder",
+        "cast_member",
+        "director",
+        "producer",
+        "screenwriter",
+        "composer",
+        "significant_person",
+        "unmarried_partner",
+        "field_of_work",
+        "notable_work",
+        "participant_in",
+        "parent_organization",
+        "child_organization",
+        "owned_by",
+        "chairperson",
+        "ceo",
+        "affiliation",
+        "creator",
+        "production_company",
+        "original_broadcaster",
+        # Feature 105 "seed-now" set (US2): the reviewed cheap, high-signal edges (each measured
+        # NET-NEW <= ~25). Captured in RELATIONS (US1); promoted to seeding here. The expensive /
+        # held edges and place-institution edges stay captured-but-not-seeded (re-priced before any
+        # future promotion, ADR 014 D6).
+        "perpetrator",
+        "named_by",
+        "used_by",
+        "film_editor",
+        "practiced_by",
+        "director_of_photography",
+        "discoverer_or_inventor",
+        "opposite_of",
+        "investigated_by",
+        "has_effect",
+        "contributing_factor_of",
+        "has_cause",
+        "funder",
+        "based_on",
+        "operator",
+        "distributed_by",
+        "location_of_formation",
+        "editor",
+        "editor_in_chief",
+        "in_opposition_to",
+        "executive_producer",
+        "narrative_location",
+        "has_goal",
+        "partnership_with",
+        "main_subject",
+        "participant",
+    }
 )
 
 
 def _seed_relation_fields() -> list[str]:
-    """Relations to seed candidates from: the mined ``RELATIONS`` set minus the categorically-
-    untypeable ones. Fact-mining (``RELATIONS`` itself) is untouched — only candidate seeding.
+    """Relations that seed candidates — the explicit ``SEED_ALLOWLIST`` (Feature 105).
+
+    Capture (``RELATIONS``) and seeding are decoupled: a relation is always mined/captured, but
+    seeds review candidates only if it is named in ``SEED_ALLOWLIST``.
     """
-    return sorted(set(RELATIONS.values()) - _UNTYPEABLE_SEED_RELATIONS)
+    return sorted(SEED_ALLOWLIST)
 
 
 class GenerationSummary(BaseModel):

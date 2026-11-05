@@ -16,9 +16,9 @@ export const TERM_DEFINITIONS = {
     definition: "Present, but with weak signal; usually safe to reject.",
   },
   grounds_nowhere: {
-    term: "No library presence",
+    term: "No title/description match",
     definition:
-      "Does not appear in your library at all; probably not relevant to you.",
+      "The name matches no video title or description. Transcripts are not checked, so it may still be spoken in your library; a weak signal, not proof of absence.",
   },
   score: {
     term: "Score",

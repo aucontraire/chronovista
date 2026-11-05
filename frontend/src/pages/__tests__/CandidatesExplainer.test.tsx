@@ -44,7 +44,7 @@ describe("Candidates terms explainer", () => {
     expect(btn).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("region", { name: "Candidate review terms" })).toBeInTheDocument();
     expect(screen.getByText("Corroboration", { selector: "dt" })).toBeInTheDocument();
-    expect(screen.getByText("No library presence", { selector: "dt" })).toBeInTheDocument();
+    expect(screen.getByText("No title/description match", { selector: "dt" })).toBeInTheDocument();
   });
 
   it("is keyboard operable and Escape closes it, returning focus", async () => {

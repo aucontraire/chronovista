@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.113.2] - 2026-11-05
+
+### Fixed
+- **Candidate triage no longer claims "No library presence" for unmatched candidates.** The `grounds_nowhere` bucket (salience 0) was labelled "No library presence" and defined as "Does not appear in your library at all" — a false statement, since salience counts matches only in video titles and descriptions and never reads transcripts. It is now labelled "No title/description match" and states that transcripts are unchecked, so a zero score is a weak signal rather than proof of absence. Display copy only; the `grounds_nowhere` API value is unchanged.
+
 ## [0.113.1] - 2026-11-04
 
 ### Fixed

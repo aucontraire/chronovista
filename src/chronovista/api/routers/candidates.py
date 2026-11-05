@@ -142,22 +142,33 @@ async def _run_generation(run_id: uuid.UUID) -> None:
             await heartbeat_session.commit()
 
     try:
-        # Pre-fetch P31 OUTSIDE the generate session (Feature 098): read the target QIDs in a
-        # short session, close it, THEN run the (minutes-long) Wikidata batch with no DB
-        # transaction held across the network I/O (the Feature 094 held-session class). A
-        # Wikidata outage degrades to {} → each candidate falls back to the relation heuristic.
+        # Pre-fetch P31 and aliases OUTSIDE the generate session (Feature 098 / salience
+        # grounding): read the target QIDs in a short session, close it, THEN run the
+        # (minutes-long) Wikidata batches with no DB transaction held across the network I/O
+        # (the Feature 094 held-session class). A Wikidata outage degrades P31 to {} (each
+        # candidate falls back to the relation heuristic) and aliases to None (label-only
+        # salience, recorded as "unavailable" in provenance — distinct from "no aliases").
         async with session_factory() as qid_session:
             target_qids = await service.discover_target_qids(qid_session)
             await qid_session.rollback()
         instance_of_map: dict[str, list[str]] = {}
+        aliases_map: dict[str, list[str]] | None = None
         if target_qids:
+            client = WikidataClient()
             try:
-                instance_of_map = await WikidataClient().fetch_instance_of(target_qids)
+                instance_of_map = await client.fetch_instance_of(target_qids)
             except WikidataUnavailable:
                 instance_of_map = {}
+            try:
+                aliases_map = await client.fetch_aliases(target_qids)
+            except WikidataUnavailable:
+                aliases_map = None
         async with session_factory() as gen_session:
             summary = await service.generate(
-                gen_session, progress=on_progress, instance_of_map=instance_of_map
+                gen_session,
+                progress=on_progress,
+                instance_of_map=instance_of_map,
+                aliases_map=aliases_map,
             )
             await gen_session.commit()
         async with session_factory() as done_session:

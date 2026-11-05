@@ -320,29 +320,56 @@ class _CorpusIndex:
             math.log(denom / max(1, len(self._token_vids.get(t, ())))) for t in tokens
         )
 
-    def salience(self, qid: str, name: str, type_hint: str) -> tuple[int, float]:
-        """Return ``(distinct video hits, specificity)`` for a candidate name.
+    def salience(
+        self, qid: str, name: str, type_hint: str, aliases: list[str]
+    ) -> tuple[int, float]:
+        """Return ``(distinct video hits, specificity)`` for a candidate's full name set.
 
-        Uses the SHARED detector rule (``_build_entity_pattern`` + ``_compile_entity_regex``
-        + ``_fold_diacritics``), pre-filtered to videos containing all the name's tokens.
+        Matches the candidate's canonical label **plus its Wikidata aliases** against the
+        corpus with the SHARED detector rule (``_build_entity_pattern`` +
+        ``_compile_entity_regex`` + ``_fold_diacritics``) — the same canonical+alias name set
+        the scanner matches for a library entity. Scoring the label alone undercounts salience
+        for entities whose corpus mentions use a short form or acronym (the measured
+        institution 3.8%-vs-17.5% spread): the label-only name grounds nowhere while the alias
+        matches plainly.
+
+        ``specificity`` stays the *canonical name's* specificity (aliases do not change how
+        specific the primary name is). The token pre-filter, however, is per-ALTERNATIVE: a
+        video matching one alternative of ``name|alias1|...`` must contain every token of THAT
+        alternative, so the candidate set is the UNION over alternatives of each alternative's
+        token intersection. Pre-filtering on the primary name's tokens alone (the old shape)
+        would starve any alias whose tokens the label lacks — exactly the acronym case this
+        fixes — so the ``names=[name]`` fix is incomplete without this.
         """
-        folded_name = _fold_diacritics(name)[0]
-        tokens = [m.group(0).lower() for m in _WORD.finditer(folded_name)]
-        specificity = round(self.specificity(tokens), 4)
-        if self._n == 0 or not tokens or any(t not in self._token_vids for t in tokens):
+        folded_primary = _fold_diacritics(name)[0]
+        primary_tokens = [m.group(0).lower() for m in _WORD.finditer(folded_primary)]
+        specificity = round(self.specificity(primary_tokens), 4)
+        if self._n == 0:
             return 0, specificity
+
+        candidate_vids: set[int] = set()
+        for alt in (name, *aliases):
+            folded_alt = _fold_diacritics(alt)[0]
+            alt_tokens = [m.group(0).lower() for m in _WORD.finditer(folded_alt)]
+            if not alt_tokens or any(t not in self._token_vids for t in alt_tokens):
+                continue  # an alternative with a corpus-absent token can never match
+            candidate_vids |= set.intersection(
+                *(self._token_vids[t] for t in alt_tokens)
+            )
+        if not candidate_vids:
+            return 0, specificity
+
         pattern = _build_entity_pattern(
             entity_id=uuid.uuid5(_PATTERN_NS, qid),
             canonical_name=name,
             entity_type=type_hint,
-            names=[name],
+            names=[name, *aliases],
             case_sensitive_names=set(),
             exclusion_patterns=[],
         )
         if not pattern.pg_pattern:
             return 0, specificity
         regex = _compile_entity_regex(pattern)
-        candidate_vids = set.intersection(*(self._token_vids[t] for t in tokens))
         hits = sum(1 for i in candidate_vids if regex.search(self._folded[i]))
         return hits, specificity
 
@@ -382,6 +409,7 @@ class CandidateSuggestionService:
         dry_run: bool = False,
         progress: Callable[[int, int], Awaitable[None]] | None = None,
         instance_of_map: dict[str, list[str]] | None = None,
+        aliases_map: dict[str, list[str]] | None = None,
     ) -> GenerationSummary:
         """Discover, ground, score, triage, and upsert candidates (FR-001..FR-005, FR-014).
 
@@ -426,12 +454,24 @@ class CandidateSuggestionService:
             if instance_of_map is not None
             else await self._fetch_instance_of_for_rows(rows)
         )
+        # Wikidata aliases for every discovered QID, so salience matches a candidate's full name
+        # set (label + aliases), not the label alone (the institution 3.8%-vs-17.5% spread). Like
+        # instance_of_map, the detached runner pre-fetches these OUTSIDE the session; the CLI/tests
+        # fetch inline. ``None`` (fetch unavailable) is kept distinct from ``{}`` (fetched, nobody
+        # had aliases) so each candidate records which salience branch ran.
+        aliases_by_qid = (
+            aliases_map
+            if aliases_map is not None
+            else await self._fetch_aliases_for_rows(rows)
+        )
 
         total = len(rows)
         step = max(1, total // 100)
         creates = []
         for i, row in enumerate(rows):
-            create = self._build_create(row, index, ungrounded, p31_by_qid)
+            create = self._build_create(
+                row, index, ungrounded, p31_by_qid, aliases_by_qid
+            )
             if create is not None:
                 creates.append(create)
             # Report progress through the build loop at ~1% granularity (FR-023a).
@@ -494,6 +534,28 @@ class CandidateSuggestionService:
         except WikidataUnavailable:
             return {}
 
+    async def _fetch_aliases_for_rows(
+        self, rows: list[RelationCandidateRow]
+    ) -> dict[str, list[str]] | None:
+        """Batch-fetch Wikidata aliases for the discovered QIDs (salience grounding).
+
+        Twin of :meth:`_fetch_instance_of_for_rows`, with one deliberate difference: it returns
+        ``None`` (not ``{}``) when the fetch was skipped or failed — no Wikidata client wired, or
+        ``WikidataUnavailable`` — so each candidate's provenance can distinguish "salience was
+        label-only because the alias fetch was unavailable" from "the entity genuinely has no
+        aliases" (the record-which-fallback-ran rule). A successful fetch returns a dict whose
+        absent keys mean that known QID has no aliases.
+        """
+        if self._wikidata is None:
+            return None
+        qids = sorted({row.wikidata_qid for row in rows})
+        if not qids:
+            return {}
+        try:
+            return await self._wikidata.fetch_aliases(qids)
+        except WikidataUnavailable:
+            return None
+
     async def discover_target_qids(self, session: AsyncSession) -> list[str]:
         """Distinct target QIDs for the current relation candidates (Feature 098).
 
@@ -512,6 +574,7 @@ class CandidateSuggestionService:
         index: _CorpusIndex,
         ungrounded: dict[str, uuid.UUID],
         p31_by_qid: dict[str, list[str]],
+        aliases_by_qid: dict[str, list[str]] | None,
     ) -> CandidateSuggestionCreate | None:
         """Turn an emitted row into a persistable candidate, or ``None`` to skip it."""
         normalized = self._normalizer.normalize(row.label)
@@ -536,8 +599,18 @@ class CandidateSuggestionService:
         else:
             type_hint = _derive_type_hint(row.relations)
             type_source = "relation_heuristic"
+        # Full name set for salience: label + Wikidata aliases. ``aliases_by_qid is None`` means
+        # the alias fetch was unavailable, so salience fell back to label-only — recorded as
+        # ``unavailable`` to keep it distinct from an entity that genuinely has no aliases
+        # (``none``), per the record-which-fallback-ran rule.
+        if aliases_by_qid is None:
+            aliases: list[str] = []
+            salience_aliases = "unavailable"
+        else:
+            aliases = aliases_by_qid.get(row.wikidata_qid, [])
+            salience_aliases = "used" if aliases else "none"
         salience, specificity = index.salience(
-            row.wikidata_qid, row.label, type_hint.value
+            row.wikidata_qid, row.label, type_hint.value, aliases
         )
         return CandidateSuggestionCreate(
             source_channel=self._channel,
@@ -557,6 +630,7 @@ class CandidateSuggestionService:
                 "seed_entity_ids": [str(s) for s in row.seed_entity_ids],
                 "relations": row.relations,
                 "type_source": type_source,
+                "salience_aliases": salience_aliases,
             },
             possible_duplicate_of_id=ungrounded.get(normalized),
         )

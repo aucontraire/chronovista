@@ -136,6 +136,24 @@ async def _delete_all_runs(factory: async_sessionmaker[AsyncSession]) -> None:
         await session.commit()
 
 
+class _StubWikidataClient:
+    """No-network stand-in for the detached runner's ``WikidataClient``.
+
+    The runner constructs a real client and makes two batched ``wbgetentities`` calls — P31 and
+    (since the salience-aliases fix) aliases. The suite's target QIDs are synthetic, so against
+    real Wikidata they resolve to "missing" and both calls already return ``{}``; this returns
+    the same ``{}`` with no HTTP, so generation behaves identically (P31 heuristic fallback,
+    label-only salience) while the integration job neither depends on Wikidata nor doubles its
+    rate-limit exposure per generation POST.
+    """
+
+    async def fetch_instance_of(self, qids: list[str]) -> dict[str, list[str]]:
+        return {}
+
+    async def fetch_aliases(self, qids: list[str]) -> dict[str, list[str]]:
+        return {}
+
+
 @pytest.fixture(autouse=True)
 async def sweep_uses_test_database(
     monkeypatch: pytest.MonkeyPatch,
@@ -144,6 +162,12 @@ async def sweep_uses_test_database(
     """Point the detached sweep at the test DB and guarantee no run outlives a test."""
     monkeypatch.setattr(
         db_manager, "get_session_factory", lambda: integration_session_factory
+    )
+    # Keep the sweep hermetic — the runner's local `from ...wikidata_client import WikidataClient`
+    # is resolved at call time, so patching the source attribute makes `WikidataClient()` return
+    # the stub (no real network, identical {} results for the synthetic missing QIDs).
+    monkeypatch.setattr(
+        "chronovista.services.wikidata_client.WikidataClient", _StubWikidataClient
     )
     await _delete_all_runs(integration_session_factory)
     yield

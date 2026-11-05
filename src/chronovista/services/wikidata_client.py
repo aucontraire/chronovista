@@ -237,6 +237,38 @@ class WikidataClient:
                 out[str(qid)] = wikis
         return out
 
+    async def fetch_aliases(self, qids: list[str]) -> dict[str, list[str]]:
+        """Batched Wikidata aliases for many QIDs (candidate salience grounding).
+
+        Returns ``{qid: [alias, ...]}`` for the QIDs Wikidata knows — unknown/missing QIDs are
+        omitted, and a known QID with no aliases maps to ``[]``. One lean ``wbgetentities``
+        round-trip per 50 ids with ``props=aliases`` only — the alias-dimension twin of
+        :meth:`fetch_instance_of` / :meth:`fetch_sitelinks`. Candidate grounding scores a
+        not-yet-library QID whose aliases are stored nowhere locally, so it must read them here;
+        the scanner, by contrast, reads a library entity's alias rows from the DB. Raises
+        ``WikidataUnavailable`` on transport/rate-limit failure so callers can degrade to
+        label-only salience.
+        """
+        if not qids:
+            return {}
+        transport = self._transport()
+        out: dict[str, list[str]] = {}
+        for chunk in WikimediaTransport.chunk(
+            qids
+        ):  # 50 ids/request (wbgetentities ceiling)
+            data = await self._call(
+                transport,
+                action="wbgetentities",
+                ids="|".join(chunk),
+                props="aliases",
+                languages=wp.LABEL_LANGS,
+            )
+            for qid, ent in (data.get("entities") or {}).items():
+                if not isinstance(ent, dict) or "missing" in ent:
+                    continue
+                out[str(qid)] = wp.extract_aliases(ent.get("aliases") or {})
+        return out
+
     async def resolve_candidate(
         self, qid: str, entity_type: str | None = None
     ) -> WikidataCandidate | None:

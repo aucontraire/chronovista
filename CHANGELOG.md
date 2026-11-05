@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.113.1] - 2026-11-04
+
+### Fixed
+- **Candidate salience now matches a candidate's aliases, not just its label.** Grounding scored a discovered candidate by matching only its Wikidata label against the title+description corpus, while the scanner matches a library entity's full canonical-name + alias set through the same shared detector. Candidates whose corpus mentions use a short form or acronym therefore grounded nowhere and were mis-triaged in the review queue (measured 3.8% vs 17.5% salience>0 on an institution sample). Generation now fetches aliases (batched, pre-fetched outside the generate session) and scores the full name set; the corpus token pre-filter became a union over name alternatives so an alias whose tokens the label lacks is never starved. Provenance records whether each candidate's salience used aliases, found none, or fell back because the fetch was unavailable. A mutation-verified fitness guard pins the behaviour.
+
 ## [0.113.0] - 2026-11-04
 
 ### Added

@@ -326,3 +326,53 @@ class TestResolveByQid:
 
         client = _client(httpx.MockTransport(respond))
         assert await client.resolve_candidate("Q999999999", "person") is None
+
+
+class TestFetchAliases:
+    """Batched alias fetch for candidate salience grounding (label + aliases name set)."""
+
+    @staticmethod
+    def _aliases_handler(request: httpx.Request) -> httpx.Response:
+        # Dispatches on the lean props=aliases call fetch_aliases issues; a known QID with
+        # aliases, a known QID with none, and a missing QID in one response.
+        assert request.url.params.get("action") == "wbgetentities"
+        assert request.url.params.get("props") == "aliases"
+        return httpx.Response(
+            200,
+            json={
+                "entities": {
+                    "Q000001": {
+                        "aliases": {
+                            "en": [
+                                {"language": "en", "value": "GSO"},
+                                {"language": "en", "value": "Giant Systems Org"},
+                            ]
+                        }
+                    },
+                    "Q000002": {"aliases": {}},
+                    "Q000009": {"id": "Q000009", "missing": ""},
+                }
+            },
+        )
+
+    async def test_returns_aliases_none_and_omits_missing(self) -> None:
+        client = _client(httpx.MockTransport(self._aliases_handler))
+        out = await client.fetch_aliases(["Q000001", "Q000002", "Q000009"])
+        assert out["Q000001"] == ["GSO", "Giant Systems Org"]
+        assert out["Q000002"] == []  # known, but no aliases
+        assert "Q000009" not in out  # missing QID omitted, not an empty entry
+
+    async def test_empty_input_makes_no_call(self) -> None:
+        def boom(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+            raise AssertionError("fetch_aliases([]) must not hit the network")
+
+        client = _client(httpx.MockTransport(boom))
+        assert await client.fetch_aliases([]) == {}
+
+    async def test_transport_error_raises_unavailable(self) -> None:
+        def boom(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("boom")
+
+        client = _client(httpx.MockTransport(boom))
+        with pytest.raises(WikidataUnavailable):
+            await client.fetch_aliases(["Q000001"])

@@ -185,7 +185,7 @@ describe("CandidateDetailPage", () => {
     expect(within(panel).getByText(/gaps in your graph/)).toBeInTheDocument();
     expect(within(panel).getByText("Token count", { selector: "dt" })).toBeInTheDocument();
     expect(within(panel).getByText(/One-word names are noisier/)).toBeInTheDocument();
-    expect(within(panel).getByText("No library presence", { selector: "dt" })).toBeInTheDocument();
+    expect(within(panel).getByText("No title/description match", { selector: "dt" })).toBeInTheDocument();
     fireEvent.keyDown(panel, { key: "Escape" });
     expect(btn).toHaveAttribute("aria-expanded", "false");
     expect(btn).toHaveFocus();

@@ -135,6 +135,10 @@ COMMON_WORD_ALIASES = {
     "Brag",
     "Broke",
     "Cast",
+    # "one-way door", "back door", "door hinge" — ordinary English that recurs in prose
+    # and decision records; collides with a library entity name. The full name still
+    # identifies the real entity; the bare word identifies no one.
+    "Door",
     # A generic English plural that is also a library tag; collides with the "categories"
     # shorthand (`cats`) throughout the Feature 100 cross-walk code and tests. The real tag is
     # still just a common word that identifies no one.

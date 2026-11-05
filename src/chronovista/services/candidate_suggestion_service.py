@@ -14,6 +14,7 @@ from __future__ import annotations
 import math
 import re
 import uuid
+from array import array
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -291,7 +292,20 @@ def _triage(salience: int, token_count: int, specificity: float) -> TriageCatego
 
 
 class _CorpusIndex:
-    """Inverted token index over the folded corpus, for grounding pre-filtering."""
+    """Inverted token index over the folded corpus, for grounding pre-filtering.
+
+    Postings are ``array('i')`` (4 bytes/int), not ``set[int]``. The whole index lives in the
+    generation process's RAM, so its footprint is O(corpus) with no ceiling — it has a slope,
+    not a size — and a lean posting representation is what keeps that slope shallow. Measured
+    isolated-process peak RSS over the real corpus: **626 MB → 420 MB** for the current
+    title+description corpus. Postings are the dominant term; the total-RSS win is smaller than
+    the posting win alone because ``_folded`` (the corpus text) is shared and unchanged.
+    Postings are appended in ascending video index, so every array is already sorted, which
+    :meth:`salience`'s per-alternative intersection relies on. See ADR 015 D2: this is "row 4"
+    (lean postings bound the constant factor); the transcript projection and the O(batch)
+    streaming rewrite ("row 3") that bounds the *slope* are deferred there on a measured budget
+    trigger.
+    """
 
     def __init__(self, corpus: list[tuple[str, str, str | None]]) -> None:
         # Fold title+description once per video; keep aligned by position.
@@ -300,10 +314,12 @@ class _CorpusIndex:
             for _vid, title, description in corpus
         ]
         self._n = len(self._folded)
-        self._token_vids: dict[str, set[int]] = defaultdict(set)
+        # array('i') postings, not set[int]: 4 bytes/posting vs a set's ~32-60 bytes/element —
+        # the dominant term in the index's RAM. Appended in ascending i, so each array is sorted.
+        self._token_vids: dict[str, array[int]] = defaultdict(lambda: array("i"))
         for i, folded in enumerate(self._folded):
             for tok in {m.group(0).lower() for m in _WORD.finditer(folded)}:
-                self._token_vids[tok].add(i)
+                self._token_vids[tok].append(i)
 
     @property
     def size(self) -> int:
@@ -353,9 +369,10 @@ class _CorpusIndex:
             alt_tokens = [m.group(0).lower() for m in _WORD.finditer(folded_alt)]
             if not alt_tokens or any(t not in self._token_vids for t in alt_tokens):
                 continue  # an alternative with a corpus-absent token can never match
-            candidate_vids |= set.intersection(
-                *(self._token_vids[t] for t in alt_tokens)
-            )
+            # Intersect the alternative's posting arrays; materialise only the smallest as a
+            # set (the persistent index stays arrays — that is the memory win).
+            posts = sorted((self._token_vids[t] for t in alt_tokens), key=len)
+            candidate_vids |= set(posts[0]).intersection(*posts[1:])
         if not candidate_vids:
             return 0, specificity
 
@@ -442,6 +459,7 @@ class CandidateSuggestionService:
         )
         corpus = await self._videos.get_all_title_description(session)
         index = _CorpusIndex(corpus)
+        del corpus  # free the corpus-sized second copy; the index holds its own folded text
         ungrounded = await self._entities.get_ungrounded_normalized_map(session)
         # Authoritative P31 types for every discovered QID (Feature 098). The detached runner
         # pre-fetches these OUTSIDE this session (via discover_target_qids → fetch) and passes

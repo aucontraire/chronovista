@@ -92,7 +92,22 @@ class CandidateSuggestionBase(BaseModel):
     salience: int = Field(
         ...,
         ge=0,
-        description="Distinct corpus videos (title+description) matching the name",
+        description="Pooled distinct videos matching the name in ANY source (title/description)",
+    )
+    salience_title: int | None = Field(
+        default=None,
+        ge=0,
+        description="Distinct videos whose TITLE matched (None = not measured per-source)",
+    )
+    salience_description: int | None = Field(
+        default=None,
+        ge=0,
+        description="Distinct videos whose DESCRIPTION matched (None = not measured per-source)",
+    )
+    salience_transcript: int | None = Field(
+        default=None,
+        ge=0,
+        description="Distinct videos whose TRANSCRIPT matched (None = not measured; filled in step 3)",
     )
     score: float = Field(
         ..., ge=0, allow_inf_nan=False, description="Plausibility score (ranking only)"

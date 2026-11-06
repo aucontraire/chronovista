@@ -32,13 +32,15 @@ _ALIAS = "GSO"
 def test_salience_counts_alias_only_matches() -> None:
     index = _CorpusIndex(_CORPUS)
 
-    label_only, _ = index.salience("Q1", _LABEL, "other", [])
+    # Assertions stay on the POOLED value — the per-source return (D1) must not be an excuse to
+    # loosen the guard this protects (v0.113.1 cost a release to earn).
+    label_only = index.salience("Q1", _LABEL, "other", []).pooled
     assert label_only == 0, (
         "the label's tokens are absent from the corpus — label-only salience must be 0, "
         "or this guard proves nothing"
     )
 
-    with_alias, _ = index.salience("Q1", _LABEL, "other", [_ALIAS])
+    with_alias = index.salience("Q1", _LABEL, "other", [_ALIAS]).pooled
     assert with_alias >= 1, (
         "candidate salience must match the ALIAS set, not the label alone — reverting the "
         "aliases fix (names=[name], or a primary-name-only token pre-filter) makes this 0"

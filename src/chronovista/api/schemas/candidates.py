@@ -30,6 +30,9 @@ class CandidateDetail(BaseModel):
     corroboration_count: int
     dangling_edge_count: int
     salience: int
+    salience_title: int | None
+    salience_description: int | None
+    salience_transcript: int | None
     score: float
     triage: str
     provenance: dict[str, object]

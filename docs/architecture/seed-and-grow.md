@@ -43,11 +43,17 @@ future producers that write into the same queue rather than parallel systems.
    a person; a headquarters relationship implies a place); when relationships
    disagree the type falls back to a catch-all.
 2. **Ground.** Measure how often each candidate's name appears in the local corpus
-   of video **titles and descriptions**, using the *same* detection rule the scanner
-   applies to registered entities — the shared pattern builder, not a re-implemented
-   matcher. Reusing one rule means a name "found" during discovery is a mention the
-   real scanner would reproduce. Transcripts are excluded (their ASR noise would
-   inflate presence).
+   of video **titles, descriptions, and transcripts**, using the *same* detection
+   rule the scanner applies to registered entities — the shared pattern builder, not
+   a re-implemented matcher. Reusing one rule means a name "found" during discovery is
+   a mention the real scanner would reproduce. Transcripts are read as *effective
+   text* (a segment's correction when present, else the raw text) through the same
+   single rule the scanner uses, and only the user's non-excluded languages are
+   searched; the hit count is recorded per source (title, description, transcript). A
+   candidate discussed only in spoken content — named in no title or description —
+   therefore still grounds, where it previously scored zero. The per-source counts are
+   stored separately; scoring still uses the pooled total (per-source *weighting* is a
+   later step).
 3. **Score.** Rank by a specificity-weighted presence: raw presence divided by the
    name's commonness, with a mild boost for corroboration (how many of your entities
    point at the target). A common single word that appears everywhere scores *low*,

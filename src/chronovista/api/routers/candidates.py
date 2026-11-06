@@ -53,6 +53,7 @@ from chronovista.repositories.entity_alias_repository import EntityAliasReposito
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.candidate_suggestion_service import (
+    CORPUS_SOURCES,
     CandidateSuggestionService,
 )
 from chronovista.services.entity_enrichment_service import (
@@ -312,6 +313,7 @@ async def candidate_summary(
             worth_review=counts.get("worth_review", 0),
             likely_eliminable=counts.get("likely_eliminable", 0),
             grounds_nowhere=counts.get("grounds_nowhere", 0),
+            corpus_sources=list(CORPUS_SOURCES),
         )
     )
 

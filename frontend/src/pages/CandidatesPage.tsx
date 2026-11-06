@@ -27,18 +27,23 @@ import {
 /** Stable ID used by SkipLink and main content container. */
 const MAIN_CONTENT_ID = "candidates-main-content";
 
-const TRIAGE_OPTIONS = [
-  { value: "all", label: "All triage" },
-  { value: "worth_review", label: "Worth review" },
-  { value: "likely_eliminable", label: "Likely eliminable" },
-  { value: "grounds_nowhere", label: triageLabel("grounds_nowhere") },
-];
+function triageOptions(corpusSources?: readonly string[]) {
+  return [
+    { value: "all", label: "All triage" },
+    { value: "worth_review", label: "Worth review" },
+    { value: "likely_eliminable", label: "Likely eliminable" },
+    {
+      value: "grounds_nowhere",
+      label: triageLabel("grounds_nowhere", corpusSources),
+    },
+  ];
+}
 const SORT_OPTIONS = [
   { value: "score", label: "Score" },
   { value: "corroboration", label: "Corroboration" },
   { value: "salience", label: "Salience" },
 ];
-const VALID_TRIAGE = TRIAGE_OPTIONS.map((o) => o.value);
+const VALID_TRIAGE = triageOptions().map((o) => o.value);
 const VALID_SORT = SORT_OPTIONS.map((o) => o.value);
 const VALID_TYPES = ENTITY_TYPE_TABS.map((t) => t.value);
 
@@ -96,7 +101,10 @@ function SummaryPanel() {
       >
         {stat("Worth review", data.worth_review)}
         {stat("Likely eliminable", data.likely_eliminable)}
-        {stat(triageLabel("grounds_nowhere"), data.grounds_nowhere)}
+        {stat(
+          triageLabel("grounds_nowhere", data.corpus_sources),
+          data.grounds_nowhere
+        )}
       </dl>
     </section>
   );
@@ -284,6 +292,10 @@ function LoadingState() {
 export function CandidatesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
+  const { data: summary } = useCandidateSummary();
+  const corpusSources = summary?.corpus_sources;
+  const triageOpts = triageOptions(corpusSources);
+
   const triageParam = searchParams.get("triage") ?? "all";
   const triage = VALID_TRIAGE.includes(triageParam) ? triageParam : "all";
   const typeParam = searchParams.get("type") ?? "all";
@@ -349,6 +361,7 @@ export function CandidatesPage() {
       >
         <TermsExplainer
           terms={LIST_TERMS}
+          corpusSources={corpusSources}
           heading={
             <h1 className="text-3xl font-bold text-gray-900">Candidate Review</h1>
           }
@@ -373,7 +386,7 @@ export function CandidatesPage() {
               onChange={(e) => setParam("triage", e.target.value, "all")}
               className={SELECT_CLASS}
             >
-              {TRIAGE_OPTIONS.map((o) => (
+              {triageOpts.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>

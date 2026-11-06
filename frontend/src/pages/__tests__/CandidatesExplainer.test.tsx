@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
+import { TermsExplainer } from "../../components/candidates/TermsExplainer";
 import { CandidatesPage } from "../CandidatesPage";
 
 vi.mock("../../hooks/useCandidates", () => ({
@@ -44,7 +45,7 @@ describe("Candidates terms explainer", () => {
     expect(btn).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("region", { name: "Candidate review terms" })).toBeInTheDocument();
     expect(screen.getByText("Corroboration", { selector: "dt" })).toBeInTheDocument();
-    expect(screen.getByText("No title/description match", { selector: "dt" })).toBeInTheDocument();
+    expect(screen.getByText("No title, description, or transcript match", { selector: "dt" })).toBeInTheDocument();
   });
 
   it("is keyboard operable and Escape closes it, returning focus", async () => {
@@ -64,5 +65,33 @@ describe("Candidates terms explainer", () => {
     await user.click(btn);
     await user.click(document.body);
     expect(btn).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+describe("TermsExplainer corpus-source derivation", () => {
+  async function openWith(sources?: readonly string[]) {
+    const user = userEvent.setup();
+    render(
+      <TermsExplainer
+        heading={<h1>Heading</h1>}
+        terms={["grounds_nowhere", "salience"]}
+        corpusSources={sources}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "What do these terms mean?" }));
+  }
+
+  it("reflects exactly the sources given (two sources, no transcript)", async () => {
+    await openWith(["title", "description"]);
+    expect(screen.getByText("No title or description match", { selector: "dt" })).toBeInTheDocument();
+    expect(screen.getByText(/in their title or description\.$/)).toBeInTheDocument();
+    expect(screen.queryByText(/transcript/i)).not.toBeInTheDocument();
+  });
+
+  it("names every source when transcript is included", async () => {
+    await openWith(["title", "description", "transcript"]);
+    expect(screen.getByText("No title, description, or transcript match", { selector: "dt" })).toBeInTheDocument();
+    expect(screen.getByText(/in their title, description, or transcript\.$/)).toBeInTheDocument();
+    expect(screen.queryByText(/not checked/i)).not.toBeInTheDocument();
   });
 });

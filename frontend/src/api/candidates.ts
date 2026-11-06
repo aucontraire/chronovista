@@ -62,6 +62,8 @@ export interface CandidateSummary {
   worth_review: number;
   likely_eliminable: number;
   grounds_nowhere: number;
+  /** Authoritative list of sources the salience corpus searches. */
+  corpus_sources: string[];
 }
 
 /** Response envelope for GET /api/v1/candidates/summary */

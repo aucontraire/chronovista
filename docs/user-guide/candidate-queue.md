@@ -23,8 +23,10 @@ chronovista candidates generate
 
 This reads your grounded entities' stored relationships (offline — no network
 call), keeps the targets that are not already in your library, measures how often
-each one's name appears in your video titles and descriptions, scores and triages
-them, and saves them to the queue. Re-running is safe: it refreshes still-pending
+each one's name appears in your video titles, descriptions, and transcripts, scores
+and triages them, and saves them to the queue. Transcripts are searched in your
+non-excluded languages, so a name spoken in a video but never written in its title
+or description still counts. Re-running is safe: it refreshes still-pending
 candidates and never disturbs ones you have already approved or rejected.
 
 Preview without writing anything:

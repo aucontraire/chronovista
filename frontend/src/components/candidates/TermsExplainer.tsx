@@ -15,11 +15,6 @@ export const TERM_DEFINITIONS = {
     term: "Likely eliminable",
     definition: "Present, but with weak signal; usually safe to reject.",
   },
-  grounds_nowhere: {
-    term: "No title/description match",
-    definition:
-      "The name matches no video title or description. Transcripts are not checked, so it may still be spoken in your library; a weak signal, not proof of absence.",
-  },
   score: {
     term: "Score",
     definition:
@@ -29,11 +24,6 @@ export const TERM_DEFINITIONS = {
     term: "Corroboration",
     definition:
       "How many entities you already have independently point at this suggestion. More pointers mean stronger evidence.",
-  },
-  salience: {
-    term: "Salience",
-    definition:
-      "How many of your videos mention the name in their title or description.",
   },
   single_token: {
     term: "Single-token name",
@@ -55,15 +45,68 @@ export const TERM_DEFINITIONS = {
   },
 } as const;
 
-export type TermKey = keyof typeof TERM_DEFINITIONS;
+/**
+ * Sources the backend grounds salience against. Only a fallback: the API's
+ * `corpus_sources` (GET /candidates/summary) is the authoritative list.
+ */
+export const DEFAULT_CORPUS_SOURCES: readonly string[] = [
+  "title",
+  "description",
+  "transcript",
+];
+
+/** Oxford-style prose list: "a", "a or b", "a, b, or c". */
+export function formatSources(sources: readonly string[]): string {
+  if (sources.length <= 1) return sources.join("");
+  if (sources.length === 2) return `${sources[0]} or ${sources[1]}`;
+  return `${sources.slice(0, -1).join(", ")}, or ${sources[sources.length - 1]}`;
+}
+
+type DerivedTermKey = "grounds_nowhere" | "salience";
+
+interface TermEntry {
+  term: string;
+  definition: string;
+}
+
+/** Terms whose copy depends on which sources the corpus searches. */
+function derivedTerms(
+  sources: readonly string[]
+): Record<DerivedTermKey, TermEntry> {
+  const list = formatSources(sources);
+  return {
+    grounds_nowhere: {
+      term: `No ${list} match`,
+      definition: `The name matches no video ${list}. A weak signal, not proof of absence.`,
+    },
+    salience: {
+      term: "Salience",
+      definition: `How many of your videos mention the name in their ${list}.`,
+    },
+  };
+}
+
+export type TermKey = keyof typeof TERM_DEFINITIONS | DerivedTermKey;
+
+function lookupTerm(key: TermKey, sources: readonly string[]): TermEntry {
+  if (key === "grounds_nowhere" || key === "salience") {
+    return derivedTerms(sources)[key];
+  }
+  return TERM_DEFINITIONS[key];
+}
 
 /**
  * User-facing label for a triage bucket. Display only: the API value
  * (e.g. `grounds_nowhere`) is what filters and query keys use.
  */
-export function triageLabel(value: string): string {
+export function triageLabel(
+  value: string,
+  corpusSources?: readonly string[] | undefined
+): string {
+  const sources = corpusSources ?? DEFAULT_CORPUS_SOURCES;
+  if (value === "grounds_nowhere") return derivedTerms(sources).grounds_nowhere.term;
   return value in TERM_DEFINITIONS
-    ? TERM_DEFINITIONS[value as TermKey].term
+    ? TERM_DEFINITIONS[value as keyof typeof TERM_DEFINITIONS].term
     : value;
 }
 
@@ -72,9 +115,16 @@ interface TermsExplainerProps {
   heading: ReactNode;
   /** Terms this page actually displays, in display order. */
   terms: readonly TermKey[];
+  /** Sources the salience corpus searches; defaults to all current sources. */
+  corpusSources?: readonly string[] | undefined;
 }
 
-export function TermsExplainer({ heading, terms }: TermsExplainerProps) {
+export function TermsExplainer({
+  heading,
+  terms,
+  corpusSources,
+}: TermsExplainerProps) {
+  const sources = corpusSources ?? DEFAULT_CORPUS_SOURCES;
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -137,16 +187,17 @@ export function TermsExplainer({ heading, terms }: TermsExplainerProps) {
             approve or reject anything for you.
           </p>
           <dl className="grid grid-cols-1 sm:grid-cols-[11rem_1fr] gap-x-4 gap-y-2 text-sm">
-            {terms.map((key) => (
-              <div key={key} className="contents">
-                <dt className="font-medium text-gray-900">
-                  {TERM_DEFINITIONS[key].term}
-                </dt>
-                <dd className="text-gray-600 mb-2 sm:mb-0">
-                  {TERM_DEFINITIONS[key].definition}
-                </dd>
-              </div>
-            ))}
+            {terms.map((key) => {
+              const entry = lookupTerm(key, sources);
+              return (
+                <div key={key} className="contents">
+                  <dt className="font-medium text-gray-900">{entry.term}</dt>
+                  <dd className="text-gray-600 mb-2 sm:mb-0">
+                    {entry.definition}
+                  </dd>
+                </div>
+              );
+            })}
           </dl>
         </section>
       )}

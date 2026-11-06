@@ -1284,6 +1284,11 @@ class CandidateSuggestion(Base):
     salience: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=sql_text("0")
     )
+    # Per-source distinct-video counts. NULL = not measured per-source;
+    # 0 = measured, found nothing. Parts may sum to more than ``salience``.
+    salience_title: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salience_description: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    salience_transcript: Mapped[int | None] = mapped_column(Integer, nullable=True)
     score: Mapped[float] = mapped_column(
         Float, nullable=False, default=0.0, server_default=sql_text("0")
     )
@@ -1363,6 +1368,17 @@ class CandidateSuggestion(Base):
             "dangling_edge_count >= 0", name="chk_candidate_dangling_non_negative"
         ),
         CheckConstraint("salience >= 0", name="chk_candidate_salience_non_negative"),
+        CheckConstraint(
+            "salience_title >= 0", name="chk_candidate_salience_title_non_negative"
+        ),
+        CheckConstraint(
+            "salience_description >= 0",
+            name="chk_candidate_salience_description_non_negative",
+        ),
+        CheckConstraint(
+            "salience_transcript >= 0",
+            name="chk_candidate_salience_transcript_non_negative",
+        ),
         CheckConstraint("score >= 0", name="chk_candidate_score_non_negative"),
         Index(
             "idx_candidate_pending_score",

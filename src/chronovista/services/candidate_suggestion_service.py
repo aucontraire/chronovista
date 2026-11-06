@@ -18,6 +18,7 @@ from array import array
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -291,6 +292,25 @@ def _triage(salience: int, token_count: int, specificity: float) -> TriageCatego
     return TriageCategory.WORTH_REVIEW
 
 
+class _Salience(NamedTuple):
+    """A candidate's grounding result (D1, ADR 015).
+
+    ``pooled`` is the count of distinct videos matching the name in ANY source — the value
+    scoring/triage use and the one stored in the ``salience`` column. The per-source fields are
+    distinct videos matching that source; a video matching two sources counts in each, so the
+    parts **do not sum** to ``pooled`` (``title + description + transcript >= pooled``).
+    ``transcript`` is ``None`` until transcripts enter the corpus (step 3): **None = not
+    measured, 0 = measured and found nothing** — a non-null 0 now would be the v0.113.2
+    absence-of-evidence error at the value layer.
+    """
+
+    pooled: int
+    specificity: float
+    title: int
+    description: int
+    transcript: int | None
+
+
 class _CorpusIndex:
     """Inverted token index over the folded corpus, for grounding pre-filtering.
 
@@ -298,27 +318,39 @@ class _CorpusIndex:
     generation process's RAM, so its footprint is O(corpus) with no ceiling — it has a slope,
     not a size — and a lean posting representation is what keeps that slope shallow. Measured
     isolated-process peak RSS over the real corpus: **626 MB → 420 MB** for the current
-    title+description corpus. Postings are the dominant term; the total-RSS win is smaller than
-    the posting win alone because ``_folded`` (the corpus text) is shared and unchanged.
+    title+description corpus (ADR 015 D2, "row 4"; the O(batch) streaming rewrite that bounds
+    the *slope* is deferred on a measured trigger).
+
+    Title and description are folded **separately** (D1): :meth:`salience` scans each and counts
+    distinct-video hits per source. A single COMBINED token index drives the pre-filter — it is
+    identical to the old concatenated index (the join space never created a cross-source token).
+    Separating the scan also drops matches that spanned the old ``title→description`` join seam,
+    which were concatenation artifacts rather than real mentions (~1 pending candidate, measured).
     Postings are appended in ascending video index, so every array is already sorted, which
-    :meth:`salience`'s per-alternative intersection relies on. See ADR 015 D2: this is "row 4"
-    (lean postings bound the constant factor); the transcript projection and the O(batch)
-    streaming rewrite ("row 3") that bounds the *slope* are deferred there on a measured budget
-    trigger.
+    :meth:`salience`'s per-alternative intersection relies on.
     """
 
     def __init__(self, corpus: list[tuple[str, str, str | None]]) -> None:
-        # Fold title+description once per video; keep aligned by position.
-        self._folded: list[str] = [
-            _fold_diacritics(f"{title} {description or ''}")[0]
-            for _vid, title, description in corpus
+        # Fold title and description SEPARATELY per video (not concatenated), aligned by position.
+        self._folded_title: list[str] = [
+            _fold_diacritics(title)[0] for _vid, title, _desc in corpus
         ]
-        self._n = len(self._folded)
-        # array('i') postings, not set[int]: 4 bytes/posting vs a set's ~32-60 bytes/element —
+        self._folded_description: list[str] = [
+            _fold_diacritics(description or "")[0]
+            for _vid, _title, description in corpus
+        ]
+        self._n = len(self._folded_title)
+        # One COMBINED token index (title tokens ∪ description tokens per video) for the
+        # pre-filter. array('i') postings, not set[int]: 4 bytes/posting vs a set's ~32-60 —
         # the dominant term in the index's RAM. Appended in ascending i, so each array is sorted.
         self._token_vids: dict[str, array[int]] = defaultdict(lambda: array("i"))
-        for i, folded in enumerate(self._folded):
-            for tok in {m.group(0).lower() for m in _WORD.finditer(folded)}:
+        for i in range(self._n):
+            toks = {
+                m.group(0).lower() for m in _WORD.finditer(self._folded_title[i])
+            } | {
+                m.group(0).lower() for m in _WORD.finditer(self._folded_description[i])
+            }
+            for tok in toks:
                 self._token_vids[tok].append(i)
 
     @property
@@ -338,8 +370,8 @@ class _CorpusIndex:
 
     def salience(
         self, qid: str, name: str, type_hint: str, aliases: list[str]
-    ) -> tuple[int, float]:
-        """Return ``(distinct video hits, specificity)`` for a candidate's full name set.
+    ) -> _Salience:
+        """Return a :class:`_Salience` (pooled + per-source distinct-video hits) for the name set.
 
         Matches the candidate's canonical label **plus its Wikidata aliases** against the
         corpus with the SHARED detector rule (``_build_entity_pattern`` +
@@ -361,7 +393,7 @@ class _CorpusIndex:
         primary_tokens = [m.group(0).lower() for m in _WORD.finditer(folded_primary)]
         specificity = round(self.specificity(primary_tokens), 4)
         if self._n == 0:
-            return 0, specificity
+            return _Salience(0, specificity, 0, 0, None)
 
         candidate_vids: set[int] = set()
         for alt in (name, *aliases):
@@ -374,7 +406,7 @@ class _CorpusIndex:
             posts = sorted((self._token_vids[t] for t in alt_tokens), key=len)
             candidate_vids |= set(posts[0]).intersection(*posts[1:])
         if not candidate_vids:
-            return 0, specificity
+            return _Salience(0, specificity, 0, 0, None)
 
         pattern = _build_entity_pattern(
             entity_id=uuid.uuid5(_PATTERN_NS, qid),
@@ -385,10 +417,20 @@ class _CorpusIndex:
             exclusion_patterns=[],
         )
         if not pattern.pg_pattern:
-            return 0, specificity
+            return _Salience(0, specificity, 0, 0, None)
         regex = _compile_entity_regex(pattern)
-        hits = sum(1 for i in candidate_vids if regex.search(self._folded[i]))
-        return hits, specificity
+        n_title = n_description = n_pooled = 0
+        for i in candidate_vids:
+            in_title = regex.search(self._folded_title[i]) is not None
+            in_desc = regex.search(self._folded_description[i]) is not None
+            if in_title:
+                n_title += 1
+            if in_desc:
+                n_description += 1
+            if in_title or in_desc:
+                n_pooled += 1
+        # transcript stays None (not a corpus source until step 3): None = not measured.
+        return _Salience(n_pooled, specificity, n_title, n_description, None)
 
 
 class CandidateSuggestionService:
@@ -627,9 +669,7 @@ class CandidateSuggestionService:
         else:
             aliases = aliases_by_qid.get(row.wikidata_qid, [])
             salience_aliases = "used" if aliases else "none"
-        salience, specificity = index.salience(
-            row.wikidata_qid, row.label, type_hint.value, aliases
-        )
+        grounded = index.salience(row.wikidata_qid, row.label, type_hint.value, aliases)
         return CandidateSuggestionCreate(
             source_channel=self._channel,
             wikidata_qid=row.wikidata_qid,
@@ -639,11 +679,20 @@ class CandidateSuggestionService:
             token_count=token_count,
             corroboration_count=row.corroboration_count,
             dangling_edge_count=row.dangling_edge_count,
-            salience=salience,
+            salience=grounded.pooled,
+            salience_title=grounded.title,
+            salience_description=grounded.description,
+            salience_transcript=grounded.transcript,
             score=round(
-                _score(salience, specificity, token_count, row.corroboration_count), 4
+                _score(
+                    grounded.pooled,
+                    grounded.specificity,
+                    token_count,
+                    row.corroboration_count,
+                ),
+                4,
             ),
-            triage=_triage(salience, token_count, specificity),
+            triage=_triage(grounded.pooled, token_count, grounded.specificity),
             provenance={
                 "seed_entity_ids": [str(s) for s in row.seed_entity_ids],
                 "relations": row.relations,

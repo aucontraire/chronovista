@@ -58,8 +58,11 @@ def _reference_hits(name: str, aliases: list[str], qid: str) -> int:
     regex = _compile_entity_regex(pattern)
     hits = 0
     for _vid, title, description in _CORPUS:
-        folded, _ = _fold_diacritics(f"{title} {description or ''}")
-        if regex.search(folded):
+        # Match title and description SEPARATELY (as the index now does); concatenating them
+        # would allow a false match spanning the title->description seam.
+        folded_title, _ = _fold_diacritics(title)
+        folded_desc, _ = _fold_diacritics(description or "")
+        if regex.search(folded_title) or regex.search(folded_desc):
             hits += 1
     return hits
 
@@ -82,11 +85,15 @@ def _reference_hits(name: str, aliases: list[str], qid: str) -> int:
 def test_index_salience_matches_direct_rule(name: str, aliases: list[str]) -> None:
     index = _CorpusIndex(_CORPUS)
     qid = "Q" + str(abs(hash((name, tuple(aliases)))) % 100000)
-    index_hits, _specificity = index.salience(qid, name, "other", aliases)
-    assert index_hits == _reference_hits(name, aliases, qid)
+    s = index.salience(qid, name, "other", aliases)
+    assert s.pooled == _reference_hits(name, aliases, qid)
+    # Per-source parts overlap, so they never sum below the pooled total (D1); transcript is
+    # not a corpus source yet (step 2), so it is None (not measured) rather than 0.
+    assert s.title + s.description >= s.pooled
+    assert s.transcript is None
 
 
 def test_accented_corpus_is_matched_by_unaccented_name() -> None:
     index = _CorpusIndex(_CORPUS)
-    hits, _specificity = index.salience("Q1", "Cafe Central", "other", [])
-    assert hits >= 1  # "café central" in v2 is matched by the folded "cafe central"
+    # "café central" in v2's title is matched by the folded "cafe central".
+    assert index.salience("Q1", "Cafe Central", "other", []).pooled >= 1

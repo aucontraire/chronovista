@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.113.3] - 2026-11-05
+
+### Added
+- **Per-source candidate salience.** Candidate grounding now records distinct-video hits per corpus source — `salience_title`, `salience_description`, and `salience_transcript` (nullable; NULL = not measured per-source, populated by regeneration) — alongside the pooled `salience` total, and exposes them as additive fields on the candidate API. This is the storage foundation (ADR 015 D1) for later weighting of transcript vs title/description evidence; a schema migration adds the three columns.
+
+### Changed
+- **Grounding folds title and description separately.** The index previously concatenated title+description, which let a name match across the title→description seam (a false match). Scoring each source separately removes those concatenation artifacts; pooled salience is unchanged except for ~1 affected pending candidate (measured).
+
 ## [0.113.2] - 2026-11-05
 
 ### Fixed

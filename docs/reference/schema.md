@@ -702,6 +702,9 @@ Proposed, not-yet-created entity queued for human review (Feature 096).
 | `corroboration_count` | INTEGER | no | `1` |  |
 | `dangling_edge_count` | INTEGER | no | `0` |  |
 | `salience` | INTEGER | no | `0` |  |
+| `salience_title` | INTEGER | yes |  |  |
+| `salience_description` | INTEGER | yes |  |  |
+| `salience_transcript` | INTEGER | yes |  |  |
 | `score` | FLOAT | no | `0` |  |
 | `triage` | VARCHAR(20) | no |  |  |
 | `provenance` | JSONB | no | `'{}'::jsonb` |  |
@@ -722,7 +725,10 @@ Proposed, not-yet-created entity queued for human review (Feature 096).
 - CHECK `chk_candidate_pending_clean`: `review_status <> 'pending' OR (created_entity_id IS NULL AND reviewed_by IS NULL AND reviewed_at IS NULL)`
 - CHECK `chk_candidate_qid_format`: `wikidata_qid ~ '^Q[0-9]+$'`
 - CHECK `chk_candidate_review_status_valid`: `review_status IN ('pending', 'approved', 'rejected', 'superseded')`
+- CHECK `chk_candidate_salience_description_non_negative`: `salience_description >= 0`
 - CHECK `chk_candidate_salience_non_negative`: `salience >= 0`
+- CHECK `chk_candidate_salience_title_non_negative`: `salience_title >= 0`
+- CHECK `chk_candidate_salience_transcript_non_negative`: `salience_transcript >= 0`
 - CHECK `chk_candidate_score_non_negative`: `score >= 0`
 - CHECK `chk_candidate_source_channel_valid`: `source_channel IN ('relation', 'tag_seed', 'category')`
 - CHECK `chk_candidate_token_count_positive`: `token_count >= 1`

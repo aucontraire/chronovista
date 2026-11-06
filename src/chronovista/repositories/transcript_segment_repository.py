@@ -11,7 +11,7 @@ User Story 6: Repository Methods and Tests (T019-T025).
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 
 from sqlalchemy import (
     ColumnElement,
@@ -1250,6 +1250,57 @@ class TranscriptSegmentRepository(
         result = await session.execute(paginated_query)
         segments = list(result.scalars().all())
         return total, segments
+
+    async def stream_segments_for_grounding(
+        self, session: AsyncSession, *, batch_size: int = 10_000
+    ) -> AsyncIterator[tuple[str, str, int, str, str | None, bool]]:
+        """Stream every segment's grounding inputs, ordered for per-video assembly (Feature 106).
+
+        Yields ``(video_id, language_code, sequence_number, text, corrected_text, has_correction)``
+        for all segments, ordered by ``(video_id, sequence_number)`` so the caller can group
+        consecutive rows by video and assemble each video's effective transcript text in sequence
+        order. A **server-side cursor** (``session.stream`` + ``yield_per``) — NOT a single
+        ``.all()`` read — so the millions of segment rows are never materialized in Python at once:
+        measured, loading them all peaked the generation process at ~2.4 GB; streaming holds only
+        ``batch_size`` rows plus the caller's per-video accumulator, keeping peak near the index's
+        own ~730 MB (T005, ADR 015 §3).
+
+        Language filtering and the effective-text (correction vs raw) rule are intentionally NOT
+        applied here — they live in the caller's pure, unit-testable assembly helper
+        (``_assemble_one_video``), so the restrictive language branch (which never runs on the
+        owner's own data) can still be proven by a synthetic fixture.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        batch_size : int
+            Server-side cursor fetch size (``yield_per``).
+
+        Yields
+        ------
+        tuple[str, str, int, str, str | None, bool]
+            ``(video_id, language_code, sequence_number, text, corrected_text, has_correction)``.
+        """
+        stmt = (
+            select(
+                TranscriptSegmentDB.video_id,
+                TranscriptSegmentDB.language_code,
+                TranscriptSegmentDB.sequence_number,
+                TranscriptSegmentDB.text,
+                TranscriptSegmentDB.corrected_text,
+                TranscriptSegmentDB.has_correction,
+            )
+            .order_by(
+                TranscriptSegmentDB.video_id.asc(),
+                TranscriptSegmentDB.sequence_number.asc(),
+            )
+            .execution_options(yield_per=batch_size)
+        )
+        result = await session.stream(stmt)
+        async for row in result:
+            # ._tuple() (underscored to avoid column-name conflicts) is the non-deprecated form.
+            yield row._tuple()
 
 
 __all__ = ["TranscriptSegmentRepository"]

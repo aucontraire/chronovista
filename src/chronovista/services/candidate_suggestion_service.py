@@ -16,7 +16,7 @@ import re
 import uuid
 from array import array
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from datetime import UTC, datetime
 from typing import NamedTuple
 
@@ -31,17 +31,25 @@ from chronovista.models.candidate_suggestion import (
 from chronovista.models.enums import (
     DiscoveryMethod,
     EntityType,
+    LanguagePreferenceType,
     ReviewStatus,
     SourceChannel,
     TagStatus,
     TriageCategory,
 )
 from chronovista.models.named_entity import NamedEntityCreate
+from chronovista.repositories.app_identity_repository import AppIdentityRepository
 from chronovista.repositories.candidate_suggestion_repository import (
     CandidateSuggestionRepository,
 )
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
+from chronovista.repositories.transcript_segment_repository import (
+    TranscriptSegmentRepository,
+)
+from chronovista.repositories.user_language_preference_repository import (
+    UserLanguagePreferenceRepository,
+)
 from chronovista.repositories.video_repository import VideoRepository
 from chronovista.services.entity_creation import (
     build_grounding,
@@ -54,6 +62,10 @@ from chronovista.services.entity_mention_scan_service import (
     _fold_diacritics,
 )
 from chronovista.services.tag_normalization import TagNormalizationService
+from chronovista.services.transcript_text_index import (
+    SEGMENT_SEPARATOR,
+    effective_text,
+)
 from chronovista.services.wikidata_client import WikidataClient, WikidataUnavailable
 from chronovista.services.wikidata_taxonomy import suggest_entity_type
 
@@ -208,6 +220,34 @@ def _seed_relation_fields() -> list[str]:
     return sorted(SEED_ALLOWLIST)
 
 
+def _assemble_one_video(
+    segments: Iterable[tuple[str, str, str | None, bool]],
+    excluded_languages: frozenset[str],
+) -> str | None:
+    """Assemble ONE video's effective transcript text, dropping excluded languages (Feature 106).
+
+    ``segments`` are that video's ``(language_code, text, corrected_text, has_correction)`` rows in
+    sequence order. Segments whose language is excluded are dropped; the rest are joined through the
+    SINGLE effective-text rule (``effective_text``) and the single separator (``SEGMENT_SEPARATOR``)
+    from ``transcript_text_index``. The result is therefore byte-identical to
+    ``TranscriptTextIndex.from_segments(...).text``, i.e. the effective text the mention scanner
+    reads — so candidate salience grounds against the same text the detector it predicts does
+    (grounding seam, FR-001). Returns ``None`` when no segment survives (no transcript evidence).
+
+    The language filter lives here, not in SQL, so it is unit-testable without a database: the
+    owner's own preferences rarely exclude anything, so the restrictive branch never runs on real
+    data, and a synthetic fixture (an excluded-language segment) is the only instrument that can
+    prove the filter suppresses (FR-003). This is the per-video unit shared by the streaming
+    corpus assembler (``CandidateSuggestionService._stream_transcript_corpus``).
+    """
+    parts = [
+        effective_text(seg_text, corrected_text, has_correction)
+        for language_code, seg_text, corrected_text, has_correction in segments
+        if language_code not in excluded_languages
+    ]
+    return SEGMENT_SEPARATOR.join(parts) if parts else None
+
+
 class GenerationSummary(BaseModel):
     """Outcome of a generation run (Feature 096)."""
 
@@ -299,9 +339,13 @@ class _Salience(NamedTuple):
     scoring/triage use and the one stored in the ``salience`` column. The per-source fields are
     distinct videos matching that source; a video matching two sources counts in each, so the
     parts **do not sum** to ``pooled`` (``title + description + transcript >= pooled``).
-    ``transcript`` is ``None`` until transcripts enter the corpus (step 3): **None = not
-    measured, 0 = measured and found nothing** — a non-null 0 now would be the v0.113.2
-    absence-of-evidence error at the value layer.
+
+    Since Feature 106 transcripts are a corpus source, so :meth:`_CorpusIndex.salience` always
+    returns ``transcript`` as a measured ``int`` (0 = measured, matched no transcript). The
+    ``int | None`` type is retained because the DB column stays nullable: **None = not measured
+    per-source** is preserved at the *storage* layer for rows a regeneration never rescores (the
+    upsert refreshes PENDING rows only), never emitted fresh from ``salience`` — a non-null 0 is
+    "looked, found nothing," not the v0.113.2 absence-of-evidence error.
     """
 
     pooled: int
@@ -309,6 +353,24 @@ class _Salience(NamedTuple):
     title: int
     description: int
     transcript: int | None
+
+
+#: The corpus sources candidate salience grounds a name against — the ONE committed home for
+#: "which text the grounding corpus searches" (Constitution "Committed Contracts and Contract
+#: Guards", v1.4.0). The zero-salience triage bucket (``grounds_nowhere``) means "no match in ANY
+#: of these," and the user-facing label MUST name exactly them — derived from this list, never
+#: hand-written, so it cannot silently drift from the corpus a third time (it drifted at v0.113.2
+#: and again when transcripts were added). Exposed on the candidate summary API for the frontend
+#: label to consume. A mutation-verified guard
+#: (``tests/unit/architecture/test_corpus_sources_contract.py``) ties this to ``_Salience``'s
+#: per-source fields, so adding a fold without naming it here — or renaming a source — fails CI.
+CORPUS_SOURCES: tuple[str, ...] = ("title", "description", "transcript")
+
+#: ``_Salience`` fields that are NOT per-source corpus sources (the pooled union + the name's
+#: specificity). The contract guard derives the expected ``CORPUS_SOURCES`` by removing these from
+#: ``_Salience._fields``, so a new per-source fold must be named in ``CORPUS_SOURCES`` or the guard
+#: fails.
+_SALIENCE_NON_SOURCE_FIELDS: frozenset[str] = frozenset({"pooled", "specificity"})
 
 
 class _CorpusIndex:
@@ -321,35 +383,56 @@ class _CorpusIndex:
     title+description corpus (ADR 015 D2, "row 4"; the O(batch) streaming rewrite that bounds
     the *slope* is deferred on a measured trigger).
 
-    Title and description are folded **separately** (D1): :meth:`salience` scans each and counts
-    distinct-video hits per source. A single COMBINED token index drives the pre-filter — it is
-    identical to the old concatenated index (the join space never created a cross-source token).
-    Separating the scan also drops matches that spanned the old ``title→description`` join seam,
-    which were concatenation artifacts rather than real mentions (~1 pending candidate, measured).
-    Postings are appended in ascending video index, so every array is already sorted, which
-    :meth:`salience`'s per-alternative intersection relies on.
+    Title, description, and transcript (Feature 106) are folded **separately** (D1):
+    :meth:`salience` scans each and counts distinct-video hits per source. A single COMBINED token
+    index (all three sources' tokens per video) drives the pre-filter — folding separately but
+    pre-filtering combined keeps the per-source scan honest while the transcript tokens still admit
+    a transcript-only name into the candidate set. Separating the scan also drops matches that
+    spanned a cross-source join seam, which were concatenation artifacts rather than real mentions
+    (the ``title→description`` seam removed ~1 pending candidate, measured). Postings are appended
+    in ascending video index, so every array is already sorted, which :meth:`salience`'s
+    per-alternative intersection relies on.
+
+    Transcript text is the per-video **effective** text pre-assembled through the single
+    ``TranscriptTextIndex`` rule (``effective_text`` + ``SEGMENT_SEPARATOR``), so grounding reads
+    the same text the mention scanner reads (the seam, FR-001).
     """
 
-    def __init__(self, corpus: list[tuple[str, str, str | None]]) -> None:
-        # Fold title and description SEPARATELY per video (not concatenated), aligned by position.
+    def __init__(self, corpus: list[tuple[str, str, str | None, str | None]]) -> None:
+        # Fold title, description, and transcript SEPARATELY per video (not concatenated),
+        # aligned by position. Transcript (Feature 106) is the per-video effective text already
+        # assembled through the single TranscriptTextIndex rule; ``None`` for a video with no
+        # (non-excluded) transcript, folded to "" so it simply never matches.
         self._folded_title: list[str] = [
-            _fold_diacritics(title)[0] for _vid, title, _desc in corpus
+            _fold_diacritics(title)[0] for _vid, title, _desc, _tr in corpus
         ]
         self._folded_description: list[str] = [
             _fold_diacritics(description or "")[0]
-            for _vid, _title, description in corpus
+            for _vid, _title, description, _tr in corpus
+        ]
+        self._folded_transcript: list[str] = [
+            _fold_diacritics(transcript or "")[0]
+            for _vid, _title, _desc, transcript in corpus
         ]
         self._n = len(self._folded_title)
-        # One COMBINED token index (title tokens ∪ description tokens per video) for the
+        # One COMBINED token index (title ∪ description ∪ transcript tokens per video) for the
         # pre-filter. array('i') postings, not set[int]: 4 bytes/posting vs a set's ~32-60 —
         # the dominant term in the index's RAM. Appended in ascending i, so each array is sorted.
+        # Transcript tokens MUST be in the combined index, or a transcript-only name would never
+        # enter the pre-filter's candidate set and would score 0 — the exact bug this feature fixes.
         self._token_vids: dict[str, array[int]] = defaultdict(lambda: array("i"))
         for i in range(self._n):
-            toks = {
-                m.group(0).lower() for m in _WORD.finditer(self._folded_title[i])
-            } | {
-                m.group(0).lower() for m in _WORD.finditer(self._folded_description[i])
-            }
+            toks = (
+                {m.group(0).lower() for m in _WORD.finditer(self._folded_title[i])}
+                | {
+                    m.group(0).lower()
+                    for m in _WORD.finditer(self._folded_description[i])
+                }
+                | {
+                    m.group(0).lower()
+                    for m in _WORD.finditer(self._folded_transcript[i])
+                }
+            )
             for tok in toks:
                 self._token_vids[tok].append(i)
 
@@ -392,8 +475,11 @@ class _CorpusIndex:
         folded_primary = _fold_diacritics(name)[0]
         primary_tokens = [m.group(0).lower() for m in _WORD.finditer(folded_primary)]
         specificity = round(self.specificity(primary_tokens), 4)
+        # Transcripts are a corpus source (Feature 106), so every return path reports a MEASURED
+        # transcript count (0 = looked, matched nothing), never None — None is reserved for the
+        # storage layer (a row a regeneration never rescores), not for a fresh measurement.
         if self._n == 0:
-            return _Salience(0, specificity, 0, 0, None)
+            return _Salience(0, specificity, 0, 0, 0)
 
         candidate_vids: set[int] = set()
         for alt in (name, *aliases):
@@ -406,7 +492,7 @@ class _CorpusIndex:
             posts = sorted((self._token_vids[t] for t in alt_tokens), key=len)
             candidate_vids |= set(posts[0]).intersection(*posts[1:])
         if not candidate_vids:
-            return _Salience(0, specificity, 0, 0, None)
+            return _Salience(0, specificity, 0, 0, 0)
 
         pattern = _build_entity_pattern(
             entity_id=uuid.uuid5(_PATTERN_NS, qid),
@@ -417,20 +503,24 @@ class _CorpusIndex:
             exclusion_patterns=[],
         )
         if not pattern.pg_pattern:
-            return _Salience(0, specificity, 0, 0, None)
+            return _Salience(0, specificity, 0, 0, 0)
         regex = _compile_entity_regex(pattern)
-        n_title = n_description = n_pooled = 0
+        n_title = n_description = n_transcript = n_pooled = 0
         for i in candidate_vids:
             in_title = regex.search(self._folded_title[i]) is not None
             in_desc = regex.search(self._folded_description[i]) is not None
+            in_transcript = regex.search(self._folded_transcript[i]) is not None
             if in_title:
                 n_title += 1
             if in_desc:
                 n_description += 1
-            if in_title or in_desc:
+            if in_transcript:
+                n_transcript += 1
+            # Pooled = distinct videos matching ANY source (the union); parts overlap, so
+            # title + description + transcript >= pooled (no sum constraint).
+            if in_title or in_desc or in_transcript:
                 n_pooled += 1
-        # transcript stays None (not a corpus source until step 3): None = not measured.
-        return _Salience(n_pooled, specificity, n_title, n_description, None)
+        return _Salience(n_pooled, specificity, n_title, n_description, n_transcript)
 
 
 class CandidateSuggestionService:
@@ -443,6 +533,9 @@ class CandidateSuggestionService:
         entity_repo: NamedEntityRepository,
         video_repo: VideoRepository,
         alias_repo: EntityAliasRepository,
+        transcript_repo: TranscriptSegmentRepository | None = None,
+        language_preference_repo: UserLanguagePreferenceRepository | None = None,
+        app_identity_repo: AppIdentityRepository | None = None,
         normalizer: TagNormalizationService | None = None,
         enrichment: EntityEnrichmentService | None = None,
         wikidata_client: WikidataClient | None = None,
@@ -451,6 +544,14 @@ class CandidateSuggestionService:
         self._entities = entity_repo
         self._videos = video_repo
         self._aliases = alias_repo
+        # Transcript corpus source (Feature 106). Stateless repos, so default-construct when a
+        # caller omits them (mirrors the CLI's inline ``AppIdentityRepository()``); the generate
+        # path and the excluded-language resolver need them.
+        self._transcripts = transcript_repo or TranscriptSegmentRepository()
+        self._language_prefs = (
+            language_preference_repo or UserLanguagePreferenceRepository()
+        )
+        self._app_identity = app_identity_repo or AppIdentityRepository()
         self._normalizer = normalizer or TagNormalizationService()
         # Optional: when None, approval skips enrichment (best-effort, FR-009) — the
         # test and no-network paths pass None; the CLI passes a real service.
@@ -469,6 +570,7 @@ class CandidateSuggestionService:
         progress: Callable[[int, int], Awaitable[None]] | None = None,
         instance_of_map: dict[str, list[str]] | None = None,
         aliases_map: dict[str, list[str]] | None = None,
+        excluded_languages: frozenset[str] | None = None,
     ) -> GenerationSummary:
         """Discover, ground, score, triage, and upsert candidates (FR-001..FR-005, FR-014).
 
@@ -499,7 +601,25 @@ class CandidateSuggestionService:
         rows = await self._candidates.emit_relation_candidates(
             session, relation_fields=_seed_relation_fields()
         )
-        corpus = await self._videos.get_all_title_description(session)
+        # Build the grounding corpus: title + description (always) plus transcript (Feature 106).
+        # Transcript effective text is assembled per video through the single TranscriptTextIndex
+        # rule, with the user's EXCLUDED languages dropped (FR-003). Both reads are DB-only (no
+        # network), so resolving here holds no session across a cancellable await (unlike the
+        # Wikidata maps, which the detached runner pre-fetches outside the session).
+        if excluded_languages is None:
+            excluded_languages = await self._resolve_excluded_languages(session)
+        title_desc = await self._videos.get_all_title_description(session)
+        # Stream segments (server-side cursor) and assemble per video, so the millions of segment
+        # rows are never materialized at once — measured, a bulk .all() peaked generation at ~2.4 GB
+        # vs the index's own ~730 MB; streaming keeps peak near the index (T005, ADR 015 §3).
+        transcript_by_vid = await self._stream_transcript_corpus(
+            session, excluded_languages
+        )
+        corpus: list[tuple[str, str, str | None, str | None]] = [
+            (vid, title, description, transcript_by_vid.get(vid))
+            for vid, title, description in title_desc
+        ]
+        del title_desc, transcript_by_vid
         index = _CorpusIndex(corpus)
         del corpus  # free the corpus-sized second copy; the index holds its own folded text
         ungrounded = await self._entities.get_ungrounded_normalized_map(session)
@@ -615,6 +735,62 @@ class CandidateSuggestionService:
             return await self._wikidata.fetch_aliases(qids)
         except WikidataUnavailable:
             return None
+
+    async def _resolve_excluded_languages(
+        self, session: AsyncSession
+    ) -> frozenset[str]:
+        """The canonical user's EXCLUDED transcript languages for grounding (FR-003).
+
+        A language is excluded from the transcript corpus only if the user explicitly marked it
+        ``exclude`` (a denylist — "non-excluded" per ADR 015 D4; fluent/learning/curious and
+        unmarked languages all count). Returns an empty set when no canonical identity is
+        established yet, so grounding degrades to "search every language" (the over-surfacing
+        direction, correct for a discovery signal — FR-002) rather than failing. DB-only read.
+        """
+        identity = await self._app_identity.get_identity(session)
+        if identity is None:
+            return frozenset()
+        excluded = await self._language_prefs.get_preferences_by_type(
+            session, identity.user_id, LanguagePreferenceType.EXCLUDE
+        )
+        return frozenset(pref.language_code for pref in excluded)
+
+    async def _stream_transcript_corpus(
+        self, session: AsyncSession, excluded_languages: frozenset[str]
+    ) -> dict[str, str]:
+        """Assemble ``{video_id: effective transcript text}`` by STREAMING segments (Feature 106).
+
+        Consumes the repository's server-side cursor (rows ordered by ``(video_id,
+        sequence_number)``) and groups consecutive rows by video, assembling each video's text via
+        the pure ``_assemble_one_video`` as soon as that video's last segment passes. Only one
+        video's segments plus the growing result dict are ever held — never the millions of segment
+        rows at once. This is the fix T005 called for: the index itself is on-projection (~730 MB),
+        but a bulk fetch of all segments peaked the process at ~2.4 GB.
+        """
+        corpus: dict[str, str] = {}
+        current_vid: str | None = None
+        current: list[tuple[str, str, str | None, bool]] = []
+        async for (
+            vid,
+            language_code,
+            _seq,
+            text,
+            corrected_text,
+            has_correction,
+        ) in self._transcripts.stream_segments_for_grounding(session):
+            if vid != current_vid:
+                if current_vid is not None:
+                    assembled = _assemble_one_video(current, excluded_languages)
+                    if assembled is not None:
+                        corpus[current_vid] = assembled
+                current_vid = vid
+                current = []
+            current.append((language_code, text, corrected_text, has_correction))
+        if current_vid is not None:  # finalize the last video
+            assembled = _assemble_one_video(current, excluded_languages)
+            if assembled is not None:
+                corpus[current_vid] = assembled
+        return corpus
 
     async def discover_target_qids(self, session: AsyncSession) -> list[str]:
         """Distinct target QIDs for the current relation candidates (Feature 098).

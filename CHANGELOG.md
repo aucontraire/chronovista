@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.114.0] - 2026-11-05
+
+### Added
+- **Transcript grounding for candidate salience.** Candidate suggestions are ranked by how much evidence of a not-yet-library entity exists in your library; that evidence now includes video **transcripts**, not just titles and descriptions. A candidate discussed only in spoken content previously scored zero and was filed under "no match" — now it surfaces for review, with its transcript hit count recorded in the `salience_transcript` column (populated on regeneration). Transcripts are read as *effective text* (a segment's correction when it has one, else the raw text) through the same single rule the mention scanner uses, so grounding stays calibrated to what the detector would match; all transcripts count (no quality gate — over-surfacing is the right error for a discovery signal); and only the user's non-excluded languages are searched. The in-memory grounding index remains the matcher (streaming is deferred on a measured memory trigger).
+
+### Changed
+- **The zero-salience triage label names every source searched, and is derived from the backend.** With transcripts in the corpus, "No title/description match" became false. The label now reads "No title, description, or transcript match" and is built from a single authoritative backend source list (exposed as an additive `corpus_sources` field on the candidate summary API) rather than hand-written copy, so it cannot silently drift from the actual corpus again. A mutation-verified contract guard ties the source list to the per-source columns the grounder populates.
+
 ## [0.113.3] - 2026-11-05
 
 ### Added

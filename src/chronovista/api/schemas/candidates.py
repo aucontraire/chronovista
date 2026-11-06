@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from chronovista.api.schemas.responses import PaginationMeta
 
@@ -68,6 +68,15 @@ class CandidateSummary(BaseModel):
     worth_review: int
     likely_eliminable: int
     grounds_nowhere: int
+    corpus_sources: list[str] = Field(
+        ...,
+        description=(
+            "The corpus sources candidate salience searches (e.g. title, description, "
+            "transcript). The zero-salience bucket means 'no match in any of these'; the "
+            "frontend derives the bucket's label from this list so it cannot drift from the "
+            "backend corpus. Additive (Feature 106)."
+        ),
+    )
 
 
 class CandidateSummaryResponse(BaseModel):

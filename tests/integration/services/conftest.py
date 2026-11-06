@@ -15,7 +15,9 @@ from collections.abc import Callable
 import pytest
 
 from chronovista.db.models import NamedEntity as NamedEntityDB
+from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
+from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.repositories.candidate_suggestion_repository import (
     CandidateSuggestionRepository,
 )
@@ -71,6 +73,53 @@ def make_video() -> Callable[..., VideoDB]:
             upload_date=datetime.datetime(2019, 1, 1, tzinfo=datetime.UTC),
             duration=120,
         )
+
+    return _make
+
+
+@pytest.fixture
+def make_transcript_segments() -> (
+    Callable[..., list[VideoTranscriptDB | TranscriptSegmentDB]]
+):
+    """Factory: a ``video_transcripts`` parent plus its ``transcript_segments`` (Feature 106).
+
+    ``segments`` is a list of ``(text, corrected_text, has_correction)`` tuples, in sequence order.
+    The composite FK ``(video_id, language_code)`` requires the parent transcript row, so this
+    returns both the parent and the segment rows for the test to ``add``; the matching
+    ``make_video`` must be added too (``video_transcripts.video_id`` FKs ``videos``). Placeholder
+    text only — no library content.
+    """
+
+    def _make(
+        *,
+        video_id: str,
+        language_code: str = "en",
+        segments: list[tuple[str, str | None, bool]],
+    ) -> list[VideoTranscriptDB | TranscriptSegmentDB]:
+        rows: list[VideoTranscriptDB | TranscriptSegmentDB] = [
+            VideoTranscriptDB(
+                video_id=video_id,
+                language_code=language_code,
+                transcript_text=" ".join(text for text, _c, _h in segments),
+                transcript_type="AUTO",
+                download_reason="USER_REQUEST",
+            )
+        ]
+        for i, (text, corrected_text, has_correction) in enumerate(segments):
+            rows.append(
+                TranscriptSegmentDB(
+                    video_id=video_id,
+                    language_code=language_code,
+                    text=text,
+                    corrected_text=corrected_text,
+                    has_correction=has_correction,
+                    start_time=float(i),
+                    duration=1.0,
+                    end_time=float(i) + 1.0,
+                    sequence_number=i,
+                )
+            )
+        return rows
 
     return _make
 

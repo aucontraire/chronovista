@@ -150,6 +150,7 @@ nav:
       - Ground entities in a knowledge base: user-guide/entity-enrichment.md
       - Grow your entity graph: user-guide/candidate-queue.md
       - Review candidates in the browser: user-guide/candidate-review.md
+      - Find novel relationships: user-guide/relationship-candidates.md
       - CLI workflows: user-guide/cli-overview.md
       - Run the REST API: user-guide/rest-api.md
       - Deploy with Docker: guides/migrating-to-docker.md

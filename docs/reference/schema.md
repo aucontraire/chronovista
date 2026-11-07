@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**32 tables.** For the reasoning behind the design, see
+**34 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -495,7 +495,7 @@ Audit log for tag normalization and management operations.
 
 ## Named Entities
 
-Curated entities, their aliases, every place they are mentioned, their normalized Wikipedia categories, videos manually excluded from an entity, and the seed-and-grow queue of suggested entities awaiting review.
+Curated entities, their aliases, every place they are mentioned, their normalized Wikipedia categories, videos manually excluded from an entity, the seed-and-grow queue of suggested entities awaiting review, and the novel-relationship candidate queue (entity pairs that co-occur without a typed tie).
 
 ### `named_entities`
 
@@ -772,6 +772,73 @@ Durable, UI-observable state of a background candidate generation run (F097).
 
 - INDEX `idx_candidate_generation_runs_status_updated` on `status`, `updated_at`
 - UNIQUE INDEX `uq_candidate_generation_runs_active` on `source_channel`
+
+### `relationship_candidates`
+
+Undirected pair of library entities that co-occur strongly with no typed tie.
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `entity_a_id` | UUID | no |  | FK → `named_entities.id` |
+| `entity_b_id` | UUID | no |  | FK → `named_entities.id` |
+| `channel` | VARCHAR(30) | no |  |  |
+| `shared_video_count` | INTEGER | no |  |  |
+| `lift` | FLOAT | no |  |  |
+| `entity_a_video_count` | INTEGER | no |  |  |
+| `entity_b_video_count` | INTEGER | no |  |  |
+| `channel_video_universe` | INTEGER | no |  |  |
+| `both_typed_eligible` | BOOLEAN | no | `false` |  |
+| `kb_corroboration_count` | INTEGER | no | `0` |  |
+| `kb_corroboration_detail` | JSONB | no | `'{}'::jsonb` |  |
+| `provenance` | JSONB | no | `'{}'::jsonb` |  |
+| `review_status` | VARCHAR(30) | yes |  |  |
+| `review_taxonomy_version` | VARCHAR(30) | yes |  |  |
+| `review_pass_logged_rejections` | BOOLEAN | yes |  |  |
+| `reviewed_by` | VARCHAR(255) | yes |  |  |
+| `reviewed_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `last_generated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Constraints:**
+
+- UNIQUE on `entity_a_id`, `entity_b_id` (`uq_relationship_pair`)
+- CHECK `chk_relationship_canonical_order`: `entity_a_id < entity_b_id`
+- CHECK `chk_relationship_lift_min`: `lift >= 5`
+- CHECK `chk_relationship_no_self_pair`: `entity_a_id <> entity_b_id`
+- CHECK `chk_relationship_shared_min`: `shared_video_count >= 5`
+
+**Indexes:**
+
+- INDEX `idx_relationship_candidates_entity_a` on `entity_a_id`
+- INDEX `idx_relationship_candidates_entity_b` on `entity_b_id`
+- INDEX `idx_relationship_candidates_lift` on 
+
+### `relationship_candidate_generation_runs`
+
+Provenance row for one relationship-candidate generation run.
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `status` | VARCHAR(20) | no | `running` |  |
+| `channel` | VARCHAR(30) | no |  |  |
+| `channel_video_universe` | INTEGER | no | `0` |  |
+| `corpus_size` | INTEGER | no | `0` |  |
+| `candidates_written` | INTEGER | no | `0` |  |
+| `candidates_removed` | INTEGER | no | `0` |  |
+| `generator_version` | VARCHAR(50) | no |  |  |
+| `started_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `completed_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+
+**Constraints:**
+
+- CHECK `chk_relationship_generation_run_status_valid`: `status IN ('running', 'completed', 'failed')`
+
+**Indexes:**
+
+- UNIQUE INDEX `uq_relationship_generation_runs_active` on `channel`
 
 ## Recovery Provenance
 

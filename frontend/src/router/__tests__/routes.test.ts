@@ -122,6 +122,7 @@ describe("navRoutes — flat NavRoute entries", () => {
     expect(group?.children.map((c) => [c.path, c.label])).toEqual([
       ["/entities", "All"],
       ["/candidates", "Candidates"],
+      ["/relationship-candidates", "Relationships"],
     ]);
   });
 

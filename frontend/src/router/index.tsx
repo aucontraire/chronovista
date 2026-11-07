@@ -62,6 +62,11 @@ const EntityDetailPage = lazy(() =>
     default: m.EntityDetailPage,
   })),
 );
+const RelationshipCandidatesPage = lazy(() =>
+  import("../pages/RelationshipCandidatesPage").then((m) => ({
+    default: m.RelationshipCandidatesPage,
+  }))
+);
 const CandidatesPage = lazy(() =>
   import("../pages/CandidatesPage").then((m) => ({
     default: m.CandidatesPage,
@@ -211,6 +216,10 @@ export const router = createBrowserRouter([
       {
         path: "candidates",
         element: lazySuspense(<CandidatesPage />),
+      },
+      {
+        path: "relationship-candidates",
+        element: lazySuspense(<RelationshipCandidatesPage />),
       },
       {
         path: "candidates/:candidateId",

@@ -75,6 +75,15 @@ RELATION_GROUPS: tuple[RelationGroup, ...] = (
         attribution="Listed by Wikidata as a member or part of this entity",
     ),
     RelationGroup(
+        # X.subclass_of == T  →  X is a subclass of the viewed entity T. Surfaced (not a hub
+        # exclusion) because a class has few DIRECT subclasses — a short curated list for the
+        # class-level stratum (concept / technical_term), not the firehose the geographic hubs are.
+        key="subclass",
+        member_fields=("subclass_of",),
+        label="Subclass",
+        attribution="Listed by Wikidata as a subclass of this entity",
+    ),
+    RelationGroup(
         # X.founder == T  →  T founded X  →  X is an entity founded by the viewed one.
         key="founded",
         member_fields=("founder",),
@@ -233,8 +242,13 @@ RELATION_GROUPS: tuple[RelationGroup, ...] = (
 # humanized fallback label at the endpoint. The exporter/discovery use ``RELATIONS`` directly;
 # this keeps the inverse view on the same single source instead of a hand-maintained subset.
 # Hub/weak-signal edges whose INVERSE is a firehose list, not a relationship (wayfinder ticket 05):
-# "everyone born in / located in this place" or "every subclass of this class". Excluded from the
-# inverse search even though captured, exactly as the pre-105 curated list excluded them.
+# "everyone born in / located in this place". Excluded from the inverse search even though captured.
+# NOTE: subclass_of was intentionally REMOVED from this set. Unlike the geographic hubs — whose
+# inverse ("everyone born in London") is unbounded in library size — a class has few DIRECT
+# subclasses by construction, so its inverse is a short list (measured ceiling: single digits for the
+# class-level stratum this library is growing). Its inverse now surfaces via the "subclass"
+# RELATION_GROUP so a parent class can see its subclasses (downward traversal), instead of a one-way
+# edge visible only from the child.
 _HUB_INBOUND_EXCLUSIONS: frozenset[str] = frozenset(
     {
         "place_of_birth",
@@ -242,7 +256,6 @@ _HUB_INBOUND_EXCLUSIONS: frozenset[str] = frozenset(
         "location",
         "located_in_admin",
         "location_of_formation",
-        "subclass_of",
     }
 )
 INBOUND_FIELDS: tuple[str, ...] = tuple(

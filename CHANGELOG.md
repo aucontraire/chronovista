@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.115.0] - 2026-11-06
+
+### Added
+- **Class relationships are navigable in both directions on the entity page.** A parent class now lists its subclasses in the "Referenced by" panel — previously that link was one-way, visible only from the child's page, so a class could not be walked down to its subtypes. The forward relations display also now gives the `subclass of` and `has part` edges the same sourced Wikidata attribution every other relationship carries (they previously rendered with a bare auto-generated heading and no attribution). Together these make class-level entities (concepts, technical terms) navigable top-down, the basis for fanning out from a hub to its members in the knowledge graph.
+
 ## [0.114.0] - 2026-11-05
 
 ### Added

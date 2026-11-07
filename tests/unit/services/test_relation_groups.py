@@ -83,7 +83,7 @@ def test_credit_labels_are_inverse_directional_not_forward() -> None:
 
 
 def test_attribute_hub_fields_excluded() -> None:
-    # country/place/class fields are the largest supply but weakest signal — their inverse is a hub
+    # country/place fields are the largest supply but weakest signal — their inverse is a hub
     # list, not a relationship — so excluded by design (Feature 105 keeps this exclusion while
     # deriving the rest of INBOUND_FIELDS from RELATIONS).
     for excluded in (
@@ -92,13 +92,23 @@ def test_attribute_hub_fields_excluded() -> None:
         "place_of_death",
         "instance_of",
         "occupation",
-        # Feature 105 — new geographic/class hubs excluded for the same reason.
+        # Feature 105 — new geographic hubs excluded for the same reason.
         "location",
         "located_in_admin",
         "location_of_formation",
-        "subclass_of",
     ):
         assert excluded not in INBOUND_FIELDS
+
+
+def test_subclass_inverse_is_surfaced() -> None:
+    # subclass_of is NOT a hub exclusion: a class has few DIRECT subclasses, so its inverse is a short
+    # curated list, not a firehose. Guards against the one-way-edge regression where a parent class
+    # could not see its subclasses (downward traversal) — the whole point of surfacing it.
+    assert "subclass_of" in INBOUND_FIELDS
+    g = _group("subclass")
+    assert g.member_fields == ("subclass_of",)
+    assert "subclass" in g.label.lower()
+    assert "wikidata" in g.attribution.lower()
 
 
 def test_every_group_is_specifically_attributed() -> None:

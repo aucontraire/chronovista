@@ -20,6 +20,7 @@ from rich.panel import Panel
 from rich.table import Table
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from chronovista.cli.relationship_candidate_commands import relationship_app
 from chronovista.config.database import db_manager
 from chronovista.models.enums import ReviewStatus, TriageCategory
 from chronovista.repositories.app_identity_repository import AppIdentityRepository
@@ -37,6 +38,10 @@ candidate_app = typer.Typer(
     help="🌱 Seed-and-grow entity candidate queue",
     no_args_is_help=True,
 )
+
+# Feature 107: the novel-relationship queue is a sibling candidate surface, nested
+# as `candidates relationships ...`.
+candidate_app.add_typer(relationship_app, name="relationships")
 
 console = Console()
 

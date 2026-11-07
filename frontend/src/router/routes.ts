@@ -154,6 +154,13 @@ export const navRoutes: NavEntry[] = [
         tooltip: "Review suggested entities",
         icon: CandidatesIcon,
       },
+      {
+        kind: "route",
+        path: "/relationship-candidates",
+        label: "Relationships",
+        tooltip: "Review candidate entity relationships",
+        icon: CandidatesIcon,
+      },
     ],
   },
   {

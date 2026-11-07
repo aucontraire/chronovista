@@ -33,6 +33,7 @@ from chronovista.api.routers import (
     overview,
     playlists,
     preferences,
+    relationship_candidates,
     search,
     settings,
     sidebar,
@@ -255,6 +256,9 @@ app.include_router(categories.router, prefix="/api/v1", tags=["categories"])
 app.include_router(tags.router, prefix="/api/v1", tags=["tags"])
 app.include_router(canonical_tags.router, prefix="/api/v1", tags=["canonical-tags"])
 app.include_router(candidates.router, prefix="/api/v1", tags=["candidates"])
+app.include_router(
+    relationship_candidates.router, prefix="/api/v1", tags=["relationship-candidates"]
+)
 app.include_router(videos.router, prefix="/api/v1", tags=["videos"])
 app.include_router(transcripts.router, prefix="/api/v1", tags=["transcripts"])
 app.include_router(

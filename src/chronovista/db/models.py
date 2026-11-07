@@ -1475,6 +1475,144 @@ class CandidateGenerationRun(Base):
     )
 
 
+class RelationshipCandidate(Base):
+    """Undirected pair of library entities that co-occur strongly with no typed tie.
+
+    ``entity_a_id < entity_b_id`` is enforced so an unordered pair has exactly
+    one representation; ``(entity_a_id, entity_b_id)`` is the upsert key.
+    ``review_status`` is deliberately a nullable varchar: its value set lives
+    app-side so adding a verdict category needs no migration.
+    """
+
+    __tablename__ = "relationship_candidates"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    entity_a_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    entity_b_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    channel: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    # Metrics (A, B, N kept so lift can be audited)
+    shared_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    lift: Mapped[float] = mapped_column(Float, nullable=False)
+    entity_a_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_b_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    channel_video_universe: Mapped[int] = mapped_column(Integer, nullable=False)
+    both_typed_eligible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_text("false")
+    )
+    kb_corroboration_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    kb_corroboration_detail: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sql_text("'{}'::jsonb")
+    )
+    provenance: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sql_text("'{}'::jsonb")
+    )
+
+    # Versioned verdict (all NULL until a verdict exists)
+    review_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    review_taxonomy_version: Mapped[str | None] = mapped_column(
+        String(30), nullable=True
+    )
+    review_pass_logged_rejections: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True
+    )
+    reviewed_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reviewed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    last_generated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("entity_a_id", "entity_b_id", name="uq_relationship_pair"),
+        CheckConstraint(
+            "entity_a_id <> entity_b_id", name="chk_relationship_no_self_pair"
+        ),
+        CheckConstraint(
+            "entity_a_id < entity_b_id", name="chk_relationship_canonical_order"
+        ),
+        CheckConstraint("shared_video_count >= 5", name="chk_relationship_shared_min"),
+        CheckConstraint("lift >= 5", name="chk_relationship_lift_min"),
+        Index("idx_relationship_candidates_lift", text("lift DESC")),
+        Index("idx_relationship_candidates_entity_a", "entity_a_id"),
+        Index("idx_relationship_candidates_entity_b", "entity_b_id"),
+    )
+
+
+class RelationshipCandidateGenerationRun(Base):
+    """Provenance row for one relationship-candidate generation run.
+
+    The partial unique index on ``channel WHERE status='running'`` allows at
+    most one active run per channel at the DB level.
+    """
+
+    __tablename__ = "relationship_candidate_generation_runs"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="running", server_default="running"
+    )
+    channel: Mapped[str] = mapped_column(String(30), nullable=False)
+    channel_video_universe: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    corpus_size: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    candidates_written: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    candidates_removed: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    generator_version: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    started_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed')",
+            name="chk_relationship_generation_run_status_valid",
+        ),
+        Index(
+            "uq_relationship_generation_runs_active",
+            "channel",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+        ),
+    )
+
+
 class TagAlias(Base):
     """Raw tag forms mapped to their canonical representation."""
 

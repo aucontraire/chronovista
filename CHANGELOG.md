@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.116.0] - 2026-11-07
+
+### Added
+
+- **Novel-relationship candidate queue (read-only MVP).** A measurement surface that
+  surfaces pairs of existing library entities which co-occur strongly on the
+  title+description channel (lift ≥ 5 and support ≥ 5) but have no typed Wikidata tie,
+  ranked by lift. New operator command `chronovista candidates relationships generate
+  [--dry-run]` populates it; new read-only endpoint `GET /api/v1/relationship-candidates`
+  (lift-ranked, paginated) and a read-only frontend page render it. Each row asserts only
+  "candidate" — no verdict is written or exposed. Additive migration adds two tables
+  (`relationship_candidates`, `relationship_candidate_generation_runs`); no change to
+  existing tables. The novelty filter excludes direct Wikidata edges, shared
+  co-membership, and shared attribute referents (country / place of birth /
+  headquarters); ranking applies no support floor by design.
+
 ## [0.115.0] - 2026-11-06
 
 ### Added

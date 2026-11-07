@@ -29,6 +29,7 @@ describe('forward relationGroups invariants', () => {
         'award_received', 'notable_work', 'participant_in', 'parent_organization',
         'child_organization', 'owned_by', 'chairperson', 'ceo', 'affiliation',
         'creator', 'production_company', 'original_broadcaster',
+        'subclass_of', 'has_part',
       ].sort()
     );
     expect(relationGroupForField('employer')?.key).toBe('employment');

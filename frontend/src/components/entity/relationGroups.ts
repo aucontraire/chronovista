@@ -35,6 +35,20 @@ export const RELATION_GROUPS: readonly RelationGroupDef[] = [
     attribution: "Listed by Wikidata as a group this entity is a member or part of",
   },
   {
+    // Forward: T.subclass_of == X → T is a subclass of X (the displayed parent class).
+    key: "subclass_of",
+    fields: ["subclass_of"],
+    label: "Subclass of",
+    attribution: "Listed by Wikidata as a class this entity is a subclass of",
+  },
+  {
+    // Forward: T.has_part == X → X is a part of T (the displayed part). Main downward-traversal edge.
+    key: "has_part",
+    fields: ["has_part"],
+    label: "Has part",
+    attribution: "Listed by Wikidata as a part of this entity",
+  },
+  {
     key: "significant_person",
     fields: ["significant_person"],
     label: "Significant person",

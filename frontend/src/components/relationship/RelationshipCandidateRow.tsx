@@ -19,6 +19,12 @@ export function RelationshipCandidateRow({
 }) {
   const { entity_a: a, entity_b: b } = candidate;
   const detail = candidate.kb_corroboration_detail.join(", ");
+  // Target /videos explicitly: the root index route redirects and drops the query.
+  // No min_evidence: the queue's title+description channel is not a selectable scope.
+  const togetherParams = new URLSearchParams();
+  togetherParams.append("entity_id", a.id);
+  togetherParams.append("entity_id", b.id);
+  const togetherHref = `/videos?${togetherParams.toString()}`;
   return (
     <li className="bg-white rounded-xl shadow-md border border-gray-100 p-4">
       <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -72,6 +78,15 @@ export function RelationshipCandidateRow({
           </dd>
         </div>
       </dl>
+      {/* Count-free on purpose: shared_video_count is the generator's number and can
+          differ from the association-inclusive /videos total. */}
+      <Link
+        to={togetherHref}
+        aria-label={`View videos where ${a.canonical_name} and ${b.canonical_name} appear together`}
+        className="mt-2 inline-block text-xs text-indigo-700 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded"
+      >
+        View shared videos &rarr;
+      </Link>
     </li>
   );
 }

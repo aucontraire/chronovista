@@ -157,6 +157,11 @@ def compute_candidates(
                     direct_edges.add(tuple(sorted((eid, target))))  # type: ignore[arg-type]
     shared_tie = _shared_referent_pairs(properties_by_entity, TIE_FIELDS)
     shared_attr = _shared_referent_pairs(properties_by_entity, ATTR_FIELDS)
+    # Hub-capped referents for corroboration (so a shared hub, e.g. the same big
+    # country, is not counted as evidence the pair is related).
+    corroboration_capped = _capped_referents(
+        properties_by_entity, tuple(sorted(_CORROBORATION_FIELDS))
+    )
 
     # Typed-eligible = has >=1 tie/attribute property populated.
     eligible: set[uuid.UUID] = set()
@@ -183,7 +188,9 @@ def compute_candidates(
             continue
 
         detail = _corroboration_detail(
-            properties_by_entity.get(a, {}), properties_by_entity.get(b, {})
+            properties_by_entity.get(a, {}),
+            properties_by_entity.get(b, {}),
+            corroboration_capped,
         )
         candidates.append(
             RelationshipCandidateCreate(
@@ -210,13 +217,43 @@ def compute_candidates(
     return candidates, channel_video_universe
 
 
+def _capped_referents(
+    properties_by_entity: dict[uuid.UUID, dict[str, Any]], fields: tuple[str, ...]
+) -> dict[str, set[str]]:
+    """Per field, the referent QIDs shared by a hub-capped (2..HUB_CAP) set of entities.
+
+    A referent shared by more than ``HUB_CAP`` entities (e.g. a large country) is a
+    hub, not a specific signal, so it is excluded — the same cap the novelty filter
+    applies. This is what keeps corroboration from counting "both from the same big
+    country" as evidence the two entities are related.
+    """
+    capped: dict[str, set[str]] = {}
+    for field in fields:
+        by_ref: dict[str, set[uuid.UUID]] = defaultdict(set)
+        for eid, props in properties_by_entity.items():
+            for qid in _qids(props, field):
+                by_ref[qid].add(eid)
+        capped[field] = {
+            q for q, members in by_ref.items() if 2 <= len(members) <= HUB_CAP
+        }
+    return capped
+
+
 def _corroboration_detail(
-    props_a: dict[str, Any], props_b: dict[str, Any]
+    props_a: dict[str, Any], props_b: dict[str, Any], capped: dict[str, set[str]]
 ) -> list[str]:
-    """Captured fields on which both entities share a referent QID (excl. deferred set)."""
+    """Captured fields on which both entities share a NON-HUB referent QID.
+
+    Hub-capped via ``capped`` (built by :func:`_capped_referents`) so a shared hub
+    attribute — e.g. the same large country — does NOT register as corroboration: it
+    is too generic to indicate the pair is related, which is exactly why the novelty
+    filter rejects it too. Without this cap the badge fired on ~hub attributes
+    (mostly shared country) for most of the head.
+    """
     detail: list[str] = []
     for field in _CORROBORATION_FIELDS:
-        if set(_qids(props_a, field)) & set(_qids(props_b, field)):
+        shared = set(_qids(props_a, field)) & set(_qids(props_b, field))
+        if shared & capped.get(field, set()):
             detail.append(field)
     return sorted(detail)
 

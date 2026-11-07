@@ -172,3 +172,21 @@ class TestCorroborationAndEligibility:
         )
         assert len(candidates) == 1
         assert candidates[0].both_typed_eligible is False
+
+    def test_corroboration_excludes_hub_referent(self) -> None:
+        # A shared HUB referent (same big country, >HUB_CAP members) must NOT count as
+        # corroboration — it's the same hub the novelty filter rejects, so counting it
+        # would be an unnormalized-signal leak into a user-facing badge.
+        a = _entity("Q1", country=["QC"])
+        b = _entity("Q2", country=["QC"])
+        # 19 more entities also share QC -> 21 members -> a hub above HUB_CAP (20).
+        hub = [_entity(f"QH{i}", country=["QC"]) for i in range(19)]
+        rows, filler = _with_filler(_cooccur([a[0], b[0]], 6))
+        candidates, _ = svc.compute_candidates(
+            mention_rows=rows, entity_rows=[a, b, filler, *hub], run_id=uuid.uuid4()
+        )
+        # QC is a hub, so the pair is NOT excluded by the attribute arm -> still novel.
+        assert len(candidates) == 1
+        # ...but the shared hub country must not register as corroboration.
+        assert "country" not in candidates[0].kb_corroboration_detail["fields"]
+        assert candidates[0].kb_corroboration_count == 0

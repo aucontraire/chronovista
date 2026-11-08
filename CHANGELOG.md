@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.117.0] - 2026-11-08
 
+### Added
+
+- **"See the videos" link on each novel-relationship candidate.** Every candidate row now
+  links to the videos where the two entities appear together
+  (`/videos?entity_id=A&entity_id=B`), reusing the existing entity-intersection view, so a
+  reviewer can jump straight from a candidate to its evidence. (#385)
+
 ### Changed
 
 - **The novel-relationship candidate queue is scoped to its top-500 head.** Measurement
@@ -21,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ("top 500 of N"), and the frontend page shows it. All rows remain stored — the tail is
   retained, not deleted, and stays reachable to the CLI/measurement path — so the cutoff is
   a tunable read parameter. No schema change, no migration.
+
+### Fixed
+
+- **The corroboration-exclude mechanism in the novel-relationship generator is now live and
+  guarded.** The exclusion list was declared in Wikidata-property-number space but subtracted
+  from a set of field names, so it silently excluded nothing — and would have stayed a no-op
+  even after an excluded property was captured. It is now declared in field-name space, with
+  validation that raises on an unknown field and a mutation-verified contract guard proving the
+  mechanism is reachable. No behaviour change today (the excluded properties are not captured).
+  (#386)
 
 ## [0.116.0] - 2026-11-07
 

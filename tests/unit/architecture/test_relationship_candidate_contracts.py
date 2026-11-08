@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from chronovista.services import relationship_candidate_service as svc
 from chronovista.services.wikidata_properties import RELATIONS
 
@@ -67,9 +69,32 @@ def test_no_support_floor_keeps_a_minimum_support_high_lift_pair() -> None:
     assert pair[0].lift == 20.0
 
 
-def test_corroboration_exclusions_are_pinned() -> None:
-    # Forward-defensive pin (NOT a live filter): P5008/P1343 are issue-10 live-probe
-    # negatives and are not in the captured RELATIONS set, so excluding them in the
-    # captured-property corroboration is currently a no-op. The guard pins the
-    # constant so any change to it is a deliberate, reviewed decision.
-    assert {"P5008", "P1343"} <= svc.CORROBORATION_EXCLUDE
+def test_corroboration_field_set_and_exclusion_mechanism() -> None:
+    # Mutation-verified contract guard (Constitution v1.4.0): asserts the EFFECT of the
+    # exclusion mechanism, not a constant's contents. The prior pin
+    # (`{"P5008","P1343"} <= CORROBORATION_EXCLUDE`) passed under four broken
+    # constructions (NOTE 018 §18-§21); this fails under every one of them.
+    universe = frozenset(RELATIONS.values()) | frozenset(svc.ATTR_FIELDS)
+
+    # Universe = the documented 105-of-117 captured field names. The exact count is a
+    # deliberate-review pin: changing RELATIONS/ATTR_FIELDS changes what counts as
+    # corroboration and MUST be a conscious update here.
+    assert universe == svc._CORROBORATION_FIELDS
+    assert len(svc._CORROBORATION_FIELDS) == 105
+    # Node attributes are omitted by construction (co-classification, not a relation).
+    assert "instance_of" not in svc._CORROBORATION_FIELDS
+    # Ships empty: nothing is excluded today.
+    assert frozenset() == svc.CORROBORATION_EXCLUDE_FIELDS
+
+    # The mechanism is LIVE despite shipping empty — two mutations prove reachability.
+    # Single-source field:
+    excl_employer = svc._compute_corroboration_fields(frozenset({"employer"}))
+    assert len(excl_employer) == 104 and "employer" not in excl_employer
+    # Multi-source field (country <- P17 + P27): the case a P-number-space exclusion
+    # silently fails (P27 keeps producing `country`). Only a field-name-space exclusion
+    # removes it — this assertion is what distinguishes the correct construction.
+    excl_country = svc._compute_corroboration_fields(frozenset({"country"}))
+    assert len(excl_country) == 104 and "country" not in excl_country
+    # Non-resolution raises, never silently no-ops.
+    with pytest.raises(ValueError):
+        svc._compute_corroboration_fields(frozenset({"not_a_captured_field"}))

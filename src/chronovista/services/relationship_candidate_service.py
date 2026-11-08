@@ -57,17 +57,45 @@ HUB_CAP = 20
 SUPPORT_MIN = 5
 LIFT_MIN = 5.0
 
-# Corroboration is counted over captured shared-referent fields. These exclusions
-# are the issue-10 LIVE-PROBE negatives (P5008 "on focus list", P1343 "described by
-# source"); they are NOT in the captured RELATIONS set, so excluding them here is a
-# forward-defensive no-op, not a live filter. The curated positive-signal list is
-# deferred to the confirm/reject stage (FR-007).
-CORROBORATION_EXCLUDE: frozenset[str] = frozenset({"P5008", "P1343"})
-# Fields over which a shared referent counts as corroboration (all captured
-# item-valued fields minus the deferred exclusions).
-_CORROBORATION_FIELDS: frozenset[str] = (
-    _RELATION_FIELDS | frozenset(ATTR_FIELDS)
-) - CORROBORATION_EXCLUDE
+# Corroboration counts shared NON-HUB referents over the captured item-valued fields.
+# The universe is ``_RELATION_FIELDS | ATTR_FIELDS`` = 105 of the 117 distinct captured
+# field names. The 12 omitted (instance_of, occupation, political_ideology,
+# political_alignment, religion_or_worldview, languages, ethnic_group, sex_or_gender,
+# legal_form, industry, head_position, residence) are NODE ATTRIBUTES: a shared value is
+# co-classification, not a relation. They are dropped by this universe's construction,
+# NOT by HUB_CAP -- a specific class can have <= HUB_CAP holders yet still be relationally
+# meaningless, so the cap bounds hubs but does not decide semantics (field-level omission
+# is a separate, non-derivable mechanism). ``| ATTR_FIELDS`` is load-bearing: country and
+# headquarters are not in ``RELATIONS.values()`` (only place_of_birth is in both).
+_CORROBORATION_UNIVERSE: frozenset[str] = _RELATION_FIELDS | frozenset(ATTR_FIELDS)
+
+# Fields excluded from corroboration, declared in FIELD-NAME space (the space the set
+# actually lives in) so the exclusion operates with no P-number->name translation that
+# could drop a value silently. Ships EMPTY: the issue-10 live-probe negatives P5008 ("on
+# focus list") and P1343 ("described by source") are NOT captured (absent from RELATIONS
+# and WANTED), so they were never excludable and need no mechanism -- recorded here as a
+# note, not a dead constant. Because it ships empty, the validation below never fires on
+# day one and this looks identical to a dead mechanism; the two-mutation contract guard
+# (single-source ``employer`` + multi-source ``country``) is the ONLY artifact proving the
+# mechanism is live, so it lands in the same change as this code (Constitution v1.4.0).
+CORROBORATION_EXCLUDE_FIELDS: frozenset[str] = frozenset()
+
+
+def _compute_corroboration_fields(exclude: frozenset[str]) -> frozenset[str]:
+    """Corroboration field set = universe minus ``exclude`` (field names).
+
+    Raises ``ValueError`` on an unknown field rather than silently skipping it: a
+    non-resolving exclusion is a configuration error, never a no-op.
+    """
+    unknown = exclude - _CORROBORATION_UNIVERSE
+    if unknown:
+        raise ValueError(f"unknown corroboration-exclude field(s): {sorted(unknown)}")
+    return _CORROBORATION_UNIVERSE - exclude
+
+
+_CORROBORATION_FIELDS: frozenset[str] = _compute_corroboration_fields(
+    CORROBORATION_EXCLUDE_FIELDS
+)
 
 
 def _qids(properties: dict[str, Any], field: str) -> list[str]:

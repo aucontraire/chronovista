@@ -15,6 +15,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import delete
 
+import chronovista.repositories.relationship_candidate_repository as rc_repo
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import RelationshipCandidate as RelationshipCandidateDB
 
@@ -133,6 +134,8 @@ class TestList:
         assert r.json() == {
             "items": [],
             "total": 0,
+            "total_before_scoping": 0,
+            "head_cutoff": 500,
             "limit": 50,
             "offset": 0,
             "generated_at": None,
@@ -144,6 +147,58 @@ class TestList:
         # The qualifying floor is 5; the API rejects a lower min_support (ge=5).
         r = await async_client.get("/api/v1/relationship-candidates?min_support=1")
         assert r.status_code == 422
+
+
+class TestHeadScope:
+    """Feature 108: head-scoping + provenance through the real endpoint."""
+
+    async def test_provenance_fields_present(
+        self, async_client: AsyncClient, integration_db_session: Callable[[], object]
+    ) -> None:
+        # SC-005: the scoped total, the pre-scoping total, and the cutoff are all exposed.
+        await _seed(integration_db_session)  # 3 rows, under the cutoff
+        body = (await async_client.get("/api/v1/relationship-candidates")).json()
+        assert body["total"] == 3  # scoped
+        assert body["total_before_scoping"] == 3  # == scoped when under the cutoff
+        assert body["head_cutoff"] == 500
+
+    async def test_hard_cap_not_bypassable_at_api(
+        self,
+        async_client: AsyncClient,
+        integration_db_session: Callable[[], object],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # FR-004 / SC-001/SC-002 end-to-end: a large limit cannot exceed the cap, and the
+        # provenance reports both totals. One patch of the module constant drives both the
+        # repository cap and the response's head_cutoff (single runtime source).
+        monkeypatch.setattr(rc_repo, "HEAD_CUTOFF", 3)
+        async with integration_db_session() as session:  # type: ignore[attr-defined]
+            await session.execute(delete(RelationshipCandidateDB))
+            tag = uuid.uuid4().hex[:10]
+            hub = _entity(f"HS {tag} hub")
+            partners = [_entity(f"HS {tag} p{i}") for i in range(5)]
+            session.add_all([hub, *partners])
+            await session.flush()
+            session.add_all(
+                [
+                    _cand(hub.id, p.id, lift=float(100 - i))
+                    for i, p in enumerate(partners)
+                ]
+            )
+            await session.commit()
+
+        body = (
+            await async_client.get("/api/v1/relationship-candidates?limit=100")
+        ).json()
+        assert len(body["items"]) == 3  # capped despite limit=100
+        assert body["total"] == 3  # scoped
+        assert body["total_before_scoping"] == 5  # full qualifying count
+        assert body["head_cutoff"] == 3
+        # Cannot page into the tail past the cutoff.
+        empty = (
+            await async_client.get("/api/v1/relationship-candidates?offset=3&limit=100")
+        ).json()
+        assert empty["items"] == []
 
 
 class TestReadOnlyBoundary:

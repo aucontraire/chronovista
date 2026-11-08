@@ -54,7 +54,22 @@ class RelationshipCandidateListResponse(BaseModel):
 
     items: list[RelationshipCandidateItem]
     total: int = Field(
-        ..., description="Total qualifying candidates matching the filters"
+        ...,
+        description=(
+            "Candidates matching the active filters AND in the top-head_cutoff head "
+            "(Feature 108) — the count a reviewer sees and pages through"
+        ),
+    )
+    total_before_scoping: int = Field(
+        ...,
+        description=(
+            "Candidates matching the active filters across the whole queue (same population "
+            "as `total`, before the head cutoff) — provenance"
+        ),
+    )
+    head_cutoff: int = Field(
+        ...,
+        description="The active head cutoff; the queue is scoped to this many top rows",
     )
     limit: int
     offset: int

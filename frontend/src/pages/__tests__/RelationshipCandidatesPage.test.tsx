@@ -44,7 +44,9 @@ function respond(
   hookMock.mockReturnValue({
     data: {
       items,
-      total: items.length,
+      total: over.total ?? items.length,
+      total_before_scoping: over.total ?? items.length,
+      head_cutoff: over.total ?? items.length,
       limit: 50,
       offset: 0,
       generated_at: "2026-01-01T00:00:00Z",
@@ -124,5 +126,34 @@ describe("RelationshipCandidatesPage", () => {
     expect(hookMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ offset: 50 })
     );
+  });
+
+  it("shows top-N-of-M provenance and stops pagination at the scoped head", () => {
+    respond([makeCandidate(1)], {
+      total: 500,
+      total_before_scoping: 3755,
+      head_cutoff: 500,
+    });
+    renderPage();
+    expect(
+      screen.getByText(/Showing 1-1 of 500 — top 500 of 3,755/)
+    ).toBeInTheDocument();
+    const next = screen.getByRole("button", { name: "Next" });
+    for (let i = 0; i < 9; i++) {
+      expect(next).toBeEnabled();
+      fireEvent.click(next);
+    }
+    expect(next).toBeDisabled();
+  });
+
+  it("omits the top-N suffix when a filter leaves fewer rows than the head", () => {
+    respond([makeCandidate(1)], {
+      total: 388,
+      total_before_scoping: 600,
+      head_cutoff: 500,
+    });
+    renderPage();
+    expect(screen.getByText("Showing 1-1 of 388")).toBeInTheDocument();
+    expect(screen.queryByText(/top 500/)).not.toBeInTheDocument();
   });
 });

@@ -30,6 +30,10 @@ export interface RelationshipCandidate {
 export interface RelationshipCandidateListResponse {
   items: RelationshipCandidate[];
   total: number;
+  /** Candidates matching the active filters across the whole queue (same population as `total`, before the head cutoff). */
+  total_before_scoping: number;
+  /** Active cutoff: the queue is scoped to this many top rows. */
+  head_cutoff: number;
   limit: number;
   offset: number;
   /** ISO 8601 timestamp of the last generation, or null if never generated. */

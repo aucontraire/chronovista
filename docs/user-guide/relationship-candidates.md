@@ -26,8 +26,21 @@ removed. Only one generation runs at a time per channel.
 
 - **Browser:** open the **Relationships** page (under the Entities group). Rows are
   ranked strongest-first; each links to both entities, with its evidence.
-- **API:** `GET /api/v1/relationship-candidates` (lift-ranked, paginated). Query
+- **API:** `GET /api/v1/relationship-candidates` (ranked, paginated). Query
   params: `limit`, `offset`, `eligible_only`, `min_support` (never below 5).
+
+### The queue shows its top 500 (the "head")
+
+The queue is **scoped to its top 500 rows** — its *head*. Measurement found that genuine
+relationships concentrate at the top of the ranked list while the long tail is mostly topical
+co-occurrence, so every consumer (page, API, counts) shows only the head. The rest is still
+stored — nothing is deleted — just not shown; the cutoff is a tunable read parameter.
+
+So you see the strongest 500 candidates, honestly labelled: the response reports `total` (how
+many are in the head), `total_before_scoping` (how many qualified in all), and `head_cutoff`
+(500), and the page shows "top 500 of N". Within the head, rows are ordered by **lift**, then by
+**corroboration** (so equally-strong pairs with more shared structural support rank higher), then
+by a stable tiebreak so the ordering never flickers.
 
 ## Read a candidate
 

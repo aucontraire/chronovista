@@ -35,7 +35,7 @@ from chronovista.services.wikidata_properties import RELATIONS
 
 # Bump when the novelty filter or the lift metric changes, so a row's provenance
 # records which generator produced it (a lift is uninterpretable without this).
-GENERATOR_VERSION = "107.1"
+GENERATOR_VERSION = "108.0"
 
 CHANNEL = "title_description"
 CHANNEL_SOURCES: tuple[str, ...] = ("title", "description")

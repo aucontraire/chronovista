@@ -17,6 +17,7 @@ from chronovista.api.schemas.relationship_candidate import (
     RelationshipCandidateItem,
     RelationshipCandidateListResponse,
 )
+from chronovista.repositories import relationship_candidate_repository as rc_repo
 from chronovista.repositories.relationship_candidate_repository import (
     RelationshipCandidateRepository,
 )
@@ -50,7 +51,9 @@ async def list_relationship_candidates(
     ranking, which is always by lift. The empty set returns 200 with ``items: []``.
     """
     repo = RelationshipCandidateRepository()
-    rows, total = await repo.list_ranked(
+    # The API always reads head-scoped (head_only defaults True); there is no request
+    # parameter to disable the cap or reach the tail (FR-003/FR-004).
+    rows, total, total_before_scoping = await repo.list_ranked(
         session,
         eligible_only=eligible_only,
         min_support=min_support,
@@ -94,5 +97,13 @@ async def list_relationship_candidates(
         )
 
     return RelationshipCandidateListResponse(
-        items=items, total=total, limit=limit, offset=offset, generated_at=generated_at
+        items=items,
+        total=total,
+        total_before_scoping=total_before_scoping,
+        # Read through the module so the cutoff has a single runtime source (list_ranked
+        # and this provenance field can never disagree).
+        head_cutoff=rc_repo.HEAD_CUTOFF,
+        limit=limit,
+        offset=offset,
+        generated_at=generated_at,
     )

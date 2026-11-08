@@ -33,6 +33,9 @@ export function RelationshipCandidatesPage() {
   }, []);
 
   const total = data?.total ?? 0;
+  const totalBeforeScoping = data?.total_before_scoping ?? total;
+  const headCutoff = data?.head_cutoff ?? 0;
+  const isScoped = totalBeforeScoping > total && total >= headCutoff;
   const items = data?.items ?? [];
   const from = total === 0 ? 0 : offset + 1;
   const to = offset + items.length;
@@ -139,6 +142,8 @@ export function RelationshipCandidatesPage() {
               </button>
               <p className="text-sm text-gray-600">
                 {`Showing ${from}-${to} of ${total.toLocaleString()}`}
+                {isScoped &&
+                  ` — top ${headCutoff.toLocaleString()} of ${totalBeforeScoping.toLocaleString()}`}
               </p>
               <button
                 type="button"

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-11-08
+
+### Changed
+
+- **The novel-relationship candidate queue is scoped to its top-500 head.** Measurement
+  showed the queue's genuine-relationship value is concentrated in the head while the long
+  tail is overwhelmingly topical co-occurrence, so `GET /api/v1/relationship-candidates`
+  (and every consumer — the shared repository read is the single funnel) now returns only
+  the top 500 ranked candidates. Within the head, rows are ordered by lift, then
+  corroboration (shared non-hub referents), then a regeneration-stable tiebreak. The
+  response adds `total_before_scoping` and `head_cutoff` so the scoping is visible
+  ("top 500 of N"), and the frontend page shows it. All rows remain stored — the tail is
+  retained, not deleted, and stays reachable to the CLI/measurement path — so the cutoff is
+  a tunable read parameter. No schema change, no migration.
+
 ## [0.116.0] - 2026-11-07
 
 ### Added

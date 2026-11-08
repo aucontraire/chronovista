@@ -77,7 +77,7 @@ class TestUpsert:
 
         n = await repo.upsert_many(db_session, candidates=[_cand(e1.id, e2.id)])
         assert n == 1
-        rows, total = await repo.list_ranked(db_session)
+        rows, total, _ = await repo.list_ranked(db_session)
         assert total == 1
         original_id = rows[0].id
         assert rows[0].lift == 50.0
@@ -87,7 +87,7 @@ class TestUpsert:
             db_session,
             candidates=[_cand(e1.id, e2.id, lift=99.0, shared_video_count=9)],
         )
-        rows, total = await repo.list_ranked(db_session)
+        rows, total, _ = await repo.list_ranked(db_session)
         assert total == 1  # not duplicated
         assert rows[0].id == original_id  # identity preserved
         assert rows[0].lift == 99.0
@@ -111,7 +111,7 @@ class TestUpsert:
 
         # A re-run must NOT overwrite the verdict (WHERE review_status IS NULL).
         await repo.upsert_many(db_session, candidates=[_cand(e1.id, e2.id, lift=77.0)])
-        rows, _ = await repo.list_ranked(db_session)
+        rows, _, _ = await repo.list_ranked(db_session)
         assert rows[0].review_status == "related"
         assert rows[0].lift == 50.0  # metrics unchanged on a verdicted row
 
@@ -130,7 +130,7 @@ class TestListRanked:
                 _cand(e2.id, e3.id, lift=80.0),
             ],
         )
-        rows, total = await repo.list_ranked(db_session)
+        rows, total, _ = await repo.list_ranked(db_session)
         assert total == 3
         lifts = [r.lift for r in rows]
         assert lifts == sorted(lifts, reverse=True)
@@ -152,10 +152,10 @@ class TestListRanked:
                 _cand(e1.id, e3.id, both_typed_eligible=False, shared_video_count=20),
             ],
         )
-        elig, elig_total = await repo.list_ranked(db_session, eligible_only=True)
+        elig, elig_total, _ = await repo.list_ranked(db_session, eligible_only=True)
         assert elig_total == 1 and elig[0].both_typed_eligible is True
 
-        tight, tight_total = await repo.list_ranked(db_session, min_support=10)
+        tight, tight_total, _ = await repo.list_ranked(db_session, min_support=10)
         assert tight_total == 1 and tight[0].shared_video_count == 20
 
 
@@ -187,7 +187,7 @@ class TestDeleteStale:
         removed = await repo.delete_stale(db_session, run_started_at=run_started)
 
         assert removed == 0  # the stale pair was verdicted -> kept
-        rows, total = await repo.list_ranked(db_session)
+        rows, total, _ = await repo.list_ranked(db_session)
         assert total == 2  # re-emitted (unverdicted) + verdicted both present
 
     async def test_removes_a_stale_unverdicted_pair(
@@ -201,7 +201,7 @@ class TestDeleteStale:
         later = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=1)
         removed = await repo.delete_stale(db_session, run_started_at=later)
         assert removed == 1
-        _, total = await repo.list_ranked(db_session)
+        _, total, _ = await repo.list_ranked(db_session)
         assert total == 0
 
 
@@ -230,7 +230,7 @@ class TestUpsertRobustness:
             ],
         )
         assert n == 3
-        _, total = await repo.list_ranked(db_session)
+        _, total, _ = await repo.list_ranked(db_session)
         assert total == 3
 
     async def test_dedupes_repeated_pair_in_one_call(
@@ -246,7 +246,7 @@ class TestUpsertRobustness:
             candidates=[_cand(e1.id, e2.id, lift=10.0), _cand(e1.id, e2.id, lift=88.0)],
         )
         assert n == 1
-        rows, total = await repo.list_ranked(db_session)
+        rows, total, _ = await repo.list_ranked(db_session)
         assert total == 1 and rows[0].lift == 88.0
 
 
@@ -263,7 +263,7 @@ class TestNoSupportFloor:
             db_session,
             candidates=[_cand(e1.id, e2.id, shared_video_count=5, lift=350.0)],
         )
-        rows, total = await repo.list_ranked(db_session)
+        rows, total, _ = await repo.list_ranked(db_session)
         assert total == 1
         assert rows[0].shared_video_count == 5 and rows[0].lift == 350.0
 
@@ -320,3 +320,178 @@ class TestGenerationRun:
             db_session, channel="title_description", generator_version="107.1"
         )
         assert third is not None
+
+
+class TestHeadScope:
+    """Feature 108: head cutoff (hard cap), head_only override, ordering, provenance counts."""
+
+    async def test_hard_cap_scopes_head_and_reports_both_totals(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Small cutoff so the cap is testable without seeding 500+ rows.
+        monkeypatch.setattr(repo_mod, "HEAD_CUTOFF", 3)
+        repo = RelationshipCandidateRepository()
+        hub = await _make_entity(db_session, "Hub")
+        cands = [
+            _cand(
+                hub.id,
+                (await _make_entity(db_session, f"Partner {i}")).id,
+                lift=float(100 - i),  # distinct lifts -> deterministic rank
+            )
+            for i in range(5)
+        ]
+        await repo.upsert_many(db_session, candidates=cands)
+
+        # A large limit cannot bypass the cap (FR-004): the cap is enforced in the repo.
+        rows, total, total_before = await repo.list_ranked(db_session, limit=100)
+        assert len(rows) == 3
+        assert total == 3  # scoped = min(5, HEAD_CUTOFF=3)
+        assert total_before == 5  # provenance: full qualifying count (FR-006)
+
+        # A page starting at/after the cutoff is empty (cannot page into the tail).
+        empty, _, _ = await repo.list_ranked(db_session, skip=3, limit=100)
+        assert empty == []
+
+    async def test_head_only_false_returns_full_tail(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(repo_mod, "HEAD_CUTOFF", 3)
+        repo = RelationshipCandidateRepository()
+        hub = await _make_entity(db_session, "Hub2")
+        cands = [
+            _cand(
+                hub.id,
+                (await _make_entity(db_session, f"Tail {i}")).id,
+                lift=float(100 - i),
+            )
+            for i in range(5)
+        ]
+        await repo.upsert_many(db_session, candidates=cands)
+
+        # The deliberate override reaches the retained tail (FR-003); the API never does.
+        rows, total, total_before = await repo.list_ranked(
+            db_session, limit=100, head_only=False
+        )
+        assert len(rows) == 5
+        assert total == 5 and total_before == 5
+
+    async def test_equal_lift_higher_corroboration_first(
+        self, db_session: AsyncSession
+    ) -> None:
+        # FR-002 / SC-003: corroboration is the secondary sort key. The higher-corroboration
+        # row is given the LOWER shared_video_count, so without the corroboration key the order
+        # would INVERT (shared_video is the next key) — this fails if corroboration is dropped.
+        repo = RelationshipCandidateRepository()
+        hub = await _make_entity(db_session, "CorrHub")
+        p_low = await _make_entity(db_session, "CorrLow")
+        p_high = await _make_entity(db_session, "CorrHigh")
+        await repo.upsert_many(
+            db_session,
+            candidates=[
+                _cand(
+                    hub.id,
+                    p_low.id,
+                    lift=50.0,
+                    kb_corroboration_count=0,
+                    shared_video_count=9,
+                ),
+                _cand(
+                    hub.id,
+                    p_high.id,
+                    lift=50.0,
+                    kb_corroboration_count=5,
+                    shared_video_count=5,
+                ),
+            ],
+        )
+        rows, _, _ = await repo.list_ranked(db_session)
+        assert rows[0].kb_corroboration_count == 5  # higher corroboration first...
+        assert (
+            rows[0].shared_video_count == 5
+        )  # ...despite its LOWER shared_video_count
+
+    async def test_list_ranked_sql_ends_order_by_with_id(
+        self, db_session: AsyncSession
+    ) -> None:
+        # EFFECT guard (§22/§23): capture the SQL list_ranked ACTUALLY emits and assert its
+        # ORDER BY ENDS with the regen-stable id key. The structural guard on _HEAD_ORDER_BY
+        # passes even if list_ranked stops using the tuple (inlined order_by) — this does not:
+        # it asserts the emitted statement, not a constant's contents.
+        from sqlalchemy import event
+
+        repo = RelationshipCandidateRepository()
+        hub = await _make_entity(db_session, "SqlHub")
+        partner = await _make_entity(db_session, "SqlPartner")
+        await repo.upsert_many(db_session, candidates=[_cand(hub.id, partner.id)])
+
+        captured: list[str] = []
+        sync_conn = (await db_session.connection()).sync_connection
+
+        def _cap(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+            if (
+                "relationship_candidates" in statement
+                and " order by " in statement.lower()
+            ):
+                captured.append(statement)
+
+        event.listen(sync_conn, "before_cursor_execute", _cap)
+        try:
+            await repo.list_ranked(db_session)
+        finally:
+            event.remove(sync_conn, "before_cursor_execute", _cap)
+
+        assert captured, "list_ranked emitted no SELECT with an ORDER BY"
+        # The head query has TWO order-by clauses (the head-membership subquery and the outer
+        # row order); EVERY one must end in the id key, or either boundary can flicker.
+        import re
+
+        sql = captured[-1].lower()
+        clauses = sql.split(" order by ")[1:]
+        assert clauses, "no ORDER BY in emitted SQL"
+        for clause in clauses:
+            keys = re.split(r"\s+(?:limit|offset)\b|\)", clause, maxsplit=1)[0]
+            last_key = keys.rsplit(",", 1)[-1].strip()
+            assert "relationship_candidates.id" in last_key, (clause, last_key)
+
+    async def test_filters_subset_within_head_never_promote_tail(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # §23 regression guard: head membership is the GLOBAL top-HEAD_CUTOFF of the floor,
+        # independent of user filters. A high-support row BELOW the head must NOT be promoted
+        # into view by a narrow min_support (the old filter-then-cap behaviour would return it).
+        monkeypatch.setattr(repo_mod, "HEAD_CUTOFF", 3)
+        repo = RelationshipCandidateRepository()
+        hub = await _make_entity(db_session, "PromHub")
+        # 3 head rows (highest lift) but LOW support (5) -> fail min_support=10.
+        head = [
+            _cand(
+                hub.id,
+                (await _make_entity(db_session, f"Head {i}")).id,
+                lift=float(1000 - i),
+                shared_video_count=5,
+            )
+            for i in range(3)
+        ]
+        # 2 below-head rows (low lift) with HIGH support (20) -> would be promoted under the
+        # old behaviour; under §23 they are outside the top-3 head and must stay hidden.
+        tail = [
+            _cand(
+                hub.id,
+                (await _make_entity(db_session, f"Tail {i}")).id,
+                lift=float(10 - i),
+                shared_video_count=20,
+            )
+            for i in range(2)
+        ]
+        await repo.upsert_many(db_session, candidates=head + tail)
+
+        rows, total, total_before = await repo.list_ranked(db_session, min_support=10)
+        # Head = top-3 (the support-5 rows); none survive support>=10 WITHIN the head.
+        assert rows == [] and total == 0
+        # Provenance is about the filtered population: 2 rows match support>=10 queue-wide.
+        assert total_before == 2
+        # And head_only=False (measurement path) DOES see those 2 (ranked, uncapped).
+        tail_rows, _, _ = await repo.list_ranked(
+            db_session, min_support=10, head_only=False
+        )
+        assert len(tail_rows) == 2

@@ -13,6 +13,8 @@ import uuid
 
 import pytest
 
+import chronovista.repositories.relationship_candidate_repository as repo_mod
+from chronovista.db.models import RelationshipCandidate as RelationshipCandidateDB
 from chronovista.services import relationship_candidate_service as svc
 from chronovista.services.wikidata_properties import RELATIONS
 
@@ -98,3 +100,17 @@ def test_corroboration_field_set_and_exclusion_mechanism() -> None:
     # Non-resolution raises, never silently no-ops.
     with pytest.raises(ValueError):
         svc._compute_corroboration_fields(frozenset({"not_a_captured_field"}))
+
+
+def test_head_ordering_ends_in_regen_stable_id() -> None:
+    # SC-003a / §22 CONTRACT GUARD: the head ordering MUST end in the regen-stable `id`
+    # tiebreak, or the boundary flickers when lift AND corroboration tie. A DB-order test
+    # cannot catch a dropped tiebreak (verified during adversarial validation: Postgres
+    # returned id order by chance), so the ordering is a single named tuple and this guard
+    # asserts its shape structurally — it fails if the terminal id key is dropped.
+    order = repo_mod._HEAD_ORDER_BY
+    assert len(order) == 4  # lift, corroboration, shared_video_count, id
+    assert order[-1] is RelationshipCandidateDB.id  # terminal regen-stable tiebreak
+    # corroboration is the secondary key (immediately after lift).
+    assert "kb_corroboration_count" in str(order[1])
+    assert "lift" in str(order[0])

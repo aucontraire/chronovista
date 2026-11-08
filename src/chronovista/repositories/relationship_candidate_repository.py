@@ -49,6 +49,22 @@ _REFRESHABLE_FIELDS = (
     "provenance",
 )
 
+# Feature 108: the queue is scoped to its top-HEAD_CUTOFF head (the measured support-falloff
+# boundary; §22). Enforced as a hard cap in list_ranked (the shared read funnel) so no consumer
+# can page past it; the tail is retained in storage and reachable only via head_only=False.
+HEAD_CUTOFF = 500
+
+# The head ordering (FR-002). The terminal `id` is a regen-stable tiebreak (the upsert preserves
+# a pair's id); it MUST remain last, or the head boundary flickers when lift AND corroboration
+# tie (§22). A single source so the contract guard can assert the terminal key structurally —
+# a DB-order assertion cannot (Postgres may return tied rows in id order by chance).
+_HEAD_ORDER_BY = (
+    RelationshipCandidateDB.lift.desc(),
+    RelationshipCandidateDB.kb_corroboration_count.desc(),
+    RelationshipCandidateDB.shared_video_count.desc(),
+    RelationshipCandidateDB.id,
+)
+
 # asyncpg rejects a statement with > 32,767 bind parameters. Each candidate row
 # binds ~14 params (12 create fields + last_generated_at + the uuid7 id default),
 # so a single multi-row INSERT breaks at ~2,340 rows — and the generator emits
@@ -134,31 +150,77 @@ class RelationshipCandidateRepository(
         min_support: int = 5,
         skip: int = 0,
         limit: int = 50,
-    ) -> tuple[list[RelationshipCandidateDB], int]:
-        """Return a page of candidates ranked by lift (strongest first) + total count.
+        head_only: bool = True,
+    ) -> tuple[list[RelationshipCandidateDB], int, int]:
+        """Return a page of head candidates + (scoped total, pre-scoping total).
 
-        ``min_support`` only filters rows (never below the qualifying floor of 5); it
-        is never used to re-floor the ranking, which is always ``lift DESC`` (then a
-        stable tiebreak). ``eligible_only`` restricts to the measured-precision
-        population without changing the ordering.
+        Ordering is ``lift DESC, kb_corroboration_count DESC, shared_video_count DESC, id``.
+        The terminal ``id`` is a regen-stable tiebreak (the upsert preserves a pair's id), so
+        the head boundary is deterministic even when lift AND corroboration tie (Feature 108,
+        §22) — do NOT drop it.
+
+        ``head_only`` (default True) scopes the result to the queue's HEAD: the GLOBAL
+        top-``HEAD_CUTOFF`` of the qualifying floor (``shared_video_count >= 5``) by the ranking.
+        Head membership is independent of the user filters — ``min_support`` and ``eligible_only``
+        subset WITHIN the head, they never promote a below-head row into it (Feature 108 §23 /
+        FR-001), so those parameters keep their documented "only filters rows, never re-floors the
+        ranking" contract. A large ``limit`` cannot reach the tail because the head is bounded to
+        ``HEAD_CUTOFF`` rows by construction (FR-004). The API always uses the default; the
+        CLI/measurement path passes ``head_only=False`` to read the retained tail (no cap).
+
+        Returns ``(rows, total, total_before_scoping)``, both over the SAME active-filter
+        population so the "N of M" provenance is coherent: ``total`` is how many rows match the
+        filters AND are in the head (what a reviewer pages through); ``total_before_scoping`` is
+        how many match the filters across the whole queue (FR-006). With no filter these are
+        ``HEAD_CUTOFF`` and the full qualifying count.
         """
-        filters = [RelationshipCandidateDB.shared_video_count >= max(min_support, 5)]
+        # Active filters: the floor (>= 5) merged with any user narrowing. Used for the
+        # pre-scoping count and (within the head) for the shown rows.
+        active_filters = [
+            RelationshipCandidateDB.shared_video_count >= max(min_support, 5)
+        ]
         if eligible_only:
-            filters.append(RelationshipCandidateDB.both_typed_eligible.is_(True))
+            active_filters.append(RelationshipCandidateDB.both_typed_eligible.is_(True))
 
-        total_result = await session.execute(
-            select(func.count()).select_from(RelationshipCandidateDB).where(*filters)
-        )
-        total = total_result.scalar() or 0
+        # total_before_scoping = the full population matching the active filters — the "M" in
+        # "N of M", about the SAME population as `total`, never the unfiltered global count.
+        total_before_scoping = (
+            await session.execute(
+                select(func.count())
+                .select_from(RelationshipCandidateDB)
+                .where(*active_filters)
+            )
+        ).scalar() or 0
+
+        if head_only:
+            # Head membership is the global top-HEAD_CUTOFF of the floor population, by the
+            # ranking — NOT of the filtered population, so a narrow min_support cannot drag
+            # below-head rows into view (§23). Filters then apply inside the head.
+            head_ids = (
+                select(RelationshipCandidateDB.id)
+                .where(RelationshipCandidateDB.shared_video_count >= 5)
+                .order_by(*_HEAD_ORDER_BY)
+                .limit(HEAD_CUTOFF)
+            )
+            row_where: list[Any] = [
+                RelationshipCandidateDB.id.in_(head_ids),
+                *active_filters,
+            ]
+            total = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(RelationshipCandidateDB)
+                    .where(*row_where)
+                )
+            ).scalar() or 0
+        else:
+            row_where = list(active_filters)
+            total = total_before_scoping
 
         stmt = (
             select(RelationshipCandidateDB)
-            .where(*filters)
-            .order_by(
-                RelationshipCandidateDB.lift.desc(),
-                RelationshipCandidateDB.shared_video_count.desc(),
-                RelationshipCandidateDB.id,
-            )
+            .where(*row_where)
+            .order_by(*_HEAD_ORDER_BY)
             .offset(skip)
             .limit(limit)
             # A bulk Core upsert does not sync cached ORM instances; force the read
@@ -167,7 +229,7 @@ class RelationshipCandidateRepository(
             .execution_options(populate_existing=True)
         )
         result = await session.execute(stmt)
-        return list(result.scalars().all()), total
+        return list(result.scalars().all()), total, total_before_scoping
 
     async def delete_stale(
         self, session: AsyncSession, *, run_started_at: datetime

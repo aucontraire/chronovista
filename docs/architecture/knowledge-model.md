@@ -45,8 +45,12 @@ Every consumer that shows relationships therefore names its channel.
 
 In standard terms this is the distinction between a **knowledge base** (asserted
 facts, with provenance) and a **distributional association model** (statistics about
-a text collection). Conflating the two is the recognised failure mode in that
-literature, not a hazard unique to this project.
+a text collection). The observed layer rests on the *distributional hypothesis* —
+that an entity, like a word, is characterised by the company it keeps (Firth, 1957) —
+which is what makes co-occurrence a meaningful signal and also what bounds it:
+distribution captures association, not the typed relation a knowledge base asserts.
+Conflating the two is the recognised failure mode in that literature, not a hazard
+unique to this project.
 
 ## The test for a new feature
 
@@ -99,8 +103,11 @@ reach many videos in few steps. The correspondence:
 The most important consequence is a validation rather than a change: **do not compute
 subclass closure.** Non-transitivity is the correct SKOS position, because real
 hierarchies mix generic, partitive and instantial relations, and chaining them
-produces nonsense. External subclass chains are notoriously bad this way. Leaving the
-closure uncomputed is a decision, not a deferred feature.
+produces nonsense. The thesaurus standard ISO 25964 draws the same line explicitly,
+splitting the broader-term relation into generic (BTG), partitive (BTP) and
+instantial (BTI) variants precisely because the three do not compose. External
+subclass chains are notoriously bad this way. Leaving the closure uncomputed is a
+decision, not a deferred feature.
 
 **What has no counterpart in any standard.** Hub suppression (whether an inverse list
 is *useful* is not a logical property, so no formalism models it); per-alias case
@@ -124,10 +131,12 @@ and the two have different shapes: a tagset is flat and closed on purpose, while
 subject vocabulary is faceted and open.
 
 This matters when a new subject area arrives. Classifying entities by *domain* —
-rather than by what kind of thing they are — is a **facet**: a second axis, orthogonal
-to person-versus-place. A facet modelled as a new enum value costs a CHECK-constraint
-migration per subject area; modelled as what it is, a scheme membership on the
-existing subtype column, it costs a row. So if a third domain ever makes the current
+rather than by what kind of thing they are — is a **facet** in the sense of faceted
+classification (Ranganathan, 1933): an independent axis that *combines* with
+person-versus-place rather than extending a single enumerative hierarchy that must
+anticipate every category. A facet modelled as a new enum value costs a
+CHECK-constraint migration per subject area; modelled as what it is, a scheme
+membership on the existing subtype column, it costs a row. So if a third domain ever makes the current
 split feel inadequate, that pressure is a modelling artifact and should not be
 resolved by adding an enum value.
 
@@ -141,6 +150,19 @@ resolved by adding an enum value.
 - Adopt SKOS's vocabulary and its non-transitivity; do not adopt RDF's machinery.
 - Keep inventing below that line, because that layer knows about this corpus and no
   standard will.
+
+## Further reading
+
+- Firth (1957), "A Synopsis of Linguistic Theory 1930–1955" — the "company it keeps"
+  statement of the distributional hypothesis the observed layer rests on.
+- Ranganathan (1933), *Colon Classification* — faceted classification: independent
+  axes that combine, rather than one enumerative hierarchy.
+- ISO 25964-1 (2011), *Thesauri and interoperability with other vocabularies* — the
+  generic / partitive / instantial split in broader-term relations.
+- Miles & Bechhofer (2009), *SKOS Simple Knowledge Organization System Reference*
+  (W3C) — `prefLabel`, `altLabel`, `broader`, `related`.
+- Hovy, Marcus, Palmer, Ramshaw & Weischedel (2006), "OntoNotes: The 90% Solution" —
+  the annotation tagset `EntityType` derives from.
 
 ## See Also
 

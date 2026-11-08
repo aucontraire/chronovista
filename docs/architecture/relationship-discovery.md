@@ -161,6 +161,70 @@ reads, which breaks pagination at exactly the page a reviewer is looking at.
   signal, not a noise marker. Filtering on it was proposed and measurement refuted
   it.
 
+## Where this sits in established practice
+
+The queue is an instance of three well-studied problems. Naming them says both what
+the method borrows and where it departs.
+
+**Knowledge-base completion and distant supervision.** Proposing edges a knowledge
+base lacks is *knowledge-base completion*; using corpus co-occurrence as the signal
+for it is the intuition behind *distant supervision* (Mintz et al., 2009), which
+assumes that entities appearing together in text and related in a knowledge base are
+expressing that relation. The well-documented failure of that assumption runs in the
+project's favour: co-occurrence in text frequently reflects *no* relation, and a
+knowledge base is itself incomplete rather than authoritative about absence (Min et
+al., 2013; Ritter et al., 2013). That is exactly why co-occurrence here *generates
+candidates to be reviewed* and never asserts an edge — the architecture encodes the
+caution the literature arrived at.
+
+**Association-rule mining and interest measures.** Ranking co-occurrence by lift is
+the *interest* measure of association-rule mining: support and confidence are from
+Agrawal et al. (1993), and lift as the ratio of observed to expected co-occurrence is
+the "interest" of Brin et al. (1997). The same quantity is *pointwise mutual
+information* in corpus linguistics — log lift is PMI (Church & Hanks, 1990) — so
+"rank by lift" and "rank by PMI" are one ordering written twice. The support bound
+noted earlier is a property of the measure, not of this corpus: with the corpus size
+fixed, the largest lift a pair can reach is that size divided by its shared count, so
+the ceiling falls as support rises.
+
+**Bipartite projection.** The co-cast pattern — two people connected only through a
+work both are credited on — is a *bipartite projection*: collapsing a person–work
+graph onto person–person edges manufactures a clique among everyone who shares a
+work. Their dominance at the head of the queue is that projection artifact, not a
+discovery, which is the structural reason the queue separates "structurally novel"
+from "substantively known."
+
+**When absence means something: the local closed-world assumption.** The useful
+epistemics here is not global open/closed-world but the *partial completeness
+assumption*, re-used as the *local closed-world assumption* (Galárraga et al., 2013):
+if the knowledge base holds at least one value for a (subject, property), treat the
+listed values as complete; if it holds none, treat the pair as unknown. The project
+already applies this test — the eligibility flag requires each endpoint to carry at
+least one tie or attribute property — but it reads a smaller field set that only
+partly overlaps the direct-edge arm's, so it stands in as a proxy for that arm rather
+than as an exact guard. The direct-edge arm disqualifies a pair when *either*
+endpoint's relations name the other; a pair where neither does — most easily one
+whose endpoints carry few or no relations — therefore slips through on the absence of
+evidence rather than its weight, closer to unmeasured than to demonstrably novel.
+
+## Further reading
+
+- Agrawal, Imieliński & Swami (1993), "Mining Association Rules between Sets of Items
+  in Large Databases" — support and confidence.
+- Brin, Motwani, Ullman & Tsur (1997), "Dynamic Itemset Counting and Implication
+  Rules for Market Basket Data" — the *interest* measure (lift).
+- Church & Hanks (1990), "Word Association Norms, Mutual Information, and
+  Lexicography" — pointwise mutual information.
+- Mintz, Bills, Snow & Jurafsky (2009), "Distant Supervision for Relation Extraction
+  without Labeled Data."
+- Min, Grishman, Wan, Wang & Gondek (2013), "Distant Supervision for Relation
+  Extraction with an Incomplete Knowledge Base" — the false-negative problem.
+- Ritter, Zettlemoyer, Mausam & Etzioni (2013), "Modeling Missing Data in Distant
+  Supervision for Information Extraction."
+- Galárraga, Teflioudi, Hose & Suchanek (2013), "AMIE: Association Rule Mining under
+  Incomplete Evidence in Ontological Knowledge Bases" — the partial-completeness /
+  local closed-world assumption.
+
 ## See Also
 
 - [The knowledge model](knowledge-model.md) — the three spaces and the never-union

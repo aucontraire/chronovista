@@ -50,10 +50,18 @@ OUTPUT = pathlib.Path(__file__).resolve().parents[2] / ".private-terms"
 # the software rather than the person, and they occur throughout the repository
 # for unrelated reasons.
 ALLOWLIST = {
+    # Acronyms of this project's own method vocabulary, in the same class as "LLM"
+    # below. Both are library entities, so an un-allowlisted list blocks ordinary
+    # technical prose: "NER" blocked the glossary's own entity-type entry.
+    "AI",
+    "NER",
     "Anthropic",
     "ChatGPT",
     "Claude",
     "Claude Code",
+    # The platform this project reads from: the YouTube Data API and Takeout are
+    # Google products, so the word is unavoidable throughout the docs and code.
+    "Google",
     "GraphRAG",
     "Knowledge Graph",
     "Knowledge Graphs",

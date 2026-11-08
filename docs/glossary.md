@@ -80,7 +80,7 @@ Project-specific terminology used throughout chronovista documentation and code.
 ## Tag Normalization Concepts
 
 **Tag Normalization**
-:   The process of grouping raw video tags into canonical forms using Unicode normalization, diacritic stripping, and case folding. For example, "Perú", "peru", and "PERU" all normalize to the same canonical tag. Implemented as a 9-step pipeline in `TagNormalizationService`.
+:   The process of grouping raw video tags into canonical forms using Unicode normalization, diacritic stripping, and case folding. For example, "Café", "cafe", and "CAFE" all normalize to the same canonical tag. Implemented as a 9-step pipeline in `TagNormalizationService`.
 
 **Canonical Tag**
 :   The preferred display form for a group of normalized tags. Selected by preference: title case (`str.istitle()`), then highest frequency, then alphabetical tiebreaker. Stored in the `canonical_tags` table with UUIDv7 primary keys.
@@ -89,7 +89,7 @@ Project-specific terminology used throughout chronovista documentation and code.
 :   A raw tag form from `video_tags` linked to its canonical tag. Every distinct raw tag becomes exactly one alias. Stored in the `tag_aliases` table. The `video_tags` table itself is never modified — aliases provide the mapping.
 
 **Collision Candidate**
-:   A group of tags that were merged by diacritic stripping where the casefolded forms differ (e.g., "Perú" casefolds to "perú" while "Peru" casefolds to "peru"). Flagged in `tags analyze` output for manual review. Not an error — most collisions are correct merges.
+:   A group of tags that were merged by diacritic stripping where the casefolded forms differ (e.g., "Café" casefolds to "café" while "Cafe" casefolds to "cafe"). Flagged in `tags analyze` output for manual review. Not an error — most collisions are correct merges.
 
 **Tier 1 Diacritics**
 :   Eight combining marks that are universally safe to strip during normalization: acute, grave, circumflex, diaeresis, macron, breve, dot above, and ring above. Stripping these merges common accent variants (e.g., café/cafe) without changing letter identity.
@@ -162,6 +162,55 @@ Project-specific terminology used throughout chronovista documentation and code.
 
 **Co-occurrence**
 :   The count of distinct videos two entities share, powering the "appears with" panel. Computed over the same video population the videos list shows, so the count displayed equals the total of the intersection it opens.
+
+## Entity Knowledge Layer Concepts
+
+**Provenance space**
+:   Which of three kinds a fact in the entity layer is, which determines its lifecycle. An **imported assertion** is a claim about the world fetched from an external knowledge base; it is refreshed by re-fetching and is meaningless without its source identifier and fetch time. A **corpus observation** is a claim about *this* collection, computed from its videos; it is refreshed by regenerating and is meaningless without the **generator version** that produced it. A **human decision** is a claim about what the owner accepts; it is terminal — no automated pass overwrites it, and "declined" is stored distinctly from "not yet checked" so a half-finished run is never mistaken for a finished one. Naming the space a feature writes to is the first design question, because an unnamed space defaults to whichever representation was convenient. See [The knowledge model](architecture/knowledge-model.md).
+
+**Typed skeleton**
+:   The imported graph: typed relationships between entities, fetched by identifier from an external knowledge base, each carrying its source and fetch time. Used for navigation between entities. Distinct from — and never merged with — the **observed layer**.
+
+**Observed layer**
+:   What this corpus says about which entities belong together: which appear in the same videos, how often, and how surprising the overlap is. Derived, re-computable, and scoped to this collection. It is never unioned with the **typed skeleton** into a single "related to" relation, because merging them makes "the knowledge base asserts this connection" indistinguishable from "these two names happened to appear in the same videos". Every surface that shows relationships names its channel instead.
+
+**Grounding**
+:   Linking a local entity to an external knowledge-base item **by identifier**, never by name, and recording the source and time. Grounding is what makes the typed skeleton possible: an entity that is not grounded has no imported relationships to traverse. A wrong identifier does not fail loudly — it propagates silently into every surface that reads properties — which is why a hand-set identifier is marked as a **human decision** and skipped by later automated passes.
+
+**Subclass closure**
+:   The transitive expansion of `subclass_of` chains ("if A is a subclass of B and B of C, then A is a subclass of C"). chronovista captures `subclass_of` and **deliberately does not close it**. This is a decision, not a missing feature: real hierarchies mix generic, partitive and instantial relations, and chaining them produces nonsense. Leaving the hierarchy non-transitive is the correct position for a retrieval vocabulary.
+
+**Hub**
+:   An entity or attribute value that is shared by so many others that its presence carries almost no information — a large place, a widely-held nationality, a very general class. Two independent consequences: a hub's *inbound* list is a firehose rather than a relationship, so some inverse surfaces suppress specific hub-prone fields by name; and a shared hub value does not disprove novelty when comparing two entities. Suppression always names fields, never degrees, because a count threshold is a property of today's data rather than of the relationship.
+
+**Facet**
+:   A classification axis orthogonal to what kind of thing an entity is. `EntityType` derives from a named-entity annotation tagset, whose job is to let a detector and a human annotator agree on what a *mention* refers to — flat and closed on purpose. Classifying entities by subject domain is a different axis, and it belongs in the existing subtype column as a scheme membership (one row), not as a new `EntityType` value (one CHECK-constraint migration per subject area).
+
+**Salience**
+:   How prominently a discovered candidate appears in the corpus, counted per source (title, description, transcript) rather than pooled, so the sources can be re-weighted later without a rescan. The per-source counts are distinct-video counts, so the parts can exceed the pooled total. A null count means *not measured for that source*; a zero means *measured and found nothing* — collapsing the two would turn an unmeasured source into a false absence claim.
+
+## Novel-Relationship Discovery Concepts
+
+**Novel-relationship candidate**
+:   A pair of entities the corpus connects but the imported knowledge graph does not — a subtraction of the **typed skeleton** from the **observed layer**. Neither half is interesting alone: frequent co-occurrence without the second half is just two popular entities, and a missing edge without the first half describes most of the graph. Candidates are read-only proposals; nothing in the API or the browser approves one. See [Novel-relationship discovery](architecture/relationship-discovery.md).
+
+**Support**
+:   The number of distinct videos a candidate pair shares. A raw count whose meaning does not drift as the corpus grows, which is why thresholds are expressed over support rather than over a derived score. Support is a *floor* for qualification, never a ranking key: ranking by it would rank by entity size.
+
+**Lift**
+:   A pair's observed overlap divided by the overlap expected if the two entities were independent. Symmetric, needs no per-subject threshold, and orders a page identically to directional specificity — which is why it, and not a raw shared count, ranks the queue. Its ceiling falls as support rises, so sorting by lift alone pulls minimum-support pairs toward the top; that makes the head of the queue *more mixed* than the middle, not systematically wrong, and the remedy is a secondary sort rather than a support filter.
+
+**Knowledge-base corroboration**
+:   A count of other things in the imported graph that also link a candidate pair. Evidence, not ground truth: it raises confidence without establishing a relationship. Crucially, its *absence* is not evidence against a pair — measured against an independent credit-based signal, the two agree on only a small fraction of the pairs either supports, so neither can be read as the other's negation.
+
+**Structural novelty**
+:   A candidate that is novel only because of how the upstream knowledge base models the relationship, not because the relationship is unknown. The canonical case: two people credited on the same work have no direct edge between them, because credit relations run from person to work — by design, not omission. Such a pair is structurally novel and substantively known, and it indicates a **traversal** gap (a short path nobody queries) rather than a knowledge gap. Approving one would store a fact the upstream model deliberately declines to assert, which is why a verdict is a versioned category rather than an approve/reject boolean.
+
+**Queue head**
+:   The highest-ranked slice of the candidate queue, the only part any consumer reads. Head membership is **global**: the top-ranked rows of the whole qualifying population (everything meeting the support floor). Narrowing filters such as support or eligibility select *within* that fixed head and never promote a lower-ranked row into it — otherwise a filter documented as narrowing rows would be deciding head membership. Support thins with rank and goes flat below a measured boundary, so reviewing past that boundary buys nothing. The cutoff is applied after ordering in the single shared read path — not as a default page size, which any caller could ask past — and the rows below it are **retained in storage**, because every recalibration of the cutoff so far has been a measurement of the tail.
+
+**Generator version**
+:   The version of the generation logic that produced a derived row, stored on the row. A lift value or a novelty verdict is uninterpretable without it: both the metric and the filter evolve, so two rows from different generators are not comparable. Bumping it before a regeneration is what makes the pre-change and post-change populations distinguishable afterwards.
 
 ## Transcript Correction Concepts
 

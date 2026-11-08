@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+- **[The knowledge model](https://github.com/aucontraire/chronovista/blob/master/docs/architecture/knowledge-model.md)** — the three provenance spaces (imported assertions, corpus observations, human decisions), the rule that the typed skeleton and the observed layer are never unioned, and the SKOS-not-OWL framing that explains why subclass closure is deliberately left uncomputed. The page a spec author should read before building anything that writes to the entity layer.
+- **[Novel-relationship discovery](https://github.com/aucontraire/chronovista/blob/master/docs/architecture/relationship-discovery.md)** — what the candidate queue measures (the gap between those two layers), why it is read-only, the three kinds of novelty that each need a different answer, and the rule that a future approval must never write a corpus-derived finding into the imported graph's own representation.
+- Entity-knowledge-layer and novel-relationship glossary entries supporting both pages.
+
 ## [0.117.0] - 2026-11-08
 
 ### Added

@@ -168,6 +168,7 @@ nav:
       - Architecture overview: architecture/overview.md
       - System design: architecture/system-design.md
       - Data model: architecture/data-model.md
+      - The knowledge model: architecture/knowledge-model.md
       - Tags and aliases: architecture/tags-and-aliases.md
       - Recovery provenance: architecture/recovery-provenance.md
       - API integration: architecture/api-integration.md
@@ -177,6 +178,7 @@ nav:
       - Transcript whitespace normalization: architecture/transcript-whitespace-normalization.md
       - Resumable entity scan: architecture/entity-scan-resumability.md
       - Seed-and-grow discovery: architecture/seed-and-grow.md
+      - Novel-relationship discovery: architecture/relationship-discovery.md
       - Entity creation core: architecture/entity-creation-core.md
       - Wikimedia fetch core: architecture/wikimedia-fetch-core.md
   - Contributing:

@@ -381,7 +381,7 @@ class TestNormalizeAndGroup:
         session = AsyncMock()
         mock_result = MagicMock()
         # Simulate "python" canonical tag already exists with known ID
-        mock_result.all.return_value = [("python", existing_ct_id)]
+        mock_result.all.return_value = [("python", existing_ct_id, "active", None)]
         session.execute.return_value = mock_result
 
         distinct_tags = {"Python": 100, "python": 50}
@@ -408,7 +408,7 @@ class TestNormalizeAndGroup:
         session = AsyncMock()
         mock_result = MagicMock()
         # "python" exists, "java" does not
-        mock_result.all.return_value = [("python", existing_ct_id)]
+        mock_result.all.return_value = [("python", existing_ct_id, "active", None)]
         session.execute.return_value = mock_result
 
         distinct_tags = {"Python": 100, "Java": 50}
@@ -429,6 +429,85 @@ class TestNormalizeAndGroup:
 
         assert python_alias["canonical_tag_id"] == existing_ct_id
         assert java_alias["canonical_tag_id"] == ct_records[0]["id"]
+
+    @pytest.mark.asyncio
+    async def test_variant_of_merged_tag_attaches_to_target_not_tombstone(
+        self, service: TagBackfillService
+    ) -> None:
+        """Finding (a): a raw tag folding to a merged-away form must attach to the
+        merge TARGET, never the tombstone (which owns nothing)."""
+        tomb_id, target_id = uuid.uuid4(), uuid.uuid4()
+        session = AsyncMock()
+        mock_result = MagicMock()
+        # "python" was merged into the canonical holding "python3"
+        mock_result.all.return_value = [
+            ("python", tomb_id, "merged", target_id),
+            ("python3", target_id, "active", None),
+        ]
+        session.execute.return_value = mock_result
+
+        # a new raw tag that folds to "python" (the merged-away form)
+        ct_records, ta_records, _skip = await service._normalize_and_group(
+            session, {"Python": 7}, datetime.now(UTC)
+        )
+
+        assert len(ct_records) == 0  # resolved through the merge, no new canonical
+        assert len(ta_records) == 1
+        assert ta_records[0]["canonical_tag_id"] == target_id
+        assert ta_records[0]["canonical_tag_id"] != tomb_id
+        assert ta_records[0]["normalized_form"] == "python3"  # rewritten to target's
+
+
+# =========================================================================
+# TestResolveCanonicalTargets — merge-forwarding resolution (finding (a))
+# =========================================================================
+
+
+class TestResolveCanonicalTargets:
+    """Pure-function tests for the merge-forwarding resolution."""
+
+    def test_active_resolves_to_itself(self) -> None:
+        a = uuid.uuid4()
+        assert TagBackfillService._resolve_canonical_targets(
+            [("python", a, "active", None)]
+        ) == {"python": (a, "python")}
+
+    def test_merged_redirects_to_target_with_target_nf(self) -> None:
+        tomb, target = uuid.uuid4(), uuid.uuid4()
+        out = TagBackfillService._resolve_canonical_targets(
+            [("py", tomb, "merged", target), ("python", target, "active", None)]
+        )
+        assert out["py"] == (target, "python")
+        assert out["python"] == (target, "python")
+
+    def test_chain_resolves_to_final_target(self) -> None:
+        a, b, c = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        out = TagBackfillService._resolve_canonical_targets(
+            [("a", a, "merged", b), ("b", b, "merged", c), ("c", c, "active", None)]
+        )
+        assert out["a"] == (c, "c")
+        assert out["b"] == (c, "c")
+
+    def test_cycle_terminates_without_dangling(self) -> None:
+        a, b = uuid.uuid4(), uuid.uuid4()
+        out = TagBackfillService._resolve_canonical_targets(
+            [("a", a, "merged", b), ("b", b, "merged", a)]
+        )
+        assert out["a"][0] in {a, b}
+        assert out["b"][0] in {a, b}
+
+    def test_deprecated_resolves_to_itself(self) -> None:
+        d = uuid.uuid4()
+        assert TagBackfillService._resolve_canonical_targets(
+            [("old", d, "deprecated", None)]
+        ) == {"old": (d, "old")}
+
+    def test_dangling_target_falls_back_to_tombstone(self) -> None:
+        tomb, dead = uuid.uuid4(), uuid.uuid4()  # dead is not among the rows
+        out = TagBackfillService._resolve_canonical_targets(
+            [("py", tomb, "merged", dead)]
+        )
+        assert out["py"] == (tomb, "py")
 
 
 # =========================================================================

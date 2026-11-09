@@ -156,6 +156,55 @@ class TagBackfillService:
         )
         return dict(groups), skip_list
 
+    @staticmethod
+    def _resolve_canonical_targets(
+        rows: list[tuple[str, uuid.UUID, str, uuid.UUID | None]],
+    ) -> dict[str, tuple[uuid.UUID, str]]:
+        """Map each ``normalized_form`` to its LIVE canonical ``(id, normalized_form)``.
+
+        A ``merged`` tombstone keeps its ``normalized_form`` (it is tombstoned, not
+        deleted), so without this a raw variant folding to a merged-away form would
+        attach its alias to the tombstone — a tag that owns nothing (finding (a)).
+        Following ``merged_into_id`` transitively (cycle-guarded) redirects it to the
+        live merge target; the caller then rewrites the alias's denormalized
+        ``normalized_form`` to the target's, the same repoint ``tag_management.merge``
+        performs. A plain ``status='active'`` filter cannot do this: it would make the
+        caller mint a new canonical holding a ``normalized_form`` the tombstone still
+        owns, colliding on its unique constraint and orphaning the alias.
+
+        A ``deprecated`` tag (no ``merged_into_id``) resolves to itself — no successor
+        to forward to. A dangling ``merged_into_id`` (target hard-deleted, a historical
+        artifact) stops at the last surviving node rather than returning a missing id.
+        Pure (no I/O), so the redirect is unit-testable without a database.
+
+        Each row is ``(normalized_form, id, status, merged_into_id)``.
+        """
+        by_id: dict[uuid.UUID, tuple[str, str, uuid.UUID | None]] = {
+            ct_id: (nf, status, merged_into) for nf, ct_id, status, merged_into in rows
+        }
+
+        def resolve(start: uuid.UUID) -> uuid.UUID:
+            seen: set[uuid.UUID] = set()
+            current = start
+            while current in by_id:
+                _nf, status, merged_into = by_id[current]
+                if (
+                    status != "merged"
+                    or merged_into is None
+                    or merged_into in seen
+                    or merged_into not in by_id
+                ):
+                    break
+                seen.add(current)
+                current = merged_into
+            return current
+
+        targets: dict[str, tuple[uuid.UUID, str]] = {}
+        for nf, ct_id, _status, _merged in rows:
+            target_id = resolve(ct_id)
+            targets[nf] = (target_id, by_id[target_id][0])
+        return targets
+
     async def _normalize_and_group(
         self,
         session: AsyncSession,
@@ -196,20 +245,30 @@ class TagBackfillService:
         """
         groups, skip_list = self._normalize_and_group_core(distinct_tags)
 
-        # Look up existing canonical tags so aliases reference the correct IDs
-        existing_ct_stmt = select(CanonicalTagDB.normalized_form, CanonicalTagDB.id)
+        # Look up existing canonical tags so aliases reference the correct IDs.
+        # Carry status + merged_into_id so a form whose canonical was merged away
+        # resolves to the merge TARGET rather than the tombstone (finding (a)).
+        existing_ct_stmt = select(
+            CanonicalTagDB.normalized_form,
+            CanonicalTagDB.id,
+            CanonicalTagDB.status,
+            CanonicalTagDB.merged_into_id,
+        )
         result = await session.execute(existing_ct_stmt)
-        existing_ct_ids: dict[str, uuid.UUID] = {row[0]: row[1] for row in result.all()}
-        logger.info("Found %d existing canonical tags in DB", len(existing_ct_ids))
+        existing_targets = self._resolve_canonical_targets(
+            [(r[0], r[1], r[2], r[3]) for r in result.all()]
+        )
+        logger.info("Found %d existing canonical tags in DB", len(existing_targets))
 
         canonical_tags_batch: list[dict[str, Any]] = []
         tag_aliases_batch: list[dict[str, Any]] = []
 
         for normalized_form, aliases in groups.items():
-            # Use existing ID if canonical tag already exists, otherwise generate new
-            ct_id = existing_ct_ids.get(normalized_form)
-            if ct_id is None:
+            # Reuse the resolved (live) canonical if one exists, else mint a new one.
+            resolved = existing_targets.get(normalized_form)
+            if resolved is None:
                 ct_id = uuid.UUID(bytes=uuid7().bytes)
+                alias_normalized_form = normalized_form
                 canonical_form = self._normalization_service.select_canonical_form(
                     aliases
                 )
@@ -223,6 +282,10 @@ class TagBackfillService:
                         "status": "active",
                     }
                 )
+            else:
+                # May be a merge target reached by following merged_into_id; the
+                # alias's denormalized normalized_form then becomes the target's.
+                ct_id, alias_normalized_form = resolved
 
             for raw_form, occ_count in aliases:
                 alias_id = uuid.UUID(bytes=uuid7().bytes)
@@ -230,7 +293,7 @@ class TagBackfillService:
                     {
                         "id": alias_id,
                         "raw_form": raw_form,
-                        "normalized_form": normalized_form,
+                        "normalized_form": alias_normalized_form,
                         "canonical_tag_id": ct_id,
                         "creation_method": "backfill",
                         "normalization_version": 1,

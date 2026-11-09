@@ -57,6 +57,7 @@ def _fold(text: str) -> str:
         c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)
     )
 
+
 DEFAULT_DSN = "postgresql+asyncpg://chronovista:chronovista@localhost:5435/chronovista"
 OUTPUT = pathlib.Path(__file__).resolve().parents[2] / ".private-terms"
 

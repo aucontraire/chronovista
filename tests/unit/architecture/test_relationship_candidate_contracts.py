@@ -115,3 +115,72 @@ def test_head_ordering_ends_in_regen_stable_id() -> None:
     # corroboration is the secondary key (immediately after lift).
     assert "kb_corroboration_count" in str(order[1])
     assert "lift" in str(order[0])
+
+
+def test_inbound_holder_arm_field_set_is_pinned() -> None:
+    # The 4th (inbound-holder) arm reads person-targeted holder fields. The set is a
+    # deliberate-review calibration (measured 2026-11-09: cast_member dominates 52/64 head
+    # removals; the "ambiguous" leadership/board fields contribute zero; person-held org<->org
+    # fields excluded for cross-field type-coherence). A silent edit changes what the queue
+    # treats as 2-hop-derivable, so pin it like the attribute arm.
+    expected = frozenset(
+        {
+            "cast_member",
+            "director",
+            "producer",
+            "screenwriter",
+            "composer",
+            "executive_producer",
+            "director_of_photography",
+            "film_editor",
+            "film_crew_member",
+            "creator",
+            "author",
+            "narrator",
+            "presenter",
+            "founder",
+            "significant_person",
+            "participant",
+            "perpetrator",
+            "signatory",
+        }
+    )
+    assert expected == svc._INBOUND_HELD_FIELDS
+    # Invariants that outlive the exact membership: every inbound-held field must be a real
+    # RELATIONS field (a typo would silently remove nothing), and NONE may be a person-held
+    # tie field (that would make the cross-field union type-incoherent / org<->org).
+    relation_fields = frozenset(RELATIONS.values())
+    assert relation_fields >= svc._INBOUND_HELD_FIELDS
+    assert svc._INBOUND_HELD_FIELDS.isdisjoint(set(svc.TIE_FIELDS))
+
+
+def test_inbound_holder_arm_removes_a_coheld_pair() -> None:
+    # Two entities co-occur strongly with NO typed tie between them -> normally a candidate.
+    # But a third entity (a work) names BOTH via cast_member, so the pair is 2-hop-derivable
+    # and the inbound-holder arm MUST remove it. No other arm catches (a,b): the direct-edge
+    # arm records (work,a)/(work,b), not (a,b); a and b share no tie/attr referent.
+    a_id, b_id = sorted((uuid.uuid4(), uuid.uuid4()))
+    work_id = uuid.uuid4()
+    filler = uuid.uuid4()
+    qa, qb = "Q900001", "Q900002"  # synthetic QIDs (not library content)
+    entity_rows = [
+        (a_id, {"wikidata": {"id": qa}}, {}),
+        (b_id, {"wikidata": {"id": qb}}, {}),
+        (work_id, {"wikidata": {"id": "Q900003"}}, {"cast_member": {"qids": [qa, qb]}}),
+        (filler, {}, {}),
+    ]
+    # a and b co-occur in 5 of 100 videos -> high lift, clears support/lift floors.
+    mention_rows: list[tuple[uuid.UUID, str]] = []
+    for i in range(5):
+        mention_rows.append((a_id, f"v{i}"))
+        mention_rows.append((b_id, f"v{i}"))
+    for i in range(5, 100):
+        mention_rows.append((filler, f"v{i}"))
+
+    candidates, universe = svc.compute_candidates(
+        mention_rows=mention_rows, entity_rows=entity_rows, run_id=uuid.uuid4()
+    )
+    assert universe == 100
+    assert not [
+        c for c in candidates if {c.entity_a_id, c.entity_b_id} == {a_id, b_id}
+    ], "inbound-holder arm should remove the co-cast pair"

@@ -154,6 +154,10 @@ _FIELDS = (
     "legislative_body",
     "executive_body",
     "highest_judicial_authority",
+    # P1327 "partner in business or sport" — added to RELATIONS in #391. Backfill onto
+    # already-grounded entities (future enrichment captures it for free); applied in the
+    # same PROD backfill+regen cycle as the inbound-holder arm.
+    "professional_partner",
 )
 _CAPTURE_DIR = Path(__file__).resolve().parents[1] / "entity_resolution"
 

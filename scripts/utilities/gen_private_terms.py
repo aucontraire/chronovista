@@ -38,9 +38,24 @@ import argparse
 import asyncio
 import pathlib
 import sys
+import unicodedata
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+
+
+def _fold(text: str) -> str:
+    """Strip diacritics (NFKD, drop combining marks) to match check_private_terms.
+
+    The checker matches accent-folded, so an allowlisted term must exclude its
+    accented spellings too: allowlisting ``Peru`` has to drop ``Perú`` from the
+    list, or the checker (which folds ``Perú`` to ``peru``) re-flags it. Folding
+    only strips accents, so distinct entities stay distinct — ``Perú Libre`` folds
+    to ``peru libre``, not ``peru``, and remains guarded.
+    """
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)
+    )
 
 DEFAULT_DSN = "postgresql+asyncpg://chronovista:chronovista@localhost:5435/chronovista"
 OUTPUT = pathlib.Path(__file__).resolve().parents[2] / ".private-terms"
@@ -73,6 +88,28 @@ ALLOWLIST = {
     "OpenAI",
     "Vector Database",
     "spaCy",
+    # The NLP / ML method domain this project is *about* — the same class as the
+    # acronyms above. Subject matter, not library content; they appear throughout
+    # code, docs, and test fixtures as generic topic/tag names (added 2026-11-08
+    # after a full-tree audit; classifier-gated, accepted by the owner).
+    "NLP",
+    "Natural Language Processing",
+    "Machine Learning",
+    "Artificial Intelligence",
+    "entity extraction",
+    # A country the owner is content to have appear publicly as the running
+    # tag-normalization example (README / data-model / rest-api docs); accepted
+    # as a neutral example, not treated as disclosive (owner decision 2026-11-08).
+    "Peru",
+    # Generic technology companies / platforms, same class as Google above: they
+    # occur as illustrative entity examples and in a list of captured social-media
+    # platforms, and identify nothing about the owner.
+    "Microsoft",
+    "Google DeepMind",
+    "TikTok",
+    # The MIT software licence (SPDX "MIT"), pervasive in dependency metadata
+    # (package-lock.json, poetry.lock) and used as an institution example.
+    "MIT",
 }
 
 # Country / region names that appear ONLY as language-variant display labels
@@ -93,6 +130,14 @@ LANGUAGE_REGION_NAMES = {
     "Brazil",
     "Korea",
     "Egypt",
+    # Added 2026-11-08: further BCP-47 region/language display labels found in
+    # models/language_names.py and its frontend mirror (UI labels, not entities).
+    "United Kingdom",
+    "Australia",
+    "Japan",
+    "Hong Kong",
+    "Saudi Arabia",
+    "Malay",
 }
 
 # Aliases that are ordinary English words. Word boundaries do not rescue these
@@ -223,14 +268,17 @@ async def main(dsn: str) -> int:
                 | COMMON_WORD_ALIASES
                 | FIXTURE_ENTITIES
             )
-            blocked = {a.casefold() for a in excluded}
+            # Accent-fold as well as casefold, so allowlisting a term excludes its
+            # accented spellings (the checker folds, so an un-folded exclusion lets
+            # "Perú" slip back in even when "Peru" is allowlisted).
+            blocked = {_fold(a).casefold() for a in excluded}
             terms = sorted(
                 {
                     r.term.strip()
                     for r in rows
                     if r.term
                     and r.term.strip()
-                    and r.term.strip().casefold() not in blocked
+                    and _fold(r.term.strip()).casefold() not in blocked
                 }
             )
     finally:

@@ -58,7 +58,7 @@ SUPPORT_MIN = 5
 LIFT_MIN = 5.0
 
 # Corroboration counts shared NON-HUB referents over the captured item-valued fields.
-# The universe is ``_RELATION_FIELDS | ATTR_FIELDS`` = 105 of the 117 distinct captured
+# The universe is ``_RELATION_FIELDS | ATTR_FIELDS`` = 106 of the 118 distinct captured
 # field names. The 12 omitted (instance_of, occupation, political_ideology,
 # political_alignment, religion_or_worldview, languages, ethnic_group, sex_or_gender,
 # legal_form, industry, head_position, residence) are NODE ATTRIBUTES: a shared value is

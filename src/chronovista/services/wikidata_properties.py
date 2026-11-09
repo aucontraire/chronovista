@@ -171,6 +171,11 @@ RELATIONS: dict[str, str] = {
     "P194": "legislative_body",
     "P208": "executive_body",
     "P209": "highest_judicial_authority",
+    # Novelty-filter correctness (2026-11-08): "partner in business or sport" (P1327), a
+    # symmetric person<->person edge. Captured so the relationship-queue direct-edge arm stops
+    # presenting known partners as "novel". Filter edge only — intentionally NOT seeded
+    # (absent from candidate_suggestion_service.SEED_ALLOWLIST).
+    "P1327": "professional_partner",
 }
 
 # ATTRIBUTES_ITEM — item-valued, but node attributes rather than edges (resolved to label strings).

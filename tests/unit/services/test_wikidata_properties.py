@@ -551,6 +551,10 @@ class TestKindGrouping:
         "P194": "legislative_body",
         "P208": "executive_body",
         "P209": "highest_judicial_authority",
+        # Novelty-filter correctness (2026-11-08) — P1327 "partner in business or sport",
+        # a symmetric person<->person edge captured so the relationship-queue direct-edge
+        # arm stops presenting known partners as novel.
+        "P1327": "professional_partner",
     }
     _WANTED_LITERAL_SNAPSHOT = {
         "P569": "birth_date",

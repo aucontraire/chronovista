@@ -78,11 +78,12 @@ def test_corroboration_field_set_and_exclusion_mechanism() -> None:
     # constructions (NOTE 018 §18-§21); this fails under every one of them.
     universe = frozenset(RELATIONS.values()) | frozenset(svc.ATTR_FIELDS)
 
-    # Universe = the documented 105-of-117 captured field names. The exact count is a
+    # Universe = the documented 106-of-118 captured field names. The exact count is a
     # deliberate-review pin: changing RELATIONS/ATTR_FIELDS changes what counts as
-    # corroboration and MUST be a conscious update here.
+    # corroboration and MUST be a conscious update here. (106/118 since P1327
+    # "professional_partner" was added to RELATIONS, 2026-11-08.)
     assert universe == svc._CORROBORATION_FIELDS
-    assert len(svc._CORROBORATION_FIELDS) == 105
+    assert len(svc._CORROBORATION_FIELDS) == 106
     # Node attributes are omitted by construction (co-classification, not a relation).
     assert "instance_of" not in svc._CORROBORATION_FIELDS
     # Ships empty: nothing is excluded today.
@@ -91,12 +92,12 @@ def test_corroboration_field_set_and_exclusion_mechanism() -> None:
     # The mechanism is LIVE despite shipping empty — two mutations prove reachability.
     # Single-source field:
     excl_employer = svc._compute_corroboration_fields(frozenset({"employer"}))
-    assert len(excl_employer) == 104 and "employer" not in excl_employer
+    assert len(excl_employer) == 105 and "employer" not in excl_employer
     # Multi-source field (country <- P17 + P27): the case a P-number-space exclusion
     # silently fails (P27 keeps producing `country`). Only a field-name-space exclusion
     # removes it — this assertion is what distinguishes the correct construction.
     excl_country = svc._compute_corroboration_fields(frozenset({"country"}))
-    assert len(excl_country) == 104 and "country" not in excl_country
+    assert len(excl_country) == 105 and "country" not in excl_country
     # Non-resolution raises, never silently no-ops.
     with pytest.raises(ValueError):
         svc._compute_corroboration_fields(frozenset({"not_a_captured_field"}))

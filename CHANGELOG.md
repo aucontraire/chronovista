@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.118.0] - 2026-11-09
+
+### Added
+
+- **Inbound-holder novelty arm for the relationship-candidate queue.** A fourth novelty-filter
+  arm excludes candidate pairs that are 2-hop-derivable through a third entity which names both
+  endpoints via a person-targeted field (e.g. two actors of one film, through the work's
+  `cast_member`) — the three existing arms read only the pair's own properties and miss these.
+  On regeneration this removes ~67 of the ~3,760 stored candidates, concentrated at the very top
+  (49 of the top 100). Cross-field over a type-coherent person-targeted field set; filter only,
+  no schema, migration, or API change. Takes effect after the next regeneration.
+- **`professional_partner` (Wikidata P1327, "partner in business or sport") added to the capture
+  registry and the entity-relations backfill.** Known business/sport partners are now recognized
+  by the direct-edge arm instead of surfacing as novel candidates. (#391)
+
 ### Documentation
 - **[The knowledge model](https://github.com/aucontraire/chronovista/blob/master/docs/architecture/knowledge-model.md)** — the three provenance spaces (imported assertions, corpus observations, human decisions), the rule that the typed skeleton and the observed layer are never unioned, and the SKOS-not-OWL framing that explains why subclass closure is deliberately left uncomputed. The page a spec author should read before building anything that writes to the entity layer.
 - **[Novel-relationship discovery](https://github.com/aucontraire/chronovista/blob/master/docs/architecture/relationship-discovery.md)** — what the candidate queue measures (the gap between those two layers), why it is read-only, the three kinds of novelty that each need a different answer, and the rule that a future approval must never write a corpus-derived finding into the imported graph's own representation.

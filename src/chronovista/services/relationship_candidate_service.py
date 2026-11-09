@@ -10,11 +10,13 @@ measured contracts can be unit-tested and mutation-verified without a database.
 Measured contracts carried here (see specs/107 research + notes 016/018):
 - **No support floor** beyond ``support >= 5``: the minimum-support/high-lift cell
   is the highest-precision cell (variance, not bias). Never add a floor here.
-- **Three-arm novelty filter**, all required: direct edge over the full ``RELATIONS``
+- **Four-arm novelty filter**, all required: direct edge over the full ``RELATIONS``
   set (derived, never a hand list), shared co-membership (5 tie fields, hub-capped),
-  and shared attribute referent ``{country, place_of_birth, headquarters}``
-  (hub-capped). The attribute arm is load-bearing (removes ~24% false person-place
-  novelty).
+  shared attribute referent ``{country, place_of_birth, headquarters}`` (hub-capped,
+  load-bearing: removes ~24% false person-place novelty), and the inbound-holder arm
+  -- a third entity (work/org/event) naming both endpoints via a person-targeted field,
+  so the pair is 2-hop-derivable through it (e.g. two actors of one film). The first
+  three read the pair's own props; the fourth reads a third entity's.
 - **Channel = title+description only**; never union channels.
 """
 
@@ -35,7 +37,7 @@ from chronovista.services.wikidata_properties import RELATIONS
 
 # Bump when the novelty filter or the lift metric changes, so a row's provenance
 # records which generator produced it (a lift is uninterpretable without this).
-GENERATOR_VERSION = "108.0"
+GENERATOR_VERSION = "109.0"
 
 CHANNEL = "title_description"
 CHANNEL_SOURCES: tuple[str, ...] = ("title", "description")
@@ -54,6 +56,42 @@ TIE_FIELDS: tuple[str, ...] = (
 )
 ATTR_FIELDS: tuple[str, ...] = ("country", "place_of_birth", "headquarters")
 HUB_CAP = 20
+
+# Inbound-holder arm (the 4th novelty arm). The other three read the PAIR's own props; this
+# reads a THIRD entity's: a holder (work/org/event/document) that NAMES both endpoints via a
+# person-targeted field, so the pair is 2-hop-derivable through it (e.g. two actors of one
+# film) and not genuinely novel. Restricted to person-targeted fields so cross-field unioning
+# stays type-coherent; person->org fields (employer/educated_at, the TIE_FIELDS) are excluded
+# -- their inbound projection is a separate org<->org claim, not person co-participation.
+_INBOUND_HELD_FIELDS: frozenset[str] = frozenset(
+    {
+        "cast_member",
+        "director",
+        "producer",
+        "screenwriter",
+        "composer",
+        "executive_producer",
+        "director_of_photography",
+        "film_editor",
+        "film_crew_member",
+        "creator",
+        "author",
+        "narrator",
+        "presenter",
+        "founder",
+        "significant_person",
+        "participant",
+        "perpetrator",
+        "signatory",
+    }
+)
+# A SEPARATE cap from HUB_CAP, deliberately. HUB_CAP bounds EVIDENCE (a shared referent
+# dilutes as its group grows); this bounds DERIVABILITY, which does NOT dilute -- a 2-hop
+# path through a 30-person cast is as real as one through a pair. Set generous so real
+# co-casts are removed; it exists only to bound pathological fan-out if credits are ever
+# backfilled. Reusing HUB_CAP (=20) would silently start KEEPING big-cast co-stars.
+_INBOUND_HUB_CAP = 200
+
 SUPPORT_MIN = 5
 LIFT_MIN = 5.0
 
@@ -124,6 +162,34 @@ def _shared_referent_pairs(
     return pairs
 
 
+def _coheld_pairs(
+    properties_by_entity: dict[uuid.UUID, dict[str, Any]],
+    entity_of_qid: dict[str, uuid.UUID],
+    fields: frozenset[str],
+    cap: int,
+) -> set[tuple[uuid.UUID, uuid.UUID]]:
+    """Inbound-holder arm: pairs both named by a THIRD entity via any of ``fields``.
+
+    Mirror of :func:`_shared_referent_pairs` (which groups by the referent a pair points
+    OUT to); here a holder points IN to both endpoints. Cross-field: a holder's targets are
+    unioned across all ``fields`` before pairing, so director<->actor on one film is caught,
+    not only actor<->actor -- the holder is the shared work, one claim however each endpoint
+    is credited. ``cap`` bounds pathological fan-out (see ``_INBOUND_HUB_CAP``).
+    """
+    pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    for holder, props in properties_by_entity.items():
+        targets: set[uuid.UUID] = set()
+        for field in fields:
+            targets |= {
+                entity_of_qid[q] for q in _qids(props, field) if q in entity_of_qid
+            }
+        targets.discard(holder)
+        if 2 <= len(targets) <= cap:
+            for a, b in itertools.combinations(sorted(targets), 2):
+                pairs.add((a, b))
+    return pairs
+
+
 def compute_candidates(
     *,
     mention_rows: list[tuple[uuid.UUID, str]],
@@ -185,6 +251,10 @@ def compute_candidates(
                     direct_edges.add(tuple(sorted((eid, target))))  # type: ignore[arg-type]
     shared_tie = _shared_referent_pairs(properties_by_entity, TIE_FIELDS)
     shared_attr = _shared_referent_pairs(properties_by_entity, ATTR_FIELDS)
+    # 4th arm: a third entity (work/org/event) names both endpoints (inbound-holder).
+    coheld = _coheld_pairs(
+        properties_by_entity, entity_of_qid, _INBOUND_HELD_FIELDS, _INBOUND_HUB_CAP
+    )
     # Hub-capped referents for corroboration (so a shared hub, e.g. the same big
     # country, is not counted as evidence the pair is related).
     corroboration_capped = _capped_referents(
@@ -202,7 +272,12 @@ def compute_candidates(
         if support < SUPPORT_MIN:
             continue
         key = (a, b)
-        if key in direct_edges or key in shared_tie or key in shared_attr:
+        if (
+            key in direct_edges
+            or key in shared_tie
+            or key in shared_attr
+            or key in coheld
+        ):
             continue  # not novel
         count_a = entity_video_count[a]
         count_b = entity_video_count[b]

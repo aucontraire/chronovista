@@ -21,6 +21,7 @@ flowchart TB
         I["<b>Imported assertions</b><br/>external knowledge base<br/>re-fetchable · needs source + fetch time"]
         O["<b>Corpus observations</b><br/>computed from this collection<br/>recomputable · needs a generator version"]
         D["<b>Human decisions</b><br/>recorded by the owner<br/>terminal · never overwritten"]
+        I ~~~ O ~~~ D
     end
 ```
 

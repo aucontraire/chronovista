@@ -50,22 +50,21 @@ That asymmetry is the whole reason these are two relationships and not one:
 
 Two independent paths, meeting only at the entity:
 
-```
-       ┌── mention path ─────────────────────────────────┐
-       │  transcript / title / description text          │
-       │     ↓ matched against entity_aliases            │
-       │  entity_mentions  (position, timestamp)         │
-       └────────────────────────────────────┐            │
-                                            ↓            ↓
-                                        named_entities
-                                            ↑
-       ┌── association path ─────────────────┘
-       │  video_tags.tag  (the raw string on the video)
-       │     ↓ matched on raw_form
-       │  tag_aliases  ← the spellings; this is the association
-       │     ↓ canonical_tag_id
-       │  canonical_tags.entity_id
-       └──────────────────────────────────────
+```mermaid
+flowchart TB
+    subgraph mention [Mention path]
+        direction TB
+        MT["transcript / title / description text"]
+        MT -->|matched against entity_aliases| EM["entity_mentions<br/>position, timestamp"]
+    end
+    subgraph assoc [Association path]
+        direction TB
+        VT["video_tags.tag<br/>the raw string on the video"]
+        VT -->|matched on raw_form| TA["tag_aliases<br/>the spellings — this is the association"]
+        TA -->|canonical_tag_id| CT["canonical_tags.entity_id"]
+    end
+    EM --> NE["named_entities"]
+    CT --> NE
 ```
 
 A video can arrive by either path or both. Counting it once is why the entity

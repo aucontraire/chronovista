@@ -194,6 +194,7 @@ chronovista/
 - **Pydantic domain models separate from ORM models.** More boilerplate, but it keeps validation at the boundary and stops SQLAlchemy session semantics leaking into business logic.
 - **Repository pattern** isolating all database access, generically typed including the primary key (`BaseSQLAlchemyRepository[Model, Create, Update, IdType]`) so composite keys stay type-safe.
 - **Layered:** CLI/API → Services → Repositories → DB, with no upward dependencies.
+- **Three provenance spaces, never unioned** — imported assertions (re-fetchable facts from an external knowledge base), corpus observations (recomputable statistics about this collection), and human decisions (terminal, never overwritten) are kept apart so a coincidence can never be mistaken for an asserted fact. See [The knowledge model](https://aucontraire.github.io/chronovista/architecture/knowledge-model/).
 
 See the [Architecture Overview](https://aucontraire.github.io/chronovista/architecture/overview/) for detail.
 

@@ -12,6 +12,15 @@ between the imported typed skeleton and the observed corpus layer.
 
 ## A candidate is a subtraction
 
+```mermaid
+flowchart LR
+    O["<b>Corpus connects them</b><br/>co-occur more than chance<br/>— observed layer"]
+    T["<b>Graph already explains them</b><br/>a typed edge, or a path through one<br/>— typed skeleton"]
+    O -->|keep| C["<b>Candidate</b><br/>a question for a human,<br/>never an asserted edge"]
+    T -->|subtract| C
+    C -->|approve| D["A human decision —<br/>it never joins the imported graph"]
+```
+
 A pair enters the queue when both halves hold:
 
 1. **The corpus connects them.** They co-occur across videos often enough, and more

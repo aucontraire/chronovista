@@ -24,6 +24,7 @@ from chronovista.api.deps import (
     get_channel_repository,
     get_db,
     get_entity_mention_repository,
+    get_named_entity_repository,
     get_recovery_deps,
     get_transcript_segment_repository,
     get_video_repository,
@@ -35,6 +36,10 @@ from chronovista.api.routers.responses import (
     LIST_ERRORS,
     NOT_FOUND_RESPONSE,
     VALIDATION_ERROR_RESPONSE,
+)
+from chronovista.api.schemas.channel_ownership import (
+    ChannelOperatorItem,
+    ChannelOperatorsResponse,
 )
 from chronovista.api.schemas.channels import (
     ChannelDetail,
@@ -69,6 +74,7 @@ from chronovista.exceptions import (
 from chronovista.models.enums import AvailabilityStatus
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.transcript_segment_repository import (
     TranscriptSegmentRepository,
 )
@@ -383,6 +389,74 @@ async def get_channel_entities(
         for row in rows
     ]
     return ChannelEntitiesResponse(
+        channel_id=channel_id,
+        total_entities=len(items),
+        items=items,
+    )
+
+
+@router.get(
+    "/channels/{channel_id}/operators",
+    response_model=ChannelOperatorsResponse,
+    responses=GET_ITEM_ERRORS,
+)
+async def get_channel_operators(
+    channel_id: str = Path(
+        ...,
+        min_length=24,
+        max_length=24,
+        description="YouTube channel ID (24 characters)",
+    ),
+    channel_repo: ChannelRepository = Depends(get_channel_repository),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    db: AsyncSession = Depends(get_db),
+) -> ChannelOperatorsResponse:
+    """Get the entities that operate this channel (ownership promotion, read-path).
+
+    Surfaces the imported "entity operates channel" relation — the Wikidata
+    ``youtube_channel_id`` identifier (P2397) read from ``named_entities.properties``
+    with no schema change (ADR-010 promote-on-query). Returns **active** entities of
+    **any** type (person, organization, ...) whose stored channel ids include this
+    channel: ownership is not person-scoped (a channel *principal*, who appears in the
+    videos, is a separate, later relation).
+
+    Parameters
+    ----------
+    channel_id : str
+        YouTube channel ID (exactly 24 characters).
+    db : AsyncSession
+        Database session from dependency.
+
+    Returns
+    -------
+    ChannelOperatorsResponse
+        The operating entities. ``items`` is empty when the channel exists but has no
+        known operator.
+
+    Raises
+    ------
+    NotFoundError
+        If the channel does not exist.
+    """
+    # Distinguish an unknown channel (404) from a known channel with no operator
+    # (200 empty) — mirror get_channel_entities' existence check first.
+    if not await channel_repo.exists_by_channel_id(db, channel_id):
+        raise NotFoundError(
+            resource_type="Channel",
+            identifier=channel_id,
+            hint="Verify the channel ID or run a sync.",
+        )
+
+    operators = await entity_repo.operators_of_channel(db, channel_id)
+    items = [
+        ChannelOperatorItem(
+            entity_id=operator.entity_id,
+            entity_type=operator.entity_type,
+            canonical_name=operator.canonical_name,
+        )
+        for operator in operators
+    ]
+    return ChannelOperatorsResponse(
         channel_id=channel_id,
         total_entities=len(items),
         items=items,

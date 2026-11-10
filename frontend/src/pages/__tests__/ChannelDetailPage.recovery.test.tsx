@@ -77,6 +77,17 @@ vi.mock('../../hooks/useChannelEntities', () => ({
   })),
 }));
 
+// Mock useChannelOperators — same reason as useChannelEntities above.
+vi.mock('../../hooks/useChannelOperators', () => ({
+  useChannelOperators: vi.fn(() => ({
+    data: { channel_id: 'test-channel', total_entities: 0, items: [] },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  })),
+}));
+
 // Mock VideoGrid
 vi.mock('../../components/VideoGrid', () => ({
   VideoGrid: () => <div data-testid="video-grid" />,

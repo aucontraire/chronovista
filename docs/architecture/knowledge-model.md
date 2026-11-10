@@ -98,6 +98,8 @@ subsystem to the next instead of being re-derived each time.
 | Entity-mention detection | | ● | ● *manual* | [Alias→mention provenance](entity-alias-provenance.md) |
 | Tag normalization | | ● *folding* | ● *merge* | [Tags and aliases](tags-and-aliases.md) |
 | Transcript corrections | ● *ASR* | ● *suggested fix* | ● *acceptance* | [Correcting transcripts](../user-guide/corrections.md) |
+| Channel ownership | ● | | | [Channel cast](channel-cast.md) · [how-to](../user-guide/channel-ownership.md) |
+| Channel cast | ● *seed* | ● *detector* | ● *review* | [Channel cast](channel-cast.md) |
 
 Transcript corrections spanning all three — an imported machine transcript, an
 observed suggested fix, a decided acceptance — is the clearest evidence the frame

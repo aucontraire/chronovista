@@ -15,6 +15,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -2214,6 +2215,108 @@ class EntityVideoExclusion(Base):
     __table_args__ = (Index("idx_entity_video_exclusions_video_id", "video_id"),)
 
 
+class ChannelPrincipal(Base):
+    """A person who fronts a channel — host, co-host, or recurring contributor.
+
+    A CHANNEL-LEVEL fact only (DESIGN-CHANNEL-PRINCIPALS §6): it asserts nothing about any
+    individual video. A principal is absent from a measured ~31-40% of their own channel's
+    videos, so presence is established per video and NEVER inherited from this row — no
+    pass may materialise per-video mentions from a principal link.
+
+    Provenance lives in three independent slots (§5), never one ``source`` column, so an
+    imported, an observed and a decided fact about the same pair coexist without one
+    overwriting another's meaning:
+
+    - imported : ``wikidata_linked_at`` (the P2397 ownership link also attests it)
+    - observed : ``derived_*`` + the four evidence counts (the detector)
+    - decided  : ``decided_at`` / ``decision`` / ``decided_reason`` (the human review)
+
+    ``decision`` is the **versioned category** from the review (§9), not a boolean:
+    ``cast`` | ``recurring_guest`` | ``credited_subject`` | ``stuffing`` | ``retired``. A
+    row is a **live principal** when ``decision = 'cast'`` (current when ``through IS
+    NULL``). Non-cast rows are kept as **tombstones**: a regeneration pass skips any pair
+    with ``decided_at IS NOT NULL``, so a reviewed-and-rejected candidate is never
+    re-proposed — the tag-merge tombstone lesson, applied to the review itself.
+
+    Tenure (§8a): ``first_seen`` / ``last_seen`` are observed from the association data;
+    ``through`` is the decided end of tenure (NULL = current). A former principal is a real
+    ``cast`` row with ``through`` set — a current-roster view filters ``through IS NULL``,
+    an all-time view ignores it.
+    """
+
+    __tablename__ = "channel_principals"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    channel_id: Mapped[str] = mapped_column(
+        String(24),
+        ForeignKey("channels.channel_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    entity_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # --- Imported-assertion slot. Present => Wikidata (P2397) attests it. ---
+    wikidata_linked_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # --- Corpus-observation slot. Present => the detector produced it. ---
+    derived_generator_version: Mapped[str | None] = mapped_column(
+        String(30), nullable=True
+    )
+    tag_credited_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    text_credited_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    checkable_video_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    spoken_video_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # --- Human-decision slot. Terminal; a regeneration pass skips any row whose
+    # ``decided_at`` is set. ``decision`` is the versioned category, not a boolean. ---
+    decided_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # 'cast' | 'recurring_guest' | 'credited_subject' | 'stuffing' | 'retired'.
+    # Not an enum: the vocabulary may grow and should not require a migration.
+    decision: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    decided_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # --- Tenure (§8a). first_seen/last_seen observed; through decided (NULL = current). ---
+    first_seen: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    last_seen: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    through: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        # One link per (channel, person); a second attestation upgrades a slot in place.
+        UniqueConstraint("channel_id", "entity_id", name="uq_channel_principals"),
+        Index("idx_channel_principals_channel", "channel_id"),
+        Index("idx_channel_principals_entity", "entity_id"),
+        # Hot read: the current cast of a channel.
+        Index(
+            "idx_channel_principals_current",
+            "channel_id",
+            postgresql_where=text("decision = 'cast' AND through IS NULL"),
+        ),
+        {
+            "comment": "Channel cast (DESIGN-CHANNEL-PRINCIPALS): channel-level principal "
+            "links; never materialise per-video mentions from these."
+        },
+    )
+
+
 # Export all models
 __all__ = [
     "Base",
@@ -2245,4 +2348,5 @@ __all__ = [
     "WikipediaCategory",
     "EntityCategory",
     "EntityVideoExclusion",
+    "ChannelPrincipal",
 ]

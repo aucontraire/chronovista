@@ -14,6 +14,17 @@ pipelines that feed them, see [Seed-and-grow discovery](seed-and-grow.md) and
 Every fact in the entity layer belongs to exactly one of three spaces, and the space
 determines its provenance, its lifecycle, and what may overwrite it.
 
+```mermaid
+flowchart TB
+    subgraph spaces [Three provenance spaces — never unioned into one field]
+        direction LR
+        I["<b>Imported assertions</b><br/>external knowledge base<br/>re-fetchable · needs source + fetch time"]
+        O["<b>Corpus observations</b><br/>computed from this collection<br/>recomputable · needs a generator version"]
+        D["<b>Human decisions</b><br/>recorded by the owner<br/>terminal · never overwritten"]
+        I ~~~ O ~~~ D
+    end
+```
+
 | | **Imported assertions** | **Corpus observations** | **Human decisions** |
 |---|---|---|---|
 | Claim | about the world | about *this* collection | about what the owner accepts |
@@ -71,6 +82,28 @@ Three worked answers:
   of the other two. The specific trap: writing an approved finding into the same
   representation the imported graph uses, where it becomes indistinguishable from an
   imported fact within one release.
+
+## The same three shapes, in every subsystem
+
+The three spaces are not only an entity-layer idea — the whole system is organised on
+them. Every subsystem that holds a fact which could later turn out wrong places that
+fact in one of the three, which is why the rules below transfer unchanged from one
+subsystem to the next instead of being re-derived each time.
+
+| Subsystem | Imported | Observed | Decided | Page |
+|---|:---:|:---:|:---:|---|
+| Entity grounding / enrichment | ● | | | [Re-grounding](entity-reground.md) · [how-to](../user-guide/entity-enrichment.md) |
+| Deleted-video recovery | ● | | | [Recovery provenance](recovery-provenance.md) |
+| Co-occurrence & candidate queue | | ● | ● *verdicts* | [Novel-relationship discovery](relationship-discovery.md) |
+| Entity-mention detection | | ● | ● *manual* | [Alias→mention provenance](entity-alias-provenance.md) |
+| Tag normalization | | ● *folding* | ● *merge* | [Tags and aliases](tags-and-aliases.md) |
+| Transcript corrections | ● *ASR* | ● *suggested fix* | ● *acceptance* | [Correcting transcripts](../user-guide/corrections.md) |
+
+Transcript corrections spanning all three — an imported machine transcript, an
+observed suggested fix, a decided acceptance — is the clearest evidence the frame
+generalises: a domain that looks unrelated to entities turns out to have the identical
+shape, and the same rules (re-fetchable source, versioned derivation, terminal
+decision) apply to it verbatim.
 
 ## Where this sits in established practice
 
@@ -146,7 +179,13 @@ resolved by adding an enum value.
 - Never union the typed skeleton with the observed layer; name the channel instead.
 - Derived facts carry the version of the thing that derived them.
 - Human decisions are terminal, and "declined" is not "unchecked".
+- Record provenance at the grain you will later need to repair at: a change recorded
+  as a deletion leaves nothing to inspect or reverse, while the same change recorded as
+  a tombstone with a forwarding address stays a readable, repairable fact.
 - Do not compute subclass closure.
+- One dimension per vocabulary: a tagset labels what a thing *is*, and a subject domain
+  is a separate facet that combines with it — never a new value forced into the same
+  column.
 - Adopt SKOS's vocabulary and its non-transitivity; do not adopt RDF's machinery.
 - Keep inventing below that line, because that layer knows about this corpus and no
   standard will.

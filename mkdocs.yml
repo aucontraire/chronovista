@@ -144,6 +144,7 @@ nav:
       - Analyze topics: user-guide/topic-analytics.md
       - Find entity intersections: user-guide/entity-intersection.md
       - See what a channel is about: user-guide/channel-entities.md
+      - See which channels an entity operates: user-guide/channel-ownership.md
       - Fix an over-matching entity: user-guide/entity-curation.md
       - Interrupt and resume a scan: user-guide/scan-resume.md
       - Attach tags to an entity: user-guide/entity-tags.md
@@ -179,6 +180,7 @@ nav:
       - Resumable entity scan: architecture/entity-scan-resumability.md
       - Seed-and-grow discovery: architecture/seed-and-grow.md
       - Novel-relationship discovery: architecture/relationship-discovery.md
+      - Channel cast: architecture/channel-cast.md
       - Entity creation core: architecture/entity-creation-core.md
       - Wikimedia fetch core: architecture/wikimedia-fetch-core.md
   - Contributing:

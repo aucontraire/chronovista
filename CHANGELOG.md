@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.119.0] - 2026-11-10
+
+### Added
+
+- **Channel ownership — the "operates" relation.** The imported Wikidata
+  `youtube_channel_id` identifier is surfaced as a queryable "entity operates channel"
+  relation across the stack: read-path repository methods, `GET /channels/{id}/operators`
+  and `GET /entities/{id}/channels`, and "Operated by" / "Operates" panels on the channel
+  and entity detail pages. In-library channels link; external ones are flagged, not hidden.
+  No schema change (ADR-010 promote-on-query). (#395)
+- **Channel cast — the `channel_principals` table.** A channel-level record of who fronts a
+  channel (host, co-host, recurring contributor), assembled from the three provenance
+  spaces: an imported ownership seed, an observed credited-but-not-spoken detector signal,
+  and a terminal human verdict. Provenance lives in independent per-space slots; `decision`
+  is a versioned category (cast / recurring_guest / credited_subject / stuffing); tenure
+  columns distinguish current from former cast. A channel-level fact only — never
+  materialised into per-video mentions. Includes the migration, repository, and a
+  dry-run-by-default loader that seeds the table from a reviewed verdict corpus.
+
+### Fixed
+
+- **Tag-merge tombstone resolution in the backfill lookup** — the canonical-tag lookup now
+  follows `merged_into_id` to the surviving tag. (#393)
+
+### Documentation
+
+- **[Channel cast](https://github.com/aucontraire/chronovista/blob/master/docs/architecture/channel-cast.md)** — the channel-principal model: ownership vs cast, the three-spaces assembly, the rule that a channel-level fact never becomes a per-video mention, the versioned verdict category, and cast tenure (current vs former).
+- **[See which channels an entity operates](https://github.com/aucontraire/chronovista/blob/master/docs/user-guide/channel-ownership.md)** — the "Operates" and "Operated by" panels and their REST endpoints.
+- The [knowledge-model](https://github.com/aucontraire/chronovista/blob/master/docs/architecture/knowledge-model.md) spine table gains channel-ownership and channel-cast rows.
+
 ## [0.118.0] - 2026-11-09
 
 ### Added

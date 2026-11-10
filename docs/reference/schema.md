@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**34 tables.** For the reasoning behind the design, see
+**35 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -495,7 +495,7 @@ Audit log for tag normalization and management operations.
 
 ## Named Entities
 
-Curated entities, their aliases, every place they are mentioned, their normalized Wikipedia categories, videos manually excluded from an entity, the seed-and-grow queue of suggested entities awaiting review, and the novel-relationship candidate queue (entity pairs that co-occur without a typed tie).
+Curated entities, their aliases, every place they are mentioned, their normalized Wikipedia categories, videos manually excluded from an entity, the seed-and-grow queue of suggested entities awaiting review, and the novel-relationship candidate queue (entity pairs that co-occur without a typed tie), and the channel-cast links recording who fronts a channel.
 
 ### `named_entities`
 
@@ -839,6 +839,40 @@ Provenance row for one relationship-candidate generation run.
 **Indexes:**
 
 - UNIQUE INDEX `uq_relationship_generation_runs_active` on `channel`
+
+### `channel_principals`
+
+A person who fronts a channel — host, co-host, or recurring contributor.
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `channel_id` | VARCHAR(24) | no |  | FK → `channels.channel_id` |
+| `entity_id` | UUID | no |  | FK → `named_entities.id` |
+| `wikidata_linked_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `derived_generator_version` | VARCHAR(30) | yes |  |  |
+| `tag_credited_count` | INTEGER | yes |  |  |
+| `text_credited_count` | INTEGER | yes |  |  |
+| `checkable_video_count` | INTEGER | yes |  |  |
+| `spoken_video_count` | INTEGER | yes |  |  |
+| `decided_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `decision` | VARCHAR(20) | yes |  |  |
+| `decided_reason` | TEXT | yes |  |  |
+| `first_seen` | DATE | yes |  |  |
+| `last_seen` | DATE | yes |  |  |
+| `through` | DATE | yes |  |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Constraints:**
+
+- UNIQUE on `channel_id`, `entity_id` (`uq_channel_principals`)
+
+**Indexes:**
+
+- INDEX `idx_channel_principals_channel` on `channel_id`
+- INDEX `idx_channel_principals_current` on `channel_id`
+- INDEX `idx_channel_principals_entity` on `entity_id`
 
 ## Recovery Provenance
 

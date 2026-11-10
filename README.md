@@ -57,6 +57,7 @@ Not a multi-user service, not cloud-hosted, not a YouTube analytics competitor. 
 | **Transcript Corrections** | Inline edit/revert with an append-only audit trail, batch find-replace, ASR error-pattern detection |
 | **Tag Canonicalization** | Collapse raw tag variants into canonical forms; fuzzy search, alias tracking, reversible curation (merge / split / classify / deprecate) |
 | **Named Entity Mentions** | Alias-matched mentions across transcript, title, description, and tags, with longest-match disambiguation and exclusion patterns |
+| **Entity–Channel Ownership** | Record which entities operate which channels — imported from a knowledge base and asserted by hand, kept distinct by provenance, surfaced on both entity and channel pages |
 | **Deleted Video Recovery** | Reconstruct metadata for unavailable videos via the Wayback Machine CDX API |
 | **Multi-Language Transcripts** | Per-language download preferences across a quality hierarchy (manual CC > professional > auto-synced > ASR) |
 | **Channel Analytics** | Per-channel subscription tracking, keyword extraction, and topic analysis |

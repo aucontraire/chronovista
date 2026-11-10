@@ -19,12 +19,24 @@ from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
-from chronovista.models.channel_ownership import ChannelOperatorMatch
+from chronovista.models.channel_ownership import ChannelOperatorMatch, OwnedChannelMatch
 from chronovista.models.entity_image import ImageSource
 from chronovista.models.entity_relations import InboundRelationMatch
 from chronovista.models.named_entity import NamedEntityCreate, NamedEntityUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
+from chronovista.repositories.channel_ownership_assertion_repository import (
+    ChannelOwnershipAssertionRepository,
+)
 from chronovista.repositories.entity_mention_repository import _folded
+
+# SINGLE HOME for the imported-ownership property key. Every read of the raw Wikidata
+# ``youtube_channel_id`` identifier flows through this constant (and the two private
+# primitives below); the ownership source of truth is the read-time UNION of these imported
+# values with the user-asserted ``channel_ownership_assertions`` rows, NOT the raw property.
+# Guarded by tests/unit/architecture/test_channel_ownership_single_source_fitness.py, which
+# asserts the quoted key literal appears in no other module (a consumer reaching for the
+# property by any spelling is caught). See Feature 109 / spec FR-009.
+_OWNERSHIP_PROPERTY_KEY = "youtube_channel_id"
 
 
 class ManualImageMissingError(Exception):
@@ -937,7 +949,111 @@ class NamedEntityRepository(
         """
         if not channel_id:
             return []
-        match = NamedEntityDB.properties["youtube_channel_id"]["values"].contains(
+        imported = await self._imported_operators_of_channel(session, channel_id)
+        manual_rows = await ChannelOwnershipAssertionRepository().list_by_channel(
+            session, channel_id
+        )
+        seen: set[uuid.UUID] = {m.entity_id for m in imported}
+        out: list[ChannelOperatorMatch] = list(imported)
+        manual_new = [r.entity_id for r in manual_rows if r.entity_id not in seen]
+        if manual_new:
+            rows = (
+                await session.execute(
+                    select(
+                        NamedEntityDB.id,
+                        NamedEntityDB.entity_type,
+                        NamedEntityDB.canonical_name,
+                    ).where(
+                        NamedEntityDB.status == "active",
+                        NamedEntityDB.id.in_(manual_new),
+                    )
+                )
+            ).all()
+            by_id = {row.id: row for row in rows}
+            for eid in manual_new:
+                row = by_id.get(eid)
+                if row is not None:
+                    seen.add(eid)
+                    out.append(
+                        ChannelOperatorMatch(
+                            entity_id=row.id,
+                            entity_type=row.entity_type,
+                            canonical_name=row.canonical_name,
+                            provenance="manual",
+                        )
+                    )
+        return out
+
+    async def channels_operated_by(
+        self, session: AsyncSession, entity_id: uuid.UUID
+    ) -> list[OwnedChannelMatch]:
+        """The channels one entity operates — the UNION of imported and user-asserted links.
+
+        Combines the imported Wikidata ``youtube_channel_id`` values (via
+        :meth:`_imported_channel_ids`, the single-source read of the raw property) with the
+        user-asserted ``channel_ownership_assertions`` rows, each tagged with its
+        ``provenance``. Deduped by channel id: a channel present in both sources is returned
+        ONCE as ``wikidata`` (FR-013). Returns ``[]`` when neither source has a channel. The
+        caller resolves in-library status and title from the channel repository at read time
+        (so an external channel later ingested into the library flips automatically).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        entity_id : uuid.UUID
+            The entity whose operated channels to read.
+
+        Returns
+        -------
+        list[OwnedChannelMatch]
+            Imported links first (each ``wikidata``), then user-added ones not already
+            present (each ``manual``).
+        """
+        imported = await self._imported_channel_ids(session, entity_id)
+        manual = await ChannelOwnershipAssertionRepository().list_by_entity(
+            session, entity_id
+        )
+        seen: set[str] = set()
+        out: list[OwnedChannelMatch] = []
+        for cid in imported:
+            if cid not in seen:
+                seen.add(cid)
+                out.append(OwnedChannelMatch(channel_id=cid, provenance="wikidata"))
+        for a in manual:
+            if a.channel_id not in seen:
+                seen.add(a.channel_id)
+                out.append(
+                    OwnedChannelMatch(channel_id=a.channel_id, provenance="manual")
+                )
+        return out
+
+    async def _imported_channel_ids(
+        self, session: AsyncSession, entity_id: uuid.UUID
+    ) -> list[str]:
+        """Imported P2397 channel ids for one entity — the single raw read (entity side).
+
+        The ONLY entity-side read of ``properties[_OWNERSHIP_PROPERTY_KEY]``; every other
+        ownership read goes through the union. ``[]`` when absent/ungrounded (``properties``
+        is an open bag, so non-string values are filtered).
+        """
+        result = await session.execute(
+            select(NamedEntityDB.properties[_OWNERSHIP_PROPERTY_KEY]["values"]).where(
+                NamedEntityDB.id == entity_id
+            )
+        )
+        values = result.scalar_one_or_none()
+        if not values:
+            return []
+        return [v for v in values if isinstance(v, str)]
+
+    async def _imported_operators_of_channel(
+        self, session: AsyncSession, channel_id: str
+    ) -> list[ChannelOperatorMatch]:
+        """Active entities whose imported P2397 values contain ``channel_id`` — the single
+        raw read (channel side), each tagged ``wikidata``. Ordered by ``lower(canonical_name)``.
+        """
+        match = NamedEntityDB.properties[_OWNERSHIP_PROPERTY_KEY]["values"].contains(
             [channel_id]
         )
         stmt = (
@@ -955,39 +1071,7 @@ class NamedEntityRepository(
                 entity_id=row.id,
                 entity_type=row.entity_type,
                 canonical_name=row.canonical_name,
+                provenance="wikidata",
             )
             for row in result.all()
         ]
-
-    async def channels_operated_by(
-        self, session: AsyncSession, entity_id: uuid.UUID
-    ) -> list[str]:
-        """The YouTube channel ids one entity operates, from its stored identifier (read-path).
-
-        Reads ``properties->'youtube_channel_id'->'values'`` for ``entity_id`` and returns the
-        id strings verbatim, in stored order. Returns ``[]`` when the entity is absent or carries
-        no such identifier (ungrounded or not-yet-refreshed) — never an error, mirroring the
-        empty-result contract of the inverse-relation surface. Stays named-entities-only: the
-        caller resolves which ids are in-library (and their titles) via the channel repository.
-
-        Parameters
-        ----------
-        session : AsyncSession
-            The active database session.
-        entity_id : uuid.UUID
-            The entity whose operated channels to read.
-
-        Returns
-        -------
-        list[str]
-            The stored channel ids (well-formed strings only; ``properties`` is an open bag).
-        """
-        result = await session.execute(
-            select(NamedEntityDB.properties["youtube_channel_id"]["values"]).where(
-                NamedEntityDB.id == entity_id
-            )
-        )
-        values = result.scalar_one_or_none()
-        if not values:
-            return []
-        return [v for v in values if isinstance(v, str)]

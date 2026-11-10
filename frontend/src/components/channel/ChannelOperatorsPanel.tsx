@@ -1,13 +1,21 @@
 /**
  * ChannelOperatorsPanel — "Operated by" on the channel detail page.
  *
- * Lists the entities that operate this channel (Wikidata-sourced). Ownership
- * is not person-scoped, so each row carries an entity-type badge.
+ * Lists the entities that operate this channel, each with a provenance badge
+ * (Wikidata or added by hand). Ownership is not person-scoped, so each row
+ * carries an entity-type badge. Manual links can be removed; a small form
+ * assigns an owner by entity ID (no entity search component exists to reuse).
  */
 
+import { useState } from "react";
+import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { useChannelOperators } from "../../hooks/useChannelOperators";
+import {
+  useAssignChannelOperator,
+  useRemoveChannelOperator,
+} from "../../hooks/useChannelOperatorMutations";
 import { EntityTypeBadge } from "../EntityTypeBadge";
 import { colorTokens, cardPatterns } from "../../styles";
 
@@ -16,8 +24,27 @@ export interface ChannelOperatorsPanelProps {
   channelId: string;
 }
 
+const PROVENANCE_LABEL = { wikidata: "per Wikidata", manual: "you added" } as const;
+
+function describeAssignError(error: unknown): string {
+  const e = error as { status?: number; detail?: string } | null;
+  if (e?.status === 404) return "That entity doesn't exist — create it first.";
+  if (e?.status === 409) return e.detail ?? "This entity is already recorded for this channel.";
+  return "Couldn't assign the owner. Please try again.";
+}
+
 export function ChannelOperatorsPanel({ channelId }: ChannelOperatorsPanelProps) {
   const { data, isLoading, isError, error, refetch } = useChannelOperators(channelId);
+  const assign = useAssignChannelOperator(channelId);
+  const remove = useRemoveChannelOperator(channelId);
+  const [entityId, setEntityId] = useState("");
+
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const id = entityId.trim();
+    if (!id) return;
+    assign.mutate(id, { onSuccess: () => setEntityId("") });
+  };
 
   return (
     <section className={`${cardPatterns.base} p-6 mb-8`} aria-labelledby="channel-operators-heading">
@@ -74,10 +101,70 @@ export function ChannelOperatorsPanel({ channelId }: ChannelOperatorsPanelProps)
                 {op.canonical_name}
               </Link>
               <EntityTypeBadge entityType={op.entity_type} />
+              <span
+                className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                data-testid="channel-operator-provenance"
+              >
+                {PROVENANCE_LABEL[op.provenance]}
+              </span>
+              {op.provenance === "manual" && (
+                <button
+                  type="button"
+                  onClick={() => remove.mutate(op.entity_id)}
+                  disabled={remove.isPending}
+                  aria-label={`Remove ${op.canonical_name} as an operator of this channel`}
+                  className="ml-auto rounded border border-slate-300 px-2 py-0.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  Remove
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
+
+      {remove.isError && (
+        <p role="alert" className="mt-2 text-sm text-red-700" data-testid="channel-operator-remove-error">
+          Couldn&apos;t remove the operator. Please try again.
+        </p>
+      )}
+
+      <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-2" noValidate>
+        <label htmlFor="channel-operator-entity-id" className="text-sm font-medium text-slate-700">
+          Assign an owner (entity ID)
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="channel-operator-entity-id"
+            type="text"
+            value={entityId}
+            onChange={(e) => {
+              setEntityId(e.target.value);
+              if (assign.isError) assign.reset();
+            }}
+            aria-invalid={assign.isError}
+            aria-describedby={assign.isError ? "channel-operator-assign-error" : undefined}
+            className="min-w-0 flex-1 rounded border border-slate-300 px-2 py-1 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+          />
+          <button
+            type="submit"
+            disabled={assign.isPending || entityId.trim() === ""}
+            className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            {assign.isPending ? "Assigning…" : "Assign"}
+          </button>
+        </div>
+        {assign.isError && (
+          <p
+            id="channel-operator-assign-error"
+            role="alert"
+            className="text-sm text-red-700"
+            data-testid="channel-operator-assign-error"
+          >
+            {describeAssignError(assign.error)}
+          </p>
+        )}
+      </form>
     </section>
   );
 }

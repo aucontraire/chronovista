@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**35 tables.** For the reasoning behind the design, see
+**36 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -495,7 +495,7 @@ Audit log for tag normalization and management operations.
 
 ## Named Entities
 
-Curated entities, their aliases, every place they are mentioned, their normalized Wikipedia categories, videos manually excluded from an entity, the seed-and-grow queue of suggested entities awaiting review, and the novel-relationship candidate queue (entity pairs that co-occur without a typed tie), and the channel-cast links recording who fronts a channel.
+Curated entities, their aliases, every place they are mentioned, their normalized Wikipedia categories, videos manually excluded from an entity, the seed-and-grow queue of suggested entities awaiting review, and the novel-relationship candidate queue (entity pairs that co-occur without a typed tie), the channel-cast links recording who fronts a channel, and the user-asserted channel-ownership links.
 
 ### `named_entities`
 
@@ -873,6 +873,28 @@ A person who fronts a channel — host, co-host, or recurring contributor.
 - INDEX `idx_channel_principals_channel` on `channel_id`
 - INDEX `idx_channel_principals_current` on `channel_id`
 - INDEX `idx_channel_principals_entity` on `entity_id`
+
+### `channel_ownership_assertions`
+
+A user-asserted "entity E operates channel C" link — the DECIDED-space complement     to the imported Wikidata ``youtube_channel_id`` (P2397) identifier (Feature 109).
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `entity_id` | UUID | no |  | FK → `named_entities.id` |
+| `channel_id` | VARCHAR(24) | no |  |  |
+| `note` | TEXT | yes |  |  |
+| `asserted_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `created_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `updated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Constraints:**
+
+- UNIQUE on `entity_id`, `channel_id` (`uq_channel_ownership_assertions`)
+
+**Indexes:**
+
+- INDEX `idx_channel_ownership_assertions_channel` on `channel_id`
 
 ## Recovery Provenance
 

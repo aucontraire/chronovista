@@ -71,7 +71,8 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "normalized Wikipedia categories, videos manually excluded from an entity, "
         "the seed-and-grow queue of suggested entities awaiting review, and the "
         "novel-relationship candidate queue (entity pairs that co-occur without a "
-        "typed tie), and the channel-cast links recording who fronts a channel.",
+        "typed tie), the channel-cast links recording who fronts a channel, and the "
+        "user-asserted channel-ownership links.",
         [
             "named_entities",
             "entity_aliases",
@@ -85,6 +86,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
             "relationship_candidates",
             "relationship_candidate_generation_runs",
             "channel_principals",
+            "channel_ownership_assertions",
         ],
     ),
     (

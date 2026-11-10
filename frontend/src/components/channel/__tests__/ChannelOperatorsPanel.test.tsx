@@ -3,12 +3,33 @@
  */
 
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Mock } from "vitest";
 
 vi.mock("../../../hooks/useChannelOperators", () => ({
   useChannelOperators: vi.fn(),
+}));
+
+const assignMutate = vi.fn();
+let assignState: Record<string, unknown> = {};
+const removeMutate = vi.fn();
+vi.mock("../../../hooks/useChannelOperatorMutations", () => ({
+  useRemoveChannelOperator: () => ({
+    mutate: removeMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
+  useAssignChannelOperator: () => ({
+    mutate: assignMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+    reset: vi.fn(),
+    ...assignState,
+  }),
 }));
 
 import { ChannelOperatorsPanel } from "../ChannelOperatorsPanel";
@@ -43,7 +64,10 @@ function renderPanel() {
 }
 
 describe("ChannelOperatorsPanel", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assignState = {};
+  });
 
   it("renders the Operated by heading", () => {
     mockHook({ data: { channel_id: CHANNEL_ID, total_entities: 0, items: [] } });
@@ -80,8 +104,8 @@ describe("ChannelOperatorsPanel", () => {
         channel_id: CHANNEL_ID,
         total_entities: 2,
         items: [
-          { entity_id: "ent-1", entity_type: "organization", canonical_name: "Placeholder Org" },
-          { entity_id: "ent-2", entity_type: "person", canonical_name: "Placeholder Person" },
+          { entity_id: "ent-1", entity_type: "organization", canonical_name: "Placeholder Org", provenance: "wikidata" },
+          { entity_id: "ent-2", entity_type: "person", canonical_name: "Placeholder Person", provenance: "manual" },
         ],
       },
     });
@@ -97,5 +121,55 @@ describe("ChannelOperatorsPanel", () => {
     );
     expect(screen.getByText("Organization")).toBeInTheDocument();
     expect(screen.getByText("Person")).toBeInTheDocument();
+  });
+
+  const mixed: ChannelOperatorsResponse = {
+    channel_id: CHANNEL_ID,
+    total_entities: 2,
+    items: [
+      { entity_id: "ent-w", entity_type: "organization", canonical_name: "Wiki Org", provenance: "wikidata" },
+      { entity_id: "ent-m", entity_type: "person", canonical_name: "Manual Person", provenance: "manual" },
+    ],
+  };
+
+  it("shows a provenance badge per operator", () => {
+    mockHook({ data: mixed });
+    renderPanel();
+    expect(screen.getByText("per Wikidata")).toBeInTheDocument();
+    expect(screen.getByText("you added")).toBeInTheDocument();
+  });
+
+  it("offers remove only on manual rows and calls it with the entity id", async () => {
+    mockHook({ data: mixed });
+    renderPanel();
+    expect(screen.getAllByRole("button", { name: /^remove/i })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /remove wiki org/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /remove manual person/i }));
+    expect(removeMutate).toHaveBeenCalledWith("ent-m");
+  });
+
+  it("submits the trimmed entity id and clears the input on success", async () => {
+    mockHook({ data: mixed });
+    assignMutate.mockImplementation((_id: string, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.());
+    renderPanel();
+    const input = screen.getByLabelText(/assign an owner/i);
+    await userEvent.type(input, "  ent-new  ");
+    await userEvent.click(screen.getByRole("button", { name: "Assign" }));
+    expect(assignMutate).toHaveBeenCalledWith("ent-new", expect.any(Object));
+    expect(input).toHaveValue("");
+  });
+
+  it("shows create-it-first guidance on 404", () => {
+    mockHook({ data: mixed });
+    assignState = { isError: true, error: { status: 404 } };
+    renderPanel();
+    expect(screen.getByRole("alert")).toHaveTextContent(/doesn't exist — create it first/i);
+  });
+
+  it("shows the server detail on 409", () => {
+    mockHook({ data: mixed });
+    assignState = { isError: true, error: { status: 409, detail: "Already recorded from Wikidata" } };
+    renderPanel();
+    expect(screen.getByRole("alert")).toHaveTextContent("Already recorded from Wikidata");
   });
 });

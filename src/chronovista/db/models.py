@@ -2317,6 +2317,70 @@ class ChannelPrincipal(Base):
     )
 
 
+class ChannelOwnershipAssertion(Base):
+    """A user-asserted "entity E operates channel C" link — the DECIDED-space complement
+    to the imported Wikidata ``youtube_channel_id`` (P2397) identifier (Feature 109).
+
+    Closes the three gaps the import cannot: an owner with no Wikidata entry, an owner
+    whose P2397 is unset, and an owner who operates more channels than Wikidata lists. It
+    is NEVER written into ``named_entities.properties`` and never pushed back to Wikidata;
+    the read-time UNION of imported P2397 values and these rows is the single source of
+    truth for ownership (a fitness guard keeps the raw property read in exactly one place).
+
+    **Deliberate asymmetry — no FK to ``channels`` (contrast ``ChannelPrincipal``).**
+    ``ChannelPrincipal`` FKs ``channel_id`` to ``channels`` because a channel *cast* is
+    only meaningful for an in-library channel. Ownership is the opposite: external and
+    defunct channels are the whole point (gaps 1 and 3), so ``channel_id`` here is a raw
+    YouTube id with NO foreign key, mirroring how imported P2397 values are stored (raw
+    ids in a JSONB array). In-library status is resolved at READ time against ``channels``.
+    Do NOT "fix" this to add an FK — it would reject exactly the external channels this
+    table exists to hold.
+    """
+
+    __tablename__ = "channel_ownership_assertions"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    entity_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Raw YouTube channel id (UC + 22). NO FK — may be an external/defunct channel not in
+    # the library (see the class docstring: the asymmetry vs channel_principals is intentional).
+    channel_id: Mapped[str] = mapped_column(String(24), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    asserted_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        # One manual assertion per (entity, channel); a duplicate add is refused upstream.
+        UniqueConstraint(
+            "entity_id", "channel_id", name="uq_channel_ownership_assertions"
+        ),
+        # Channel-side reverse lookup (operators union); entity_id is served by the
+        # unique constraint's leading column.
+        Index("idx_channel_ownership_assertions_channel", "channel_id"),
+        {
+            "comment": "User-asserted channel ownership (Feature 109): the DECIDED-space "
+            "complement to imported P2397; no FK to channels by design (external/defunct "
+            "channels). Never write these into named_entities.properties."
+        },
+    )
+
+
 # Export all models
 __all__ = [
     "Base",
@@ -2349,4 +2413,5 @@ __all__ = [
     "EntityCategory",
     "EntityVideoExclusion",
     "ChannelPrincipal",
+    "ChannelOwnershipAssertion",
 ]

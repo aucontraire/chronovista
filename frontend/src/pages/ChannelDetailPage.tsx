@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { VideoGrid } from "../components/VideoGrid";
 import { ChannelEntityPanel } from "../components/channel/ChannelEntityPanel";
+import { ChannelOperatorsPanel } from "../components/channel/ChannelOperatorsPanel";
 import { LoadingState } from "../components/LoadingState";
 import { SortDropdown } from "../components/SortDropdown";
 import { FilterToggle } from "../components/FilterToggle";
@@ -631,6 +632,7 @@ export function ChannelDetailPage() {
       </div>
 
       {/* Entities Panel (Feature 070, US1) */}
+      {channelId && <ChannelOperatorsPanel channelId={channelId} />}
       {channelId && <ChannelEntityPanel channelId={channelId} />}
 
       {/* Videos Section */}

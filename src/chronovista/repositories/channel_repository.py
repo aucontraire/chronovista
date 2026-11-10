@@ -6,6 +6,7 @@ Handles CRUD operations and queries for YouTube channels with subscription track
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select
@@ -91,6 +92,39 @@ class ChannelRepository(
             select(ChannelDB.channel_id).where(ChannelDB.channel_id == channel_id)
         )
         return result.first() is not None
+
+    async def titles_for_ids(
+        self, session: AsyncSession, channel_ids: Sequence[ChannelId]
+    ) -> dict[ChannelId, str]:
+        """Map each given channel id present in the library to its title (read-only).
+
+        Backs ownership promotion: the entity side knows the operated channel ids (from its
+        stored ``youtube_channel_id`` identifier); this resolves which of them the owner
+        actually holds, and their titles. Ids absent from the library are simply absent from
+        the result, so the caller reads their absence as "not in library" (an external
+        channel — channel *discovery* is a separate feature). Empty input → empty dict.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session
+        channel_ids : Sequence[ChannelId]
+            Channel ids to resolve.
+
+        Returns
+        -------
+        dict[ChannelId, str]
+            ``{channel_id: title}`` for ids that exist in the library.
+        """
+        ids = list(channel_ids)
+        if not ids:
+            return {}
+        result = await session.execute(
+            select(ChannelDB.channel_id, ChannelDB.title).where(
+                ChannelDB.channel_id.in_(ids)
+            )
+        )
+        return {row.channel_id: row.title for row in result.all()}
 
     async def find_by_title(self, session: AsyncSession, title: str) -> list[ChannelDB]:
         """

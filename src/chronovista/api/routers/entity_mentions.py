@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.api.deps import (
     get_canonical_tag_repository,
+    get_channel_repository,
     get_db,
     get_entity_alias_repository,
     get_entity_category_repository,
@@ -54,6 +55,10 @@ from chronovista.api.schemas.candidates import (
     TagFootprintResponse,
     TagLinkRequest,
     TagLinkResponse,
+)
+from chronovista.api.schemas.channel_ownership import (
+    EntityChannelLink,
+    EntityChannelsResponse,
 )
 from chronovista.api.schemas.entity_mentions import (
     AddEntityTagRequest,
@@ -141,6 +146,7 @@ from chronovista.models.enums import (
 )
 from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
+from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_category_repository import (
     EntityCategoryRepository,
@@ -1485,6 +1491,66 @@ async def get_referenced_by(
                 )
             )
     return ReferencedByResponse(data=data)
+
+
+@router.get(
+    "/entities/{entity_id}/channels",
+    response_model=EntityChannelsResponse,
+    status_code=200,
+    summary="YouTube channels this entity operates (Wikidata-sourced)",
+)
+async def get_entity_channels(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    channel_repo: ChannelRepository = Depends(get_channel_repository),
+) -> EntityChannelsResponse:
+    """The YouTube channels this entity operates (ownership promotion, read-path).
+
+    Surfaces the imported ``youtube_channel_id`` identifier (Wikidata P2397) as a
+    relation, read from ``named_entities.properties`` with no schema change (ADR-010
+    promote-on-query). Each stored channel id is returned with its in-library status: a
+    channel in the library carries its title and is linkable in-app; one not in the
+    library is reported with ``in_library=False`` and no title (finding and ingesting
+    such channels is channel *discovery*, a separate feature). An entity with no stored
+    channel id — ungrounded, un-refreshed, or simply not a channel owner — returns an
+    empty list, never an error; a missing entity is a 404.
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (string form; a malformed value is a 404).
+
+    Returns
+    -------
+    EntityChannelsResponse
+        One entry per stored channel id, in stored order, each flagged in-library or not.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist (404).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    entity = await entity_repo.get(session, parsed_entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    channel_ids = await entity_repo.channels_operated_by(session, parsed_entity_id)
+    titles = await channel_repo.titles_for_ids(session, channel_ids)
+    data = [
+        EntityChannelLink(
+            channel_id=channel_id,
+            title=titles.get(channel_id),
+            in_library=channel_id in titles,
+        )
+        for channel_id in channel_ids
+    ]
+    return EntityChannelsResponse(data=data)
 
 
 # Provenance values the association filter accepts (FR-007) — the

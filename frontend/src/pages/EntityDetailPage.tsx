@@ -24,6 +24,7 @@ import { AllCategoriesPanel } from "../components/entity/AllCategoriesPanel";
 import { CategoryMembersPanel } from "../components/entity/CategoryMembersPanel";
 import { EntityCategoryTabs } from "../components/entity/EntityCategoryTabs";
 import { ReferencedByPanel } from "../components/entity/ReferencedByPanel";
+import { EntityChannelsPanel } from "../components/entity/EntityChannelsPanel";
 import { EntityEnrichmentSection } from "../components/entity/EntityEnrichmentSection";
 import { EntityPortrait } from "../components/entity/EntityPortrait";
 import { EntityAccordionGroup } from "../components/entity/EntityAccordionGroup";
@@ -1956,6 +1957,13 @@ export function EntityDetailPage() {
         {entityId && (
           <div className="mb-6">
             <ReferencedByPanel entityId={entityId} />
+          </div>
+        )}
+
+        {/* Operates panel: YouTube channels this entity operates. */}
+        {entityId && (
+          <div className="mb-6">
+            <EntityChannelsPanel entityId={entityId} />
           </div>
         )}
       </EntityAccordionGroup>

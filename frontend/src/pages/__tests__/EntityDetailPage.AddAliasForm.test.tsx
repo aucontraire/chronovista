@@ -110,11 +110,15 @@ import { useQuery } from "@tanstack/react-query";
 import { useEntityVideos } from "../../hooks/useEntityMentions";
 import { createEntityAlias } from "../../api/entityMentions";
 
-/** The page also renders the "Referenced by" empty state as a status region; target the other one. */
+/** The page also renders the "Referenced by" and "Operates" panel states as status regions; target the other one. */
 function getActionStatus(): HTMLElement {
   const el = screen
     .getAllByRole("status")
-    .find((e) => !e.closest('[data-testid="referenced-by-panel"]'));
+    .find(
+      (e) =>
+        !e.closest('[data-testid="referenced-by-panel"]') &&
+        !e.closest('[data-testid="entity-channels-panel"]')
+    );
   if (!el) throw new Error("No action status region found");
   return el;
 }

@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
+from chronovista.models.channel_ownership import ChannelOperatorMatch
 from chronovista.models.entity_image import ImageSource
 from chronovista.models.entity_relations import InboundRelationMatch
 from chronovista.models.named_entity import NamedEntityCreate, NamedEntityUpdate
@@ -905,3 +906,88 @@ class NamedEntityRepository(
                     )
                 )
         return out
+
+    async def operators_of_channel(
+        self, session: AsyncSession, channel_id: str
+    ) -> list[ChannelOperatorMatch]:
+        """Active entities that operate ``channel_id`` (ownership promotion, read-path).
+
+        The inverse of the stored ``youtube_channel_id`` identifier (Wikidata P2397): an
+        entity matches when ``properties->'youtube_channel_id'->'values'`` (a JSONB string
+        array) **contains** ``channel_id`` (``@>`` array containment, mirroring
+        :meth:`inbound_relations` but on the identifier's ``values`` array, not a relation's
+        ``qids``). Unlike a channel *principal*, ownership is NOT person-scoped — an
+        organisation or any grounded entity type may operate a channel — so no ``entity_type``
+        filter is applied. **Active** entities only: a merged/inactive grounding must not
+        surface as an operator link. Read-only; the path containment seq-scans, cheap at the
+        current ~1,900-row scale (see :meth:`inbound_relations` on indexing). Returns ``[]``
+        when ``channel_id`` is empty.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        channel_id : str
+            The YouTube channel id operators are sought for.
+
+        Returns
+        -------
+        list[ChannelOperatorMatch]
+            One per active operating entity, ordered by ``lower(canonical_name)`` then ``id``.
+        """
+        if not channel_id:
+            return []
+        match = NamedEntityDB.properties["youtube_channel_id"]["values"].contains(
+            [channel_id]
+        )
+        stmt = (
+            select(
+                NamedEntityDB.id,
+                NamedEntityDB.entity_type,
+                NamedEntityDB.canonical_name,
+            )
+            .where(NamedEntityDB.status == "active", match)
+            .order_by(func.lower(NamedEntityDB.canonical_name), NamedEntityDB.id)
+        )
+        result = await session.execute(stmt)
+        return [
+            ChannelOperatorMatch(
+                entity_id=row.id,
+                entity_type=row.entity_type,
+                canonical_name=row.canonical_name,
+            )
+            for row in result.all()
+        ]
+
+    async def channels_operated_by(
+        self, session: AsyncSession, entity_id: uuid.UUID
+    ) -> list[str]:
+        """The YouTube channel ids one entity operates, from its stored identifier (read-path).
+
+        Reads ``properties->'youtube_channel_id'->'values'`` for ``entity_id`` and returns the
+        id strings verbatim, in stored order. Returns ``[]`` when the entity is absent or carries
+        no such identifier (ungrounded or not-yet-refreshed) — never an error, mirroring the
+        empty-result contract of the inverse-relation surface. Stays named-entities-only: the
+        caller resolves which ids are in-library (and their titles) via the channel repository.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The active database session.
+        entity_id : uuid.UUID
+            The entity whose operated channels to read.
+
+        Returns
+        -------
+        list[str]
+            The stored channel ids (well-formed strings only; ``properties`` is an open bag).
+        """
+        result = await session.execute(
+            select(NamedEntityDB.properties["youtube_channel_id"]["values"]).where(
+                NamedEntityDB.id == entity_id
+            )
+        )
+        values = result.scalar_one_or_none()
+        if not values:
+            return []
+        return [v for v in values if isinstance(v, str)]

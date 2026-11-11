@@ -1,9 +1,13 @@
-"""Tests for the channel-ownership read methods (ownership promotion, read-path).
+"""Tests for the imported-ownership read primitives (ownership promotion, read-path).
 
-``operators_of_channel`` is checked as a SQL artifact (the compiled statement), mirroring
-``test_named_entity_inbound_relations``; ``channels_operated_by`` and the empty short-circuits
-are checked behaviourally against a mock session. No schema, no migration — these read the
-existing ``named_entities.properties`` JSONB only.
+Since Feature 109 the public readers (``operators_of_channel`` / ``channels_operated_by``)
+return the UNION of imported values and user-asserted links. The raw ``properties`` read
+(the ``@>`` containment, active-only, not-person-scoped, and the values-array parse) now lives
+in the private primitives ``_imported_operators_of_channel`` / ``_imported_channel_ids`` — so
+the SQL-artifact and value-parse contracts are checked there (mirroring
+``test_named_entity_inbound_relations``). The union's merge/dedup/provenance behaviour is
+covered by the integration tests. No schema, no migration — these read the existing
+``named_entities.properties`` JSONB only.
 """
 
 from __future__ import annotations
@@ -26,7 +30,9 @@ async def _operators_compiled(channel_id: str) -> tuple[str, dict[str, object]]:
     result = MagicMock()
     result.all.return_value = []
     session.execute.return_value = result
-    out = await NamedEntityRepository().operators_of_channel(session, channel_id)
+    out = await NamedEntityRepository()._imported_operators_of_channel(
+        session, channel_id
+    )
     assert out == []
     session.execute.assert_awaited_once()
     stmt = session.execute.await_args.args[0]
@@ -91,7 +97,7 @@ async def test_channels_operated_by_reads_values_and_drops_non_strings() -> None
     # `properties` is an open bag: a stray non-string must be dropped, not 500 the caller.
     result.scalar_one_or_none.return_value = ["UCaaa", "UCbbb", 42]
     session.execute.return_value = result
-    out = await NamedEntityRepository().channels_operated_by(session, uuid.uuid4())
+    out = await NamedEntityRepository()._imported_channel_ids(session, uuid.uuid4())
     assert out == ["UCaaa", "UCbbb"]
 
 

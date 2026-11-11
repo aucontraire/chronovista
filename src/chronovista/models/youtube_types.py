@@ -263,6 +263,41 @@ def validate_channel_id(v: str) -> str:
     return v
 
 
+def parse_channel_ref(ref: str) -> str:
+    """Resolve a user-supplied channel reference to a validated channel ID (Feature 109).
+
+    Accepts a raw channel ID (``UC…``) or a URL that literally contains one
+    (``…/channel/UC…``), extracting the ID locally — no network call. ``@handle`` and
+    ``/c/`` custom URLs do NOT contain the ID and are rejected (resolving them would need a
+    live lookup, out of scope — spec D5). The extracted candidate is validated with
+    :func:`validate_channel_id`, so the format rule lives in exactly one place.
+
+    Parameters
+    ----------
+    ref : str
+        A raw channel ID or a ``/channel/UC…`` URL.
+
+    Returns
+    -------
+    str
+        The validated channel ID.
+
+    Raises
+    ------
+    ValueError
+        If ``ref`` cannot be resolved to a valid channel ID this way.
+    """
+    if not isinstance(ref, str):
+        raise TypeError("channel reference must be a string")
+    candidate = ref.strip()
+    # A /channel/<id> URL carries the id in the path; any other URL form (@handle, /c/,
+    # /user/) does not, so it falls through unchanged and fails validation below.
+    marker = "/channel/"
+    if marker in candidate:
+        candidate = candidate.split(marker, 1)[1].split("/", 1)[0].split("?", 1)[0]
+    return validate_channel_id(candidate)
+
+
 def validate_video_id(v: str) -> str:
     """Validate YouTube Video ID format."""
     if not isinstance(v, str):

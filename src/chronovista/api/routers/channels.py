@@ -13,10 +13,11 @@ All endpoints require authentication via the require_auth dependency.
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, Path, Query, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +39,7 @@ from chronovista.api.routers.responses import (
     VALIDATION_ERROR_RESPONSE,
 )
 from chronovista.api.schemas.channel_ownership import (
+    AddChannelOperatorRequest,
     ChannelOperatorItem,
     ChannelOperatorsResponse,
 )
@@ -72,6 +74,9 @@ from chronovista.exceptions import (
     NotFoundError,
 )
 from chronovista.models.enums import AvailabilityStatus
+from chronovista.repositories.channel_ownership_assertion_repository import (
+    ChannelOwnershipAssertionRepository,
+)
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
@@ -453,6 +458,7 @@ async def get_channel_operators(
             entity_id=operator.entity_id,
             entity_type=operator.entity_type,
             canonical_name=operator.canonical_name,
+            provenance=operator.provenance,
         )
         for operator in operators
     ]
@@ -461,6 +467,123 @@ async def get_channel_operators(
         total_entities=len(items),
         items=items,
     )
+
+
+@router.post(
+    "/channels/{channel_id}/operators",
+    status_code=201,
+    response_model=ChannelOperatorItem,
+    responses={
+        **NOT_FOUND_RESPONSE,
+        **CONFLICT_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+    },
+    summary="Assign by hand an entity as an operator of this channel",
+)
+async def add_channel_operator(
+    channel_id: str = Path(
+        ...,
+        min_length=24,
+        max_length=24,
+        description="YouTube channel ID (24 characters)",
+    ),
+    body: AddChannelOperatorRequest = Body(...),
+    channel_repo: ChannelRepository = Depends(get_channel_repository),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    db: AsyncSession = Depends(get_db),
+) -> ChannelOperatorItem:
+    """Assert a user-authored "entity operates channel" link from the channel side (Feature 109).
+
+    The mirror of the entity-side add, over the same store. The **channel side is the
+    in-library surface**: the channel must exist (a 404 otherwise), matching this endpoint's
+    GET sibling — so a link created here is always readable back through
+    ``GET /channels/{id}/operators``. Ownership of an *external* channel is asserted from the
+    entity side instead (``POST /entities/{id}/channels``), which intentionally accepts
+    not-in-library channels. The entity MUST already exist — this endpoint NEVER creates
+    entities (FR-020). Redundancy (already recorded via Wikidata, or already asserted) is a
+    409, not a duplicate.
+
+    Raises
+    ------
+    NotFoundError
+        If the channel is not in the library, or the entity does not exist (404).
+    ConflictError
+        If the entity is already an operator via Wikidata or already asserted (409).
+    """
+    if not await channel_repo.exists_by_channel_id(db, channel_id):
+        raise NotFoundError(
+            resource_type="Channel",
+            identifier=channel_id,
+            hint="Verify the channel ID or run a sync.",
+        )
+    entity = await entity_repo.get(db, body.entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=str(body.entity_id))
+
+    # Redundancy via the union (which distinguishes imported from manual).
+    for op in await entity_repo.operators_of_channel(db, channel_id):
+        if op.entity_id == body.entity_id:
+            if op.provenance == "wikidata":
+                raise ConflictError(
+                    message="This entity is already recorded as operating the channel "
+                    "from Wikidata; nothing to add.",
+                    details={
+                        "channel_id": channel_id,
+                        "entity_id": str(body.entity_id),
+                    },
+                )
+            raise ConflictError(
+                message="This entity is already added as an operator of the channel.",
+                details={"channel_id": channel_id, "entity_id": str(body.entity_id)},
+            )
+
+    await ChannelOwnershipAssertionRepository().add(
+        db, entity_id=body.entity_id, channel_id=channel_id, note=body.note
+    )
+    await db.commit()
+    return ChannelOperatorItem(
+        entity_id=entity.id,
+        entity_type=entity.entity_type,
+        canonical_name=entity.canonical_name,
+        provenance="manual",
+    )
+
+
+@router.delete(
+    "/channels/{channel_id}/operators/{entity_id}",
+    status_code=204,
+    response_class=Response,
+    responses={**NOT_FOUND_RESPONSE},
+    summary="Remove a user-asserted operator from a channel",
+)
+async def remove_channel_operator(
+    channel_id: str = Path(
+        ...,
+        min_length=24,
+        max_length=24,
+        description="YouTube channel ID (24 characters)",
+    ),
+    entity_id: str = Path(..., description="Named entity UUID"),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Remove a user-asserted ownership link from the channel side (mirror of the entity-side
+    delete). Manual links only; an imported Wikidata link has no row here and is not removable
+    (404), by design (FR-015).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+    removed = await ChannelOwnershipAssertionRepository().delete(
+        db, parsed_entity_id, channel_id
+    )
+    if not removed:
+        raise NotFoundError(
+            resource_type="ChannelOwnershipAssertion",
+            identifier=f"{channel_id}/{entity_id}",
+        )
+    await db.commit()
+    return Response(status_code=204)
 
 
 @router.get(

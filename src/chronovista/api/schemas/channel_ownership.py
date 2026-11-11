@@ -18,6 +18,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Provenance is defined once in the models layer; re-exported here for the API schemas.
+from chronovista.models.channel_ownership import Provenance
+
 
 class EntityChannelLink(BaseModel):
     """One channel an entity operates, with in-library status (entity-detail side)."""
@@ -33,6 +36,12 @@ class EntityChannelLink(BaseModel):
         ...,
         description="True when the channel is in the library (linkable in-app); "
         "False for an external channel (channel discovery is a separate feature)",
+    )
+    provenance: Provenance = Field(
+        ...,
+        description="'wikidata' (imported P2397) or 'manual' (user-asserted). A 'manual' "
+        "link is never emitted as 'wikidata'; when both exist for a channel it is shown "
+        "once as 'wikidata'.",
     )
 
 
@@ -55,6 +64,10 @@ class ChannelOperatorItem(BaseModel):
     entity_id: UUID
     entity_type: str
     canonical_name: str
+    provenance: Provenance = Field(
+        ...,
+        description="'wikidata' (imported P2397) or 'manual' (user-asserted).",
+    )
 
 
 class ChannelOperatorsResponse(BaseModel):
@@ -67,3 +80,33 @@ class ChannelOperatorsResponse(BaseModel):
         ..., ge=0, description="Total entities operating the channel"
     )
     items: list[ChannelOperatorItem]
+
+
+class AddEntityChannelRequest(BaseModel):
+    """Body for asserting (entity-side) that an entity operates a channel (Feature 109)."""
+
+    model_config = ConfigDict(strict=True)
+
+    channel_ref: str = Field(
+        ...,
+        description="A raw channel ID (UC…) or a youtube.com/channel/UC… URL; parsed and "
+        "format-validated server-side (no network call, no @handle/custom-URL support).",
+    )
+    note: str | None = Field(
+        None, description="Optional free-text rationale for the assertion."
+    )
+
+
+class AddChannelOperatorRequest(BaseModel):
+    """Body for asserting (channel-side) that an entity operates this channel (Feature 109).
+
+    Not ``strict``: a request body carries ``entity_id`` as a JSON string, which must coerce
+    to ``UUID`` (strict mode would reject the string). Response models stay strict.
+    """
+
+    entity_id: UUID = Field(
+        ..., description="The operating entity (must already exist)."
+    )
+    note: str | None = Field(
+        None, description="Optional free-text rationale for the assertion."
+    )

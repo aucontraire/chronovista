@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.120.0] - 2026-11-10
+
+### Added
+
+- **Manual channel-ownership assertions.** Ownership links can now be added by hand, for the
+  cases the Wikidata import misses — an owner with no knowledge-base entry, one whose channel
+  isn't recorded there, or one who operates several channels when only one is listed. Hand-added
+  links live in a dedicated decided-space table (`channel_ownership_assertions`, with **no** FK
+  to `channels` so external and defunct channels are supported), physically separate from the
+  imported `youtube_channel_id` property — never written back to Wikidata and never represented
+  as imported. The read path now returns the **union** of imported and user-asserted links, each
+  tagged with its provenance and deduped by channel (an imported link wins), and a fitness guard
+  keeps the raw imported property read in exactly one place so no consumer can silently see only
+  the imported subset. New endpoints: `POST`/`DELETE /entities/{id}/channels` and
+  `POST`/`DELETE /channels/{id}/operators`. The entity and channel detail pages gain provenance
+  badges, an add/assign control (raw `UC…` id or `/channel/` URL, parsed locally — no API call),
+  and a remove control on hand-added links only. Redundant adds are refused with a clear reason;
+  imported links are not removable.
+
+### Documentation
+
+- **[See which channels an entity operates](https://github.com/aucontraire/chronovista/blob/master/docs/user-guide/channel-ownership.md)** — rewritten for the add / assign / remove workflow and the imported-vs-you-added provenance distinction.
+- The [knowledge-model](https://github.com/aucontraire/chronovista/blob/master/docs/architecture/knowledge-model.md) spine table's channel-ownership row gains a *decided* (manual) arm.
+
 ## [0.119.0] - 2026-11-10
 
 ### Added

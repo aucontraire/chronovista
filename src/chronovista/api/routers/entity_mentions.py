@@ -50,6 +50,11 @@ from chronovista.api.query_protection import (
     get_client_id,
     run_with_timeout,
 )
+from chronovista.api.routers.responses import (
+    CONFLICT_RESPONSE,
+    NOT_FOUND_RESPONSE,
+    VALIDATION_ERROR_RESPONSE,
+)
 from chronovista.api.schemas.candidates import (
     TagFootprintMatch,
     TagFootprintResponse,
@@ -57,6 +62,7 @@ from chronovista.api.schemas.candidates import (
     TagLinkResponse,
 )
 from chronovista.api.schemas.channel_ownership import (
+    AddEntityChannelRequest,
     EntityChannelLink,
     EntityChannelsResponse,
 )
@@ -145,7 +151,11 @@ from chronovista.models.enums import (
     TagStatus,
 )
 from chronovista.models.named_entity import NamedEntityCreate
+from chronovista.models.youtube_types import parse_channel_ref
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
+from chronovista.repositories.channel_ownership_assertion_repository import (
+    ChannelOwnershipAssertionRepository,
+)
 from chronovista.repositories.channel_repository import ChannelRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_category_repository import (
@@ -1540,17 +1550,156 @@ async def get_entity_channels(
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
-    channel_ids = await entity_repo.channels_operated_by(session, parsed_entity_id)
-    titles = await channel_repo.titles_for_ids(session, channel_ids)
+    owned = await entity_repo.channels_operated_by(session, parsed_entity_id)
+    titles = await channel_repo.titles_for_ids(session, [o.channel_id for o in owned])
     data = [
         EntityChannelLink(
-            channel_id=channel_id,
-            title=titles.get(channel_id),
-            in_library=channel_id in titles,
+            channel_id=o.channel_id,
+            title=titles.get(o.channel_id),
+            in_library=o.channel_id in titles,
+            provenance=o.provenance,
         )
-        for channel_id in channel_ids
+        for o in owned
     ]
     return EntityChannelsResponse(data=data)
+
+
+@router.post(
+    "/entities/{entity_id}/channels",
+    status_code=201,
+    response_model=EntityChannelLink,
+    responses={
+        **NOT_FOUND_RESPONSE,
+        **CONFLICT_RESPONSE,
+        **VALIDATION_ERROR_RESPONSE,
+    },
+    summary="Assert by hand that an entity operates a channel",
+)
+async def add_entity_channel(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    body: AddEntityChannelRequest = Body(...),
+    session: AsyncSession = Depends(get_db),
+    entity_repo: NamedEntityRepository = Depends(get_named_entity_repository),
+    channel_repo: ChannelRepository = Depends(get_channel_repository),
+) -> EntityChannelLink:
+    """Record a user-asserted "entity operates channel" link (Feature 109, entity side).
+
+    The DECIDED-space complement to the imported Wikidata ``youtube_channel_id`` identifier:
+    stored separately, never written into ``named_entities.properties`` and never pushed to
+    Wikidata. ``channel_ref`` may be a raw ``UC…`` id or a ``youtube.com/channel/UC…`` URL
+    (parsed and format-validated locally; ``@handle``/custom URLs are rejected). The channel
+    need not be in the library — external and defunct channels are supported.
+
+    Redundancy is refused, not duplicated (FR-011/FR-012): if the channel is already recorded
+    for the entity via Wikidata, or already asserted, the add is a 409 with a clear reason.
+
+    Parameters
+    ----------
+    entity_id : str
+        Named entity UUID (a malformed value is a 404).
+    body : AddEntityChannelRequest
+        ``channel_ref`` (raw id or /channel/ URL) and an optional ``note``.
+
+    Returns
+    -------
+    EntityChannelLink
+        The created link, ``provenance='manual'``, with in-library status resolved.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity does not exist (404).
+    APIValidationError
+        If ``channel_ref`` is not a raw id or ``/channel/`` URL (422).
+    ConflictError
+        If the channel is already recorded via Wikidata or already asserted (409).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+
+    entity = await entity_repo.get(session, parsed_entity_id)
+    if entity is None:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id)
+
+    try:
+        channel_id = parse_channel_ref(body.channel_ref)
+    except (ValueError, TypeError) as exc:
+        raise APIValidationError(
+            message="channel_ref must be a raw channel ID (UC…) or a "
+            "youtube.com/channel/UC… URL",
+            details={"channel_ref": body.channel_ref},
+        ) from exc
+
+    # Redundancy: the union read already distinguishes imported from manual (FR-011/FR-012).
+    for link in await entity_repo.channels_operated_by(session, parsed_entity_id):
+        if link.channel_id == channel_id:
+            if link.provenance == "wikidata":
+                raise ConflictError(
+                    message="This channel is already recorded for the entity from "
+                    "Wikidata; nothing to add.",
+                    details={"entity_id": entity_id, "channel_id": channel_id},
+                )
+            raise ConflictError(
+                message="This channel is already added for the entity.",
+                details={"entity_id": entity_id, "channel_id": channel_id},
+            )
+
+    await ChannelOwnershipAssertionRepository().add(
+        session,
+        entity_id=parsed_entity_id,
+        channel_id=channel_id,
+        note=body.note,
+    )
+    await session.commit()
+
+    titles = await channel_repo.titles_for_ids(session, [channel_id])
+    return EntityChannelLink(
+        channel_id=channel_id,
+        title=titles.get(channel_id),
+        in_library=channel_id in titles,
+        provenance="manual",
+    )
+
+
+@router.delete(
+    "/entities/{entity_id}/channels/{channel_id}",
+    status_code=204,
+    response_class=Response,
+    responses={**NOT_FOUND_RESPONSE},
+    summary="Remove a user-asserted channel from an entity",
+)
+async def remove_entity_channel(
+    entity_id: str = Path(..., description="Named entity UUID"),
+    channel_id: str = Path(..., description="YouTube channel ID"),
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    """Remove a user-asserted ownership link (Feature 109, entity side).
+
+    Manual links only — an imported Wikidata link has no row in the assertions store and is
+    not removable here (it would return on the next reground); such a request is a 404, by
+    design (FR-015). A malformed entity id is a 404.
+
+    Raises
+    ------
+    NotFoundError
+        If the entity id is malformed, or no manual assertion exists for (entity, channel).
+    """
+    try:
+        parsed_entity_id = uuid.UUID(entity_id)
+    except ValueError as exc:
+        raise NotFoundError(resource_type="Entity", identifier=entity_id) from exc
+    removed = await ChannelOwnershipAssertionRepository().delete(
+        session, parsed_entity_id, channel_id
+    )
+    if not removed:
+        raise NotFoundError(
+            resource_type="ChannelOwnershipAssertion",
+            identifier=f"{entity_id}/{channel_id}",
+        )
+    await session.commit()
+    return Response(status_code=204)
 
 
 # Provenance values the association filter accepts (FR-007) — the

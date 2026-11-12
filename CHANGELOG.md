@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **CI: the integration-test job now fails fast on a hung test instead of burning the whole job budget.**
+  Added `pytest-timeout` (dev dependency) and a per-test ceiling (`--timeout=120 --timeout-method=thread`)
+  to the integration run in CI and in `make pre-push`. A future stall under shared-Postgres lock
+  contention now fails within the timeout with a thread traceback naming the stuck test, rather than
+  hanging silently until the 20-minute job cancellation masks which test seized (and skips the downstream
+  Coverage Gate). The thread method is required because the suite is `asyncio-mode=auto`; the ceiling is
+  well above the slowest real integration test, so healthy runs are unaffected. Unit tests are not
+  touched — they run `-m "not db"` and cannot hit the contention.
+  ([#398](https://github.com/aucontraire/chronovista/issues/398))
+
 ## [0.120.2] - 2026-11-12
 
 ### Fixed

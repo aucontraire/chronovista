@@ -315,7 +315,7 @@ pre-push:
 	@NO_COLOR=1 $(POETRY_RUN) alembic -x database_url="postgresql://dev_user:dev_password@localhost:5434/chronovista_alembic_check" upgrade head >/dev/null
 	@NO_COLOR=1 $(POETRY_RUN) alembic -x database_url="postgresql://dev_user:dev_password@localhost:5434/chronovista_alembic_check" check
 	@docker exec chronovista-postgres-dev psql -U dev_user -d chronovista_dev -c "DROP DATABASE IF EXISTS chronovista_alembic_check;" >/dev/null 2>&1 || true
-	NO_COLOR=1 $(POETRY_RUN) pytest $(TEST_DIR)/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow and not auth and not db"
+	NO_COLOR=1 $(POETRY_RUN) pytest $(TEST_DIR)/integration/ -q -o "addopts=-v --strict-markers --strict-config --timeout=120 --timeout-method=thread" -m "not docker and not slow and not auth and not db"
 	@echo ""
 	@echo "✅ pre-push passed — all four CI jobs reproduced locally"
 

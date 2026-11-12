@@ -187,10 +187,15 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test
         run: NO_COLOR=1 poetry run alembic check
 
+      # --timeout converts a silent whole-job hang (shared-Postgres lock
+      # contention — issue #398) into a fast per-test failure that prints the
+      # stuck test's name and a thread traceback. 120s is well above the slowest
+      # real integration test; the thread method is required because the suite is
+      # asyncio-mode=auto and SIGALRM only fires on the main thread.
       - name: Run integration tests
         env:
           COVERAGE_FILE: .coverage.integration
-        run: NO_COLOR=1 poetry run pytest tests/integration/ -q -o "addopts=-v --strict-markers --strict-config" -m "not docker and not slow and not auth and not db" --cov=chronovista --cov-report=
+        run: NO_COLOR=1 poetry run pytest tests/integration/ -q -o "addopts=-v --strict-markers --strict-config --timeout=120 --timeout-method=thread" -m "not docker and not slow and not auth and not db" --cov=chronovista --cov-report=
 
       - name: Upload coverage data
         uses: actions/upload-artifact@v4

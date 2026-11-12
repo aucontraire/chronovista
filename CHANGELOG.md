@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.120.1] - 2026-11-11
+
+### Fixed
+
+- **Scoped entity-mention scans no longer shadow a longer name with a shorter one.** A scan scoped to
+  specific entities (`--entity-id`, `--new-entities-only`, or an entity-type filter) derived the set it
+  *wrote for* from the set it *matched with*, so a single-entity scan loaded only that entity's pattern
+  and cross-entity longest-match-wins had no competing span to arbitrate against — writing a mention for
+  a shorter name where a longer name on another entity should win. The match set is now widened to
+  shared-token neighbours when the scan is scoped (word-boundary-anchored patterns can overlap only when
+  their names share a whole token), so arbitration matches an unscoped scan, while the write set stays
+  scoped; out-of-scope neighbour matches are dropped after arbitration but before skip-counting,
+  deduplication and dry-run previews, so reported stats and previews stay accurate. Unscoped scans are
+  unchanged. ([#280](https://github.com/aucontraire/chronovista/issues/280))
+
 ## [0.120.0] - 2026-11-10
 
 ### Added

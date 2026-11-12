@@ -92,6 +92,9 @@ def _make_session_factory(
     The session.execute mock handles:
     - First call: entity query -> returns entities
     - Second call: alias query -> returns aliases
+    - Third call (scoped scans only): the shared-token neighbour-widening
+      entity query (NOTE 020 §2) -> returns no active rows, so no neighbours
+      are found, no alias query follows, and the match set is not widened
     - Subsequent calls: video batches + bulk insert results + counter updates
     """
     session = MagicMock()
@@ -112,6 +115,17 @@ def _make_session_factory(
     alias_result = MagicMock()
     alias_result.scalars.return_value.all.return_value = aliases
     call_results.append(alias_result)
+
+    # NOTE 020 §2: a SCOPED scan_metadata widens its MATCH set via
+    # _shared_token_neighbour_ids, which issues one extra query reading each
+    # active entity's name with ``.all()`` (not ``.scalars()``). Returning an
+    # empty row set means zero neighbours, so the alias sub-query is skipped and
+    # the match set stays narrow — behaviour identical to pre-widening for these
+    # single-entity fixtures. Unused by the unscoped / empty-entity cases, where
+    # the widening is never reached.
+    neighbour_result = MagicMock()
+    neighbour_result.all.return_value = []
+    call_results.append(neighbour_result)
 
     # Video batch results
     for batch in video_batches:

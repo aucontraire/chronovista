@@ -1073,13 +1073,38 @@ class EntityMentionScanService:
 
             scoped_entity_ids = [p.entity_id for p in patterns]
 
+            # NOTE 020 §2/§5: the same write-set=match-set collapse scan() had.
+            # The WRITE set stays scoped_entity_ids, but when the scan is scoped
+            # the MATCH set must be WIDER so cross-entity longest-match-wins can
+            # arbitrate. Patterns compile word-boundary-anchored, so two names
+            # can produce overlapping matches iff they share a whole name token
+            # (shared-token, NOT containment — see _shared_token_neighbour_ids).
+            # Load those neighbours too, match with the union, then discard
+            # survivors whose entity is not in the write scope (inside
+            # _match_text_for_video, after longest-match-wins + exclusion).
+            write_scope = set(scoped_entity_ids)
+            match_patterns = patterns
+            if entity_ids is not None or entity_type is not None or new_entities_only:
+                neighbour_ids = await self._shared_token_neighbour_ids(
+                    session, patterns
+                )
+                extra_ids = [nid for nid in neighbour_ids if nid not in write_scope]
+                if extra_ids:
+                    neighbour_patterns = await self._load_entity_patterns(
+                        session,
+                        entity_type=None,
+                        new_entities_only=False,
+                        entity_ids=extra_ids,
+                    )
+                    match_patterns = patterns + neighbour_patterns
+
             # 2. (#291) Under --full, the delete of existing metadata mentions is
             #    done PER BATCH (scoped to that batch's video ids) and committed
             #    together with the batch's re-inserts — see the loop below.
 
-            # 3. Pre-compile Python regexes
+            # 3. Pre-compile Python regexes (over the possibly-widened MATCH set)
             compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]] = []
-            for pattern in patterns:
+            for pattern in match_patterns:
                 try:
                     py_regex = _compile_entity_regex(pattern)
                     compiled_patterns.append((pattern, py_regex))
@@ -1091,8 +1116,14 @@ class EntityMentionScanService:
                     )
 
             pattern_by_entity: dict[uuid.UUID, _EntityPattern] = {
-                p.entity_id: p for p in patterns
+                p.entity_id: p for p in match_patterns
             }
+
+            # NOTE 020 §2: when the MATCH set was widened to shared-token
+            # neighbours, drop their matches after longest-match-wins arbitrates
+            # (inside _match_text_for_video) so counters, dedup, and the preview
+            # cap all see only the write scope. ``None`` for an unscoped scan.
+            batch_write_scope = write_scope if match_patterns is not patterns else None
 
             # 4. Process videos in batches
             result = ScanResult(dry_run=dry_run)
@@ -1149,6 +1180,7 @@ class EntityMentionScanService:
                         pattern_by_entity=pattern_by_entity,
                         sources=sources,
                         dry_run=dry_run,
+                        write_scope=batch_write_scope,
                     )
                 except Exception:
                     logger.warning(
@@ -1340,6 +1372,7 @@ class EntityMentionScanService:
         pattern_by_entity: dict[uuid.UUID, _EntityPattern],
         sources: list[str],
         dry_run: bool,
+        write_scope: set[uuid.UUID] | None = None,
     ) -> tuple[list[EntityMentionCreate], list[dict[str, Any]]]:
         """Scan a batch of video rows against entity patterns for title/description.
 
@@ -1355,6 +1388,12 @@ class EntityMentionScanService:
             Which metadata fields to scan (``"title"``, ``"description"``).
         dry_run : bool
             Whether this is a dry-run.
+        write_scope : set[uuid.UUID] | None
+            NOTE 020 §2. When the caller widened ``compiled_patterns`` to
+            shared-token neighbours so cross-entity longest-match-wins could
+            arbitrate, this is the set of entity ids the scan actually WRITES
+            for; neighbour matches are dropped after arbitration/exclusion.
+            ``None`` (an unscoped scan) matches and writes every pattern.
 
         Returns
         -------
@@ -1373,6 +1412,7 @@ class EntityMentionScanService:
                     compiled_patterns=compiled_patterns,
                     pattern_by_entity=pattern_by_entity,
                     dry_run=dry_run,
+                    write_scope=write_scope,
                 )
                 new_mentions.extend(title_mentions)
                 preview_data.extend(title_previews)
@@ -1385,6 +1425,7 @@ class EntityMentionScanService:
                     compiled_patterns=compiled_patterns,
                     pattern_by_entity=pattern_by_entity,
                     dry_run=dry_run,
+                    write_scope=write_scope,
                 )
                 new_mentions.extend(desc_mentions)
                 preview_data.extend(desc_previews)
@@ -1399,6 +1440,7 @@ class EntityMentionScanService:
         compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]],
         pattern_by_entity: dict[uuid.UUID, _EntityPattern],
         dry_run: bool,
+        write_scope: set[uuid.UUID] | None = None,
     ) -> tuple[list[EntityMentionCreate], list[dict[str, Any]]]:
         """Match entity patterns against a text field for a single video.
 
@@ -1420,6 +1462,13 @@ class EntityMentionScanService:
             Lookup from entity_id to pattern (for exclusion patterns).
         dry_run : bool
             Whether this is a dry-run.
+        write_scope : set[uuid.UUID] | None
+            NOTE 020 §2. When ``compiled_patterns`` was widened to shared-token
+            neighbours purely so longest-match-wins could arbitrate, this is
+            the set of entity ids the scan actually WRITES for. Neighbour
+            matches are dropped AFTER arbitration/exclusion but BEFORE dedup,
+            mention building, and the preview — so they neither reach a mention
+            row nor consume a dry-run preview slot. ``None`` writes every match.
 
         Returns
         -------
@@ -1465,6 +1514,15 @@ class EntityMentionScanService:
         final_matches, _ = self._apply_exclusion_patterns(
             surviving_matches, text, pattern_by_entity, _row, dry_run
         )
+
+        # NOTE 020 §2: the MATCH set may include shared-token neighbours loaded
+        # only so longest-match-wins could arbitrate against them. Their matches
+        # survived arbitration above but are OUT of the write scope — drop them
+        # here, before dedup/mention/preview build, so they never reach a row or
+        # consume the dry-run preview cap. A neighbour that WON arbitration
+        # simply produces no row for this (scoped) scan, the correct outcome.
+        if write_scope is not None:
+            final_matches = [m for m in final_matches if m[0] in write_scope]
 
         if not final_matches:
             return mentions, previews

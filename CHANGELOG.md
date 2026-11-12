@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.120.2] - 2026-11-12
+
+### Fixed
+
+- **Scoped title/description scans no longer shadow either** — completing the fix for the originally
+  reported case, which was a *description* mention. v0.120.1 fixed scoped *transcript* scans (`scan`);
+  the title/description entry point (`scan_metadata`) had the identical write-set-from-match-set collapse
+  and is fixed the same way: when a scan is scoped, the match set widens to shared-token neighbours so
+  cross-entity longest-match-wins arbitrates exactly as an unscoped scan would, while the write set stays
+  scoped — out-of-scope neighbour matches are dropped after arbitration but before deduplication,
+  skip-counting and dry-run previews, so rows, stats and previews all stay correct. Unscoped scans are
+  unchanged. ([#280](https://github.com/aucontraire/chronovista/issues/280))
+
 ## [0.120.1] - 2026-11-11
 
 ### Fixed

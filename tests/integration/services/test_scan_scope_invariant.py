@@ -15,9 +15,8 @@ entity's pattern, and cross-entity longest-match-wins has no competing span to
 arbitrate against, so it writes a "shadow" mention that an unscoped scan
 would have suppressed.
 
-These tests are written first and deliberately fail; ``xfail(strict=True)``
-keeps CI green now and turns the suite red (XPASS) the moment the bug is
-fixed, forcing removal of the marker.
+The shared-token match/write-set split (NOTE 020 §2/§5) makes these pass; the
+guard stays to keep the invariant from regressing.
 
 Each test seeds its entities and one segment, runs the unscoped scan to
 capture ground truth, clears the mention rows, then runs
@@ -50,11 +49,6 @@ from tests.integration.services.test_entity_mention_scan_integration import (
 
 # CRITICAL: ensures async tests are not silently skipped under coverage.
 pytestmark = pytest.mark.asyncio
-
-XFAIL_REASON = (
-    "scoped-scan shadowing bug, entity_mention_scan_service.py:370 — NOTE 020 "
-    "§3; remove marker when shared-token widening lands"
-)
 
 SpanKey = tuple[uuid.UUID, int, int, int]
 
@@ -107,7 +101,6 @@ async def _assert_scoped_equals_unscoped(
 class TestScopedScanInvariant:
     """NOTE 020 section 3: scoped scan == unscoped scan, per scoped entity."""
 
-    @pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
     async def test_scoped_scan_matches_unscoped__containment(
         self, db_session: AsyncSession
     ) -> None:
@@ -131,7 +124,6 @@ class TestScopedScanInvariant:
 
         await _assert_scoped_equals_unscoped(db_session, [short, long_])
 
-    @pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
     async def test_scoped_scan_matches_unscoped__partial_overlap(
         self, db_session: AsyncSession
     ) -> None:

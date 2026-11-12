@@ -369,6 +369,31 @@ class EntityMentionScanService:
 
             scoped_entity_ids = [p.entity_id for p in patterns]
 
+            # NOTE 020 §2/§5: the WRITE set is scoped_entity_ids, but when the
+            # scan is scoped the MATCH set must be WIDER so cross-entity
+            # longest-match-wins can arbitrate. Patterns compile
+            # word-boundary-anchored, so two names can produce overlapping
+            # matches iff they share a whole name token (shared-token, NOT
+            # containment — see _shared_token_neighbour_ids). Load those
+            # neighbours too, match with the union, then discard survivors
+            # whose entity is not in the write scope (per-segment batch path
+            # only; _scan_cross_segment keeps the narrow patterns — #279).
+            write_scope = set(scoped_entity_ids)
+            match_patterns = patterns
+            if entity_ids is not None or entity_type is not None or new_entities_only:
+                neighbour_ids = await self._shared_token_neighbour_ids(
+                    session, patterns
+                )
+                extra_ids = [nid for nid in neighbour_ids if nid not in write_scope]
+                if extra_ids:
+                    neighbour_patterns = await self._load_entity_patterns(
+                        session,
+                        entity_type=None,
+                        new_entities_only=False,
+                        entity_ids=extra_ids,
+                    )
+                    match_patterns = patterns + neighbour_patterns
+
             # 2. (#291) Under --full, the delete of existing transcript mentions
             #    is done PER BATCH (scoped to that batch's segment ids) and
             #    committed together with the batch's re-inserts — see the loop
@@ -439,7 +464,7 @@ class EntityMentionScanService:
                     ) = await self._scan_batch(
                         session,
                         batch_rows=batch_rows,
-                        patterns=patterns,
+                        patterns=match_patterns,
                         full_rescan=full_rescan,
                         dry_run=dry_run,
                         limit=limit,
@@ -447,6 +472,13 @@ class EntityMentionScanService:
                             len(result.dry_run_matches)
                             if result.dry_run_matches is not None
                             else 0
+                        ),
+                        # NOTE 020 §2: when the MATCH set was widened to
+                        # shared-token neighbours, drop their matches inside the
+                        # batch (after longest-match-wins arbitrates) so counters,
+                        # dedup, and the preview cap all see only the write scope.
+                        write_scope=(
+                            write_scope if match_patterns is not patterns else None
                         ),
                     )
                 except Exception:
@@ -1527,6 +1559,93 @@ class EntityMentionScanService:
 
         return snippet
 
+    async def _shared_token_neighbour_ids(
+        self,
+        session: AsyncSession,
+        scope_patterns: list[_EntityPattern],
+    ) -> set[uuid.UUID]:
+        """Active entities sharing a whole name-token with the scoped entities.
+
+        NOTE 020 §5. Entity patterns compile word-boundary-anchored on both ends
+        (``re.compile(r"\\b(" + pattern + r")\\b")``), so the overlap region of
+        any two matches is one or more WHOLE tokens; two entities can therefore
+        produce overlapping matches **iff their names share at least one token**.
+        That makes shared-token — not containment — the exact relation the scoped
+        MATCH set must be widened by so cross-entity longest-match-wins can
+        arbitrate (§2). Containment is a strict special case: a containment-only
+        widening would structurally miss the partial-overlap class (two names
+        sharing only a middle token, neither containing the other).
+
+        Tokens are computed with the SAME fold the matcher uses
+        (``_TOKEN_RE.findall(_fold_diacritics(form)[0].casefold())``) over each
+        entity's canonical name and its non-``asr_error`` aliases. Returns the ids
+        of active entities OUTSIDE the scope whose tokens intersect the scope's
+        tokens; the scope entities themselves are excluded.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        scope_patterns : list[_EntityPattern]
+            The patterns for the write-scoped entities.
+
+        Returns
+        -------
+        set[uuid.UUID]
+            Ids of shared-token neighbour entities (excluding the scope).
+        """
+        scope_ids = {p.entity_id for p in scope_patterns}
+
+        scope_tokens: set[str] = set()
+        for pattern in scope_patterns:
+            for form in (pattern.canonical_name, *pattern.alias_names):
+                scope_tokens.update(
+                    _TOKEN_RE.findall(_fold_diacritics(form)[0].casefold())
+                )
+        if not scope_tokens:
+            return set()
+
+        # Load every active entity's canonical name, then its non-asr aliases —
+        # the same two-query shape as _load_entity_patterns.
+        entity_rows = (
+            await session.execute(
+                select(NamedEntityDB.id, NamedEntityDB.canonical_name).where(
+                    NamedEntityDB.status == "active"
+                )
+            )
+        ).all()
+        forms_by_entity: dict[uuid.UUID, list[str]] = {}
+        for entity_row in entity_rows:
+            forms_by_entity.setdefault(entity_row.id, []).append(
+                entity_row.canonical_name
+            )
+
+        active_ids = list(forms_by_entity.keys())
+        if active_ids:
+            alias_rows = (
+                await session.execute(
+                    select(EntityAliasDB.entity_id, EntityAliasDB.alias_name).where(
+                        EntityAliasDB.entity_id.in_(active_ids),
+                        EntityAliasDB.alias_type != "asr_error",
+                    )
+                )
+            ).all()
+            for alias_row in alias_rows:
+                forms_by_entity.setdefault(alias_row.entity_id, []).append(
+                    alias_row.alias_name
+                )
+
+        neighbours: set[uuid.UUID] = set()
+        for entity_id, forms in forms_by_entity.items():
+            if entity_id in scope_ids:
+                continue
+            tokens: set[str] = set()
+            for form in forms:
+                tokens.update(_TOKEN_RE.findall(_fold_diacritics(form)[0].casefold()))
+            if tokens & scope_tokens:
+                neighbours.add(entity_id)
+        return neighbours
+
     async def _load_entity_patterns(
         self,
         session: AsyncSession,
@@ -1746,6 +1865,7 @@ class EntityMentionScanService:
         dry_run: bool,
         limit: int | None,
         current_preview_count: int,
+        write_scope: set[uuid.UUID] | None = None,
     ) -> tuple[list[EntityMentionCreate], int, list[dict[str, Any]], int, int]:
         """Scan a batch of segments against all entity patterns.
 
@@ -1770,6 +1890,14 @@ class EntityMentionScanService:
             Dry-run preview limit.
         current_preview_count : int
             Number of preview rows already collected.
+        write_scope : set[uuid.UUID] | None
+            NOTE 020 §2. When the caller widened ``patterns`` to shared-token
+            neighbours so cross-entity longest-match-wins could arbitrate, this
+            is the set of entity ids the scan actually WRITES for. Neighbour
+            matches are dropped AFTER arbitration/exclusion but BEFORE dedup,
+            counter accounting, and mention/preview building — so they never
+            inflate ``*_skips``, trigger a dedup query, or consume the preview
+            cap. ``None`` (an unscoped scan) matches and writes every pattern.
 
         Returns
         -------
@@ -1850,6 +1978,15 @@ class EntityMentionScanService:
                 surviving_matches, effective_text, pattern_by_entity, row, dry_run
             )
             exclusion_pattern_skips += ep_skips
+
+            # NOTE 020 §2: the MATCH set may include shared-token neighbours loaded
+            # only so longest-match-wins could arbitrate against them. Their matches
+            # survived arbitration above but are OUT of the write scope — drop them
+            # here, before dedup/counters/previews, so they neither count as skips
+            # nor consume the preview cap. A neighbour that WON arbitration simply
+            # produces no row for this (scoped) scan, which is the correct outcome.
+            if write_scope is not None:
+                final_matches = [m for m in final_matches if m[0] in write_scope]
 
             if not final_matches:
                 continue

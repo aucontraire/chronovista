@@ -380,7 +380,9 @@ async def list_entities(
         default=None,
         description=(
             "Comma-separated alias types to exclude from alias search when "
-            "search_aliases=true. E.g. 'asr_error' excludes ASR-error aliases."
+            "search_aliases=true. The legacy 'asr_error' value is accepted for "
+            "backward compatibility but matches nothing (ASR-error strings are no "
+            "longer stored as aliases)."
         ),
     ),
     session: AsyncSession = Depends(get_db),
@@ -417,8 +419,9 @@ async def list_entities(
         surfaced through the alias path.
     exclude_alias_types : str | None
         Comma-separated list of alias_type values to exclude when
-        search_aliases=True. For example, ``asr_error`` prevents ASR-error
-        aliases from matching even if their text happens to match the query.
+        search_aliases=True. The legacy ``asr_error`` value is still accepted but is
+        now a no-op (ASR-error strings are no longer stored as aliases), so saved
+        URLs and existing callers that pass it keep working unchanged.
     session : AsyncSession
         Database session (injected).
 
@@ -949,9 +952,9 @@ async def get_entity_detail(
     if entity is None:
         raise NotFoundError(resource_type="Entity", identifier=entity_id)
 
-    # Filter out asr_error aliases — those are internal detection noise and
-    # are not useful to display to users. Genuine alias types are:
-    # name_variant, abbreviation, nickname, translated_name, former_name.
+    # entity.aliases holds only genuine names now — ASR-error strings live in the
+    # dedicated entity_asr_errors store (Feature 110), never in entity_aliases — so
+    # no display-time exclusion is needed.
     genuine_aliases = [
         EntityAliasSummary(
             id=a.id,
@@ -961,7 +964,6 @@ async def get_entity_detail(
             case_sensitive=a.case_sensitive,
         )
         for a in entity.aliases
-        if a.alias_type != "asr_error"
     ]
     # Sort by occurrence count descending, then alphabetically for stability
     genuine_aliases.sort(key=lambda a: (-a.occurrence_count, a.alias_name))

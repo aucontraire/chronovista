@@ -7,8 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.121.0] - 2026-11-12
+
+### Added
+
+- **ASR-error strings now live in their own table (`entity_asr_errors`), out of `entity_aliases`.**
+  The confirmed ASR mis-transcriptions that feed the transcript-corrections discovery flow were mixed
+  among genuine names in `entity_aliases`, where roughly half of every name-loading read had to
+  re-assert "…and not the `asr_error` ones" to avoid matching a garble as a name. They now live in a
+  dedicated store that **structurally cannot be used as a name-match pattern** — `'asr_error'` is
+  dropped from the `entity_aliases` type CHECK, so the two roles are un-mixable. A reversible Alembic
+  migration copies every row faithfully (id-preserving, no re-derivation) and includes a pre-DELETE
+  guard that aborts rather than orphan any mention→alias link (`ON DELETE SET NULL`). The
+  corrections-discovery reader and the registration hook are repointed to the new store.
+  (Name-matching refactor spike, Deliverable A.)
+
 ### Changed
 
+- **Removed ten now-redundant `asr_error` read-exclusions** across the entity-mention repository, the
+  scan service, and the entity API — the name store can no longer contain the type, so the guard is
+  enforced by the schema instead of being re-asserted by every reader. Name-matching behavior is
+  unchanged. The entity search's `exclude_alias_types` parameter stays accepted as a
+  backward-compatible no-op, so saved URLs and existing callers keep working.
 - **CI: the integration-test job now fails fast on a hung test instead of burning the whole job budget.**
   Added `pytest-timeout` (dev dependency) and a per-test ceiling (`--timeout=120 --timeout-method=thread`)
   to the integration run in CI and in `make pre-push`. A future stall under shared-Postgres lock

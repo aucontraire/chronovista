@@ -2,6 +2,9 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: chronovista-postgres
+    # Default Docker /dev/shm is 64MB; parallel queries overflow it and fail with
+    # "could not resize shared memory segment ... No space left on device". Raise it.
+    shm_size: "1gb"
     environment:
       POSTGRES_DB: chronovista
       POSTGRES_USER: ${DB_USER:-chronovista}

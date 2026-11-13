@@ -558,11 +558,8 @@ class TestGetAliasMatchedTagVideoIds:
             first_stmt.compile(compile_kwargs={"literal_binds": True})
         ).lower()
         assert (
-            "alias_type" in sql_str
-        ), "Query must filter by alias_type to exclude asr_error aliases"
-        assert (
-            "asr_error" in sql_str
-        ), "Query must explicitly reference 'asr_error' in the WHERE clause"
+            "asr_error" not in sql_str
+        ), "Query must no longer reference 'asr_error' (Feature 110 moved those forms out of the name store)"
 
     async def test_asr_error_alias_with_valid_normalized_form_still_excluded(
         self,

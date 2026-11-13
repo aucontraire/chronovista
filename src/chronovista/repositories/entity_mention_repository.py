@@ -82,7 +82,6 @@ from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.entity_operation_log import MentionSnapshot
 from chronovista.models.enums import (
     AvailabilityStatus,
-    EntityAliasType,
     EvidenceScope,
     MentionSource,
 )
@@ -143,7 +142,7 @@ def _visible_names_subquery(entity_ids: list[uuid.UUID] | None) -> Subquery:
     alias = select(
         EntityAliasDB.entity_id.label("entity_id"),
         _folded(EntityAliasDB.alias_name).label("name_lower"),
-    ).where(EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR)
+    )
     if entity_ids is not None:
         canonical = canonical.where(NamedEntityDB.id.in_(entity_ids))
         alias = alias.where(EntityAliasDB.entity_id.in_(entity_ids))
@@ -637,7 +636,7 @@ class EntityMentionRepository(
     ) -> tuple[int, int]:
         """Populate ``alias_id`` on historical auto-detected mentions (#298, T018).
 
-        For every entity, groups its non-asr_error aliases by folded name and
+        For every entity, groups its aliases by folded name and
         keeps only the folds that map to exactly ONE alias (ambiguous folds like
         ``pena``/``peña`` are skipped — the matcher couldn't tell them apart, so
         neither can a backfill). A ``rule_match`` mention with ``alias_id IS
@@ -658,7 +657,6 @@ class EntityMentionRepository(
                 # single alias per fold, so aggregate on the text form.
                 func.min(cast(EntityAliasDB.id, String)).label("alias_id"),
             )
-            .where(EntityAliasDB.alias_type != "asr_error")
             .group_by(EntityAliasDB.entity_id, _folded(EntityAliasDB.alias_name))
             .having(func.count() == 1)
             .cte("unambiguous_folds")
@@ -2308,7 +2306,6 @@ class EntityMentionRepository(
             await session.execute(
                 select(EntityAliasDB.entity_id, EntityAliasDB.alias_name).where(
                     EntityAliasDB.entity_id.in_(ids),
-                    EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
                 )
             )
         ).all()
@@ -2393,13 +2390,11 @@ class EntityMentionRepository(
         if not tag_rows:
             return []
         present_forms = {norm for norm, _ in tag_rows if norm is not None}
-        # Normalise ALL non-ASR entity aliases in Python (TagNormalizationService,
+        # Normalise ALL entity aliases in Python (TagNormalizationService,
         # the #207 single-normaliser rule) and keep those whose form is present.
         alias_rows = (
             await session.execute(
-                select(EntityAliasDB.entity_id, EntityAliasDB.alias_name).where(
-                    EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR
-                )
+                select(EntityAliasDB.entity_id, EntityAliasDB.alias_name)
             )
         ).all()
         normalizer = TagNormalizationService()
@@ -2839,9 +2834,7 @@ class EntityMentionRepository(
             normalizer = TagNormalizationService()
             alias_rows = (
                 await session.execute(
-                    select(EntityAliasDB.entity_id, EntityAliasDB.alias_name).where(
-                        EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR
-                    )
+                    select(EntityAliasDB.entity_id, EntityAliasDB.alias_name)
                 )
             ).all()
             for entity_id, alias_name in alias_rows:
@@ -3027,9 +3020,7 @@ class EntityMentionRepository(
         if video_forms:
             alias_rows = (
                 await session.execute(
-                    select(EntityAliasDB.entity_id, EntityAliasDB.alias_name).where(
-                        EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR
-                    )
+                    select(EntityAliasDB.entity_id, EntityAliasDB.alias_name)
                 )
             ).all()
             normalizer = TagNormalizationService()
@@ -3748,9 +3739,9 @@ class EntityMentionRepository(
         TagNormalizationService, then matches against tag_aliases.normalized_form
         to find associated videos via video_tags.
 
-        ASR error aliases (alias_type='asr_error') are excluded because they are
-        transcript-specific patterns (e.g., "Emile", "edsger") that produce false
-        positives when matched against YouTube tags.
+        ASR-error strings are no longer present in ``entity_aliases`` (Feature 110
+        relocated them to the dedicated ``entity_asr_errors`` store), so this path
+        matches only genuine names against tags and needs no per-reader exclusion.
 
         Aliases whose normalized form is None are silently skipped (Decision 7).
         Uses exact equality matching, not ILIKE (Decision 10).
@@ -3768,11 +3759,11 @@ class EntityMentionRepository(
             Set of video_id strings from the alias-matched tag path.
             Empty set if the entity has no aliases or no aliases match tags.
         """
-        # Fetch non-ASR aliases for this entity (ASR error aliases are
-        # transcript-specific patterns that produce false positives against tags)
+        # Fetch this entity's aliases. ASR-error forms no longer live in
+        # entity_aliases (Feature 110 relocated them to entity_asr_errors), so the
+        # name store holds only names and no per-reader exclusion is needed here.
         alias_stmt = select(EntityAliasDB.alias_name).where(
             EntityAliasDB.entity_id == entity_id,
-            EntityAliasDB.alias_type != EntityAliasType.ASR_ERROR,
         )
         alias_result = await session.execute(alias_stmt)
         alias_names: list[str] = list(alias_result.scalars().all())

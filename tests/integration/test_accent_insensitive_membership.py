@@ -237,34 +237,6 @@ class TestAccentedMembershipSurfaces:
 
         assert str(eid) not in await _panel_entity_ids(db_session, vid)
 
-    async def test_asr_error_alias_stays_excluded(
-        self, db_session: AsyncSession
-    ) -> None:
-        # The bare common word is catalogued as an asr_error alias → excluded from visible names,
-        # even under folding. The full-name accent variant still surfaces.
-        vid = "vidAcme0001"
-        await _seed_video(db_session, vid)
-        eid = await _seed_entity(db_session, "Aria Acme")  # full name (person)
-        await _seed_alias(
-            db_session, eid, "acme", alias_type="asr_error"
-        )  # bare common word
-        # A bare-word mention (would be a false positive) and a real full-name accented mention.
-        await _seed_mention(db_session, eid, vid, "acme", mention_source="description")
-        await _seed_mention(
-            db_session, eid, vid, "Aria Acmé", mention_source="description"
-        )
-        await db_session.flush()
-
-        panel = await _panel_row(db_session, vid, eid)
-        assert panel is not None  # surfaces via the full-name accent variant
-        # It must NOT surface via the bare asr_error word alone: prove by removing the full-name
-        # mention in a sibling video.
-        vid2 = "vidAcme0002"
-        await _seed_video(db_session, vid2)
-        await _seed_mention(db_session, eid, vid2, "acme", mention_source="description")
-        await db_session.flush()
-        assert str(eid) not in await _panel_entity_ids(db_session, vid2)
-
     async def test_description_only_per_aggregate_counts(
         self, db_session: AsyncSession
     ) -> None:
@@ -355,26 +327,6 @@ class TestFoldedRecount:
         await db_session.flush()
         second = await _entity_counts(db_session, eid)
         assert second == first  # second run is a no-op
-
-    async def test_recount_common_word_not_inflated(
-        self, db_session: AsyncSession
-    ) -> None:
-        vid = "vidRcnt0003"
-        await _seed_video(db_session, vid)
-        eid = await _seed_entity(db_session, "Aria Acme")
-        await _seed_alias(db_session, eid, "acme", alias_type="asr_error")
-        # A bare common-word mention that must NOT count, plus one real full-name mention.
-        await _seed_mention(db_session, eid, vid, "acme", mention_source="description")
-        await _seed_mention(
-            db_session, eid, vid, "Aria Acmé", mention_source="description"
-        )
-        await db_session.flush()
-
-        await _repo.update_entity_counters(db_session, [eid])
-        await db_session.flush()
-        mc, _ = await _entity_counts(db_session, eid)
-        # Only the full-name mention counts; the bare asr_error word is excluded (not inflated).
-        assert mc == 1
 
     async def test_list_filter_sort_reflect_recount(
         self, db_session: AsyncSession

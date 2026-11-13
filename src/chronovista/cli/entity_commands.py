@@ -710,6 +710,9 @@ def edit_alias(
                 found.alias_name = new_name
                 found.alias_name_normalized = normalized
             if new_type is not None:
+                # 'asr_error' is already rejected upstream by `allowed_types`
+                # (it lists only the five name types), so the free-form type
+                # change cannot file a known-error string among names (FR-007a).
                 changes.append(f"type → {new_type}")
                 found.alias_type = EntityAliasType(new_type)
             if case_sensitive is not None:

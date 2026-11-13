@@ -1098,9 +1098,11 @@ class TestUpdateEntityCounters:
             "Expected entity_aliases to appear in the counter SQL; "
             f"got: {sql_str[:500]}"
         )
-        # The asr_error value must appear as a literal exclusion filter
-        assert "asr_error" in sql_str, (
-            "Expected 'asr_error' exclusion in counter SQL; " f"got: {sql_str[:500]}"
+        # The asr_error value must NOT appear — the guard moved into the schema
+        # (Feature 110: the name store can no longer hold an asr_error row).
+        assert "asr_error" not in sql_str, (
+            "Counter SQL must no longer carry an 'asr_error' exclusion (Feature 110); "
+            f"got: {sql_str[:500]}"
         )
 
     async def test_sql_references_named_entities_canonical_name(
@@ -2106,8 +2108,8 @@ class TestGetEntityVideoList:
         count_stmt = mock_session.execute.call_args_list[0].args[0]
         sql_str = self._compile_pg_sql(count_stmt)
 
-        assert "asr_error" in sql_str, (
-            "Expected 'asr_error' exclusion in the count query SQL; "
+        assert "asr_error" not in sql_str, (
+            "Count query SQL must no longer carry an 'asr_error' exclusion (Feature 110); "
             f"got: {sql_str[:700]}"
         )
 
@@ -2196,9 +2198,9 @@ class TestGetEntityVideoList:
         main_stmt = mock_session.execute.call_args_list[1].args[0]
         sql_str = self._compile_pg_sql(main_stmt)
 
-        assert "asr_error" in sql_str, (
-            "Expected 'asr_error' exclusion in the main group-by query SQL; "
-            f"got: {sql_str[:700]}"
+        assert "asr_error" not in sql_str, (
+            "Main group-by query SQL must no longer carry an 'asr_error' exclusion "
+            f"(Feature 110); got: {sql_str[:700]}"
         )
 
     async def test_preview_query_visible_names_excludes_asr_error_aliases(
@@ -2252,9 +2254,9 @@ class TestGetEntityVideoList:
         preview_stmt = mock_session.execute.call_args_list[2].args[0]
         sql_str = self._compile_pg_sql(preview_stmt)
 
-        assert "asr_error" in sql_str, (
-            "Expected 'asr_error' exclusion in the preview query SQL; "
-            f"got: {sql_str[:700]}"
+        assert "asr_error" not in sql_str, (
+            "Preview query SQL must no longer carry an 'asr_error' exclusion "
+            f"(Feature 110); got: {sql_str[:700]}"
         )
 
     async def test_count_returns_zero_when_only_asr_alias_mentions_exist(

@@ -1684,7 +1684,6 @@ class EntityMentionScanService:
                 await session.execute(
                     select(EntityAliasDB.entity_id, EntityAliasDB.alias_name).where(
                         EntityAliasDB.entity_id.in_(active_ids),
-                        EntityAliasDB.alias_type != "asr_error",
                     )
                 )
             ).all()
@@ -1757,13 +1756,12 @@ class EntityMentionScanService:
         if not entities:
             return []
 
-        # Load all aliases for these entities in a single query.
-        # Exclude asr_error aliases — those track what the ASR got wrong
-        # and must NOT be used as scan patterns (they produce false mentions).
+        # Load all aliases for these entities in a single query. ASR-error strings
+        # are no longer in entity_aliases (Feature 110 relocated them to their own
+        # store), so the name store holds only names and needs no per-reader filter.
         entity_id_list = [e.id for e in entities]
         alias_stmt = select(EntityAliasDB).where(
             EntityAliasDB.entity_id.in_(entity_id_list),
-            EntityAliasDB.alias_type != "asr_error",
         )
         alias_result = await session.execute(alias_stmt)
         all_aliases = list(alias_result.scalars().all())

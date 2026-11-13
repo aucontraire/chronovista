@@ -113,11 +113,8 @@ class TestAccentInsensitiveNameSearch:
 # the F072 tag + a unique q-suffix so each search matches only its intended rows.
 _SEED: list[tuple[str, str, list[tuple[str, str]], str]] = [
     ("alias", "Owner F072q40", [("Wibble F072q40", "nickname")], "active"),
-    ("asr", "Plain F072q41", [("Garble F072q41", "asr_error")], "active"),
     ("dup", "Dup F072q42", [("Dup F072q42", "nickname")], "active"),
     ("merged", "Gone F072q43", [("Goalias F072q43", "nickname")], "merged"),
-    ("x", "Xowner F072q44", [("Shared F072q44", "asr_error")], "active"),
-    ("y", "Shared F072q44", [], "active"),
     ("acc", "Base F072q45", [("Rénée F072q45", "nickname")], "active"),
     # FR-006 reverse: alias stored PLAIN, queried ACCENTED.
     ("accrev", "Basex F072q46", [("Zoe F072q46", "nickname")], "active"),
@@ -140,7 +137,10 @@ _SEED: list[tuple[str, str, list[tuple[str, str]], str]] = [
 
 
 async def _search_entities(client: AsyncClient, term: str) -> dict[str, Any]:
-    """Search with the /entities-page defaults: aliases on, asr_error excluded."""
+    """Search with the /entities-page defaults: aliases on, and still sending the
+    legacy ``exclude_alias_types=asr_error`` param — now a backward-compatible no-op
+    (Feature 110 moved asr_error out of entity_aliases), which these searches exercise
+    by continuing to find genuine aliases (FR-010a / SC-009)."""
     resp = await client.get(
         "/api/v1/entities",
         params={
@@ -246,18 +246,6 @@ class TestAliasInclusiveSearch:
         body = await _search_entities(async_client, term)
         assert seeded_alias_entities[key] in [r["entity_id"] for r in body["data"]]
 
-    async def test_asr_error_alias_excluded(
-        self, async_client: AsyncClient, seeded_alias_entities: dict[str, str]
-    ) -> None:
-        # FR-005: the asr_error alias text must not surface the entity...
-        body = await _search_entities(async_client, "Garble F072q41")
-        assert seeded_alias_entities["asr"] not in [
-            r["entity_id"] for r in body["data"]
-        ]
-        # ...but its canonical name still matches (control).
-        body2 = await _search_entities(async_client, "Plain F072q41")
-        assert seeded_alias_entities["asr"] in [r["entity_id"] for r in body2["data"]]
-
     async def test_name_and_alias_dedup_single_row(
         self, async_client: AsyncClient, seeded_alias_entities: dict[str, str]
     ) -> None:
@@ -283,15 +271,6 @@ class TestAliasInclusiveSearch:
             r["entity_id"] for r in body["data"]
         ]
 
-    async def test_excluded_alias_does_not_suppress_legit_entity(
-        self, async_client: AsyncClient, seeded_alias_entities: dict[str, str]
-    ) -> None:
-        # Collision: "Shared F072q44" is X's asr_error alias AND Y's canonical name.
-        body = await _search_entities(async_client, "Shared F072q44")
-        ids = [r["entity_id"] for r in body["data"]]
-        assert seeded_alias_entities["y"] in ids  # Y via canonical
-        assert seeded_alias_entities["x"] not in ids  # X only via excluded alias
-
     async def test_no_match_returns_empty_total_zero(
         self, async_client: AsyncClient, seeded_alias_entities: dict[str, str]
     ) -> None:
@@ -310,3 +289,22 @@ class TestAliasInclusiveSearch:
         expected = {seeded_alias_entities["cnt1"], seeded_alias_entities["cnt2"]}
         assert set(ids) == expected
         assert body["pagination"]["total"] == len(ids) == len(set(ids)) == 2
+
+    async def test_exclude_asr_error_param_is_a_noop(
+        self, async_client: AsyncClient, seeded_alias_entities: dict[str, str]
+    ) -> None:
+        # SC-009 / FR-010a: sending the legacy exclude_alias_types=asr_error returns
+        # exactly the same entities as omitting it (asr_error can no longer be present
+        # among names), so saved URLs and existing callers keep working unchanged.
+        term = "F072q60"
+        with_param = await _search_entities(async_client, term)
+        resp = await async_client.get(
+            "/api/v1/entities",
+            params={"search": term, "limit": 200, "search_aliases": "true"},
+        )
+        assert resp.status_code == 200, resp.text
+        without_param = resp.json()
+        assert {r["entity_id"] for r in with_param["data"]} == {
+            r["entity_id"] for r in without_param["data"]
+        }
+        assert with_param["pagination"]["total"] == without_param["pagination"]["total"]

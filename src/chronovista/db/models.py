@@ -1128,7 +1128,7 @@ class EntityAlias(Base):
             "alias_name_normalized", "entity_id", name="uq_entity_alias_name"
         ),
         CheckConstraint(
-            "alias_type IN ('name_variant', 'abbreviation', 'nickname', 'asr_error', 'translated_name', 'former_name')",
+            "alias_type IN ('name_variant', 'abbreviation', 'nickname', 'translated_name', 'former_name')",
             name="chk_alias_type_valid",
         ),
         Index("idx_entity_aliases_entity_id", "entity_id"),
@@ -1138,6 +1138,65 @@ class EntityAlias(Base):
 
     # Relationships
     entity: Mapped[NamedEntity] = relationship("NamedEntity", back_populates="aliases")
+
+
+class EntityAsrError(Base):
+    """A confirmed ASR mis-transcription of an entity's name (Feature 110).
+
+    The dedicated store for ``asr_error`` strings lifted out of ``entity_aliases``.
+    The table *is* the type — there is no ``alias_type`` column — so a known-error
+    string is structurally incapable of being filed among names or used as a
+    name-match pattern. Read only by the corrections-discovery flow; never by a
+    name matcher.
+
+    Deliberately carries no ``occurrence_count``: on ``entity_aliases`` that column
+    was a derived counter recomputed to zero for these (scan-excluded) rows, with
+    no reader — so it is dropped rather than copied (Feature 110 decision). The
+    preserved columns mirror the name store's so the relocation is a faithful,
+    id-preserving copy.
+    """
+
+    __tablename__ = "entity_asr_errors"
+
+    # Primary key (preserved from the source row on relocation)
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+
+    # Foreign key to parent entity
+    entity_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # The garbled string and its normalized form
+    alias_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    alias_name_normalized: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # Matching behaviour (mirrors entity_aliases; false = case-insensitive)
+    case_sensitive: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+
+    # Timestamps (recorded — copied verbatim on relocation)
+    first_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "alias_name_normalized", "entity_id", name="uq_entity_asr_error_name"
+        ),
+        Index("idx_entity_asr_errors_entity_id", "entity_id"),
+        Index("idx_entity_asr_errors_normalized", "alias_name_normalized"),
+    )
 
 
 class CanonicalTag(Base):

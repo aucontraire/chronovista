@@ -321,11 +321,11 @@ export function EntitiesPage() {
   const hookParams: Parameters<typeof useEntities>[0] = {
     sort,
     // Feature 072: this page always searches accent-insensitively AND across
-    // aliases, excluding transcript-error (asr_error) aliases. The backend only
-    // applies the alias path when `search` is present, so sending these
-    // unconditionally is harmless when the search box is empty.
+    // aliases. The backend only applies the alias path when `search` is present,
+    // so sending this unconditionally is harmless when the search box is empty.
+    // (Feature 110 relocated transcript-error forms out of entity_aliases, so no
+    // `exclude_alias_types` filter is needed — the name store holds only names.)
     search_aliases: true,
-    exclude_alias_types: "asr_error",
     ...(typeFilter !== "all" ? { type: typeFilter } : {}),
     ...(hasMentions ? { has_mentions: true as const } : {}),
     ...(search ? { search } : {}),

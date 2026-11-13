@@ -23,14 +23,15 @@ from types import SimpleNamespace
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.db.models import EntityAlias as EntityAliasDB
-from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.models.batch_correction_models import CorrectionPattern
+from chronovista.repositories.entity_asr_error_repository import (
+    EntityAsrErrorRepository,
+)
 from chronovista.services.batch_correction_service import BatchCorrectionService
 from chronovista.utils.text import strip_boundary_punctuation
 
@@ -589,26 +590,18 @@ class CrossSegmentDiscovery:
         -------
         list[tuple[str, str, str]]
             Each tuple is (alias_name, canonical_name, entity_type).
-        """
-        stmt = (
-            select(
-                EntityAliasDB.alias_name,
-                NamedEntityDB.canonical_name,
-                NamedEntityDB.entity_type,
-            )
-            .join(NamedEntityDB, EntityAliasDB.entity_id == NamedEntityDB.id)
-            .where(
-                EntityAliasDB.alias_type == "asr_error",
-                EntityAliasDB.alias_name.contains(" "),
-            )
-        )
-        if entity_name is not None:
-            stmt = stmt.where(
-                func.lower(NamedEntityDB.canonical_name).contains(entity_name.lower())
-            )
 
-        result = await session.execute(stmt)
-        return [(row[0], row[1], row[2]) for row in result.all()]
+        Notes
+        -----
+        Reads from the dedicated ``entity_asr_errors`` store (Feature 110), not the
+        name store ``entity_aliases`` — the known-error strings were relocated there
+        and the name store can no longer hold them. The output shape and the
+        multi-word filter are unchanged, so the corrections-discovery candidate set
+        is identical to before the move.
+        """
+        return await EntityAsrErrorRepository().get_multiword_candidates(
+            session, entity_name
+        )
 
     async def _find_adjacent_pairs_batched(
         self,

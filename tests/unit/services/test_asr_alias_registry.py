@@ -20,7 +20,6 @@ import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from chronovista.models.enums import EntityAliasType
 from chronovista.services.asr_alias_registry import (
     is_valid_asr_alias,
     register_asr_alias,
@@ -215,165 +214,6 @@ class TestRegisterAsrAlias:
     Feature 038 — Entity Mention Detection
     """
 
-    async def test_creates_new_alias_when_corrected_text_matches_entity_canonical_name(
-        self,
-    ) -> None:
-        """New ASR alias created when corrected_text matches a known canonical_name."""
-        entity_mock = MagicMock()
-        entity_mock.id = uuid.uuid4()
-        entity_mock.canonical_name = "Katherine Johnson"
-
-        # execute sequence: entity lookup → existing alias check (None → create)
-        session = _mock_execute_returns(entity_mock, None)
-
-        with (
-            patch(
-                "chronovista.services.asr_alias_registry.EntityAliasRepository"
-            ) as MockRepo,
-            patch(
-                "chronovista.services.asr_alias_registry.TagNormalizationService"
-            ) as MockNorm,
-        ):
-            mock_repo_instance = AsyncMock()
-            MockRepo.return_value = mock_repo_instance
-            MockNorm.return_value.normalize.return_value = "katherine johnsom"
-
-            await register_asr_alias(
-                session,
-                original_text="Katherine Johnsom",
-                corrected_text="Katherine Johnson",
-            )
-
-        mock_repo_instance.create.assert_called_once()
-        call_kwargs = mock_repo_instance.create.call_args
-        alias_create = call_kwargs[1]["obj_in"]
-        assert alias_create.entity_id == entity_mock.id
-        assert alias_create.alias_name == "Katherine Johnsom"
-        assert alias_create.alias_type == EntityAliasType.ASR_ERROR
-
-    async def test_creates_new_alias_when_corrected_text_matches_entity_alias(
-        self,
-    ) -> None:
-        """New ASR alias created when corrected_text matches an existing entity alias."""
-        alias_mock = MagicMock()
-        alias_mock.entity_id = uuid.uuid4()
-
-        # execute sequence: entity lookup (None) → alias lookup → existing alias check (None)
-        session = _mock_execute_returns(None, alias_mock, None)
-
-        with (
-            patch(
-                "chronovista.services.asr_alias_registry.EntityAliasRepository"
-            ) as MockRepo,
-            patch(
-                "chronovista.services.asr_alias_registry.TagNormalizationService"
-            ) as MockNorm,
-        ):
-            mock_repo_instance = AsyncMock()
-            MockRepo.return_value = mock_repo_instance
-            MockNorm.return_value.normalize.return_value = "seon"
-
-            await register_asr_alias(
-                session,
-                original_text="Seon",
-                corrected_text="Johnson",
-            )
-
-        mock_repo_instance.create.assert_called_once()
-        call_kwargs = mock_repo_instance.create.call_args
-        alias_create = call_kwargs[1]["obj_in"]
-        assert alias_create.entity_id == alias_mock.entity_id
-        assert alias_create.alias_name == "Seon"
-        assert alias_create.alias_type == EntityAliasType.ASR_ERROR
-
-    async def test_increments_occurrence_count_when_alias_already_exists(
-        self,
-    ) -> None:
-        """If alias already exists by normalized form, occurrence_count is incremented."""
-        entity_mock = MagicMock()
-        entity_mock.id = uuid.uuid4()
-        entity_mock.canonical_name = "Katherine Johnson"
-
-        existing_alias = MagicMock()
-        existing_alias.occurrence_count = 3
-
-        # execute sequence: entity lookup → existing alias check (found)
-        session = _mock_execute_returns(entity_mock, existing_alias)
-
-        with patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
-            MockNorm.return_value.normalize.return_value = "katherine johnsom"
-
-            await register_asr_alias(
-                session,
-                original_text="Katherine Johnsom",
-                corrected_text="Katherine Johnson",
-                occurrence_count=5,
-            )
-
-        # 3 (existing) + 5 (new) = 8
-        assert existing_alias.occurrence_count == 8
-        session.flush.assert_called()
-
-    async def test_uses_occurrence_count_parameter_not_hardcoded_one(
-        self,
-    ) -> None:
-        """``occurrence_count`` parameter is passed through, not hardcoded to 1."""
-        entity_mock = MagicMock()
-        entity_mock.id = uuid.uuid4()
-        entity_mock.canonical_name = "Katherine Johnson"
-
-        existing_alias = MagicMock()
-        existing_alias.occurrence_count = 0
-
-        session = _mock_execute_returns(entity_mock, existing_alias)
-
-        with patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
-            MockNorm.return_value.normalize.return_value = "katherine johnsom"
-
-            await register_asr_alias(
-                session,
-                original_text="Katherine Johnsom",
-                corrected_text="Katherine Johnson",
-                occurrence_count=42,
-            )
-
-        assert existing_alias.occurrence_count == 42
-
-    async def test_occurrence_count_used_in_new_alias_creation(self) -> None:
-        """Custom ``occurrence_count`` is stored in the new alias record."""
-        entity_mock = MagicMock()
-        entity_mock.id = uuid.uuid4()
-        entity_mock.canonical_name = "Katherine Johnson"
-
-        session = _mock_execute_returns(entity_mock, None)
-
-        with (
-            patch(
-                "chronovista.services.asr_alias_registry.EntityAliasRepository"
-            ) as MockRepo,
-            patch(
-                "chronovista.services.asr_alias_registry.TagNormalizationService"
-            ) as MockNorm,
-        ):
-            mock_repo_instance = AsyncMock()
-            MockRepo.return_value = mock_repo_instance
-            MockNorm.return_value.normalize.return_value = "katherine johnsom"
-
-            await register_asr_alias(
-                session,
-                original_text="Katherine Johnsom",
-                corrected_text="Katherine Johnson",
-                occurrence_count=7,
-            )
-
-        call_kwargs = mock_repo_instance.create.call_args
-        alias_create = call_kwargs[1]["obj_in"]
-        assert alias_create.occurrence_count == 7
-
     async def test_calls_session_commit_when_commit_true(self) -> None:
         """``session.commit()`` is called when ``commit=True``."""
         entity_mock = MagicMock()
@@ -449,27 +289,6 @@ class TestRegisterAsrAlias:
 
         session.commit.assert_not_called()
 
-    async def test_noop_when_corrected_text_matches_no_entity(self) -> None:
-        """No alias created and no DB write when corrected_text matches nothing."""
-        # Both entity and alias lookups return None.
-        session = _mock_execute_returns(None, None)
-
-        with patch(
-            "chronovista.services.asr_alias_registry.EntityAliasRepository"
-        ) as MockRepo:
-            mock_repo_instance = AsyncMock()
-            MockRepo.return_value = mock_repo_instance
-
-            await register_asr_alias(
-                session,
-                original_text="Johnsom",
-                corrected_text="Unknown Person",
-            )
-
-        mock_repo_instance.create.assert_not_called()
-        session.flush.assert_not_called()
-        session.commit.assert_not_called()
-
     async def test_exception_is_caught_and_not_propagated(self) -> None:
         """Exception inside the hook is swallowed (best-effort behaviour)."""
         session = AsyncMock()
@@ -500,60 +319,6 @@ class TestRegisterAsrAlias:
             )
 
         assert any("hook failed" in record.message for record in caplog.records)
-
-    async def test_uses_savepoint_begin_nested_for_new_alias_creation(
-        self,
-    ) -> None:
-        """New alias creation uses ``session.begin_nested()`` savepoint."""
-        entity_mock = MagicMock()
-        entity_mock.id = uuid.uuid4()
-        entity_mock.canonical_name = "Katherine Johnson"
-
-        session = _mock_execute_returns(entity_mock, None)
-
-        with (
-            patch(
-                "chronovista.services.asr_alias_registry.EntityAliasRepository"
-            ) as MockRepo,
-            patch(
-                "chronovista.services.asr_alias_registry.TagNormalizationService"
-            ) as MockNorm,
-        ):
-            mock_repo_instance = AsyncMock()
-            MockRepo.return_value = mock_repo_instance
-            MockNorm.return_value.normalize.return_value = "katherine johnsom"
-
-            await register_asr_alias(
-                session,
-                original_text="Katherine Johnsom",
-                corrected_text="Katherine Johnson",
-            )
-
-        session.begin_nested.assert_called_once()
-
-    async def test_no_savepoint_when_alias_already_exists(self) -> None:
-        """No ``begin_nested()`` savepoint used when incrementing existing alias."""
-        entity_mock = MagicMock()
-        entity_mock.id = uuid.uuid4()
-        entity_mock.canonical_name = "Katherine Johnson"
-
-        existing_alias = MagicMock()
-        existing_alias.occurrence_count = 2
-
-        session = _mock_execute_returns(entity_mock, existing_alias)
-
-        with patch(
-            "chronovista.services.asr_alias_registry.TagNormalizationService"
-        ) as MockNorm:
-            MockNorm.return_value.normalize.return_value = "katherine johnsom"
-
-            await register_asr_alias(
-                session,
-                original_text="Katherine Johnsom",
-                corrected_text="Katherine Johnson",
-            )
-
-        session.begin_nested.assert_not_called()
 
     async def test_uses_tag_normalization_service_for_normalized_form(
         self,
@@ -594,38 +359,6 @@ class TestRegisterAsrAlias:
             calls[1].args[0] == "Johnsom"
         ), f"Second call should normalize the minimal error token, got: {calls[1].args[0]}"
 
-    async def test_falls_back_to_lower_when_normalize_returns_none(self) -> None:
-        """If ``normalize()`` returns None/falsy, falls back to ``original_text.lower()``."""
-        entity_mock = MagicMock()
-        entity_mock.id = uuid.uuid4()
-        entity_mock.canonical_name = "Katherine Johnson"
-
-        # Normalize returns empty string → falsy
-        session = _mock_execute_returns(entity_mock, None)
-
-        with (
-            patch(
-                "chronovista.services.asr_alias_registry.EntityAliasRepository"
-            ) as MockRepo,
-            patch(
-                "chronovista.services.asr_alias_registry.TagNormalizationService"
-            ) as MockNorm,
-        ):
-            mock_repo_instance = AsyncMock()
-            MockRepo.return_value = mock_repo_instance
-            MockNorm.return_value.normalize.return_value = ""  # falsy
-
-            await register_asr_alias(
-                session,
-                original_text="Katherine Johnsom",
-                corrected_text="Katherine Johnson",
-            )
-
-        call_kwargs = mock_repo_instance.create.call_args
-        alias_create = call_kwargs[1]["obj_in"]
-        # Should fall back to "katherine johnsom" (lower of original_text)
-        assert alias_create.alias_name_normalized == "katherine johnsom"
-
     async def test_log_prefix_appears_in_warning_on_exception(
         self, caplog: Any
     ) -> None:
@@ -665,68 +398,6 @@ class TestRegisterAsrAlias:
             )
 
         assert any("asr-alias" in record.message for record in caplog.records)
-
-    async def test_commit_called_after_new_alias_creation_when_commit_true(
-        self,
-    ) -> None:
-        """``session.commit()`` is called after the savepoint closes when ``commit=True``."""
-        entity_mock = MagicMock()
-        entity_mock.id = uuid.uuid4()
-        entity_mock.canonical_name = "Katherine Johnson"
-
-        session = _mock_execute_returns(entity_mock, None)
-
-        with (
-            patch(
-                "chronovista.services.asr_alias_registry.EntityAliasRepository"
-            ) as MockRepo,
-            patch(
-                "chronovista.services.asr_alias_registry.TagNormalizationService"
-            ) as MockNorm,
-        ):
-            mock_repo_instance = AsyncMock()
-            MockRepo.return_value = mock_repo_instance
-            MockNorm.return_value.normalize.return_value = "katherine johnsom"
-
-            await register_asr_alias(
-                session,
-                original_text="Katherine Johnsom",
-                corrected_text="Katherine Johnson",
-                commit=True,
-            )
-
-        session.commit.assert_called_once()
-
-    async def test_entity_alias_repository_instantiated_inside_savepoint(
-        self,
-    ) -> None:
-        """``EntityAliasRepository`` is instantiated and ``create`` called for new alias."""
-        entity_mock = MagicMock()
-        entity_mock.id = uuid.uuid4()
-        entity_mock.canonical_name = "Test Entity"
-
-        session = _mock_execute_returns(entity_mock, None)
-
-        with (
-            patch(
-                "chronovista.services.asr_alias_registry.EntityAliasRepository"
-            ) as MockRepo,
-            patch(
-                "chronovista.services.asr_alias_registry.TagNormalizationService"
-            ) as MockNorm,
-        ):
-            mock_repo_instance = AsyncMock()
-            MockRepo.return_value = mock_repo_instance
-            MockNorm.return_value.normalize.return_value = "test alias"
-
-            await register_asr_alias(
-                session,
-                original_text="Test Alias",
-                corrected_text="Test Entity",
-            )
-
-        MockRepo.assert_called_once()
-        mock_repo_instance.create.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -822,34 +493,6 @@ class TestRegisterAsrAliasQualityGate:
         )
 
         session.execute.assert_not_called()
-
-    async def test_accepts_legitimate_alias_proceeds_to_db(self) -> None:
-        """Legitimate alias passes the gate and queries the DB."""
-        entity_mock = MagicMock()
-        entity_mock.id = uuid.uuid4()
-        entity_mock.canonical_name = "Katherine Johnson"
-
-        session = _mock_execute_returns(entity_mock, None)
-
-        with (
-            patch(
-                "chronovista.services.asr_alias_registry.EntityAliasRepository"
-            ) as MockRepo,
-            patch(
-                "chronovista.services.asr_alias_registry.TagNormalizationService"
-            ) as MockNorm,
-        ):
-            mock_repo_instance = AsyncMock()
-            MockRepo.return_value = mock_repo_instance
-            MockNorm.return_value.normalize.return_value = "katherine johnsom"
-
-            await register_asr_alias(
-                session,
-                original_text="Katherine Johnsom",
-                corrected_text="Katherine Johnson",
-            )
-
-        mock_repo_instance.create.assert_called_once()
 
     async def test_rejection_is_logged(self, caplog: Any) -> None:
         """Rejected alias is logged at DEBUG level."""

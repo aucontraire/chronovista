@@ -101,6 +101,12 @@ from .entity_alias import (
     EntityAliasCreate,
     EntityAliasUpdate,
 )
+from .entity_asr_error import (
+    EntityAsrError,
+    EntityAsrErrorBase,
+    EntityAsrErrorCreate,
+    EntityAsrErrorUpdate,
+)
 from .entity_mention import (
     EntityMention,
     EntityMentionBase,
@@ -403,6 +409,11 @@ __all__ = [
     "EntityAliasCreate",
     "EntityAliasUpdate",
     "EntityAliasBase",
+    # Entity ASR-errors (Feature 110 - ASR-error alias role split)
+    "EntityAsrError",
+    "EntityAsrErrorCreate",
+    "EntityAsrErrorUpdate",
+    "EntityAsrErrorBase",
     # Tag Operation Logs (Feature 031 - Tag Management CLI)
     "TagOperationLog",
     "TagOperationLogCreate",

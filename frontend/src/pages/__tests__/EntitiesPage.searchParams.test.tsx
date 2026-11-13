@@ -1,14 +1,16 @@
 /**
- * Feature 072 — the /entities page must search accent-insensitively AND across
- * aliases, excluding transcript-error (asr_error) aliases. Accent-insensitivity
- * is enforced entirely in the backend; the frontend's job is to OPT IN by sending
- * `search_aliases=true` and `exclude_alias_types=asr_error` on every entity-list
- * request.
+ * Feature 072 — the /entities page searches accent-insensitively AND across
+ * aliases. Accent-insensitivity is enforced entirely in the backend; the
+ * frontend's job is to OPT IN by sending `search_aliases=true` on every
+ * entity-list request.
+ *
+ * Feature 110 removed the `exclude_alias_types=asr_error` param: transcript-error
+ * forms were relocated out of entity_aliases, so the name store holds only names
+ * and there is nothing to exclude. This test now also pins that the param is NO
+ * LONGER sent (re-adding it would be dead weight).
  *
  * This test mocks only the network boundary (`fetchEntities`) and drives the REAL
- * `useEntities` hook, so it verifies the page -> hook -> request path end to end
- * (T010 + T011). Mutation check: remove the two params from `hookParams` in
- * EntitiesPage and this test fails.
+ * `useEntities` hook, so it verifies the page -> hook -> request path end to end.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -49,7 +51,7 @@ describe("EntitiesPage entity-search request params (Feature 072)", () => {
     vi.mocked(fetchEntities).mockResolvedValue(EMPTY_PAGE);
   });
 
-  it("sends search_aliases=true and exclude_alias_types=asr_error", async () => {
+  it("sends search_aliases=true and no exclude_alias_types param", async () => {
     renderPage();
 
     await waitFor(() => expect(fetchEntities).toHaveBeenCalled());
@@ -58,12 +60,12 @@ describe("EntitiesPage entity-search request params (Feature 072)", () => {
     expect(params).toEqual(
       expect.objectContaining({
         search_aliases: true,
-        exclude_alias_types: "asr_error",
       }),
     );
+    expect(params).not.toHaveProperty("exclude_alias_types");
   });
 
-  it("keeps the alias params when a search term is present", async () => {
+  it("keeps the alias param when a search term is present", async () => {
     renderPage("/entities?search=renee");
 
     await waitFor(() => expect(fetchEntities).toHaveBeenCalled());
@@ -73,8 +75,8 @@ describe("EntitiesPage entity-search request params (Feature 072)", () => {
       expect.objectContaining({
         search: "renee",
         search_aliases: true,
-        exclude_alias_types: "asr_error",
       }),
     );
+    expect(params).not.toHaveProperty("exclude_alias_types");
   });
 });

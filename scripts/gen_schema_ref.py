@@ -76,6 +76,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         [
             "named_entities",
             "entity_aliases",
+            "entity_asr_errors",
             "entity_mentions",
             "entity_operation_logs",
             "wikipedia_categories",

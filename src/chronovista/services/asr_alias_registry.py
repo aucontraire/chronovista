@@ -17,9 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
-from chronovista.models.entity_alias import EntityAliasCreate
-from chronovista.models.enums import EntityAliasType
-from chronovista.repositories.entity_alias_repository import EntityAliasRepository
+from chronovista.models.entity_asr_error import EntityAsrErrorCreate
+from chronovista.repositories.entity_asr_error_repository import (
+    EntityAsrErrorRepository,
+)
 from chronovista.services.tag_normalization import TagNormalizationService
 
 logger = logging.getLogger(__name__)
@@ -243,12 +244,13 @@ async def register_asr_alias(
     commit: bool = False,
     log_prefix: str = "asr-alias",
 ) -> None:
-    """Best-effort hook: register an ASR error alias when a correction matches an entity.
+    """Best-effort hook: register a known-error string when a correction matches an entity.
 
     If ``corrected_text`` matches a known entity canonical name or alias
-    (case-insensitive exact match), register ``original_text`` as an
-    ``asr_error`` alias for that entity.  If the alias already exists
-    (by normalized form), increment its ``occurrence_count``.
+    (case-insensitive exact match), register ``original_text`` in the dedicated
+    ``entity_asr_errors`` store for that entity (Feature 110 — these strings no
+    longer live among names in ``entity_aliases``). Idempotent on the entity +
+    normalized form.
 
     Parameters
     ----------
@@ -259,8 +261,9 @@ async def register_asr_alias(
     corrected_text : str
         The corrected text that may match an entity name.
     occurrence_count : int
-        Number of occurrences to record (default 1 for single-segment,
-        batch count for find-replace).
+        Accepted for caller compatibility; the dedicated store keeps no occurrence
+        counter (Feature 110 dropped it as a derived, unread column), so this value
+        no longer affects what is written.
     commit : bool
         Whether to commit after the operation (batch hook needs this,
         single-segment hook does not).
@@ -286,50 +289,27 @@ async def register_asr_alias(
         normalizer = TagNormalizationService()
         normalized = normalizer.normalize(original_text) or original_text.lower()
 
-        # Check by normalized form — matches the unique constraint
-        existing_alias_stmt = select(EntityAliasDB).where(
-            EntityAliasDB.entity_id == entity_id,
-            EntityAliasDB.alias_name_normalized == normalized,
-        )
-        existing_result = await session.execute(existing_alias_stmt)
-        existing_alias = existing_result.scalar_one_or_none()
-
-        if existing_alias is not None:
-            existing_alias.occurrence_count = (
-                existing_alias.occurrence_count or 0
-            ) + occurrence_count
-            await session.flush()
-            if commit:
-                await session.commit()
-            logger.debug(
-                "%s: incremented occurrence_count for alias '%s' on entity '%s' (+%d)",
-                log_prefix,
-                original_text,
-                entity_name,
-                occurrence_count,
-            )
-        else:
-            # Use a savepoint so IntegrityError doesn't poison the outer transaction
-            async with session.begin_nested():
-                new_alias = EntityAliasCreate(
+        # Register the known-error string in the dedicated store (Feature 110).
+        # create_or_update is idempotent on (entity_id, alias_name_normalized); the
+        # savepoint keeps a rare IntegrityError from poisoning the outer transaction.
+        async with session.begin_nested():
+            asr_repo = EntityAsrErrorRepository()
+            await asr_repo.create_or_update(
+                session,
+                obj_in=EntityAsrErrorCreate(
                     entity_id=entity_id,
                     alias_name=original_text,
                     alias_name_normalized=normalized,
-                    alias_type=EntityAliasType.ASR_ERROR,
-                    occurrence_count=occurrence_count,
-                )
-                alias_repo = EntityAliasRepository()
-                await alias_repo.create(session, obj_in=new_alias)
-            if commit:
-                await session.commit()
-            logger.info(
-                "%s: registered ASR alias '%s' for entity '%s' "
-                "(occurrence_count=%d)",
-                log_prefix,
-                original_text,
-                entity_name,
-                occurrence_count,
+                ),
             )
+        if commit:
+            await session.commit()
+        logger.info(
+            "%s: registered ASR error '%s' for entity '%s'",
+            log_prefix,
+            original_text,
+            entity_name,
+        )
 
         # ----- Word-level diff: register minimal error tokens (T022) -----
         # Only attempt sub-token alias registration when the full-string
@@ -354,43 +334,23 @@ async def register_asr_alias(
                     normalizer.normalize(error_token) or error_token.lower()
                 )
 
-                # Check if this sub-token alias already exists
-                sub_existing_stmt = select(EntityAliasDB).where(
-                    EntityAliasDB.entity_id == entity_id,
-                    EntityAliasDB.alias_name_normalized == sub_normalized,
-                )
-                sub_existing_result = await session.execute(sub_existing_stmt)
-                sub_existing = sub_existing_result.scalar_one_or_none()
-
-                if sub_existing is not None:
-                    sub_existing.occurrence_count = (
-                        sub_existing.occurrence_count or 0
-                    ) + occurrence_count
-                    await session.flush()
-                    logger.debug(
-                        "%s: incremented sub-token alias '%s' for entity '%s' (+%d)",
-                        log_prefix,
-                        error_token,
-                        entity_name,
-                        occurrence_count,
-                    )
-                else:
-                    async with session.begin_nested():
-                        sub_alias = EntityAliasCreate(
+                # Register the sub-token error in the dedicated store (Feature 110).
+                async with session.begin_nested():
+                    asr_repo_sub = EntityAsrErrorRepository()
+                    await asr_repo_sub.create_or_update(
+                        session,
+                        obj_in=EntityAsrErrorCreate(
                             entity_id=entity_id,
                             alias_name=error_token,
                             alias_name_normalized=sub_normalized,
-                            alias_type=EntityAliasType.ASR_ERROR,
-                            occurrence_count=occurrence_count,
-                        )
-                        alias_repo_sub = EntityAliasRepository()
-                        await alias_repo_sub.create(session, obj_in=sub_alias)
-                    logger.info(
-                        "%s: registered sub-token ASR alias '%s' for entity '%s'",
-                        log_prefix,
-                        error_token,
-                        entity_name,
+                        ),
                     )
+                logger.info(
+                    "%s: registered sub-token ASR error '%s' for entity '%s'",
+                    log_prefix,
+                    error_token,
+                    entity_name,
+                )
 
             if commit:
                 await session.commit()

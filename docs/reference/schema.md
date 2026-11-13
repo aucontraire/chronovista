@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**36 tables.** For the reasoning behind the design, see
+**37 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -558,13 +558,36 @@ Alternative names and variations for named entities.
 **Constraints:**
 
 - UNIQUE on `alias_name_normalized`, `entity_id` (`uq_entity_alias_name`)
-- CHECK `chk_alias_type_valid`: `alias_type IN ('name_variant', 'abbreviation', 'nickname', 'asr_error', 'translated_name', 'former_name')`
+- CHECK `chk_alias_type_valid`: `alias_type IN ('name_variant', 'abbreviation', 'nickname', 'translated_name', 'former_name')`
 
 **Indexes:**
 
 - INDEX `idx_entity_aliases_entity_id` on `entity_id`
 - INDEX `idx_entity_aliases_normalized` on `alias_name_normalized`
 - INDEX `idx_entity_aliases_type` on `alias_type`
+
+### `entity_asr_errors`
+
+A confirmed ASR mis-transcription of an entity's name (Feature 110).
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `entity_id` | UUID | no |  | FK → `named_entities.id` |
+| `alias_name` | VARCHAR(500) | no |  |  |
+| `alias_name_normalized` | VARCHAR(500) | no |  |  |
+| `case_sensitive` | BOOLEAN | no | `false` |  |
+| `first_seen_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `last_seen_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Constraints:**
+
+- UNIQUE on `alias_name_normalized`, `entity_id` (`uq_entity_asr_error_name`)
+
+**Indexes:**
+
+- INDEX `idx_entity_asr_errors_entity_id` on `entity_id`
+- INDEX `idx_entity_asr_errors_normalized` on `alias_name_normalized`
 
 ### `entity_mentions`
 

@@ -274,17 +274,15 @@ class TestPatternConstruction:
     # Bug fix: asr_error aliases must be excluded from scan patterns
     # ------------------------------------------------------------------
 
-    async def test_alias_query_excludes_asr_error_type_in_sql(self) -> None:
-        """The alias query emitted by _load_entity_patterns must filter out asr_error aliases.
+    async def test_alias_query_no_longer_excludes_asr_error_type_in_sql(self) -> None:
+        """The alias query must NOT carry an asr_error exclusion filter (Feature 110).
 
-        Bug fix (Feature 038/044): Before the fix, alias_stmt had no alias_type
-        filter, so ASR-error aliases (e.g. "Lovelach") were included in scan
-        patterns and created false rule_match mentions.  After the fix the WHERE
-        clause must contain ``alias_type != 'asr_error'`` (or equivalent NOT
-        IN / != expression).
-
-        This test inspects the compiled SQL of the *second* execute() call
-        (the alias query) to confirm the exclusion filter is present.
+        Feature 038/044 added ``alias_type != 'asr_error'`` to keep ASR-error forms
+        out of scan patterns. Feature 110 relocated those forms to their own store,
+        so the name store (``entity_aliases``) can no longer hold one — the guard
+        moved into the schema and the per-reader filter is removed. This test
+        inspects the compiled SQL of the alias query and confirms the exclusion is
+        gone (and would fail if a stale filter were reintroduced).
         """
         from sqlalchemy.dialects import postgresql as pg_dialect
 
@@ -313,9 +311,9 @@ class TestPatternConstruction:
             )
         )
 
-        assert "asr_error" in sql_str, (
-            "Expected 'asr_error' exclusion filter in the alias query SQL; "
-            f"got: {sql_str[:600]}"
+        assert "asr_error" not in sql_str, (
+            "The alias query must no longer carry an 'asr_error' exclusion "
+            f"(Feature 110 moved those forms out of the name store); got: {sql_str[:600]}"
         )
 
     async def test_non_asr_error_aliases_are_included_as_scan_patterns(self) -> None:

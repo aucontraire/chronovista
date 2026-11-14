@@ -873,12 +873,15 @@ class EntityMentionScanService:
             result.unique_entities = len(matched_entity_ids)
             result.unique_videos = len(matched_video_ids)
 
-            # Feature 081: additive per-transcript cross-segment pass. Detects names
+            # Feature 081 + 111 US4: per-transcript cross-segment pass. Detects names
             # split across segment boundaries and writes ONE spanning mention per
             # occurrence (segment_id=first, end_segment_id=last). It owns spanning
-            # mentions end-to-end (its own per-transcript --full delete/reinsert), so
-            # the per-segment path above is untouched (FR-006). Runs before the final
-            # --full recompute below so that covers spanning changes too.
+            # mentions end-to-end (its own per-transcript --full delete/reinsert).
+            # FR-005/FR-006: spanning and in-segment matches now arbitrate in ONE
+            # longest-match-wins pool, so a surviving spanning match SUPPRESSES any
+            # in-segment mention it overlaps (that the per-segment pass wrote in its
+            # own pool); non-overlapping in-segment mentions are left untouched. Runs
+            # before the final --full recompute below so that covers both changes.
             await self._scan_cross_segment(
                 session,
                 patterns,
@@ -997,15 +1000,23 @@ class EntityMentionScanService:
         limit: int | None,
         result: ScanResult,
     ) -> None:
-        """Additive per-transcript pass detecting names split across segments (081).
+        """Per-transcript pass detecting names split across segments (081 + 111 US4).
 
         Assembles each transcript's segments into one string via the shared
-        ``TranscriptTextIndex``, runs the same entity patterns over it, and keeps
-        ONLY matches that cross a boundary — writing one spanning mention per
-        occurrence (anchor at the first segment, ``end_segment_id`` at the last).
-        Single-segment matches are discarded (the per-segment pass owns those), so
-        this never alters existing single-segment mentions. Under ``full_rescan`` it
-        deletes and re-inserts spanning mentions per transcript (FR-012 scoping).
+        ``TranscriptTextIndex``, runs the same entity patterns over it, and writes
+        one spanning mention per boundary-crossing occurrence (anchor at the first
+        segment, ``end_segment_id`` at the last). Single-segment survivors are not
+        written here (the per-segment pass owns those).
+
+        Feature 111 US4 (FR-005/FR-006): spanning and single-segment matches
+        arbitrate in ONE longest-match-wins pool over the concatenated text, so a
+        surviving spanning match out-competes every in-segment match it overlaps.
+        Because the per-segment pass wrote those overlapping in-segment mentions in
+        its own separate pool, this pass deletes exactly the suppressed in-segment
+        rows (by their ``(segment_id, entity_id, match_start, match_end)``
+        coordinates). A non-overlapping in-segment mention overlaps no spanning span
+        and is always kept. Under ``full_rescan`` it also deletes and re-inserts
+        spanning mentions per transcript (FR-012 scoping).
         """
         compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]] = []
         for pattern in patterns:
@@ -1139,6 +1150,39 @@ class EntityMentionScanService:
             )
             result.skipped_exclusion_pattern += ep_skips
 
+            # Feature 111 US4 (FR-005/FR-006): single longest-match-wins pool per
+            # transcript. ``_apply_longest_match_wins`` above arbitrated spanning
+            # and single-segment matches TOGETHER over the concatenated text, so a
+            # surviving spanning match has already out-competed every in-segment
+            # match it overlaps. The per-segment pass wrote those overlapping
+            # in-segment mentions in its OWN pool (it never saw the spanning span),
+            # so they must now be deleted — but ONLY the ones that overlap a
+            # surviving spanning match. A non-overlapping in-segment match (e.g. a
+            # far, same-name occurrence) overlaps no spanning span and is kept.
+            spanning_spans = [
+                (m_start, m_end)
+                for _eid, m_start, m_end, _txt, _pat in final_matches
+                if index.resolve_span(m_start, m_end).end_segment_id is not None
+            ]
+            suppression_targets: list[tuple[int, uuid.UUID, int, int]] = []
+            if spanning_spans:
+                for entity_id, m_start, m_end, _txt, _pat in raw_matches:
+                    anchor = index.resolve_span(m_start, m_end)
+                    if anchor.end_segment_id is not None:
+                        continue  # a spanning match is not a per-segment-pass row
+                    if any(
+                        s_start < m_end and s_end > m_start
+                        for s_start, s_end in spanning_spans
+                    ):
+                        suppression_targets.append(
+                            (
+                                anchor.segment_id,
+                                entity_id,
+                                anchor.match_start,
+                                anchor.match_end,
+                            )
+                        )
+
             mentions: list[EntityMentionCreate] = []
             for entity_id, m_start, m_end, matched_text, pat in final_matches:
                 anchor = index.resolve_span(m_start, m_end)
@@ -1188,7 +1232,7 @@ class EntityMentionScanService:
             if dry_run:
                 result.mentions_found += len(mentions)
                 continue
-            if not mentions and not full_rescan:
+            if not mentions and not full_rescan and not suppression_targets:
                 continue
 
             seg_ids = [s.id for s in segs]
@@ -1205,6 +1249,15 @@ class EntityMentionScanService:
                 await self._mention_repo.delete_spanning_mentions_by_segments(
                     session, segment_ids=seg_ids, entity_ids=scoped_entity_ids
                 )
+            if suppression_targets:
+                # Single-pool compete (FR-005/FR-006): remove the in-segment
+                # mentions the surviving spanning match out-competed. Their
+                # entities' counters must be recomputed even when nothing new was
+                # detected for them, so add them to ``touched``.
+                await self._mention_repo.delete_in_segment_mentions_at(
+                    session, targets=suppression_targets
+                )
+                touched.update(eid for _seg, eid, _s, _e in suppression_targets)
             if mentions:
                 inserted = await self._mention_repo.bulk_create_with_conflict_skip(
                     session, mentions

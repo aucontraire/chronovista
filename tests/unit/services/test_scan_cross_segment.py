@@ -65,6 +65,7 @@ async def _run(
 
     repo.bulk_create_with_conflict_skip = AsyncMock(side_effect=_bulk)
     repo.delete_spanning_mentions_by_segments = AsyncMock(return_value=0)
+    repo.delete_in_segment_mentions_at = AsyncMock(return_value=0)
     repo.entities_with_transcript_mentions_in_segments = AsyncMock(
         return_value=delete_affected or []
     )
@@ -129,6 +130,53 @@ class TestCrossSegmentDetection:
             [_seg(1, "Alfa Bravo is here"), _seg(2, "unrelated words")], [pat]
         )
         assert captured == []
+
+    async def test_spanning_match_suppresses_overlapping_in_segment_only(
+        self,
+    ) -> None:
+        """Feature 111 US4 (FR-005/FR-006, T025): single longest-match-wins pool.
+
+        A surviving spanning match ("Alfa Bravo", seg1/seg2) must delete the
+        overlapping in-segment mention the per-segment pass wrote ("Bravo" in
+        seg2) and leave the non-overlapping far occurrence ("Bravo" in seg3)
+        untouched. The delete is asserted by its EXACT ``(segment_id, entity_id,
+        match_start, match_end)`` target, so an over-suppressing or mis-targeted
+        regression fails here at the unit level — the mutation sentinel.
+        """
+        short = _pattern("Bravo")
+        long_ = _pattern("Alfa Bravo")
+        captured, _result, repo = await _run(
+            [
+                _seg(1, "the name is Alfa"),
+                _seg(2, "Bravo speaking"),
+                _seg(3, "Bravo again"),
+            ],
+            [short, long_],
+        )
+
+        # The spanning match is written.
+        assert len(captured) == 1
+        assert (captured[0].segment_id, captured[0].end_segment_id) == (1, 2)
+
+        # Exactly the overlapping seg-2 "Bravo" is deleted; the far seg-3 one is not.
+        repo.delete_in_segment_mentions_at.assert_awaited_once()
+        targets = repo.delete_in_segment_mentions_at.await_args.kwargs["targets"]
+        assert targets == [(2, short.entity_id, 0, 5)]
+
+    async def test_non_overlapping_in_segment_is_not_suppressed(self) -> None:
+        """Feature 111 US4 (T040 no-regression companion).
+
+        With no spanning match in play (the long name never crosses a boundary),
+        the compete delete must not fire at all — the single-pool change removes
+        ONLY intentionally-suppressed overlaps, nothing else.
+        """
+        short = _pattern("Bravo")
+        long_ = _pattern("Alfa Bravo")
+        _captured, _result, repo = await _run(
+            [_seg(1, "Bravo here"), _seg(2, "Bravo again")],
+            [short, long_],
+        )
+        repo.delete_in_segment_mentions_at.assert_not_awaited()
 
     async def test_mangled_and_split_is_not_written(self) -> None:
         # Name mis-transcribed ("Alpha" not "Alfa") across the boundary: the regex

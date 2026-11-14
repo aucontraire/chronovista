@@ -242,9 +242,11 @@ class TestCrossPoolCompeteInvariant:
     uniform longest-match-wins across the boundary), consistent with the shipped
     shadowing fixes (#280 / v0.120.1-.2).
 
-    Written first and FAILING (``xfail(strict=True)``): CI stays green now and
-    turns red (XPASS) the moment the single-pool compete fix lands, forcing
-    removal of the marker.  All names are invented placeholders.
+    The single-pool compete fix (Feature 111 US4, FR-005/FR-006) has landed: the
+    cross-segment pass arbitrates spanning and in-segment matches in one
+    longest-match-wins pool and deletes the overlapping in-segment mentions the
+    per-segment pass wrote, so the compete arm below now passes as a normal test.
+    All names are invented placeholders.
     """
 
     async def test_cross_segment_span_is_detected(
@@ -294,15 +296,6 @@ class TestCrossPoolCompeteInvariant:
             "nothing"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Q3/#279: cross-segment and per-segment passes arbitrate in separate "
-            "pools, so a spanning match does not suppress an overlapping in-segment "
-            "match. Compete (user 2026-11-12) is unimplemented; this fails today "
-            "and XPASSes when the single-pool fix lands."
-        ),
-    )
     async def test_spanning_match_suppresses_overlapping_in_segment(
         self, db_session: AsyncSession
     ) -> None:

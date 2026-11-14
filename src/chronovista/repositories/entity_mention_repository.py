@@ -33,6 +33,7 @@ from sqlalchemy import (
     or_,
     select,
     text,
+    tuple_,
     type_coerce,
     union,
     union_all,
@@ -452,6 +453,56 @@ class EntityMentionRepository(
         )
         if entity_ids is not None:
             stmt = stmt.where(EntityMentionDB.entity_id.in_(entity_ids))
+        result = await session.execute(stmt)
+        return int(result.rowcount)
+
+    async def delete_in_segment_mentions_at(
+        self,
+        session: AsyncSession,
+        *,
+        targets: list[tuple[int, uuid.UUID, int, int]],
+    ) -> int:
+        """Delete specific in-segment transcript mentions by exact coordinates.
+
+        Feature 111 US4 (FR-005/FR-006, single longest-match-wins pool). The
+        per-transcript cross-segment pass unifies spanning and in-segment matches
+        into one longest-match-wins pool. When a surviving spanning match
+        suppresses an overlapping in-segment match, the in-segment row was already
+        written by the per-segment pass in its own pool; this deletes exactly those
+        suppressed rows, identified by their ``(segment_id, entity_id, match_start,
+        match_end)`` coordinates.
+
+        Only machine-detected (``rule_match``/``asr_match``) in-segment
+        (``end_segment_id IS NULL``) transcript mentions are eligible, so a manual
+        or correction-derived mention that happens to share coordinates is never
+        removed.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active async session.
+        targets : list[tuple[int, uuid.UUID, int, int]]
+            ``(segment_id, entity_id, match_start, match_end)`` tuples naming the
+            exact in-segment rows to delete. An empty list is a no-op.
+
+        Returns
+        -------
+        int
+            Number of mention rows deleted.
+        """
+        if not targets:
+            return 0
+        stmt = delete(EntityMentionDB).where(
+            tuple_(
+                EntityMentionDB.segment_id,
+                EntityMentionDB.entity_id,
+                EntityMentionDB.match_start,
+                EntityMentionDB.match_end,
+            ).in_(targets),
+            EntityMentionDB.detection_method.in_(("rule_match", "asr_match")),
+            EntityMentionDB.mention_source == "transcript",
+            EntityMentionDB.end_segment_id.is_(None),
+        )
         result = await session.execute(stmt)
         return int(result.rowcount)
 

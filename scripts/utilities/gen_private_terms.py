@@ -199,6 +199,12 @@ COMMON_WORD_ALIASES = {
     "Cats",
     "Cloud",
     "Destiny",
+    # The near-universal Mexican Spanish filler / demonstrative ("este...", "um"),
+    # used as a per-language filler token in the entity-mention scan service
+    # (Feature 111 US3). An ordinary word that collides with a library alias; the
+    # real entity is still covered by its full name, and the bare word identifies
+    # no one.
+    "este",
     # The Wikidata P57 field name (creative-work credit family), added 2026-10-25 when it blocked
     # the kind-grouped WANTED refactor — same class as "Cast"/"Father" above (schema field names,
     # not library content). The real entity is still covered by its full name.

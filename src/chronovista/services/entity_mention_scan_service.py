@@ -156,6 +156,146 @@ def _tokens(form: str) -> list[str]:
     return _TOKEN_RE.findall(_fold_diacritics(form)[0].casefold())
 
 
+# Per-language disfluency / filler phrases (Feature 111 US3, FR-010). At match
+# time a single interrupting token between two adjacent tokens of an entity name
+# is tolerated when it is one of these (compared fold+casefolded, the same space
+# the matcher works in). Multi-word fillers (e.g. Spanish "o sea") are a closed,
+# enumerated exception to the one-token rule and are stored as token tuples; the
+# open-ended false-start / repeat tolerances stay strictly single-token. This is
+# a MATCH-TIME tolerance ONLY: no filler is ever written into a stored name,
+# alias, or ASR-error form -- it merely lets the matcher span an interruption.
+_FILLER_PHRASES_BY_LANG: dict[str, tuple[str, ...]] = {
+    "en": ("uh", "um", "er", "hmm", "uhh"),
+    "es": ("este", "pues", "eh", "o sea"),
+}
+
+# Each filler phrase pre-tokenised with the same fold the matcher uses, so a
+# membership test compares like with like. Single-word fillers become 1-tuples.
+_FILLER_TOKENS_BY_LANG: dict[str, frozenset[tuple[str, ...]]] = {
+    lang: frozenset(tuple(toks) for phrase in phrases if (toks := _tokens(phrase)))
+    for lang, phrases in _FILLER_PHRASES_BY_LANG.items()
+}
+
+
+def _filler_tokens_for_language(
+    language: str | None,
+) -> frozenset[tuple[str, ...]]:
+    """Return the filler token tuples for a transcript *language* code.
+
+    The language code is matched on its primary subtag (``"en-US"`` -> ``"en"``),
+    case-insensitively. An unknown or missing language yields an empty set, so the
+    gap pass then applies only the language-independent false-start / repeat
+    tolerances -- never a filler word from another language.
+
+    Parameters
+    ----------
+    language : str | None
+        A BCP-47-ish language code (e.g. ``"en"``, ``"es-MX"``) or ``None``.
+
+    Returns
+    -------
+    frozenset[tuple[str, ...]]
+        The fold+casefold token tuples of the language's filler phrases.
+    """
+    if not language:
+        return frozenset()
+    return _FILLER_TOKENS_BY_LANG.get(language.split("-")[0].lower(), frozenset())
+
+
+def _find_gap_spans(
+    seg_tokens: list[str],
+    form_tokens: tuple[str, ...],
+    filler_tokens: frozenset[tuple[str, ...]],
+    max_filler_len: int,
+) -> list[tuple[int, int]]:
+    """Find gap-tolerant occurrences of *form_tokens* in a token stream.
+
+    Scans ``seg_tokens`` left to right for the ordered token sequence
+    ``form_tokens``, allowing between each pair of adjacent name tokens AT MOST
+    ONE interrupting token that qualifies as either (a) a member of a per-language
+    filler set, (b) a fold-prefix of length >= 2 of the immediately following name
+    token (a false start), or (c) a repeat of the immediately preceding name token.
+    A closed set of enumerated multi-word filler phrases (``filler_tokens`` entries
+    longer than one token) is the only case where more than one interrupting token
+    is admitted. A gap of more than one token that is not such a phrase, or a
+    non-qualifying token, aborts the match.
+
+    Only matches that actually used at least one gap are returned: a purely
+    contiguous occurrence is already produced by the ``\\b``-anchored entity regex,
+    so re-emitting it here would duplicate it. Matches are leftmost and
+    non-overlapping (the scan resumes past a match), mirroring ``finditer``.
+
+    Parameters
+    ----------
+    seg_tokens : list[str]
+        The segment's fold+casefold word-run tokens, in order.
+    form_tokens : tuple[str, ...]
+        The entity form's fold+casefold tokens; must have length >= 2.
+    filler_tokens : frozenset[tuple[str, ...]]
+        Admissible filler phrases as fold+casefold token tuples.
+    max_filler_len : int
+        The largest token count across ``filler_tokens`` (>= 1).
+
+    Returns
+    -------
+    list[tuple[int, int]]
+        ``(start_index, end_index)`` inclusive token-index pairs, one per
+        gap-using match.
+    """
+    spans: list[tuple[int, int]] = []
+    n = len(seg_tokens)
+    flen = len(form_tokens)
+    i = 0
+    while i < n:
+        if seg_tokens[i] != form_tokens[0]:
+            i += 1
+            continue
+        si = i + 1
+        used_gap = False
+        ok = True
+        for fi in range(1, flen):
+            following = form_tokens[fi]
+            preceding = form_tokens[fi - 1]
+            # Contiguous continuation is always preferred and never a gap.
+            if si < n and seg_tokens[si] == following:
+                si += 1
+                continue
+            # Single interrupting token: filler word, false-start prefix, or
+            # a repeat of the preceding name token.
+            if si + 1 < n and seg_tokens[si + 1] == following:
+                interrupter = seg_tokens[si]
+                if (
+                    (interrupter,) in filler_tokens
+                    or (len(interrupter) >= 2 and following.startswith(interrupter))
+                    or interrupter == preceding
+                ):
+                    si += 2
+                    used_gap = True
+                    continue
+            # Enumerated multi-word filler phrase (the only >1-token gap).
+            matched_phrase = False
+            for k in range(2, max_filler_len + 1):
+                if (
+                    si + k < n
+                    and seg_tokens[si + k] == following
+                    and tuple(seg_tokens[si : si + k]) in filler_tokens
+                ):
+                    si += k + 1
+                    used_gap = True
+                    matched_phrase = True
+                    break
+            if matched_phrase:
+                continue
+            ok = False
+            break
+        if ok and used_gap:
+            spans.append((i, si - 1))
+            i = si
+        else:
+            i += 1
+    return spans
+
+
 def _asr_form_admissible(form: str) -> bool:
     """Return True if an ASR-error *form* may be admitted as a match pattern.
 
@@ -963,6 +1103,17 @@ class EntityMentionScanService:
                             pattern,
                         )
                     )
+            # Feature 111 US3 (FR-010): additively add disfluency-gap matches,
+            # scoped to the same per-transcript candidate entities as the regex.
+            raw_matches.extend(
+                self._collect_gap_matches(
+                    folded_text,
+                    offset_map,
+                    index.text,
+                    [p for p, _ in compiled_patterns if p.entity_id in candidates],
+                    lang,
+                )
+            )
             if not raw_matches:
                 # A transcript that matches NOTHING skips the per-transcript --full
                 # delete below. A spanning mention only disappears here if its
@@ -1642,6 +1793,19 @@ class EntityMentionScanService:
                     )
                 )
 
+        # Feature 111 US3 (FR-010): additively add disfluency-gap matches the
+        # contiguous regex missed. Title/description carry no language, so only
+        # the language-independent false-start / repeat tolerances apply here.
+        raw_matches.extend(
+            self._collect_gap_matches(
+                folded_text,
+                offset_map,
+                text,
+                [p for p, _ in compiled_patterns],
+                None,
+            )
+        )
+
         if not raw_matches:
             return mentions, previews
 
@@ -2181,6 +2345,18 @@ class EntityMentionScanService:
                         )
                     )
 
+            # Feature 111 US3 (FR-010): additively add disfluency-gap matches the
+            # contiguous regex missed, scoped to the same candidate patterns.
+            raw_matches.extend(
+                self._collect_gap_matches(
+                    folded_text,
+                    offset_map,
+                    effective_text,
+                    patterns,
+                    row.language_code,
+                )
+            )
+
             if not raw_matches:
                 continue
 
@@ -2313,6 +2489,110 @@ class EntityMentionScanService:
     # ------------------------------------------------------------------
     # Disambiguation & filtering helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _collect_gap_matches(
+        folded_text: str,
+        offset_map: list[int],
+        raw_text: str,
+        patterns: list[_EntityPattern],
+        language: str | None,
+    ) -> list[tuple[uuid.UUID, int, int, str, _EntityPattern]]:
+        """Additively detect names interrupted by a bounded disfluency gap.
+
+        Feature 111 US3 (FR-010). The ``\\b``-anchored entity regex matches only
+        contiguous occurrences; this pass adds the spans it misses -- a name whose
+        adjacent tokens are separated by a single interrupting token (a filler
+        word, a false-start prefix of the following token, or a repeat of the
+        preceding token), or by an enumerated multi-word filler phrase. It is
+        purely additive: only matches that actually used a gap are emitted (see
+        :func:`_find_gap_spans`), so a name that already matches contiguously is
+        left entirely to the regex and this pass changes nothing for it.
+
+        The scan runs over ``patterns`` ONLY -- the caller passes the segment's
+        pre-filtered candidate set (the same scope the regex iterates), never the
+        whole entity universe -- so the gap pass inherits the candidate pre-filter
+        for free. The transcript is never modified: a gap span is sliced out of
+        ``raw_text`` for its ``mention_text`` (so it reads as written, filler
+        included), and no stored name/alias/ASR form ever gains the filler.
+
+        Spans are found in fold space (token boundaries from :data:`_TOKEN_RE`
+        over ``folded_text``) and mapped back to raw offsets via ``offset_map``,
+        exactly as the regex match sites do, so the emitted ``(start, end)`` is a
+        correct raw span covering the gap. Each tuple is shaped like a regex
+        ``raw_matches`` entry so longest-match-wins arbitration dedupes and ranks
+        it identically -- preferring the longer (gap-spanning or contiguous) match
+        on overlap.
+
+        Parameters
+        ----------
+        folded_text : str
+            The diacritic-folded segment text (the matcher's working space).
+        offset_map : list[int]
+            Fold-position -> raw-index map from :func:`_fold_diacritics`.
+        raw_text : str
+            The original segment text, for slicing ``mention_text``.
+        patterns : list[_EntityPattern]
+            The segment's candidate entity patterns (already pre-filtered).
+        language : str | None
+            The segment's language code, selecting the filler set.
+
+        Returns
+        -------
+        list[tuple[uuid.UUID, int, int, str, _EntityPattern]]
+            Gap-match tuples ``(entity_id, raw_start, raw_end, matched_text,
+            pattern)``, deduplicated by ``(entity_id, raw_start, raw_end)``.
+        """
+        filler_tokens = _filler_tokens_for_language(language)
+        max_filler_len = max((len(t) for t in filler_tokens), default=1)
+
+        # Tokenise the folded text once, keeping each token's fold-space span.
+        seg_tokens: list[str] = []
+        tok_spans: list[tuple[int, int]] = []
+        for match in _TOKEN_RE.finditer(folded_text):
+            seg_tokens.append(match.group(0).casefold())
+            tok_spans.append((match.start(), match.end()))
+        if not seg_tokens:
+            return []
+
+        results: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
+        seen: set[tuple[uuid.UUID, int, int]] = set()
+        for pattern in patterns:
+            # Multi-token folded forms only: a single-token name has no interior
+            # boundary for a gap. Names fold via _tokens; asr_folds are already
+            # fold+casefold, so they tokenise directly.
+            form_seqs: set[tuple[str, ...]] = set()
+            for name in (pattern.canonical_name, *pattern.alias_names):
+                toks = tuple(_tokens(name))
+                if len(toks) >= 2:
+                    form_seqs.add(toks)
+            for fold in pattern.asr_folds:
+                toks = tuple(_TOKEN_RE.findall(fold))
+                if len(toks) >= 2:
+                    form_seqs.add(toks)
+
+            for form_tokens in form_seqs:
+                for start_idx, end_idx in _find_gap_spans(
+                    seg_tokens, form_tokens, filler_tokens, max_filler_len
+                ):
+                    f_start = tok_spans[start_idx][0]
+                    f_end = tok_spans[end_idx][1]
+                    raw_start = offset_map[f_start]
+                    raw_end = offset_map[f_end - 1] + 1
+                    key = (pattern.entity_id, raw_start, raw_end)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    results.append(
+                        (
+                            pattern.entity_id,
+                            raw_start,
+                            raw_end,
+                            raw_text[raw_start:raw_end],
+                            pattern,
+                        )
+                    )
+        return results
 
     @staticmethod
     def _apply_longest_match_wins(

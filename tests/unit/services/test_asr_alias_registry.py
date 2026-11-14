@@ -57,6 +57,10 @@ def _mock_execute_returns(*results: Any) -> AsyncMock:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = r
         mock_result.scalars.return_value.first.return_value = r
+        # Feature 111: the resolver now collects all matching rows with
+        # ``.scalars().all()`` (a collision must not raise or be dropped);
+        # ``None`` models "no row", anything else a single matching row.
+        mock_result.scalars.return_value.all.return_value = [] if r is None else [r]
         side_effects.append(mock_result)
 
     session = AsyncMock()
@@ -122,36 +126,41 @@ class TestResolveEntityIdFromText:
         # canonical_name is returned unchanged from the DB object
         assert returned_name == "Katherine Johnson"
 
-    async def test_returns_entity_id_and_original_text_on_alias_match(self) -> None:
-        """Returns ``(entity_id, text)`` when text matches an alias (not canonical)."""
-        alias_mock = MagicMock()
-        alias_mock.entity_id = uuid.uuid4()
+    async def test_returns_entity_id_and_canonical_name_on_alias_match(self) -> None:
+        """Returns ``(entity_id, canonical_name)`` when text matches an alias.
 
-        # First execute: no entity → None; second execute: alias found.
-        session = _mock_execute_returns(None, alias_mock)
+        Feature 111: the alias path now joins to the owning entity and returns
+        its canonical name (previously the raw input text was echoed back).
+        """
+        entity_mock = MagicMock()
+        entity_mock.id = uuid.uuid4()
+        entity_mock.canonical_name = "Zorblax Qintell"
+
+        # First execute: no canonical match → []; second execute: alias → entity.
+        session = _mock_execute_returns(None, entity_mock)
 
         result = await resolve_entity_id_from_text(session, "Johnsbom")
 
         assert result is not None
-        entity_id, returned_text = result
-        assert entity_id == alias_mock.entity_id
-        # When matched via alias, the original *text* arg is returned verbatim.
-        assert returned_text == "Johnsbom"
+        entity_id, returned_name = result
+        assert entity_id == entity_mock.id
+        assert returned_name == "Zorblax Qintell"
 
     async def test_alias_match_is_case_insensitive(self) -> None:
         """Alias lookup is case-insensitive (``func.lower`` applied)."""
-        alias_mock = MagicMock()
-        alias_mock.entity_id = uuid.uuid4()
+        entity_mock = MagicMock()
+        entity_mock.id = uuid.uuid4()
+        entity_mock.canonical_name = "Zorblax Qintell"
 
-        session = _mock_execute_returns(None, alias_mock)
+        session = _mock_execute_returns(None, entity_mock)
 
         # Text passed in mixed case; alias lookup normalises via SQL.
         result = await resolve_entity_id_from_text(session, "SHEINBOM")
 
         assert result is not None
-        entity_id, returned_text = result
-        assert entity_id == alias_mock.entity_id
-        assert returned_text == "SHEINBOM"
+        entity_id, returned_name = result
+        assert entity_id == entity_mock.id
+        assert returned_name == "Zorblax Qintell"
 
     async def test_returns_none_when_no_entity_or_alias_matched(self) -> None:
         """Returns ``None`` when text matches neither entity canonical_name nor alias."""

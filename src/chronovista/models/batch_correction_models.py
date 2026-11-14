@@ -100,6 +100,10 @@ class BatchCorrectionResult(BaseModel):
         Transaction batches that failed entirely.
     unique_videos : int
         Distinct video_ids affected by the operation.
+    skipped_ambiguous : int
+        ASR-alias registrations skipped because the replacement form matched
+        several entities and no context could single one out (Feature 111
+        FR-008). These are not attached to any entity.
     """
 
     total_scanned: int = Field(
@@ -136,6 +140,14 @@ class BatchCorrectionResult(BaseModel):
         ...,
         ge=0,
         description="Distinct video_ids affected by the operation",
+    )
+    skipped_ambiguous: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "ASR-alias registrations skipped as ambiguous (matched several "
+            "entities with no disambiguating context)"
+        ),
     )
 
     model_config = ConfigDict(frozen=True)

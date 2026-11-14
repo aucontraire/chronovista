@@ -20,6 +20,7 @@ from chronovista.models.enums import DetectionMethod
 from chronovista.services.entity_mention_scan_service import (
     EntityMentionScanService,
     ScanResult,
+    _build_entity_pattern,
     _EntityPattern,
 )
 
@@ -186,6 +187,39 @@ class TestCrossSegmentDetection:
             [_seg(1, "intro Alpha"), _seg(2, "Bravo")], [pat]
         )
         assert captured == []
+
+    async def test_spanning_asr_garble_is_written_as_rule_match(self) -> None:
+        # A multiword ASR-error form landing across a segment boundary must not
+        # crash the scan. A spanning mention (end_segment_id set) is model-
+        # constrained to rule_match / user_correction, so asr_match provenance
+        # cannot be stored for it; the boundary-crossing garble is written as a
+        # rule_match span instead (T044 "-> rule_match"). The entity is a
+        # candidate because its real name token appears in seg1; the garble
+        # "qux zap" then spans the seg2/seg3 boundary. Before the fix this raised
+        # a pydantic ValidationError (asr_match + end_segment_id) and aborted the
+        # transcript scan.
+        pat = _build_entity_pattern(
+            entity_id=uuid.uuid4(),
+            canonical_name="Vorna Dale",
+            entity_type="person",
+            names=["Vorna Dale"],
+            case_sensitive_names=set(),
+            exclusion_patterns=[],
+            asr_forms=["qux zap"],
+        )
+        captured, _result, _repo = await _run(
+            [
+                _seg(1, "vorna dale spoke"),
+                _seg(2, "the word qux"),
+                _seg(3, "zap ended"),
+            ],
+            [pat],
+        )
+        spanning = [m for m in captured if m.end_segment_id is not None]
+        assert len(spanning) == 1
+        assert spanning[0].mention_text.casefold() == "qux zap"
+        assert spanning[0].detection_method == DetectionMethod.RULE_MATCH
+        assert spanning[0].alias_id is None
 
     async def test_dry_run_writes_nothing_but_previews(self) -> None:
         pat = _pattern("Alfa Bravo")

@@ -1197,11 +1197,18 @@ class EntityMentionScanService:
                         video_id=video_id,
                         language_code=lang,
                         mention_text=matched_text,
-                        detection_method=(
-                            DetectionMethod.ASR_MATCH
-                            if fold_key in pat.asr_folds
-                            else DetectionMethod.RULE_MATCH
-                        ),
+                        # A spanning mention (end_segment_id set) is model-
+                        # constrained to rule_match / user_correction (the
+                        # EntityMention validator): asr_match provenance cannot be
+                        # stored for a cross-segment span. A boundary-crossing ASR
+                        # garble (``fold_key in pat.asr_folds``) is therefore
+                        # written as a rule_match span rather than constructing an
+                        # asr_match span that the validator rejects (which crashed
+                        # the scan). This resolves the T044 gap/spanning ASR-
+                        # provenance question in the "-> rule_match" direction;
+                        # ``alias_id`` stays NULL for a garble fold since asr folds
+                        # are excluded from ``alias_id_by_fold``.
+                        detection_method=DetectionMethod.RULE_MATCH,
                         confidence=1.0,
                         match_start=anchor.match_start,
                         match_end=anchor.match_end,

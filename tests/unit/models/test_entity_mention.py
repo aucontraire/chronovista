@@ -136,9 +136,9 @@ class TestDetectionMethodEnum:
         """DetectionMethod.MANUAL has value 'manual'."""
         assert DetectionMethod.MANUAL.value == "manual"
 
-    def test_exactly_five_members(self) -> None:
-        """DetectionMethod has exactly 5 members — no accidental additions."""
-        assert len(DetectionMethod) == 5
+    def test_exactly_six_members(self) -> None:
+        """DetectionMethod has exactly 6 members — no accidental additions."""
+        assert len(DetectionMethod) == 6
 
     def test_all_five_members_are_present(self) -> None:
         """All five expected DetectionMethod members exist in the enum."""

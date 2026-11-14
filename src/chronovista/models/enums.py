@@ -535,6 +535,7 @@ class DetectionMethod(str, Enum):
     LLM_EXTRACTION = "llm_extraction"
     MANUAL = "manual"
     USER_CORRECTION = "user_correction"
+    ASR_MATCH = "asr_match"
 
 
 class MentionSource(str, Enum):

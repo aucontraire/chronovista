@@ -2068,7 +2068,7 @@ class EntityMention(Base):
             postgresql_where=text("mention_source = 'description'"),
         ),
         CheckConstraint(
-            "detection_method IN ('rule_match', 'spacy_ner', 'llm_extraction', 'manual', 'user_correction')",
+            "detection_method IN ('rule_match', 'spacy_ner', 'llm_extraction', 'manual', 'user_correction', 'asr_match')",
             name="chk_entity_mention_detection_method_valid",
         ),
         CheckConstraint(

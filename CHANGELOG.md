@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.122.0] - 2026-11-13
+
+### Added
+
+- **ASR-error recovery in the scan matcher (Feature 111, Deliverable B).** Confirmed
+  ASR-error forms (from `entity_asr_errors`) now join an entity's match pattern as a
+  gated, provenance-tagged source, recovering mentions a clean name match would miss.
+  Admission is defence-in-depth: a form must be multi-word, carry no one-character
+  token, and not be all common words, enforced both in SQL at load time and again in
+  the matcher. A recovered mention is written with `detection_method = 'asr_match'`
+  and no alias link, so recoveries are separately auditable for precision and
+  revertible as a group (`DELETE WHERE detection_method = 'asr_match'`). A new Alembic
+  migration widens the `entity_mentions` detection-method CHECK to admit the value.
+- **Recovered mentions count as real associations across every surface.** A recovered
+  mention's text is a garble that does not match the entity's name, so the
+  visible-name membership rule would have hidden it from the entity's video list,
+  counts, panels, and previews — visible only in the raw table. A single shared
+  qualification rule now admits a mention when its text matches a visible name OR its
+  method is name-exempt (`manual`/`asr_match`), applied uniformly across all
+  association surfaces so a recovery counts on all of them or none. Qualification
+  ("is it real?") is separated from display ("is its text a name?"): these surfaces
+  still show the entity's canonical name, with the garble available as detail; a
+  transcript preview shows the real snippet. Guarded by an exact-count fitness test
+  that fails if a surface is added without the shared predicate.
+- **Disfluency-tolerant matching.** A bounded gap matcher admits a name split by a
+  short filler or false start (per-language filler lists, e.g. English *uh/um*,
+  Spanish *este/pues*), scoped to the same candidate entities the regex considered and
+  never widening a match past its bound.
+- **Single longest-match-wins pool across segment boundaries ([#279](https://github.com/aucontraire/chronovista/issues/279)).**
+  A boundary-spanning match and the per-segment matches now arbitrate together, so a
+  spanning match suppresses exactly the shorter in-segment matches it overlaps and
+  leaves non-overlapping occurrences untouched.
+
+### Changed
+
+- **Boundary-crossing ASR recoveries keep `asr_match` provenance.** A cross-segment
+  span is admitted from any transcript-writer detection method
+  (`rule_match`, `user_correction`, `asr_match`), so a recovered spanning mention is no
+  longer forced to masquerade as a clean `rule_match` — keeping it revertible and out
+  of the regression baseline. (A naive asr_match span previously raised a validation
+  error and aborted the scan.)
+- **`--full` rescans refresh recovered mentions.** Every `--full` delete (per-batch,
+  spanning, metadata, the US4 compete delete) and the counter-recompute helpers now
+  cover `asr_match` as well as `rule_match`, via a single shared `SCAN_DETECTION_METHODS`
+  home, so a recovered row whose match moved or whose ASR form was unregistered is
+  cleared on the next `--full` instead of surviving as a stale/duplicate row (the
+  re-insert is `ON CONFLICT DO NOTHING`, so it would otherwise persist silently).
+  `user_correction` stays excluded so a rescan never clobbers human corrections.
+- **Correction-time entity resolution disambiguates instead of guessing.** When a
+  user's transcript correction maps a garble to an entity, the resolver links by exact
+  adjacent-token context, then by the entities already known in the video, and skips
+  (recording a count) when genuinely ambiguous — rather than picking an entity
+  arbitrarily.
+
+### Internal
+
+- The detection-method categories now have single committed homes in `enums.py`
+  (`SCAN_DETECTION_METHODS`, `ALIAS_LINKABLE_DETECTION_METHODS`,
+  `NAME_EXEMPT_DETECTION_METHODS`, `SPANNING_DETECTION_METHODS`), each pinned by a
+  mutation-verified guard, replacing per-module `rule_match` literals that encoded
+  several distinct concepts. Removed an inert `ArbitrationContext` seam (speculative
+  architecture; reintroduce with the scoring pass that reads it).
+
+### Documentation
+
+- New explanation page, *Name matching & ASR recovery*, covering the unified pattern,
+  gated admission, the detection-method sets and their homes, longest-match-wins
+  arbitration, spanning mentions, the `--full` refresh contract, and the
+  qualification-vs-display split; plus new glossary terms and the regenerated schema
+  reference.
+
 ## [0.121.0] - 2026-11-12
 
 ### Added

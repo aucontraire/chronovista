@@ -27,6 +27,7 @@ DB, no network):
 
 from __future__ import annotations
 
+from chronovista.models.entity_mention import SPANNING_DETECTION_METHODS
 from chronovista.models.enums import DetectionMethod
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 
@@ -65,3 +66,38 @@ def test_asr_match_is_distinct_from_rule_match() -> None:
     rule_match would start matching recovered rows.
     """
     assert DetectionMethod.ASR_MATCH is not DetectionMethod.RULE_MATCH
+
+
+def test_spanning_detection_methods_are_the_transcript_writers() -> None:
+    """A cross-segment span is valid only for a transcript writer (never
+    title/description/manual). SPANNING_DETECTION_METHODS is the single home the
+    EntityMention validator reads; asr_match is a transcript writer, so a
+    boundary-crossing ASR recovery keeps its asr_match provenance instead of being
+    downgraded to rule_match (which would violate FR-014/SC-009). Dropping
+    asr_match (reintroducing the spanning-write crash) or admitting manual (a
+    non-transcript span) fails here.
+    """
+    assert {
+        DetectionMethod.RULE_MATCH,
+        DetectionMethod.USER_CORRECTION,
+        DetectionMethod.ASR_MATCH,
+    } == SPANNING_DETECTION_METHODS
+    assert DetectionMethod.MANUAL not in SPANNING_DETECTION_METHODS
+
+
+def test_rule_scan_delete_methods_cover_asr_but_not_corrections() -> None:
+    """The --full delete predicates (per-batch, spanning, and the US4 compete
+    delete) remove exactly the methods the scan re-derives — _RULE_SCAN_METHODS =
+    rule_match + asr_match. asr_match MUST be included or recovered rows are never
+    refreshed and accumulate as stale duplicates across rescans (the re-insert is
+    ON CONFLICT DO NOTHING, so it fails silently). user_correction and manual MUST
+    be excluded or a rescan would clobber human-authored mentions the scan does
+    not re-create.
+    """
+    methods = set(EntityMentionRepository._RULE_SCAN_METHODS)
+    assert methods == {
+        DetectionMethod.RULE_MATCH.value,
+        DetectionMethod.ASR_MATCH.value,
+    }
+    assert DetectionMethod.USER_CORRECTION.value not in methods
+    assert DetectionMethod.MANUAL.value not in methods

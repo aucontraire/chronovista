@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import Channel as ChannelDB
@@ -240,3 +240,62 @@ class TestAsrRecoveryGating:
         assert collision is not None, "Alias occurrence must still match"
         assert collision.detection_method == DetectionMethod.RULE_MATCH.value
         assert str(collision.alias_id) == str(alias.id)
+
+    async def test_full_rescan_deletes_stale_asr_match_when_form_unregistered(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The --full delete predicate must cover asr_match (T042 / FR-015).
+
+        A recovered mention whose ASR-error form is later unregistered must be
+        removed by the next --full rescan, not left stale. The re-insert is
+        ON CONFLICT DO NOTHING, so a rule_match-only delete would leave the
+        asr_match row behind SILENTLY (no crash, just a stale/duplicate row) — the
+        quiet failure that would corrupt the backfill's revert and counts.
+        """
+        await _seed_scaffolding(db_session)
+        entity = NamedEntityDB(
+            canonical_name=_CANONICAL_NAME,
+            canonical_name_normalized=_CANONICAL_NAME.lower(),
+            entity_type="person",
+            status="active",
+            discovery_method="manual",
+            confidence=1.0,
+            mention_count=0,
+            video_count=0,
+        )
+        db_session.add(entity)
+        await db_session.flush()
+        await _register_asr_error(db_session, entity.id, _ADMISSIBLE_ASR)
+        await _seed_segment(db_session, f"{_ADMISSIBLE_ASR} appears here", 0)
+        await db_session.commit()
+
+        service = EntityMentionScanService(
+            session_factory=_make_session_factory_from_session(db_session)
+        )
+
+        async def _asr_rows() -> list[EntityMentionDB]:
+            result = await db_session.execute(
+                select(EntityMentionDB).where(
+                    EntityMentionDB.detection_method == DetectionMethod.ASR_MATCH.value
+                )
+            )
+            return list(result.scalars().all())
+
+        # Scan 1 (--full): the admissible garble is recovered as asr_match.
+        await service.scan(full_rescan=True)
+        assert len(await _asr_rows()) == 1
+
+        # Unregister the ASR-error form, then rescan --full. The form is no longer
+        # admissible, so scan 2 re-detects nothing for it; the --full delete must
+        # remove the now-stale asr_match row.
+        await db_session.execute(
+            delete(EntityAsrErrorDB).where(EntityAsrErrorDB.entity_id == entity.id)
+        )
+        await db_session.commit()
+
+        await service.scan(full_rescan=True)
+        assert await _asr_rows() == [], (
+            "a stale asr_match row survived a --full rescan after its ASR form was "
+            "unregistered — the --full delete predicates must include asr_match "
+            "(_RULE_SCAN_METHODS), or recovered rows accumulate across rescans"
+        )

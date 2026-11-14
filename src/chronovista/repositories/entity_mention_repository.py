@@ -177,6 +177,18 @@ class EntityMentionRepository(
 ):
     """Repository for entity mention CRUD and aggregation operations."""
 
+    # Detection methods the rule-based scan WRITES and re-derives on a --full
+    # rescan: the clean regex match (``rule_match``) and the ASR-error-form match
+    # (``asr_match``, Feature 111). The per-batch and cross-segment --full deletes
+    # must remove exactly these before re-inserting, so a recovered mention is
+    # refreshed like a rule match; omitting ``asr_match`` leaves stale/duplicate
+    # recovered rows across rescans (the re-insert is ON CONFLICT DO NOTHING, so
+    # it fails silently, not loudly). ``user_correction`` is deliberately EXCLUDED
+    # — corrections are human-authored and not re-derived by the scan, so a rescan
+    # must never delete them. Single committed home for the three delete sites;
+    # guarded in tests/unit/architecture/test_asr_provenance_contract.py.
+    _RULE_SCAN_METHODS: tuple[str, ...] = ("rule_match", "asr_match")
+
     def __init__(self) -> None:
         """Initialize repository with EntityMention model."""
         super().__init__(EntityMentionDB)
@@ -365,14 +377,15 @@ class EntityMentionRepository(
         segment_ids: list[int],
         entity_ids: list[uuid.UUID] | None = None,
     ) -> int:
-        """Delete ``rule_match``/``transcript`` mentions for the given segments.
+        """Delete the rule-scan's own transcript mentions for the given segments.
 
         The per-batch, segment-scoped counterpart of ``delete_by_scope`` used by
         the resumable ``--full`` rescan (#291): deleting only the current batch's
-        segments' machine-detected mentions and re-inserting them in the same
-        commit closes the "deleted but not re-detected" window. Manual and
-        correction-derived mentions (other detection methods / sources) are never
-        touched.
+        segments' rule-scan mentions (``_RULE_SCAN_METHODS`` = ``rule_match`` +
+        ``asr_match``, the methods the scan re-derives) and re-inserting them in
+        the same commit closes the "deleted but not re-detected" window. Manual and
+        correction-derived mentions (and other detection methods / sources) are
+        never touched, so a rescan never clobbers human corrections.
 
         **Cross-segment (Feature 081):** only NON-spanning mentions
         (``end_segment_id IS NULL``) are deleted here. A spanning mention is
@@ -401,7 +414,7 @@ class EntityMentionRepository(
             return 0
         stmt = delete(EntityMentionDB).where(
             EntityMentionDB.segment_id.in_(segment_ids),
-            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.detection_method.in_(self._RULE_SCAN_METHODS),
             EntityMentionDB.mention_source == "transcript",
             # Spanning mentions are owned by the per-transcript cross-segment pass.
             EntityMentionDB.end_segment_id.is_(None),
@@ -418,7 +431,7 @@ class EntityMentionRepository(
         segment_ids: list[int],
         entity_ids: list[uuid.UUID] | None = None,
     ) -> int:
-        """Delete SPANNING ``rule_match``/``transcript`` mentions for these segments.
+        """Delete the rule-scan's SPANNING transcript mentions for these segments.
 
         The cross-segment counterpart of ``delete_transcript_mentions_by_segments``
         (Feature 081): the per-transcript cross-segment pass owns spanning mentions
@@ -447,7 +460,7 @@ class EntityMentionRepository(
             return 0
         stmt = delete(EntityMentionDB).where(
             EntityMentionDB.segment_id.in_(segment_ids),
-            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.detection_method.in_(self._RULE_SCAN_METHODS),
             EntityMentionDB.mention_source == "transcript",
             EntityMentionDB.end_segment_id.is_not(None),
         )
@@ -499,7 +512,7 @@ class EntityMentionRepository(
                 EntityMentionDB.match_start,
                 EntityMentionDB.match_end,
             ).in_(targets),
-            EntityMentionDB.detection_method.in_(("rule_match", "asr_match")),
+            EntityMentionDB.detection_method.in_(self._RULE_SCAN_METHODS),
             EntityMentionDB.mention_source == "transcript",
             EntityMentionDB.end_segment_id.is_(None),
         )

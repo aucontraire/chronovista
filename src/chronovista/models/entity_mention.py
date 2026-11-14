@@ -15,6 +15,21 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .enums import DetectionMethod, MentionSource
 from .youtube_types import VideoId
 
+# Detection methods that may produce a cross-segment span (``end_segment_id``
+# set). The invariant is "a transcript writer, never title/description/manual":
+# the regex scan (``rule_match``), the ASR-error-form scan (``asr_match``,
+# Feature 111 — a transcript writer too), and the correction pipeline
+# (``user_correction``). ``spacy_ner``/``llm_extraction`` do not emit spans today
+# but are not manual; they are simply never constructed with ``end_segment_id``.
+# Single committed home so the validator and its contract guard cannot drift.
+SPANNING_DETECTION_METHODS: frozenset[DetectionMethod] = frozenset(
+    {
+        DetectionMethod.RULE_MATCH,
+        DetectionMethod.USER_CORRECTION,
+        DetectionMethod.ASR_MATCH,
+    }
+)
+
 
 class EntityMentionBase(BaseModel):
     """Base model for entity mention data."""
@@ -159,19 +174,17 @@ class EntityMentionCreate(EntityMentionBase):
             ):
                 raise ValueError("segment_id is required for transcript mentions")
         # A cross-segment span (Feature 081) must anchor on a start segment, be
-        # transcript-sourced, and come from a transcript writer (rule_match or
-        # user_correction) — never title/description/manual.
+        # transcript-sourced, and come from a transcript writer — never
+        # title/description/manual. See SPANNING_DETECTION_METHODS.
         if self.end_segment_id is not None:
             if self.segment_id is None:
                 raise ValueError("end_segment_id requires a non-NULL segment_id")
             if self.mention_source != MentionSource.TRANSCRIPT:
                 raise ValueError("end_segment_id is only valid for transcript mentions")
-            if self.detection_method not in (
-                DetectionMethod.RULE_MATCH,
-                DetectionMethod.USER_CORRECTION,
-            ):
+            if self.detection_method not in SPANNING_DETECTION_METHODS:
                 raise ValueError(
-                    "end_segment_id is only valid for rule_match or user_correction mentions"
+                    "end_segment_id is only valid for a transcript-writer "
+                    "detection method (rule_match, user_correction, asr_match)"
                 )
         # alias provenance (#298) is only meaningful for auto-detected mentions;
         # manual and correction-derived mentions must never carry a link.

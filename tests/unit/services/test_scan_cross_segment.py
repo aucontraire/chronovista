@@ -188,16 +188,14 @@ class TestCrossSegmentDetection:
         )
         assert captured == []
 
-    async def test_spanning_asr_garble_is_written_as_rule_match(self) -> None:
-        # A multiword ASR-error form landing across a segment boundary must not
-        # crash the scan. A spanning mention (end_segment_id set) is model-
-        # constrained to rule_match / user_correction, so asr_match provenance
-        # cannot be stored for it; the boundary-crossing garble is written as a
-        # rule_match span instead (T044 "-> rule_match"). The entity is a
-        # candidate because its real name token appears in seg1; the garble
-        # "qux zap" then spans the seg2/seg3 boundary. Before the fix this raised
-        # a pydantic ValidationError (asr_match + end_segment_id) and aborted the
-        # transcript scan.
+    async def test_spanning_asr_garble_keeps_asr_match_provenance(self) -> None:
+        # A multiword ASR-error form landing across a segment boundary keeps its
+        # asr_match provenance: spanning asr_match is a valid transcript writer
+        # (SPANNING_DETECTION_METHODS), so the recovery stays revertible/auditable
+        # (FR-014/SC-009) rather than masquerading as a clean rule_match. The entity
+        # is a candidate because its real name token appears in seg1; the garble
+        # "qux zap" then spans the seg2/seg3 boundary. (A naive asr_match span once
+        # raised a pydantic ValidationError; the model now admits it.)
         pat = _build_entity_pattern(
             entity_id=uuid.uuid4(),
             canonical_name="Vorna Dale",
@@ -218,7 +216,7 @@ class TestCrossSegmentDetection:
         spanning = [m for m in captured if m.end_segment_id is not None]
         assert len(spanning) == 1
         assert spanning[0].mention_text.casefold() == "qux zap"
-        assert spanning[0].detection_method == DetectionMethod.RULE_MATCH
+        assert spanning[0].detection_method == DetectionMethod.ASR_MATCH
         assert spanning[0].alias_id is None
 
     async def test_dry_run_writes_nothing_but_previews(self) -> None:

@@ -30,7 +30,11 @@ from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.entity_mention import EntityMentionCreate
-from chronovista.models.enums import DetectionMethod, MentionSource
+from chronovista.models.enums import (
+    SCAN_DETECTION_METHODS,
+    DetectionMethod,
+    MentionSource,
+)
 from chronovista.repositories.entity_asr_error_repository import (
     EntityAsrErrorRepository,
 )
@@ -423,27 +427,6 @@ class _EntityPattern:
     # The pattern then carries per-alternative `(?i:...)` scopes and MUST be
     # compiled without the global IGNORECASE flag, which would override them.
     has_case_sensitive_alias: bool = False
-
-
-@dataclass(frozen=True)
-class ArbitrationContext:
-    """Video-scoped context for longest-match-wins arbitration.
-
-    A private per-scan value object (like :class:`_EntityPattern`, not a Pydantic
-    model) carrying signal that a future arbitration pass may weigh when choosing
-    between overlapping matches. It exists as an accepted-but-inert seam: today it
-    carries no scoring signal, so passing it (or ``None``) MUST leave arbitration
-    byte-for-byte identical to the span-only longest-match-wins rule. Room is left
-    here for future per-candidate scores; scoring is deliberately not implemented.
-
-    Parameters
-    ----------
-    known_entity_ids : frozenset[uuid.UUID], optional
-        Entity ids already known for the video being scanned. Empty by default
-        and, for now, unused by arbitration.
-    """
-
-    known_entity_ids: frozenset[uuid.UUID] = frozenset()
 
 
 def _compile_entity_regex(pattern: _EntityPattern) -> re.Pattern[str]:
@@ -1142,7 +1125,7 @@ class EntityMentionScanService:
                 start_time=segs[0].start_time,
             )
             surviving, lmw_skips = self._apply_longest_match_wins(
-                raw_matches, log_row, dry_run, context=None
+                raw_matches, log_row, dry_run
             )
             result.skipped_longest_match += lmw_skips
             final_matches, ep_skips = self._apply_exclusion_patterns(
@@ -1575,14 +1558,19 @@ class EntityMentionScanService:
                             entity_ids=scoped_entity_ids,
                         )
                         batch_touched.update(delete_affected)
+                        # Delete every scan-owned method (rule_match + asr_match),
+                        # matching the write and counter sets so a recovered
+                        # metadata mention is refreshed on --full rather than left
+                        # stale (SCAN_DETECTION_METHODS).
                         for source in sources:
-                            await self._mention_repo.delete_by_scope(
-                                session,
-                                entity_ids=scoped_entity_ids,
-                                video_ids=batch_video_ids,
-                                detection_method="rule_match",
-                                mention_source=source,
-                            )
+                            for method in SCAN_DETECTION_METHODS:
+                                await self._mention_repo.delete_by_scope(
+                                    session,
+                                    entity_ids=scoped_entity_ids,
+                                    video_ids=batch_video_ids,
+                                    detection_method=method.value,
+                                    mention_source=source,
+                                )
 
                     if batch_mentions:
                         inserted = (
@@ -1874,7 +1862,7 @@ class EntityMentionScanService:
         # Create a minimal row-like object for logging
         _row = type("_Row", (), {"id": video_id})()
         surviving_matches, _ = self._apply_longest_match_wins(
-            raw_matches, _row, dry_run, context=None
+            raw_matches, _row, dry_run
         )
 
         # Step 3: Exclusion pattern filtering
@@ -2425,7 +2413,7 @@ class EntityMentionScanService:
             # Step 2: Longest-match-wins disambiguation
             # ----------------------------------------------------------
             surviving_matches, lmw_skips = self._apply_longest_match_wins(
-                raw_matches, row, dry_run, context=None
+                raw_matches, row, dry_run
             )
             longest_match_skips += lmw_skips
 
@@ -2660,8 +2648,6 @@ class EntityMentionScanService:
         raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]],
         row: Any,
         dry_run: bool,
-        *,
-        context: ArbitrationContext | None = None,
     ) -> tuple[list[tuple[uuid.UUID, int, int, str, _EntityPattern]], int]:
         """Disambiguate overlapping matches using longest-match-wins.
 
@@ -2673,11 +2659,6 @@ class EntityMentionScanService:
             The segment row (used for logging).
         dry_run : bool
             Whether this is a dry-run.
-        context : ArbitrationContext | None, optional
-            Video-scoped arbitration context (keyword-only). Accepted and threaded
-            as an inert seam for a future scoring pass; it carries no scoring
-            signal today, so the returned ordering and selection are byte-for-byte
-            identical whether it is ``None`` or an :class:`ArbitrationContext`.
 
         Returns
         -------

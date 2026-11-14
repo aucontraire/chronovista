@@ -28,7 +28,11 @@ DB, no network):
 from __future__ import annotations
 
 from chronovista.models.entity_mention import SPANNING_DETECTION_METHODS
-from chronovista.models.enums import DetectionMethod
+from chronovista.models.enums import (
+    ALIAS_LINKABLE_DETECTION_METHODS,
+    SCAN_DETECTION_METHODS,
+    DetectionMethod,
+)
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 
 
@@ -85,19 +89,35 @@ def test_spanning_detection_methods_are_the_transcript_writers() -> None:
     assert DetectionMethod.MANUAL not in SPANNING_DETECTION_METHODS
 
 
-def test_rule_scan_delete_methods_cover_asr_but_not_corrections() -> None:
-    """The --full delete predicates (per-batch, spanning, and the US4 compete
-    delete) remove exactly the methods the scan re-derives — _RULE_SCAN_METHODS =
-    rule_match + asr_match. asr_match MUST be included or recovered rows are never
-    refreshed and accumulate as stale duplicates across rescans (the re-insert is
-    ON CONFLICT DO NOTHING, so it fails silently). user_correction and manual MUST
-    be excluded or a rescan would clobber human-authored mentions the scan does
-    not re-create.
+def test_scan_detection_methods_cover_asr_but_not_corrections() -> None:
+    """SCAN_DETECTION_METHODS is the single home for the methods the rule-scan
+    writes, deletes (every --full delete + the US4 compete delete), and counts
+    (the counter-recompute helpers). asr_match MUST be included or recovered rows
+    are never refreshed and accumulate as stale duplicates across rescans (the
+    re-insert is ON CONFLICT DO NOTHING, so it fails silently). user_correction
+    and manual MUST be excluded or a rescan would clobber human-authored mentions
+    the scan does not re-create.
     """
-    methods = set(EntityMentionRepository._RULE_SCAN_METHODS)
-    assert methods == {
-        DetectionMethod.RULE_MATCH.value,
-        DetectionMethod.ASR_MATCH.value,
-    }
-    assert DetectionMethod.USER_CORRECTION.value not in methods
-    assert DetectionMethod.MANUAL.value not in methods
+    assert {
+        DetectionMethod.RULE_MATCH,
+        DetectionMethod.ASR_MATCH,
+    } == SCAN_DETECTION_METHODS
+    assert DetectionMethod.USER_CORRECTION not in SCAN_DETECTION_METHODS
+    assert DetectionMethod.MANUAL not in SCAN_DETECTION_METHODS
+
+
+def test_alias_linkable_methods_are_rule_match_only() -> None:
+    """ALIAS_LINKABLE_DETECTION_METHODS is the single home for methods that may
+    carry an alias_id — only rule_match. It overlaps SCAN_DETECTION_METHODS on
+    rule_match but MUST NOT include asr_match: an ASR-error form is not a name, so
+    it links to no alias, and the EntityMention validator rejects alias_id on any
+    non-rule_match method. Widening this set (a careless sweep of every rule_match
+    literal into one constant) would make the alias backfill-linking and
+    alias-coverage-deletion queries target rows the model forbids — the two-set
+    distinction this guard protects.
+    """
+    assert {DetectionMethod.RULE_MATCH} == ALIAS_LINKABLE_DETECTION_METHODS
+    assert DetectionMethod.ASR_MATCH not in ALIAS_LINKABLE_DETECTION_METHODS
+    # The two sets are distinct (overlap only on rule_match).
+    assert SCAN_DETECTION_METHODS != ALIAS_LINKABLE_DETECTION_METHODS
+    assert ALIAS_LINKABLE_DETECTION_METHODS < SCAN_DETECTION_METHODS

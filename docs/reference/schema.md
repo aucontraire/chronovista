@@ -615,7 +615,7 @@ Entity mention records linking named entities to transcript segments.
 **Constraints:**
 
 - CHECK `chk_entity_mention_confidence_range`: `confidence >= 0.0 AND confidence <= 1.0`
-- CHECK `chk_entity_mention_detection_method_valid`: `detection_method IN ('rule_match', 'spacy_ner', 'llm_extraction', 'manual', 'user_correction')`
+- CHECK `chk_entity_mention_detection_method_valid`: `detection_method IN ('rule_match', 'spacy_ner', 'llm_extraction', 'manual', 'user_correction', 'asr_match')`
 - CHECK `chk_entity_mention_source_valid`: `mention_source IN ('transcript', 'title', 'description', 'manual')`
 
 **Indexes:**

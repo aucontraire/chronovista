@@ -447,12 +447,16 @@ class TestScanMetadataTitle:
                 full_rescan=True,
             )
 
-        mock_delete.assert_called_once()
-        call_kwargs = mock_delete.call_args
-        assert call_kwargs[1]["mention_source"] == "title"
-        assert call_kwargs[1]["detection_method"] == "rule_match"
-        # Per-batch: delete is scoped to the batch's video ids, not a global pass.
-        assert call_kwargs[1]["video_ids"] == ["vid00500005"]
+        # One delete per (source x scan-owned method): both rule_match and
+        # asr_match are removed so a recovered metadata mention is refreshed on
+        # --full, not left stale (SCAN_DETECTION_METHODS).
+        assert mock_delete.call_count == 2
+        methods = {c[1]["detection_method"] for c in mock_delete.call_args_list}
+        assert methods == {"rule_match", "asr_match"}
+        for call in mock_delete.call_args_list:
+            assert call[1]["mention_source"] == "title"
+            # Per-batch: delete is scoped to the batch's video ids, not a global pass.
+            assert call[1]["video_ids"] == ["vid00500005"]
 
     async def test_title_scan_with_aliases(self) -> None:
         """Title scanning detects entity aliases in video titles."""

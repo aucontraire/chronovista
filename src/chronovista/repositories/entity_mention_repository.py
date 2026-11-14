@@ -82,6 +82,8 @@ from chronovista.models.entity_association import (
 from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.entity_operation_log import MentionSnapshot
 from chronovista.models.enums import (
+    ALIAS_LINKABLE_DETECTION_METHODS,
+    SCAN_DETECTION_METHODS,
     AvailabilityStatus,
     EvidenceScope,
     MentionSource,
@@ -176,18 +178,6 @@ class EntityMentionRepository(
     ]
 ):
     """Repository for entity mention CRUD and aggregation operations."""
-
-    # Detection methods the rule-based scan WRITES and re-derives on a --full
-    # rescan: the clean regex match (``rule_match``) and the ASR-error-form match
-    # (``asr_match``, Feature 111). The per-batch and cross-segment --full deletes
-    # must remove exactly these before re-inserting, so a recovered mention is
-    # refreshed like a rule match; omitting ``asr_match`` leaves stale/duplicate
-    # recovered rows across rescans (the re-insert is ON CONFLICT DO NOTHING, so
-    # it fails silently, not loudly). ``user_correction`` is deliberately EXCLUDED
-    # — corrections are human-authored and not re-derived by the scan, so a rescan
-    # must never delete them. Single committed home for the three delete sites;
-    # guarded in tests/unit/architecture/test_asr_provenance_contract.py.
-    _RULE_SCAN_METHODS: tuple[str, ...] = ("rule_match", "asr_match")
 
     def __init__(self) -> None:
         """Initialize repository with EntityMention model."""
@@ -363,7 +353,10 @@ class EntityMentionRepository(
             return []
         stmt = select(distinct(EntityMentionDB.entity_id)).where(
             EntityMentionDB.segment_id.in_(segment_ids),
-            EntityMentionDB.detection_method == "rule_match",
+            # Must match what the --full delete removes (SCAN_DETECTION_METHODS):
+            # an entity whose only batch mentions are asr_match still has rows
+            # deleted, so its counters must be recomputed or they go stale.
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
             EntityMentionDB.mention_source == "transcript",
         )
         if entity_ids is not None:
@@ -381,7 +374,7 @@ class EntityMentionRepository(
 
         The per-batch, segment-scoped counterpart of ``delete_by_scope`` used by
         the resumable ``--full`` rescan (#291): deleting only the current batch's
-        segments' rule-scan mentions (``_RULE_SCAN_METHODS`` = ``rule_match`` +
+        segments' rule-scan mentions (``SCAN_DETECTION_METHODS`` = ``rule_match`` +
         ``asr_match``, the methods the scan re-derives) and re-inserting them in
         the same commit closes the "deleted but not re-detected" window. Manual and
         correction-derived mentions (and other detection methods / sources) are
@@ -414,7 +407,7 @@ class EntityMentionRepository(
             return 0
         stmt = delete(EntityMentionDB).where(
             EntityMentionDB.segment_id.in_(segment_ids),
-            EntityMentionDB.detection_method.in_(self._RULE_SCAN_METHODS),
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
             EntityMentionDB.mention_source == "transcript",
             # Spanning mentions are owned by the per-transcript cross-segment pass.
             EntityMentionDB.end_segment_id.is_(None),
@@ -460,7 +453,7 @@ class EntityMentionRepository(
             return 0
         stmt = delete(EntityMentionDB).where(
             EntityMentionDB.segment_id.in_(segment_ids),
-            EntityMentionDB.detection_method.in_(self._RULE_SCAN_METHODS),
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
             EntityMentionDB.mention_source == "transcript",
             EntityMentionDB.end_segment_id.is_not(None),
         )
@@ -512,7 +505,7 @@ class EntityMentionRepository(
                 EntityMentionDB.match_start,
                 EntityMentionDB.match_end,
             ).in_(targets),
-            EntityMentionDB.detection_method.in_(self._RULE_SCAN_METHODS),
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
             EntityMentionDB.mention_source == "transcript",
             EntityMentionDB.end_segment_id.is_(None),
         )
@@ -556,7 +549,9 @@ class EntityMentionRepository(
             return []
         stmt = select(distinct(EntityMentionDB.entity_id)).where(
             EntityMentionDB.video_id.in_(video_ids),
-            EntityMentionDB.detection_method == "rule_match",
+            # Must match the --full metadata delete set (SCAN_DETECTION_METHODS)
+            # so an asr_match-only entity's counters are recomputed, not left stale.
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
             EntityMentionDB.mention_source.in_(sources),
         )
         if entity_ids is not None:
@@ -612,7 +607,7 @@ class EntityMentionRepository(
         )
         stmt = select(EntityMentionDB).where(
             EntityMentionDB.entity_id == entity_id,
-            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.detection_method.in_(ALIAS_LINKABLE_DETECTION_METHODS),
             ~canonical_covers,
             or_(
                 EntityMentionDB.alias_id == alias_id,
@@ -727,7 +722,7 @@ class EntityMentionRepository(
         )
         match = and_(
             EntityMentionDB.entity_id == unambiguous_folds.c.entity_id,
-            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.detection_method.in_(ALIAS_LINKABLE_DETECTION_METHODS),
             EntityMentionDB.alias_id.is_(None),
             _folded(EntityMentionDB.mention_text) == unambiguous_folds.c.fold,
         )
@@ -743,7 +738,9 @@ class EntityMentionRepository(
             # count that remains NULL.
             remaining = await session.execute(
                 select(func.count()).where(
-                    EntityMentionDB.detection_method == "rule_match",
+                    EntityMentionDB.detection_method.in_(
+                        ALIAS_LINKABLE_DETECTION_METHODS
+                    ),
                     EntityMentionDB.alias_id.is_(None),
                 )
             )
@@ -759,7 +756,9 @@ class EntityMentionRepository(
             # the count that would remain NULL.
             null_now = await session.execute(
                 select(func.count()).where(
-                    EntityMentionDB.detection_method == "rule_match",
+                    EntityMentionDB.detection_method.in_(
+                        ALIAS_LINKABLE_DETECTION_METHODS
+                    ),
                     EntityMentionDB.alias_id.is_(None),
                 )
             )

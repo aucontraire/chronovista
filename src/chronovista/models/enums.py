@@ -538,6 +538,34 @@ class DetectionMethod(str, Enum):
     ASR_MATCH = "asr_match"
 
 
+# Two detection-method categories that MUST NOT be conflated. They overlap on
+# ``rule_match`` but answer different questions, and widening one to the other
+# breaks an invariant — so each has one committed home, pinned by a guard in
+# ``tests/unit/architecture/test_asr_provenance_contract.py``.
+#
+# SCAN-OWNED: the methods the rule-based scan writes and re-derives — a clean
+# name/alias match (``rule_match``) and an ASR-error-form recovery (``asr_match``,
+# Feature 111). Every ``--full`` delete, the counter-recompute helpers, and the
+# whitespace re-scan candidate selection operate on exactly this set, so a
+# recovered mention is deleted/counted/refreshed like a rule match. ``asr_match``
+# MUST be present or recovered rows accumulate as stale duplicates on rescan (the
+# re-insert is ON CONFLICT DO NOTHING, failing silently).
+SCAN_DETECTION_METHODS: frozenset[DetectionMethod] = frozenset(
+    {DetectionMethod.RULE_MATCH, DetectionMethod.ASR_MATCH}
+)
+
+# ALIAS-LINKABLE: the methods that may carry an ``alias_id``. Only ``rule_match``
+# — an ASR-error form is not a name, so it links to no alias, and the
+# EntityMention validator forbids ``alias_id`` on any other method. The alias
+# backfill-linking and alias-coverage-deletion queries scope to this set. It
+# deliberately EXCLUDES ``asr_match``: widening it (e.g. a careless "consistency"
+# sweep of every ``rule_match`` literal) would try to alias-link rows the model
+# rejects.
+ALIAS_LINKABLE_DETECTION_METHODS: frozenset[DetectionMethod] = frozenset(
+    {DetectionMethod.RULE_MATCH}
+)
+
+
 class MentionSource(str, Enum):
     """Provenance of an entity association.
 

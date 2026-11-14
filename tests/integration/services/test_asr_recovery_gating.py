@@ -281,13 +281,17 @@ class TestAsrRecoveryGating:
             )
             return list(result.scalars().all())
 
-        # Scan 1 (--full): the admissible garble is recovered as asr_match.
+        # Scan 1 (--full): the admissible garble is recovered as an asr_match row.
+        # (Its text is a garble, not a visible name, so by design it does not count
+        # toward the visible-name-based entity.mention_count — see #262.)
         await service.scan(full_rescan=True)
         assert len(await _asr_rows()) == 1
 
         # Unregister the ASR-error form, then rescan --full. The form is no longer
         # admissible, so scan 2 re-detects nothing for it; the --full delete must
-        # remove the now-stale asr_match row.
+        # remove the now-stale asr_match row (SCAN_DETECTION_METHODS). The re-insert
+        # is ON CONFLICT DO NOTHING, so a rule_match-only delete would leave the row
+        # behind silently.
         await db_session.execute(
             delete(EntityAsrErrorDB).where(EntityAsrErrorDB.entity_id == entity.id)
         )
@@ -297,5 +301,5 @@ class TestAsrRecoveryGating:
         assert await _asr_rows() == [], (
             "a stale asr_match row survived a --full rescan after its ASR form was "
             "unregistered — the --full delete predicates must include asr_match "
-            "(_RULE_SCAN_METHODS), or recovered rows accumulate across rescans"
+            "(SCAN_DETECTION_METHODS), or recovered rows accumulate across rescans"
         )

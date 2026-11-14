@@ -565,6 +565,21 @@ ALIAS_LINKABLE_DETECTION_METHODS: frozenset[DetectionMethod] = frozenset(
     {DetectionMethod.RULE_MATCH}
 )
 
+# NAME-EXEMPT: detection methods whose rows qualify as a real entity->video
+# association WITHOUT their text folding to one of the entity's visible names.
+# ``manual`` is hand-asserted (no text anchor at all); ``asr_match`` is a recovered
+# ASR-error form whose text is a garble by construction (the collision-subtraction
+# guarantees it never folds to a name) but whose provenance vouches for it (gated,
+# theft-reviewed, precision-audited). Every other method's rows qualify only by a
+# visible-name match. This is the method arm of the ONE shared qualification
+# predicate every association surface reads, so a recovered mention counts on all
+# surfaces or none (#262). Qualification ("is this mention real?") is separate from
+# display ("is its text a name?"): these rows still DISPLAY their entity's
+# canonical name, with the stored garble available as detail.
+NAME_EXEMPT_DETECTION_METHODS: frozenset[DetectionMethod] = frozenset(
+    {DetectionMethod.MANUAL, DetectionMethod.ASR_MATCH}
+)
+
 
 class MentionSource(str, Enum):
     """Provenance of an entity association.

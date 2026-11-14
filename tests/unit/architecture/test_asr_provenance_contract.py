@@ -27,6 +27,9 @@ DB, no network):
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import chronovista.repositories.entity_mention_repository as _mention_repo_module
 from chronovista.models.entity_mention import SPANNING_DETECTION_METHODS
 from chronovista.models.enums import (
     ALIAS_LINKABLE_DETECTION_METHODS,
@@ -121,3 +124,38 @@ def test_alias_linkable_methods_are_rule_match_only() -> None:
     # The two sets are distinct (overlap only on rule_match).
     assert SCAN_DETECTION_METHODS != ALIAS_LINKABLE_DETECTION_METHODS
     assert ALIAS_LINKABLE_DETECTION_METHODS < SCAN_DETECTION_METHODS
+
+
+# Every association-MEMBERSHIP query reads the ONE shared qualification helper, so a
+# mention counts on all surfaces or none (#262). This pins that count. NOTE:
+# ``update_entity_counters`` is deliberately NOT in this set — it computes the
+# detected-mention TALLY (visible-name OR asr_match, never a manual method arm), a
+# different question from association membership; conflating the two is what the
+# v0.122.0 counter bug was. Its behaviour is pinned by
+# test_delete_removes_auto_keeps_manual_and_correction + the asr recovery gating
+# test, not by this count.
+_EXPECTED_QUALIFICATION_CALL_SITES = 7
+
+
+def test_all_association_surfaces_use_the_shared_qualification() -> None:
+    """Exact-count guard: pin the number of surfaces that gate on the shared
+    qualification predicate ``_mention_qualifies_as_association``.
+
+    The #262 class of bug is a surface that counts a mention on a DIFFERENT rule
+    than its peers. A shared constant pins "which names count"; it is blind to a
+    surface added on a new axis (which detection methods count). An exact-count
+    guard is not: adding an association-membership query that hand-rolls
+    ``visible-name OR manual`` instead of calling the helper — or dropping an
+    existing call — changes the count and fails here, forcing a conscious review
+    that the new/removed site admits ``asr_match`` via the shared predicate.
+    """
+    source = Path(_mention_repo_module.__file__).read_text(encoding="utf-8")
+    call_sites = source.count("_mention_qualifies_as_association(visible_names)")
+    assert call_sites == _EXPECTED_QUALIFICATION_CALL_SITES, (
+        f"expected {_EXPECTED_QUALIFICATION_CALL_SITES} association surfaces to call "
+        f"the shared qualification helper, found {call_sites}. If you added or "
+        f"removed an association-membership query, update this count AND confirm the "
+        f"site admits asr_match via the shared predicate (not a hand-rolled "
+        f"visible-name-only filter) — the surface-by-surface drift that reintroduces "
+        f"the #262 bug."
+    )

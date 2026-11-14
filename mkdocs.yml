@@ -176,6 +176,7 @@ nav:
       - Frontend architecture: architecture/frontend-architecture.md
       - Post-creation re-grounding: architecture/entity-reground.md
       - Alias→mention provenance: architecture/entity-alias-provenance.md
+      - Name matching & ASR recovery: architecture/entity-name-matching.md
       - Transcript whitespace normalization: architecture/transcript-whitespace-normalization.md
       - Resumable entity scan: architecture/entity-scan-resumability.md
       - Seed-and-grow discovery: architecture/seed-and-grow.md

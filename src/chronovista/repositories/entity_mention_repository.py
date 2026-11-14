@@ -83,6 +83,7 @@ from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.entity_operation_log import MentionSnapshot
 from chronovista.models.enums import (
     ALIAS_LINKABLE_DETECTION_METHODS,
+    NAME_EXEMPT_DETECTION_METHODS,
     SCAN_DETECTION_METHODS,
     AvailabilityStatus,
     EvidenceScope,
@@ -150,6 +151,32 @@ def _visible_names_subquery(entity_ids: list[uuid.UUID] | None) -> Subquery:
         canonical = canonical.where(NamedEntityDB.id.in_(entity_ids))
         alias = alias.where(EntityAliasDB.entity_id.in_(entity_ids))
     return union(canonical, alias).subquery()
+
+
+def _mention_qualifies_as_association(visible_names: Subquery) -> ColumnElement[bool]:
+    """Predicate: a mention row counts as a real entity->video association.
+
+    The ONE committed qualification rule, shared by every association surface so a
+    mention that counts on one counts on all of them (#262). A row qualifies when:
+
+    - its text folds to one of the entity's **visible names** (the name arm —
+      canonical name or a non-ASR alias), OR
+    - its ``detection_method`` is **name-exempt** (``manual`` — hand-asserted, no
+      text anchor; ``asr_match`` — a recovered ASR-error form whose text is a
+      garble by construction but whose provenance vouches for it). See
+      ``NAME_EXEMPT_DETECTION_METHODS``.
+
+    This separates **qualification** ("is this mention real?") from **display**
+    ("is its text a name?"): a name-exempt row qualifies here but still DISPLAYS
+    its entity's canonical name, with the stored ``mention_text`` available as
+    detail. Callers LEFT OUTER JOIN ``visible_names`` (on entity_id + folded text)
+    so the name arm can be evaluated; name-exempt rows pass via the method arm even
+    with no join match.
+    """
+    return or_(
+        _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+        EntityMentionDB.detection_method.in_(NAME_EXEMPT_DETECTION_METHODS),
+    )
 
 
 def _available_video_id_subquery() -> Select[Any]:
@@ -887,21 +914,35 @@ class EntityMentionRepository(
         # the filter, and the page matches use (the #262 single-definition rule).
         visible_names = _visible_names_subquery(list(entity_ids))
 
-        # Count only mentions whose mention_text matches a visible name
+        # The stored totals count DETECTED mentions, not associations. A mention
+        # counts when its text folds to a visible name OR it is a recovered
+        # ``asr_match`` (the garble, admitted by provenance — FR-014). Unlike
+        # association membership this does NOT exempt ``manual`` via a method arm:
+        # a hand-linked row counts only when its text is a visible name (its
+        # canonical name), never a non-visible manual row — preserving the pre-ASR
+        # counting rule so a manual-only entity keeps ``mention_count == 0`` on the
+        # per-video surfaces that read it. LEFT OUTER JOIN so a recovered garble,
+        # which matches no visible name, still counts via the method arm below.
         agg_subq = (
             select(
                 EntityMentionDB.entity_id,
                 func.count(distinct(EntityMentionDB.id)).label("mention_count"),
                 func.count(distinct(EntityMentionDB.video_id)).label("video_count"),
             )
-            .join(
+            .outerjoin(
                 visible_names,
                 and_(
                     EntityMentionDB.entity_id == visible_names.c.entity_id,
                     _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
                 ),
             )
-            .where(EntityMentionDB.entity_id.in_(entity_ids))
+            .where(
+                EntityMentionDB.entity_id.in_(entity_ids),
+                or_(
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                    EntityMentionDB.detection_method == "asr_match",
+                ),
+            )
             .group_by(EntityMentionDB.entity_id)
             .subquery()
         )
@@ -1066,6 +1107,10 @@ class EntityMentionRepository(
         # ``mention_count == 0`` as "linked by hand, never actually detected"
         # when it optimistically removes an association. Counting them here
         # would silently break that removal.
+        # Bring this per-video breakdown under the ONE shared association rule, so
+        # a row counts here exactly when it counts on every other surface (#262):
+        # a visible-name match OR a name-exempt method (manual / asr_match).
+        visible_names = _visible_names_subquery(None)
         countable_mention = case(
             (EntityMentionDB.detection_method == "manual", null()),
             (
@@ -1119,7 +1164,17 @@ class EntityMentionRepository(
                 TranscriptSegmentDB,
                 EntityMentionDB.segment_id == TranscriptSegmentDB.id,
             )
-            .where(EntityMentionDB.video_id == video_id)
+            .outerjoin(
+                visible_names,
+                and_(
+                    visible_names.c.entity_id == EntityMentionDB.entity_id,
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                ),
+            )
+            .where(
+                EntityMentionDB.video_id == video_id,
+                _mention_qualifies_as_association(visible_names),
+            )
             .group_by(
                 EntityMentionDB.entity_id,
                 NamedEntityDB.canonical_name,
@@ -1257,10 +1312,7 @@ class EntityMentionRepository(
         # already in visible_names, but we include them via OR to be safe.
         mention_filter = and_(
             EntityMentionDB.entity_id == entity_id,
-            or_(
-                _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
-                EntityMentionDB.detection_method == "manual",
-            ),
+            _mention_qualifies_as_association(visible_names),
         )
 
         # Language filter: manual mentions (language_code=NULL) always pass.
@@ -1589,12 +1641,12 @@ class EntityMentionRepository(
                 .where(
                     EntityMentionDB.entity_id == entity_id,
                     EntityMentionDB.video_id == video_id,
+                    # Manual mentions have no transcript segment; the join drops
+                    # them, and this keeps the preview transcript-only.
                     EntityMentionDB.detection_method != "manual",
-                    or_(
-                        _folded(EntityMentionDB.mention_text)
-                        == visible_names.c.name_lower,
-                        EntityMentionDB.detection_method == "manual",
-                    ),
+                    # A recovered (asr_match) mention previews its real transcript
+                    # snippet, consistent with it now counting as an association.
+                    _mention_qualifies_as_association(visible_names),
                 )
             )
             if language_code is not None:
@@ -2208,10 +2260,7 @@ class EntityMentionRepository(
                 EntityMentionDB.video_id.in_(list(video_ids)),
                 EntityMentionDB.entity_id.in_(ids),
                 # Visible-name match OR manual — the qualifying-mention rule (#262).
-                or_(
-                    visible_names.c.name_lower.is_not(None),
-                    EntityMentionDB.detection_method == "manual",
-                ),
+                _mention_qualifies_as_association(visible_names),
             )
             .group_by(
                 EntityMentionDB.video_id,
@@ -2297,10 +2346,7 @@ class EntityMentionRepository(
                 ),
             )
             .where(
-                or_(
-                    visible_names.c.name_lower.is_not(None),
-                    EntityMentionDB.detection_method == "manual",
-                ),
+                _mention_qualifies_as_association(visible_names),
             )
         )
         if entity_ids is not None:
@@ -3024,10 +3070,7 @@ class EntityMentionRepository(
             )
             .where(
                 EntityMentionDB.video_id == video_id,
-                or_(
-                    visible_names.c.name_lower.is_not(None),
-                    EntityMentionDB.detection_method == "manual",
-                ),
+                _mention_qualifies_as_association(visible_names),
             )
         )
         if language_code is not None:
@@ -3237,10 +3280,7 @@ class EntityMentionRepository(
 
         mention_filter = and_(
             EntityMentionDB.entity_id == entity_id,
-            or_(
-                _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
-                EntityMentionDB.detection_method == "manual",
-            ),
+            _mention_qualifies_as_association(visible_names),
         )
 
         transcript_vid_stmt = (

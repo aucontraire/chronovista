@@ -38,6 +38,7 @@ from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.enums import DetectionMethod
+from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.services.entity_mention_scan_service import EntityMentionScanService
 from tests.factories.id_factory import channel_id, video_id
 
@@ -281,11 +282,26 @@ class TestAsrRecoveryGating:
             )
             return list(result.scalars().all())
 
+        repo = EntityMentionRepository()
+
         # Scan 1 (--full): the admissible garble is recovered as an asr_match row.
-        # (Its text is a garble, not a visible name, so by design it does not count
-        # toward the visible-name-based entity.mention_count — see #262.)
+        # This entity has NO visible-name mention — only the garble — so every
+        # cross-surface assertion below isolates the recovered mention.
         await service.scan(full_rescan=True)
         assert len(await _asr_rows()) == 1
+
+        # Cross-surface (#262): the recovery counts on the reader surfaces and the
+        # stored counter, via the shared qualification predicate's method arm — even
+        # though the garble text is not a visible name.
+        await db_session.refresh(entity)
+        assert entity.mention_count == 1, (
+            "a recovered asr_match mention must count toward the entity's stored "
+            "mention_count (shared qualification admits asr_match)"
+        )
+        videos, _total = await repo.get_entity_video_list(db_session, entity.id)
+        assert _VIDEO_ID in {
+            v["video_id"] for v in videos
+        }, "the recovered-ASR video must appear in the entity video list"
 
         # Unregister the ASR-error form, then rescan --full. The form is no longer
         # admissible, so scan 2 re-detects nothing for it; the --full delete must
@@ -303,3 +319,11 @@ class TestAsrRecoveryGating:
             "unregistered — the --full delete predicates must include asr_match "
             "(SCAN_DETECTION_METHODS), or recovered rows accumulate across rescans"
         )
+
+        # With the recovered row gone and nothing re-detected, the counter is
+        # recomputed to 0 and the video drops off the entity's list — the counter
+        # and list stay in step with the rows (no stale count, no orphan video).
+        await db_session.refresh(entity)
+        assert entity.mention_count == 0
+        videos_after, _ = await repo.get_entity_video_list(db_session, entity.id)
+        assert _VIDEO_ID not in {v["video_id"] for v in videos_after}

@@ -1,15 +1,20 @@
-"""Cross-Feature Data Contract: asr_match mentions are counted as transcript
-appearances by the entity↔video reader (Feature 111 FR-014, spec §Cross-Feature;
+"""Cross-Feature Data Contract: asr_match mentions qualify as an entity↔video
+association on the reader surface (Feature 111 FR-014, spec §Cross-Feature;
 Constitution Cross-Feature Data Contract Verification).
 
-``get_entity_video_list`` counts a video's mentions with
-``detection_method IN _TRANSCRIPT_METHODS AND mention_source == 'transcript'``.
-Feature 111 writes recovered-ASR mentions as ``detection_method='asr_match'`` with
-``mention_source='transcript'``; before ``asr_match`` was added to
-``_TRANSCRIPT_METHODS`` those mentions were undercounted (a video recovered only
-via ASR showed a zero transcript count). This real-DB test seeds one rule_match
-and one asr_match mention for the same entity on different videos and asserts both
-are counted, plus a manual control that stays excluded.
+The shared qualification rule (``_mention_qualifies_as_association``) admits a
+mention when its text folds to a visible name OR its detection method is
+name-exempt (``manual`` / ``asr_match``). So a recovered mention counts on
+``get_entity_video_list`` even though — in production — its text is a garble that
+never folds to a name. This real-DB test seeds a rule_match and an asr_match
+mention for one entity on different videos and asserts both are counted, plus a
+manual control that stays excluded from the transcript count.
+
+The authoritative end-to-end validation with a REAL garble (text that does not
+fold to a visible name) lives in
+``tests/integration/services/test_asr_recovery_gating.py`` — which scans a
+registered ASR-error form and asserts the recovery counts across the video list
+AND the stored counter. This repo-level test uses controlled seed data.
 
 Uses the ``db_session`` fixture (create_all + drop_all per test). Name-free
 placeholders only (Constitution VI).
@@ -80,8 +85,8 @@ class TestAsrMatchCountedAsTranscript:
         assert v_asr in by_id, "asr_match video missing from entity video list"
         assert by_id[v_rule]["mention_count"] >= 1
         assert by_id[v_asr]["mention_count"] >= 1, (
-            "asr_match mention was not counted as a transcript appearance — "
-            "asr_match must be in _TRANSCRIPT_METHODS (FR-014)"
+            "asr_match mention was not counted as an association — the shared "
+            "qualification predicate must admit asr_match (FR-014)"
         )
 
         # The manual-only association is NOT a transcript appearance: either it is

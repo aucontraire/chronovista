@@ -58,10 +58,35 @@ class TestCommonWordGate:
         assert _asr_form_admissible("de zelkov") is True
         assert _asr_form_admissible("al qophine") is True
 
-    def test_known_deferred_common_noun_case(self) -> None:
-        # A form whose tokens are ordinary common NOUNS ("paper pencil") is NOT
-        # yet excluded: common nouns are not in the function-word stopword seed,
-        # so the all-common gate passes them. Catching this class is the
-        # guard-sizing task (T029) that extends _COMMON_WORDS and gates the
-        # backfill; documented here so the current scope is explicit.
+    def test_common_nouns_remain_admitted_by_design(self) -> None:
+        # A form whose tokens are ordinary common NOUNS ("paper pencil") stays
+        # admitted BY DESIGN. The T029 dictionary-wide noun extension was REJECTED:
+        # a /usr/share/dict/words proxy excludes genuine recoveries (a real first
+        # name beside an ordinary-word surname), so the gate uses a curated
+        # closed-class function-word set, never a dictionary. A false admission of
+        # this shape is caught downstream by the SC-001 precision audit, not here.
         assert _asr_form_admissible("paper pencil") is True
+
+
+class TestSpanishCommonWordGate:
+    """FR-003 over the Spanish function-word set (mutation-verifier).
+
+    English-only _COMMON_WORDS left this gate inert on the bilingual corpus. The
+    Spanish set makes it do work: a two-word all-common Spanish form (a function
+    word beside the ubiquitous "fe"/"faith") carries no name anchor and is excluded.
+    Remove _ES_COMMON_WORDS from _COMMON_WORDS and ``test_spanish_all_common_excluded``
+    flips to admissible.
+    """
+
+    def test_spanish_all_common_excluded(self) -> None:
+        # Every token is a Spanish high-frequency word -> no distinctive name token.
+        # ("fe de" = "faith of"; "de la" = "of the".) Admitting such a form would
+        # tag ordinary Spanish prose as a person. Remove the Spanish set -> admitted.
+        assert _asr_form_admissible("fe de") is False
+        assert _asr_form_admissible("de la") is False
+
+    def test_spanish_distinctive_token_still_admitted(self) -> None:
+        # A Spanish particle beside a distinctive (invented) token survives, so a
+        # real recovery is not over-excluded (the Spanish set is not over-broad).
+        assert _asr_form_admissible("fe de zelkov") is True
+        assert _asr_form_admissible("de la marlowe") is True

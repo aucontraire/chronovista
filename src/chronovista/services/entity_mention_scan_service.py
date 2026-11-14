@@ -42,7 +42,7 @@ from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
 )
 from chronovista.services.cross_segment_discovery import (
-    _STOPWORDS as _COMMON_WORDS,
+    _STOPWORDS,
 )
 from chronovista.services.transcript_text_index import (
     SEGMENT_SEPARATOR,
@@ -64,6 +64,103 @@ _MAX_FETCH_RETRIES = 3
 # are not whitespace (so ``str.isspace()`` misses them) but would break a
 # contiguous match. Zero-width space, ZWNJ, ZWJ, BOM/ZWNBSP, and soft hyphen.
 _MATCH_INVISIBLE_CPS = frozenset({0x200B, 0x200C, 0x200D, 0xFEFF, 0x00AD})
+
+# Spanish high-frequency words for the ASR-form admission gate (FR-003). The gate
+# excludes a multi-word ASR form only when EVERY token is a common word — i.e. the
+# form carries no distinctive token to anchor it to a name. ``_STOPWORDS`` (imported
+# above) is English-only, which left the gate INERT on this bilingual corpus: it
+# rejected zero registered forms. These are the Spanish closed-class function words
+# (determiners, prepositions, pronouns, conjunctions, copulas) plus ``fe`` ("faith")
+# — the single open-class word needed, because an ASR mis-split of a nickname can
+# produce an all-common two-word form ("faith of") that is ordinary Spanish prose
+# and would otherwise be admitted and tag every occurrence as a person. This is a
+# curated closed-class list, deliberately NOT a dictionary: the dictionary-wide noun
+# extension was rejected because it excludes genuine recoveries (a first name beside
+# an ordinary-word surname, e.g. a mis-hearing that happens to spell common words).
+# Measured collateral of this exact set over the live corpus: exactly one form
+# excluded, zero genuine recoveries lost. A per-form reviewer override (FR-011)
+# remains the lever for forms the gate cannot catch (a distinctive first name beside
+# an English preposition — all-common never fires, so only an override excludes it).
+_ES_COMMON_WORDS: frozenset[str] = frozenset(
+    {
+        "de",
+        "del",
+        "la",
+        "el",
+        "los",
+        "las",
+        "un",
+        "una",
+        "unos",
+        "unas",
+        "lo",
+        "al",
+        "a",
+        "en",
+        "y",
+        "o",
+        "u",
+        "que",
+        "con",
+        "por",
+        "para",
+        "su",
+        "sus",
+        "mi",
+        "mis",
+        "tu",
+        "tus",
+        "se",
+        "le",
+        "les",
+        "me",
+        "te",
+        "nos",
+        "es",
+        "son",
+        "era",
+        "eran",
+        "ser",
+        "estar",
+        "esta",
+        "este",
+        "esto",
+        "esa",
+        "ese",
+        "eso",
+        "como",
+        "pero",
+        "porque",
+        "si",
+        "no",
+        "ya",
+        "muy",
+        "mas",
+        "sin",
+        "sobre",
+        "entre",
+        "cuando",
+        "donde",
+        "quien",
+        "desde",
+        "hasta",
+        "hay",
+        "todo",
+        "toda",
+        "todos",
+        "todas",
+        "otro",
+        "otra",
+        "cada",
+        "ni",
+        "e",
+        "fe",
+    }
+)
+
+# The gate's common-word set: English stopwords ∪ the Spanish high-frequency set.
+# Single-sourced here; the admission gate (_asr_form_admissible) is its only reader.
+_COMMON_WORDS: frozenset[str] = _STOPWORDS | _ES_COMMON_WORDS
 
 
 # Word-run tokenizer for the cross-segment candidate pre-filter. Matches how the
@@ -323,11 +420,17 @@ def _asr_form_admissible(form: str) -> bool:
 
     Notes
     -----
-    ``_COMMON_WORDS`` is currently the function-word stopword set, so the
-    all-common gate catches all-stopword forms (e.g. ``"of the"``). Extending it to
-    common *nouns* — so a mis-hearing whose tokens are all ordinary dictionary
-    words is also excluded — is the guard-sizing task (T029) that gates the
-    backfill; the gate mechanism here does not change, only the word set.
+    ``_COMMON_WORDS`` is the function-word set for the transcript languages —
+    English stopwords plus the Spanish closed-class set (:data:`_ES_COMMON_WORDS`).
+    English-only left this gate inert on the bilingual corpus (it rejected zero
+    forms); the Spanish set is what makes it do any work, excluding an all-common
+    two-word Spanish mis-split ("faith of") with measured zero collateral. The set is
+    deliberately closed-class, NOT a dictionary: a dictionary-wide *noun* extension
+    was rejected because it excludes genuine recoveries (a first name beside an
+    ordinary-word surname). A form that keeps a distinctive token but still mis-fires
+    (a distinctive first name beside an English preposition) is outside this gate's
+    reach by design — the FR-011 ``usable_as_match_pattern`` override is the lever for
+    those.
 
     Parameters
     ----------

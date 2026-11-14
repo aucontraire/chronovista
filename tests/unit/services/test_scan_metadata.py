@@ -92,7 +92,9 @@ def _make_session_factory(
     The session.execute mock handles:
     - First call: entity query -> returns entities
     - Second call: alias query -> returns aliases
-    - Third call (scoped scans only): the shared-token neighbour-widening
+    - Third call: the ASR-error multi-word form query (Feature 111 US1b)
+      -> returns no rows, so no entity gains an ASR match source
+    - Fourth call (scoped scans only): the shared-token neighbour-widening
       entity query (NOTE 020 §2) -> returns no active rows, so no neighbours
       are found, no alias query follows, and the match set is not widened
     - Subsequent calls: video batches + bulk insert results + counter updates
@@ -115,6 +117,15 @@ def _make_session_factory(
     alias_result = MagicMock()
     alias_result.scalars.return_value.all.return_value = aliases
     call_results.append(alias_result)
+
+    # ASR-error form load (Feature 111 US1b): _load_entity_patterns now issues
+    # one query per batch reading each entity's multi-word ASR-error forms with
+    # ``.all()``. An empty result means no entity has a registered form, so the
+    # match set and provenance are identical to pre-wiring behaviour for these
+    # fixtures.
+    asr_result = MagicMock()
+    asr_result.all.return_value = []
+    call_results.append(asr_result)
 
     # NOTE 020 §2: a SCOPED scan_metadata widens its MATCH set via
     # _shared_token_neighbour_ids, which issues one extra query reading each

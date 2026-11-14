@@ -31,6 +31,9 @@ from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.enums import DetectionMethod, MentionSource
+from chronovista.repositories.entity_asr_error_repository import (
+    EntityAsrErrorRepository,
+)
 from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
 )
@@ -268,6 +271,13 @@ class _EntityPattern:
     # (e.g. "pena"/"peña") is absent, so such spans record NULL — the matcher
     # can't tell them apart either, so we don't guess.
     alias_id_by_fold: dict[str, uuid.UUID] = field(default_factory=dict)
+    # Provenance (#279/Feature 111): fold+casefold values that are ASR-sourced
+    # (registered in ``entity_asr_errors``), keyed the same way as
+    # ``alias_id_by_fold`` so a matched span's folded key tells the writer which
+    # provenance to record. A fold that also maps to a real name (canonical or
+    # alias) is NOT here — real names win provenance — so such a span keeps
+    # ``rule_match`` and its alias id.
+    asr_folds: frozenset[str] = frozenset()
     exclusion_patterns: list[str] = field(default_factory=list)
     # True when at least one alias opted into case-sensitive matching (#177).
     # The pattern then carries per-alternative `(?i:...)` scopes and MUST be
@@ -321,6 +331,7 @@ def _build_entity_pattern(
     case_sensitive_names: set[str],
     exclusion_patterns: list[str],
     alias_id_by_fold: dict[str, uuid.UUID] | None = None,
+    asr_forms: list[str] | None = None,
 ) -> _EntityPattern:
     """Build an :class:`_EntityPattern` from a name set.
 
@@ -339,12 +350,40 @@ def _build_entity_pattern(
     case-sensitive alternative carries its own ``(?i:...)`` scope rather than
     splitting the group (which would break the length ordering). When nothing opts
     in, the pattern and the global ``IGNORECASE`` are built exactly as before.
+
+    ``asr_forms`` (Feature 111 US1b) are registered ASR-error strings, already
+    gated for admissibility by the caller. They are folded and added to the
+    alternation exactly like names (always case-insensitive), so they match
+    transcript text, and their fold+casefold values populate
+    :attr:`_EntityPattern.asr_folds` for provenance. **Collision precedence:** a
+    folded value that also belongs to a real name (canonical or any alias) is kept
+    out of ``asr_folds`` — real names win provenance — so a garble that coincides
+    with a real name still records ``rule_match`` and its alias id.
     """
     folded_pairs = [
         (folded, n in case_sensitive_names)
         for n, folded in ((n, _fold_diacritics(n)[0]) for n in names)
         if folded
     ]
+
+    # ASR-error forms join the alternation as always-case-insensitive
+    # alternatives; their fold+casefold values seed asr_folds (same keying as
+    # alias_id_by_fold). The collision subtraction below ensures a fold shared
+    # with a real name does not claim ASR provenance.
+    asr_fold_values: set[str] = set()
+    for form in asr_forms or []:
+        folded = _fold_diacritics(form)[0]
+        if folded:
+            folded_pairs.append((folded, False))
+            asr_fold_values.add(folded.casefold())
+
+    name_folds = {
+        folded.casefold()
+        for folded in (_fold_diacritics(n)[0] for n in names)
+        if folded
+    }
+    asr_folds = frozenset(asr_fold_values - name_folds)
+
     folded_pairs.sort(key=lambda p: len(p[0]), reverse=True)
 
     any_case_sensitive = any(cs for _, cs in folded_pairs)
@@ -362,6 +401,7 @@ def _build_entity_pattern(
         pg_pattern=pg_pattern,
         alias_names=names,
         alias_id_by_fold=alias_id_by_fold or {},
+        asr_folds=asr_folds,
         exclusion_patterns=exclusion_patterns,
         has_case_sensitive_alias=any_case_sensitive,
     )
@@ -384,6 +424,7 @@ class EntityMentionScanService:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
         self._mention_repo = EntityMentionRepository()
+        self._asr_error_repo = EntityAsrErrorRepository()
 
     # ------------------------------------------------------------------
     # Public API
@@ -952,6 +993,7 @@ class EntityMentionScanService:
                 anchor = index.resolve_span(m_start, m_end)
                 if anchor.end_segment_id is None:
                     continue  # single-segment; owned by the per-segment pass
+                fold_key = _fold_diacritics(matched_text)[0].casefold()
                 mentions.append(
                     EntityMentionCreate(
                         entity_id=entity_id,
@@ -960,16 +1002,18 @@ class EntityMentionScanService:
                         video_id=video_id,
                         language_code=lang,
                         mention_text=matched_text,
-                        detection_method=DetectionMethod.RULE_MATCH,
+                        detection_method=(
+                            DetectionMethod.ASR_MATCH
+                            if fold_key in pat.asr_folds
+                            else DetectionMethod.RULE_MATCH
+                        ),
                         confidence=1.0,
                         match_start=anchor.match_start,
                         match_end=anchor.match_end,
                         mention_context=self._extract_context_snippet(
                             index.text, m_start, m_end
                         ),
-                        alias_id=pat.alias_id_by_fold.get(
-                            _fold_diacritics(matched_text)[0].casefold()
-                        ),
+                        alias_id=pat.alias_id_by_fold.get(fold_key),
                     )
                 )
                 if dry_run and result.dry_run_matches is not None:
@@ -1639,21 +1683,24 @@ class EntityMentionScanService:
             # raw offsets above, so the snippet reads as it was written.
             context = self._extract_context_snippet(text, m_start, m_end)
 
+            fold_key = _fold_diacritics(matched_text)[0].casefold()
             mention = EntityMentionCreate(
                 entity_id=entity_id,
                 segment_id=None,
                 video_id=video_id,
                 language_code=None,
                 mention_text=matched_text,
-                detection_method=DetectionMethod.RULE_MATCH,
+                detection_method=(
+                    DetectionMethod.ASR_MATCH
+                    if fold_key in pat.asr_folds
+                    else DetectionMethod.RULE_MATCH
+                ),
                 confidence=1.0,
                 match_start=m_start,
                 match_end=m_end,
                 mention_source=mention_source,
                 mention_context=context,
-                alias_id=pat.alias_id_by_fold.get(
-                    _fold_diacritics(matched_text)[0].casefold()
-                ),
+                alias_id=pat.alias_id_by_fold.get(fold_key),
             )
             mentions.append(mention)
 
@@ -1862,6 +1909,17 @@ class EntityMentionScanService:
         alias_result = await session.execute(alias_stmt)
         all_aliases = list(alias_result.scalars().all())
 
+        # Load registered ASR-error forms for these entities (Feature 111 US1b).
+        # Keyed by str to sidestep the uuid_utils/stdlib UUID equality boundary:
+        # entity.id may be a uuid_utils value held in the identity map while the
+        # query column round-trips as a stdlib UUID, and the two are unequal.
+        asr_forms_by_entity = (
+            await self._asr_error_repo.get_multiword_forms_by_entity_ids(
+                session, entity_id_list
+            )
+        )
+        asr_forms_by_str = {str(k): v for k, v in asr_forms_by_entity.items()}
+
         # Group aliases by entity_id, carrying each alias's id (#298 provenance)
         # and case-sensitivity.
         alias_map: dict[uuid.UUID, list[tuple[uuid.UUID, str, bool]]] = {}
@@ -1917,6 +1975,16 @@ class EntityMentionScanService:
                         name,
                     )
 
+            # Registered ASR-error forms for this entity, filtered through the
+            # admissibility gate (Feature 111 US1b). Single-word forms are already
+            # excluded by the multiword SQL filter; the gate re-checks and also
+            # drops one-char-token and all-common forms — defence in depth.
+            admissible_asr_forms = [
+                form
+                for form in asr_forms_by_str.get(str(entity.id), [])
+                if _asr_form_admissible(form)
+            ]
+
             # Build the folded alias alternation + the _EntityPattern via the single
             # shared builder (module-level `_build_entity_pattern`), so DB loading and
             # candidate-discovery grounding construct the match pattern identically.
@@ -1929,6 +1997,7 @@ class EntityMentionScanService:
                     case_sensitive_names=case_sensitive_names,
                     exclusion_patterns=list(entity.exclusion_patterns or []),
                     alias_id_by_fold=alias_id_by_fold,
+                    asr_forms=admissible_asr_forms,
                 )
             )
 
@@ -2172,13 +2241,18 @@ class EntityMentionScanService:
                     skipped += 1
                     continue
 
+                fold_key = _fold_diacritics(matched_text)[0].casefold()
                 mention = EntityMentionCreate(
                     entity_id=entity_id,
                     segment_id=row.id,
                     video_id=row.video_id,
                     language_code=row.language_code,
                     mention_text=matched_text,
-                    detection_method=DetectionMethod.RULE_MATCH,
+                    detection_method=(
+                        DetectionMethod.ASR_MATCH
+                        if fold_key in pat.asr_folds
+                        else DetectionMethod.RULE_MATCH
+                    ),
                     confidence=1.0,
                     match_start=m_start,
                     match_end=m_end,
@@ -2189,9 +2263,7 @@ class EntityMentionScanService:
                     mention_context=self._extract_context_snippet(
                         effective_text, m_start, m_end
                     ),
-                    alias_id=pat.alias_id_by_fold.get(
-                        _fold_diacritics(matched_text)[0].casefold()
-                    ),
+                    alias_id=pat.alias_id_by_fold.get(fold_key),
                 )
                 new_mentions.append(mention)
 

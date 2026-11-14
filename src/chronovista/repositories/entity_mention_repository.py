@@ -1159,12 +1159,16 @@ class EntityMentionRepository(
             for row in rows
         ]
 
-    # Transcript-derived detection methods (excludes manual).
+    # Transcript-derived detection methods (excludes manual). ``asr_match``
+    # (Feature 111) is transcript-derived too — a recovered ASR-error-form
+    # mention — so it is counted here; omitting it undercounts recovered
+    # mentions per video in ``get_entity_video_list`` (FR-014).
     _TRANSCRIPT_METHODS = {
         "rule_match",
         "spacy_ner",
         "llm_extraction",
         "user_correction",
+        "asr_match",
     }
 
     async def get_entity_video_list(

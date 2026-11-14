@@ -356,6 +356,7 @@ async def seed_mention_association(
     entity: NamedEntityDB | None = None,
     entity_name: str | None = None,
     mention_source: str = "transcript",
+    detection_method: str = "rule_match",
 ) -> NamedEntityDB:
     """Persist a mention-based entity↔video association.
 
@@ -379,6 +380,9 @@ async def seed_mention_association(
         The stored ``mention_source`` (``transcript`` counts under both ``ANY``
         and ``TRANSCRIPT`` scopes; ``title``/``description`` count only at
         ``ANY``).
+    detection_method : str
+        The stored ``detection_method`` (default ``rule_match``). Pass
+        ``asr_match`` to seed a recovered-ASR mention (Feature 111).
 
     Returns
     -------
@@ -397,6 +401,7 @@ async def seed_mention_association(
                 video_id=vid,
                 mention_text=entity.canonical_name,
                 mention_source=mention_source,
+                detection_method=detection_method,
             )
         )
     await session.commit()

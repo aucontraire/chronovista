@@ -126,6 +126,30 @@ def _fold_diacritics(raw: str) -> tuple[str, list[int]]:
     return "".join(folded_chars), offset_map
 
 
+def _tokens(form: str) -> list[str]:
+    """Return the fold+casefold word-run tokens of a name *form*.
+
+    Folds the form with :func:`_fold_diacritics` (dropping accents, collapsing
+    whitespace, stripping invisibles), casefolds it, and splits it into maximal
+    word-char runs with :data:`_TOKEN_RE`. This mirrors how the ``\\b``-anchored
+    entity regex delimits a token, so a form carrying adjacent punctuation
+    (``"bravo,"``) yields the bare token (``"bravo"``) the regex would match; a
+    plain whitespace split would not.
+
+    Parameters
+    ----------
+    form : str
+        A name form (canonical name or alias), possibly accented or punctuated.
+
+    Returns
+    -------
+    list[str]
+        The fold+casefold word-run tokens, in order; empty for a form with no
+        word characters.
+    """
+    return _TOKEN_RE.findall(_fold_diacritics(form)[0].casefold())
+
+
 @dataclass
 class ScanResult:
     """Aggregate statistics returned after a scan completes.
@@ -196,6 +220,27 @@ class _EntityPattern:
     # The pattern then carries per-alternative `(?i:...)` scopes and MUST be
     # compiled without the global IGNORECASE flag, which would override them.
     has_case_sensitive_alias: bool = False
+
+
+@dataclass(frozen=True)
+class ArbitrationContext:
+    """Video-scoped context for longest-match-wins arbitration.
+
+    A private per-scan value object (like :class:`_EntityPattern`, not a Pydantic
+    model) carrying signal that a future arbitration pass may weigh when choosing
+    between overlapping matches. It exists as an accepted-but-inert seam: today it
+    carries no scoring signal, so passing it (or ``None``) MUST leave arbitration
+    byte-for-byte identical to the span-only longest-match-wins rule. Room is left
+    here for future per-candidate scores; scoring is deliberately not implemented.
+
+    Parameters
+    ----------
+    known_entity_ids : frozenset[uuid.UUID], optional
+        Entity ids already known for the video being scanned. Empty by default
+        and, for now, unused by arbitration.
+    """
+
+    known_entity_ids: frozenset[uuid.UUID] = frozenset()
 
 
 def _compile_entity_regex(pattern: _EntityPattern) -> re.Pattern[str]:
@@ -767,7 +812,7 @@ class EntityMentionScanService:
             form_tokens: set[str] = set()
             tokenless_form = False
             for form in (pattern.canonical_name, *pattern.alias_names):
-                toks = _TOKEN_RE.findall(_fold_diacritics(form)[0].casefold())
+                toks = _tokens(form)
                 if toks:
                     form_tokens.update(toks)
                 else:
@@ -841,7 +886,7 @@ class EntityMentionScanService:
                 start_time=segs[0].start_time,
             )
             surviving, lmw_skips = self._apply_longest_match_wins(
-                raw_matches, log_row, dry_run
+                raw_matches, log_row, dry_run, context=None
             )
             result.skipped_longest_match += lmw_skips
             final_matches, ep_skips = self._apply_exclusion_patterns(
@@ -1507,7 +1552,7 @@ class EntityMentionScanService:
         # Create a minimal row-like object for logging
         _row = type("_Row", (), {"id": video_id})()
         surviving_matches, _ = self._apply_longest_match_wins(
-            raw_matches, _row, dry_run
+            raw_matches, _row, dry_run, context=None
         )
 
         # Step 3: Exclusion pattern filtering
@@ -1635,7 +1680,7 @@ class EntityMentionScanService:
         sharing only a middle token, neither containing the other).
 
         Tokens are computed with the SAME fold the matcher uses
-        (``_TOKEN_RE.findall(_fold_diacritics(form)[0].casefold())``) over each
+        (``_tokens(form)``) over each
         entity's canonical name and its non-``asr_error`` aliases. Returns the ids
         of active entities OUTSIDE the scope whose tokens intersect the scope's
         tokens; the scope entities themselves are excluded.
@@ -1657,9 +1702,7 @@ class EntityMentionScanService:
         scope_tokens: set[str] = set()
         for pattern in scope_patterns:
             for form in (pattern.canonical_name, *pattern.alias_names):
-                scope_tokens.update(
-                    _TOKEN_RE.findall(_fold_diacritics(form)[0].casefold())
-                )
+                scope_tokens.update(_tokens(form))
         if not scope_tokens:
             return set()
 
@@ -1698,7 +1741,7 @@ class EntityMentionScanService:
                 continue
             tokens: set[str] = set()
             for form in forms:
-                tokens.update(_TOKEN_RE.findall(_fold_diacritics(form)[0].casefold()))
+                tokens.update(_tokens(form))
             if tokens & scope_tokens:
                 neighbours.add(entity_id)
         return neighbours
@@ -2023,7 +2066,7 @@ class EntityMentionScanService:
             # Step 2: Longest-match-wins disambiguation
             # ----------------------------------------------------------
             surviving_matches, lmw_skips = self._apply_longest_match_wins(
-                raw_matches, row, dry_run
+                raw_matches, row, dry_run, context=None
             )
             longest_match_skips += lmw_skips
 
@@ -2151,6 +2194,8 @@ class EntityMentionScanService:
         raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]],
         row: Any,
         dry_run: bool,
+        *,
+        context: ArbitrationContext | None = None,
     ) -> tuple[list[tuple[uuid.UUID, int, int, str, _EntityPattern]], int]:
         """Disambiguate overlapping matches using longest-match-wins.
 
@@ -2162,6 +2207,11 @@ class EntityMentionScanService:
             The segment row (used for logging).
         dry_run : bool
             Whether this is a dry-run.
+        context : ArbitrationContext | None, optional
+            Video-scoped arbitration context (keyword-only). Accepted and threaded
+            as an inert seam for a future scoring pass; it carries no scoring
+            signal today, so the returned ordering and selection are byte-for-byte
+            identical whether it is ``None`` or an :class:`ArbitrationContext`.
 
         Returns
         -------

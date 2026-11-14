@@ -34,6 +34,9 @@ from chronovista.models.enums import DetectionMethod, MentionSource
 from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
 )
+from chronovista.services.cross_segment_discovery import (
+    _STOPWORDS as _COMMON_WORDS,
+)
 from chronovista.services.transcript_text_index import (
     SEGMENT_SEPARATOR,
     SegmentInput,
@@ -148,6 +151,56 @@ def _tokens(form: str) -> list[str]:
         word characters.
     """
     return _TOKEN_RE.findall(_fold_diacritics(form)[0].casefold())
+
+
+def _asr_form_admissible(form: str) -> bool:
+    """Return True if an ASR-error *form* may be admitted as a match pattern.
+
+    Three conjunctive gates (Feature 111, FR-002/FR-002a/FR-003) decide whether a
+    registered ASR-error form is safe to match on:
+
+    - **multiword** (FR-002): a single-word form is never admissible. A form is
+      multiword iff it contains whitespace, matching the ``entity_asr_errors``
+      multiword-candidate filter, so a single-word form can never reach the
+      match-pattern builder.
+    - **no one-char token** (FR-002a): a form with a ``<= 1``-char token (a stray
+      single-letter token) is junk and is excluded.
+    - **not all-common** (FR-003): a form whose *every* token is a common word
+      (:data:`_COMMON_WORDS`) carries no distinctive name token and is excluded; a
+      form that keeps a distinctive token (a surname beside a particle like ``de``
+      / ``al``) stays admissible.
+
+    This is the sole admission decision. A per-form reviewer override
+    (``usable_as_match_pattern``) is a future *conjunctive* restriction — it can
+    only further exclude, never re-admit a gate-excluded form.
+
+    Notes
+    -----
+    ``_COMMON_WORDS`` is currently the function-word stopword set, so the
+    all-common gate catches all-stopword forms (e.g. ``"of the"``). Extending it to
+    common *nouns* — so a mis-hearing whose tokens are all ordinary dictionary
+    words is also excluded — is the guard-sizing task (T029) that gates the
+    backfill; the gate mechanism here does not change, only the word set.
+
+    Parameters
+    ----------
+    form : str
+        The raw ASR-error form.
+
+    Returns
+    -------
+    bool
+        True iff the form passes all three gates.
+    """
+    if " " not in form.strip():
+        return False
+    tokens = _tokens(form)
+    if not tokens:
+        return False
+    if any(len(token) <= 1 for token in tokens):
+        return False
+    # Admissible iff at least one token is distinctive (not a common word).
+    return not all(token in _COMMON_WORDS for token in tokens)
 
 
 @dataclass

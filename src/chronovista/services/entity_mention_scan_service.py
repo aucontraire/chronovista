@@ -17,6 +17,7 @@ import unicodedata
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import cached_property
 from types import SimpleNamespace
 from typing import Any
 
@@ -530,6 +531,31 @@ class _EntityPattern:
     # The pattern then carries per-alternative `(?i:...)` scopes and MUST be
     # compiled without the global IGNORECASE flag, which would override them.
     has_case_sensitive_alias: bool = False
+
+    @cached_property
+    def gap_form_seqs(self) -> frozenset[tuple[str, ...]]:
+        """Multi-token token sequences the disfluency-gap matcher scans for.
+
+        A pure function of this entity's own names and ASR folds -- it reads
+        nothing about any segment -- so it is computed once per pattern and
+        cached here, hoisted out of ``_collect_gap_matches``'s per-segment loop
+        (Feature 111 US3). Previously this set was rebuilt for every pattern on
+        every scanned segment; because the value depends only on the pattern,
+        that was ~segments x patterns reconstructions of ~patterns distinct
+        results. Names fold+tokenise via ``_tokens``; ``asr_folds`` are already
+        fold+casefold so they tokenise directly. Single-token forms are dropped:
+        a one-token name has no interior boundary for a gap.
+        """
+        seqs: set[tuple[str, ...]] = set()
+        for name in (self.canonical_name, *self.alias_names):
+            toks = tuple(_tokens(name))
+            if len(toks) >= 2:
+                seqs.add(toks)
+        for fold in self.asr_folds:
+            toks = tuple(_TOKEN_RE.findall(fold))
+            if len(toks) >= 2:
+                seqs.add(toks)
+        return frozenset(seqs)
 
 
 def _compile_entity_regex(pattern: _EntityPattern) -> re.Pattern[str]:
@@ -2710,20 +2736,10 @@ class EntityMentionScanService:
         results: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
         seen: set[tuple[uuid.UUID, int, int]] = set()
         for pattern in patterns:
-            # Multi-token folded forms only: a single-token name has no interior
-            # boundary for a gap. Names fold via _tokens; asr_folds are already
-            # fold+casefold, so they tokenise directly.
-            form_seqs: set[tuple[str, ...]] = set()
-            for name in (pattern.canonical_name, *pattern.alias_names):
-                toks = tuple(_tokens(name))
-                if len(toks) >= 2:
-                    form_seqs.add(toks)
-            for fold in pattern.asr_folds:
-                toks = tuple(_TOKEN_RE.findall(fold))
-                if len(toks) >= 2:
-                    form_seqs.add(toks)
-
-            for form_tokens in form_seqs:
+            # ``gap_form_seqs`` is precomputed and cached per pattern (a pure
+            # function of the entity's names/ASR folds) -- hoisted out of this
+            # per-segment loop; see _EntityPattern.gap_form_seqs.
+            for form_tokens in pattern.gap_form_seqs:
                 for start_idx, end_idx in _find_gap_spans(
                     seg_tokens, form_tokens, filler_tokens, max_filler_len
                 ):

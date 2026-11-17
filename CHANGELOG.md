@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Reviewer override for ASR-error match patterns (Feature 111 / FR-011).** A confirmed
+  ASR-error form can now be suppressed from matching by a human reviewer via the new
+  `entity_asr_errors.usable_as_match_pattern` flag, while remaining available to the
+  corrections-discovery flow — so a reviewed zero-signal garble stops producing false
+  matches without being forgotten (a wrong flag costs matching, never discovery). A
+  companion `suppression_reason` column records *why* a form is suppressed (a permanent
+  `zero_signal` versus a provisional, reversible reason), so a later decision to
+  un-suppress can tell the two apart. The two ASR-error readers are renamed to carry the
+  gate in their names — a gated match reader that applies the flag and an ungated
+  corrections-discovery reader — with a mutation-verified fitness guard asserting the
+  ungated reader has exactly one consumer, so no scan-side read can silently bypass the
+  suppression.
+
+### Fixed
+
+- **ASR-form admission gate now covers transcript-language function words.** The "every
+  token is a common word" admission gate was English-only, leaving it inert on a
+  bilingual corpus (it excluded zero forms); it now also includes the Spanish
+  closed-class function-word set, so an all-common two-word mis-split is correctly
+  excluded. Measured collateral over the live corpus: one form excluded, zero genuine
+  recoveries lost.
+
+### Performance
+
+- **Faster disfluency matching.** The bounded-gap matcher hoists its per-form token
+  sequences out of the per-segment loop, removing redundant recomputation on every
+  segment scanned.
+
+### Migration
+
+- Two additive, reversible Alembic migrations add `entity_asr_errors.usable_as_match_pattern`
+  (NOT NULL DEFAULT TRUE) and `suppression_reason` (nullable `VARCHAR(32)`, value-only
+  CHECK); neither rewrites existing data, so both are behaviour-preserving on upgrade and
+  cleanly downgradable.
+
+### Internal
+
+- **Guards for the single longest-match-wins pool ([#279](https://github.com/aucontraire/chronovista/issues/279)).**
+  Mutation-verified tests pin the shadowing invariant — the longer span always wins,
+  within- and cross-segment arbitration are one pool, and no scan route re-implements the
+  length-descending ranker — alongside a no-regression baseline over a fixture corpus.
+- **Revertibility guard for ASR recovery.** A real-database test verifies that
+  `DELETE WHERE detection_method = 'asr_match'` restores the exact pre-backfill mention
+  set, so the recovered-mention backfill stays cleanly revertible as a group.
+
 ## [0.122.0] - 2026-11-13
 
 ### Added

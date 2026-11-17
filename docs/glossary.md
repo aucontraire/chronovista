@@ -128,6 +128,18 @@ Project-specific terminology used throughout chronovista documentation and code.
 **Alias**
 :   An alternative surface form for an entity — nickname, abbreviation, translation, former name. Matched alongside the canonical name when scanning. Aliases are what make detection work and also what makes it over-match.
 
+**Detection method**
+:   *How* a text mention was found, recorded per row and orthogonal to **provenance source**. `rule_match` is a clean canonical-name or alias match; `asr_match` is a recovery from a confirmed ASR-error form; `user_correction` comes from a user's transcript correction; `spacy_ner` and `llm_extraction` are model pipelines; `manual` is hand-asserted and not text-anchored. All values except `manual` are *transcript-derived* and counted as transcript appearances.
+
+**ASR-error form**
+:   A garbled transcription a human has confirmed stands for an entity (stored in `entity_asr_errors`) — e.g. an auto-caption rendering of a spoken name that no clean alias would match. Admitting these recovers mentions, but each is gated (must be multi-word, carry no one-character token, and not be all common words) because a garble is low-signal. A matched ASR-error form produces an `asr_match` mention with no alias link.
+
+**Longest-match-wins arbitration**
+:   The rule that resolves overlapping matches at a position in favour of the longest one, so a shorter name (*Marlowe*) loses to a longer name that contains it (*Quade Marlowe*). Per-segment and cross-segment (boundary-spanning) matches compete in a single pool, so a spanning match suppresses exactly the in-segment matches it overlaps and no others.
+
+**Spanning mention**
+:   A mention whose name is split across a segment boundary, anchored on its first segment with `end_segment_id` set on its last. Only transcript-writer detection methods (`rule_match`, `user_correction`, `asr_match`) may produce one.
+
 **Mention context**
 :   The ~150 characters of surrounding text stored with each machine-detected mention. It is the only basis for judging whether a match was correct, because the matched text alone cannot distinguish a name from an identical ordinary word. Taken from the *corrected* transcript where a correction exists, with accents preserved as written.
 

@@ -529,6 +529,12 @@ def find_replace(
             if result.failed_batches > 0:
                 summary_table.add_row("Failed batches", f"{result.failed_batches:,}")
 
+            if result.skipped_ambiguous > 0:
+                summary_table.add_row(
+                    "ASR aliases skipped (ambiguous)",
+                    f"{result.skipped_ambiguous:,}",
+                )
+
             console.print(summary_table)
 
             # ---- T028: Empty segment warning after cross-segment correction ----

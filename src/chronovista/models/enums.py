@@ -535,6 +535,50 @@ class DetectionMethod(str, Enum):
     LLM_EXTRACTION = "llm_extraction"
     MANUAL = "manual"
     USER_CORRECTION = "user_correction"
+    ASR_MATCH = "asr_match"
+
+
+# Two detection-method categories that MUST NOT be conflated. They overlap on
+# ``rule_match`` but answer different questions, and widening one to the other
+# breaks an invariant — so each has one committed home, pinned by a guard in
+# ``tests/unit/architecture/test_asr_provenance_contract.py``.
+#
+# SCAN-OWNED: the methods the rule-based scan writes and re-derives — a clean
+# name/alias match (``rule_match``) and an ASR-error-form recovery (``asr_match``,
+# Feature 111). Every ``--full`` delete, the counter-recompute helpers, and the
+# whitespace re-scan candidate selection operate on exactly this set, so a
+# recovered mention is deleted/counted/refreshed like a rule match. ``asr_match``
+# MUST be present or recovered rows accumulate as stale duplicates on rescan (the
+# re-insert is ON CONFLICT DO NOTHING, failing silently).
+SCAN_DETECTION_METHODS: frozenset[DetectionMethod] = frozenset(
+    {DetectionMethod.RULE_MATCH, DetectionMethod.ASR_MATCH}
+)
+
+# ALIAS-LINKABLE: the methods that may carry an ``alias_id``. Only ``rule_match``
+# — an ASR-error form is not a name, so it links to no alias, and the
+# EntityMention validator forbids ``alias_id`` on any other method. The alias
+# backfill-linking and alias-coverage-deletion queries scope to this set. It
+# deliberately EXCLUDES ``asr_match``: widening it (e.g. a careless "consistency"
+# sweep of every ``rule_match`` literal) would try to alias-link rows the model
+# rejects.
+ALIAS_LINKABLE_DETECTION_METHODS: frozenset[DetectionMethod] = frozenset(
+    {DetectionMethod.RULE_MATCH}
+)
+
+# NAME-EXEMPT: detection methods whose rows qualify as a real entity->video
+# association WITHOUT their text folding to one of the entity's visible names.
+# ``manual`` is hand-asserted (no text anchor at all); ``asr_match`` is a recovered
+# ASR-error form whose text is a garble by construction (the collision-subtraction
+# guarantees it never folds to a name) but whose provenance vouches for it (gated,
+# theft-reviewed, precision-audited). Every other method's rows qualify only by a
+# visible-name match. This is the method arm of the ONE shared qualification
+# predicate every association surface reads, so a recovered mention counts on all
+# surfaces or none (#262). Qualification ("is this mention real?") is separate from
+# display ("is its text a name?"): these rows still DISPLAY their entity's
+# canonical name, with the stored garble available as detail.
+NAME_EXEMPT_DETECTION_METHODS: frozenset[DetectionMethod] = frozenset(
+    {DetectionMethod.MANUAL, DetectionMethod.ASR_MATCH}
+)
 
 
 class MentionSource(str, Enum):

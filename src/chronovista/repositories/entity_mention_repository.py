@@ -33,6 +33,7 @@ from sqlalchemy import (
     or_,
     select,
     text,
+    tuple_,
     type_coerce,
     union,
     union_all,
@@ -81,6 +82,9 @@ from chronovista.models.entity_association import (
 from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.entity_operation_log import MentionSnapshot
 from chronovista.models.enums import (
+    ALIAS_LINKABLE_DETECTION_METHODS,
+    NAME_EXEMPT_DETECTION_METHODS,
+    SCAN_DETECTION_METHODS,
     AvailabilityStatus,
     EvidenceScope,
     MentionSource,
@@ -147,6 +151,32 @@ def _visible_names_subquery(entity_ids: list[uuid.UUID] | None) -> Subquery:
         canonical = canonical.where(NamedEntityDB.id.in_(entity_ids))
         alias = alias.where(EntityAliasDB.entity_id.in_(entity_ids))
     return union(canonical, alias).subquery()
+
+
+def _mention_qualifies_as_association(visible_names: Subquery) -> ColumnElement[bool]:
+    """Predicate: a mention row counts as a real entity->video association.
+
+    The ONE committed qualification rule, shared by every association surface so a
+    mention that counts on one counts on all of them (#262). A row qualifies when:
+
+    - its text folds to one of the entity's **visible names** (the name arm —
+      canonical name or a non-ASR alias), OR
+    - its ``detection_method`` is **name-exempt** (``manual`` — hand-asserted, no
+      text anchor; ``asr_match`` — a recovered ASR-error form whose text is a
+      garble by construction but whose provenance vouches for it). See
+      ``NAME_EXEMPT_DETECTION_METHODS``.
+
+    This separates **qualification** ("is this mention real?") from **display**
+    ("is its text a name?"): a name-exempt row qualifies here but still DISPLAYS
+    its entity's canonical name, with the stored ``mention_text`` available as
+    detail. Callers LEFT OUTER JOIN ``visible_names`` (on entity_id + folded text)
+    so the name arm can be evaluated; name-exempt rows pass via the method arm even
+    with no join match.
+    """
+    return or_(
+        _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+        EntityMentionDB.detection_method.in_(NAME_EXEMPT_DETECTION_METHODS),
+    )
 
 
 def _available_video_id_subquery() -> Select[Any]:
@@ -350,7 +380,10 @@ class EntityMentionRepository(
             return []
         stmt = select(distinct(EntityMentionDB.entity_id)).where(
             EntityMentionDB.segment_id.in_(segment_ids),
-            EntityMentionDB.detection_method == "rule_match",
+            # Must match what the --full delete removes (SCAN_DETECTION_METHODS):
+            # an entity whose only batch mentions are asr_match still has rows
+            # deleted, so its counters must be recomputed or they go stale.
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
             EntityMentionDB.mention_source == "transcript",
         )
         if entity_ids is not None:
@@ -364,14 +397,15 @@ class EntityMentionRepository(
         segment_ids: list[int],
         entity_ids: list[uuid.UUID] | None = None,
     ) -> int:
-        """Delete ``rule_match``/``transcript`` mentions for the given segments.
+        """Delete the rule-scan's own transcript mentions for the given segments.
 
         The per-batch, segment-scoped counterpart of ``delete_by_scope`` used by
         the resumable ``--full`` rescan (#291): deleting only the current batch's
-        segments' machine-detected mentions and re-inserting them in the same
-        commit closes the "deleted but not re-detected" window. Manual and
-        correction-derived mentions (other detection methods / sources) are never
-        touched.
+        segments' rule-scan mentions (``SCAN_DETECTION_METHODS`` = ``rule_match`` +
+        ``asr_match``, the methods the scan re-derives) and re-inserting them in
+        the same commit closes the "deleted but not re-detected" window. Manual and
+        correction-derived mentions (and other detection methods / sources) are
+        never touched, so a rescan never clobbers human corrections.
 
         **Cross-segment (Feature 081):** only NON-spanning mentions
         (``end_segment_id IS NULL``) are deleted here. A spanning mention is
@@ -400,7 +434,7 @@ class EntityMentionRepository(
             return 0
         stmt = delete(EntityMentionDB).where(
             EntityMentionDB.segment_id.in_(segment_ids),
-            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
             EntityMentionDB.mention_source == "transcript",
             # Spanning mentions are owned by the per-transcript cross-segment pass.
             EntityMentionDB.end_segment_id.is_(None),
@@ -417,7 +451,7 @@ class EntityMentionRepository(
         segment_ids: list[int],
         entity_ids: list[uuid.UUID] | None = None,
     ) -> int:
-        """Delete SPANNING ``rule_match``/``transcript`` mentions for these segments.
+        """Delete the rule-scan's SPANNING transcript mentions for these segments.
 
         The cross-segment counterpart of ``delete_transcript_mentions_by_segments``
         (Feature 081): the per-transcript cross-segment pass owns spanning mentions
@@ -446,12 +480,62 @@ class EntityMentionRepository(
             return 0
         stmt = delete(EntityMentionDB).where(
             EntityMentionDB.segment_id.in_(segment_ids),
-            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
             EntityMentionDB.mention_source == "transcript",
             EntityMentionDB.end_segment_id.is_not(None),
         )
         if entity_ids is not None:
             stmt = stmt.where(EntityMentionDB.entity_id.in_(entity_ids))
+        result = await session.execute(stmt)
+        return int(result.rowcount)
+
+    async def delete_in_segment_mentions_at(
+        self,
+        session: AsyncSession,
+        *,
+        targets: list[tuple[int, uuid.UUID, int, int]],
+    ) -> int:
+        """Delete specific in-segment transcript mentions by exact coordinates.
+
+        Feature 111 US4 (FR-005/FR-006, single longest-match-wins pool). The
+        per-transcript cross-segment pass unifies spanning and in-segment matches
+        into one longest-match-wins pool. When a surviving spanning match
+        suppresses an overlapping in-segment match, the in-segment row was already
+        written by the per-segment pass in its own pool; this deletes exactly those
+        suppressed rows, identified by their ``(segment_id, entity_id, match_start,
+        match_end)`` coordinates.
+
+        Only machine-detected (``rule_match``/``asr_match``) in-segment
+        (``end_segment_id IS NULL``) transcript mentions are eligible, so a manual
+        or correction-derived mention that happens to share coordinates is never
+        removed.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active async session.
+        targets : list[tuple[int, uuid.UUID, int, int]]
+            ``(segment_id, entity_id, match_start, match_end)`` tuples naming the
+            exact in-segment rows to delete. An empty list is a no-op.
+
+        Returns
+        -------
+        int
+            Number of mention rows deleted.
+        """
+        if not targets:
+            return 0
+        stmt = delete(EntityMentionDB).where(
+            tuple_(
+                EntityMentionDB.segment_id,
+                EntityMentionDB.entity_id,
+                EntityMentionDB.match_start,
+                EntityMentionDB.match_end,
+            ).in_(targets),
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
+            EntityMentionDB.mention_source == "transcript",
+            EntityMentionDB.end_segment_id.is_(None),
+        )
         result = await session.execute(stmt)
         return int(result.rowcount)
 
@@ -492,7 +576,9 @@ class EntityMentionRepository(
             return []
         stmt = select(distinct(EntityMentionDB.entity_id)).where(
             EntityMentionDB.video_id.in_(video_ids),
-            EntityMentionDB.detection_method == "rule_match",
+            # Must match the --full metadata delete set (SCAN_DETECTION_METHODS)
+            # so an asr_match-only entity's counters are recomputed, not left stale.
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
             EntityMentionDB.mention_source.in_(sources),
         )
         if entity_ids is not None:
@@ -548,7 +634,7 @@ class EntityMentionRepository(
         )
         stmt = select(EntityMentionDB).where(
             EntityMentionDB.entity_id == entity_id,
-            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.detection_method.in_(ALIAS_LINKABLE_DETECTION_METHODS),
             ~canonical_covers,
             or_(
                 EntityMentionDB.alias_id == alias_id,
@@ -663,7 +749,7 @@ class EntityMentionRepository(
         )
         match = and_(
             EntityMentionDB.entity_id == unambiguous_folds.c.entity_id,
-            EntityMentionDB.detection_method == "rule_match",
+            EntityMentionDB.detection_method.in_(ALIAS_LINKABLE_DETECTION_METHODS),
             EntityMentionDB.alias_id.is_(None),
             _folded(EntityMentionDB.mention_text) == unambiguous_folds.c.fold,
         )
@@ -679,7 +765,9 @@ class EntityMentionRepository(
             # count that remains NULL.
             remaining = await session.execute(
                 select(func.count()).where(
-                    EntityMentionDB.detection_method == "rule_match",
+                    EntityMentionDB.detection_method.in_(
+                        ALIAS_LINKABLE_DETECTION_METHODS
+                    ),
                     EntityMentionDB.alias_id.is_(None),
                 )
             )
@@ -695,7 +783,9 @@ class EntityMentionRepository(
             # the count that would remain NULL.
             null_now = await session.execute(
                 select(func.count()).where(
-                    EntityMentionDB.detection_method == "rule_match",
+                    EntityMentionDB.detection_method.in_(
+                        ALIAS_LINKABLE_DETECTION_METHODS
+                    ),
                     EntityMentionDB.alias_id.is_(None),
                 )
             )
@@ -824,21 +914,35 @@ class EntityMentionRepository(
         # the filter, and the page matches use (the #262 single-definition rule).
         visible_names = _visible_names_subquery(list(entity_ids))
 
-        # Count only mentions whose mention_text matches a visible name
+        # The stored totals count DETECTED mentions, not associations. A mention
+        # counts when its text folds to a visible name OR it is a recovered
+        # ``asr_match`` (the garble, admitted by provenance — FR-014). Unlike
+        # association membership this does NOT exempt ``manual`` via a method arm:
+        # a hand-linked row counts only when its text is a visible name (its
+        # canonical name), never a non-visible manual row — preserving the pre-ASR
+        # counting rule so a manual-only entity keeps ``mention_count == 0`` on the
+        # per-video surfaces that read it. LEFT OUTER JOIN so a recovered garble,
+        # which matches no visible name, still counts via the method arm below.
         agg_subq = (
             select(
                 EntityMentionDB.entity_id,
                 func.count(distinct(EntityMentionDB.id)).label("mention_count"),
                 func.count(distinct(EntityMentionDB.video_id)).label("video_count"),
             )
-            .join(
+            .outerjoin(
                 visible_names,
                 and_(
                     EntityMentionDB.entity_id == visible_names.c.entity_id,
                     _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
                 ),
             )
-            .where(EntityMentionDB.entity_id.in_(entity_ids))
+            .where(
+                EntityMentionDB.entity_id.in_(entity_ids),
+                or_(
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                    EntityMentionDB.detection_method == "asr_match",
+                ),
+            )
             .group_by(EntityMentionDB.entity_id)
             .subquery()
         )
@@ -1003,6 +1107,10 @@ class EntityMentionRepository(
         # ``mention_count == 0`` as "linked by hand, never actually detected"
         # when it optimistically removes an association. Counting them here
         # would silently break that removal.
+        # Bring this per-video breakdown under the ONE shared association rule, so
+        # a row counts here exactly when it counts on every other surface (#262):
+        # a visible-name match OR a name-exempt method (manual / asr_match).
+        visible_names = _visible_names_subquery(None)
         countable_mention = case(
             (EntityMentionDB.detection_method == "manual", null()),
             (
@@ -1056,7 +1164,17 @@ class EntityMentionRepository(
                 TranscriptSegmentDB,
                 EntityMentionDB.segment_id == TranscriptSegmentDB.id,
             )
-            .where(EntityMentionDB.video_id == video_id)
+            .outerjoin(
+                visible_names,
+                and_(
+                    visible_names.c.entity_id == EntityMentionDB.entity_id,
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                ),
+            )
+            .where(
+                EntityMentionDB.video_id == video_id,
+                _mention_qualifies_as_association(visible_names),
+            )
             .group_by(
                 EntityMentionDB.entity_id,
                 NamedEntityDB.canonical_name,
@@ -1108,12 +1226,16 @@ class EntityMentionRepository(
             for row in rows
         ]
 
-    # Transcript-derived detection methods (excludes manual).
+    # Transcript-derived detection methods (excludes manual). ``asr_match``
+    # (Feature 111) is transcript-derived too — a recovered ASR-error-form
+    # mention — so it is counted here; omitting it undercounts recovered
+    # mentions per video in ``get_entity_video_list`` (FR-014).
     _TRANSCRIPT_METHODS = {
         "rule_match",
         "spacy_ner",
         "llm_extraction",
         "user_correction",
+        "asr_match",
     }
 
     async def get_entity_video_list(
@@ -1190,10 +1312,7 @@ class EntityMentionRepository(
         # already in visible_names, but we include them via OR to be safe.
         mention_filter = and_(
             EntityMentionDB.entity_id == entity_id,
-            or_(
-                _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
-                EntityMentionDB.detection_method == "manual",
-            ),
+            _mention_qualifies_as_association(visible_names),
         )
 
         # Language filter: manual mentions (language_code=NULL) always pass.
@@ -1522,12 +1641,12 @@ class EntityMentionRepository(
                 .where(
                     EntityMentionDB.entity_id == entity_id,
                     EntityMentionDB.video_id == video_id,
+                    # Manual mentions have no transcript segment; the join drops
+                    # them, and this keeps the preview transcript-only.
                     EntityMentionDB.detection_method != "manual",
-                    or_(
-                        _folded(EntityMentionDB.mention_text)
-                        == visible_names.c.name_lower,
-                        EntityMentionDB.detection_method == "manual",
-                    ),
+                    # A recovered (asr_match) mention previews its real transcript
+                    # snippet, consistent with it now counting as an association.
+                    _mention_qualifies_as_association(visible_names),
                 )
             )
             if language_code is not None:
@@ -2141,10 +2260,7 @@ class EntityMentionRepository(
                 EntityMentionDB.video_id.in_(list(video_ids)),
                 EntityMentionDB.entity_id.in_(ids),
                 # Visible-name match OR manual — the qualifying-mention rule (#262).
-                or_(
-                    visible_names.c.name_lower.is_not(None),
-                    EntityMentionDB.detection_method == "manual",
-                ),
+                _mention_qualifies_as_association(visible_names),
             )
             .group_by(
                 EntityMentionDB.video_id,
@@ -2230,10 +2346,7 @@ class EntityMentionRepository(
                 ),
             )
             .where(
-                or_(
-                    visible_names.c.name_lower.is_not(None),
-                    EntityMentionDB.detection_method == "manual",
-                ),
+                _mention_qualifies_as_association(visible_names),
             )
         )
         if entity_ids is not None:
@@ -2957,10 +3070,7 @@ class EntityMentionRepository(
             )
             .where(
                 EntityMentionDB.video_id == video_id,
-                or_(
-                    visible_names.c.name_lower.is_not(None),
-                    EntityMentionDB.detection_method == "manual",
-                ),
+                _mention_qualifies_as_association(visible_names),
             )
         )
         if language_code is not None:
@@ -3170,10 +3280,7 @@ class EntityMentionRepository(
 
         mention_filter = and_(
             EntityMentionDB.entity_id == entity_id,
-            or_(
-                _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
-                EntityMentionDB.detection_method == "manual",
-            ),
+            _mention_qualifies_as_association(visible_names),
         )
 
         transcript_vid_stmt = (

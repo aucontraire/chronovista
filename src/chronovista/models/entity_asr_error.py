@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,6 +38,22 @@ class EntityAsrErrorBase(BaseModel):
             "When true, this form matches only the exact casing stored in "
             "alias_name. Defaults to false (case-insensitive), mirroring the "
             "name store's historical behaviour."
+        ),
+    )
+    usable_as_match_pattern: bool = Field(
+        default=True,
+        description=(
+            "FR-011: when true (default) this form may be used as a match "
+            "pattern by the scan; when false a reviewer has suppressed it from "
+            "matching (zero-signal garble) while leaving it available to "
+            "corrections discovery."
+        ),
+    )
+    suppression_reason: Literal["zero_signal", "mostly_false_redundant"] | None = Field(
+        default=None,
+        description=(
+            "FR-011: why a form is suppressed. 'zero_signal' is permanent; "
+            "'mostly_false_redundant' is provisional. None = no reason recorded."
         ),
     )
 
@@ -62,6 +79,8 @@ class EntityAsrErrorUpdate(BaseModel):
     )
     entity_id: uuid.UUID | None = None
     case_sensitive: bool | None = None
+    usable_as_match_pattern: bool | None = None
+    suppression_reason: Literal["zero_signal", "mostly_false_redundant"] | None = None
 
     model_config = ConfigDict(
         validate_assignment=True,

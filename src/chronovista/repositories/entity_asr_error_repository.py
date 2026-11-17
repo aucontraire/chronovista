@@ -9,6 +9,7 @@ corrections-discovery query the ``/corrections/batch`` flow consumes.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
@@ -92,7 +93,7 @@ class EntityAsrErrorRepository(
             return existing
         return await self.create(session, obj_in=obj_in)
 
-    async def get_multiword_candidates(
+    async def get_all_multiword_forms_for_discovery(
         self,
         session: AsyncSession,
         entity_name: str | None = None,
@@ -121,3 +122,54 @@ class EntityAsrErrorRepository(
 
         result = await session.execute(stmt)
         return [(row[0], row[1], row[2]) for row in result.all()]
+
+    async def get_multiword_forms_for_matching(
+        self,
+        session: AsyncSession,
+        entity_ids: Sequence[uuid.UUID],
+    ) -> dict[uuid.UUID, list[str]]:
+        """Return each entity's multi-word ASR-error forms, grouped by entity.
+
+        The batch loader the scan matcher uses to wire registered ASR-error forms
+        in as a gated match source (Feature 111 US1b). One query fetches every
+        multi-word form for the entities being scanned; single-word forms are
+        filtered out in SQL (``alias_name`` must contain a space), because a
+        single-word form can never pass the admissibility gate anyway — this is
+        the query-side half of that defence-in-depth.
+
+        Forms flagged ``usable_as_match_pattern = false`` (FR-011) are also excluded
+        here, because this is the *match* reader. The corrections-discovery reader
+        (:meth:`get_all_multiword_forms_for_discovery`) deliberately does NOT apply this filter —
+        the flag suppresses a zero-signal garble from matching only, never from
+        correction discovery.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Database session.
+        entity_ids : Sequence[uuid.UUID]
+            The entities whose ASR-error forms to load.
+
+        Returns
+        -------
+        dict[uuid.UUID, list[str]]
+            Maps each entity id that has at least one multi-word form to the list
+            of those raw forms. Entities with no multi-word form are absent.
+        """
+        if not entity_ids:
+            return {}
+
+        stmt = select(
+            EntityAsrErrorDB.entity_id,
+            EntityAsrErrorDB.alias_name,
+        ).where(
+            EntityAsrErrorDB.entity_id.in_(entity_ids),
+            EntityAsrErrorDB.alias_name.contains(" "),
+            EntityAsrErrorDB.usable_as_match_pattern.is_(True),
+        )
+        result = await session.execute(stmt)
+
+        grouped: dict[uuid.UUID, list[str]] = {}
+        for entity_id, alias_name in result.all():
+            grouped.setdefault(entity_id, []).append(alias_name)
+        return grouped

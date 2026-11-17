@@ -40,7 +40,7 @@ usually the largest source, and they behave differently from titles.
 
 ## Step 2 — choose the right tool
 
-Three tools, and picking the wrong one costs you real mentions.
+Four tools, and picking the wrong one costs you real mentions.
 
 ### Exclusion patterns — for a handful of known phrases
 
@@ -132,6 +132,26 @@ chronovista entities edit-alias "<entity name>" --alias "<current text>" \
 
 A rename is re-normalized and re-checked against the entity's other aliases, so
 it cannot create a duplicate.
+
+### Suppress a recovered ASR-match form — when the noise is a garble, not a name
+
+Some false positives do not come from a name or alias at all, but from a
+**recovered ASR-error form** — a garble the scan was told stands for the entity
+(see [Name Matching, ASR Recovery & Arbitration](../architecture/entity-name-matching.md)).
+If the evidence from Step 1 shows the offending mentions carry
+`detection_method = 'asr_match'`, and the garble is a common phrase or a collision
+with something else, the right lever is that form's `usable_as_match_pattern` flag:
+setting it to `false` suppresses the form from matching while keeping it available
+to corrections discovery, so you lose the false recoveries without discarding the
+form itself. A `suppression_reason` records whether the verdict is permanent
+(`zero_signal`) or provisional (`mostly_false_redundant`).
+
+Reach for this only when the noise is specifically an `asr_match` recovery — an
+exclusion pattern or match-case switch is the wrong tool there, and removing a
+real name or alias would cost clean matches. This is a reviewer/data-layer control
+today; there is no CLI or UI switch for it yet. Like the other tools, it is
+**prospective** — the existing false mentions clear on the next rebuild/rescan
+(Step 3), not immediately.
 
 ## Step 3 — rebuild
 

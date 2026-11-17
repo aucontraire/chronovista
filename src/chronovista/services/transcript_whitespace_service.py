@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..db.models import EntityMention as EntityMentionDB
 from ..db.models import TranscriptSegment as TranscriptSegmentDB
+from ..models.enums import SCAN_DETECTION_METHODS
 from ..utils.text import normalize_segment_text
 from .entity_mention_scan_service import EntityMentionScanService
 
@@ -80,7 +81,6 @@ _ARTIFACT_CLASS = (
     "[" + "".join(chr(c) for c in (*_NON_PLAIN_WHITESPACE, *_INVISIBLES)) + "]"
 )
 
-_RULE_MATCH = "rule_match"
 # The re-scan (full_rescan) regenerates only transcript-source mentions;
 # title/description mentions are managed separately and are never touched here.
 # The dry-run projection filters to this so its count matches what --apply does.
@@ -137,7 +137,7 @@ class TranscriptWhitespaceBackfillService:
         # but whose mentions were not yet regenerated still has rule_match
         # mentions carrying the artifact — pick it up so the re-scan runs.
         mention_q = select(distinct(EntityMentionDB.video_id)).where(
-            EntityMentionDB.detection_method == _RULE_MATCH,
+            EntityMentionDB.detection_method.in_(SCAN_DETECTION_METHODS),
             EntityMentionDB.mention_text.op("~")(_ARTIFACT_CLASS),
         )
         seg_ids = set((await session.execute(seg_q)).scalars().all())
@@ -229,7 +229,9 @@ class TranscriptWhitespaceBackfillService:
                                 .select_from(EntityMentionDB)
                                 .where(
                                     EntityMentionDB.video_id == video_id,
-                                    EntityMentionDB.detection_method == _RULE_MATCH,
+                                    EntityMentionDB.detection_method.in_(
+                                        SCAN_DETECTION_METHODS
+                                    ),
                                     EntityMentionDB.mention_source == _TRANSCRIPT,
                                 )
                             )

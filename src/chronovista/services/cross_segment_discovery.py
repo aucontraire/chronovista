@@ -599,7 +599,7 @@ class CrossSegmentDiscovery:
         multi-word filter are unchanged, so the corrections-discovery candidate set
         is identical to before the move.
         """
-        return await EntityAsrErrorRepository().get_multiword_candidates(
+        return await EntityAsrErrorRepository().get_all_multiword_forms_for_discovery(
             session, entity_name
         )
 

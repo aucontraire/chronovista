@@ -196,6 +196,7 @@ class TranscriptCorrectionService:
             session,
             original_text=effective_text,
             corrected_text=corrected_text,
+            video_id=video_id,
         )
 
         # Step 11: Return created record
@@ -357,10 +358,13 @@ class TranscriptCorrectionService:
         *,
         original_text: str,
         corrected_text: str,
+        video_id: str | None = None,
     ) -> None:
         """Best-effort hook: auto-record ASR error alias when correction matches an entity.
 
         Delegates to :func:`~chronovista.services.asr_alias_registry.register_asr_alias`.
+        The *video_id* lets the registry disambiguate a shared name against the
+        entities already known in that video (Feature 111 FR-008).
         """
         from chronovista.services.asr_alias_registry import register_asr_alias
 
@@ -371,6 +375,7 @@ class TranscriptCorrectionService:
             occurrence_count=1,
             commit=False,
             log_prefix="B-lite",
+            video_id=video_id,
         )
 
 

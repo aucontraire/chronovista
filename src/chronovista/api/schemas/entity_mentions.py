@@ -36,8 +36,9 @@ class VideoEntitySummary(BaseModel):
         Entity description.
     mention_count : int
         Number of detected mentions: distinct transcript segments, plus each
-        title and description mention. Excludes manual associations, which are
-        reported by ``has_manual``.
+        title and description mention. Includes recovered ASR-match mentions
+        (Feature 111). Excludes manual associations, which are reported by
+        ``has_manual``.
     first_mention_time : float | None
         Start time (seconds) of the earliest segment with a mention. None when
         the entity has no transcript mention — a title-only entity has a
@@ -61,7 +62,8 @@ class VideoEntitySummary(BaseModel):
         ...,
         description=(
             "Detected mentions: distinct transcript segments plus each title "
-            "and description mention; excludes manual associations"
+            "and description mention; includes recovered ASR-match mentions; "
+            "excludes manual associations"
         ),
     )
     first_mention_time: float | None = Field(

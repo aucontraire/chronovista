@@ -1224,9 +1224,10 @@ class BatchCorrectionService:
 
         # Auto-register ASR aliases: each distinct matched form is registered
         # as a separate alias with its own occurrence count.
+        skipped_ambiguous = 0
         if total_applied > 0:
             for form, count in matched_form_counts.items():
-                await self._record_asr_alias_for_batch_replacement(
+                skipped_ambiguous += await self._record_asr_alias_for_batch_replacement(
                     session,
                     pattern=form,
                     replacement=replacement,
@@ -1257,6 +1258,7 @@ class BatchCorrectionService:
             total_failed=total_failed,
             failed_batches=failed_batches,
             unique_videos=unique_videos,
+            skipped_ambiguous=skipped_ambiguous,
         )
 
     async def rebuild_text(
@@ -3242,14 +3244,22 @@ class BatchCorrectionService:
         pattern: str,
         replacement: str,
         total_applied: int,
-    ) -> None:
+    ) -> int:
         """Best-effort hook: register the search pattern as an ASR error alias.
 
         Delegates to :func:`~chronovista.services.asr_alias_registry.register_asr_alias`.
+        A corpus-wide find-replace has no single video or adjacent token, so an
+        ambiguous replacement (one shared by several entities) resolves to nothing
+        rather than an arbitrary entity (Feature 111 FR-008).
+
+        Returns
+        -------
+        int
+            The number of registrations skipped as ambiguous (0 or 1).
         """
         from chronovista.services.asr_alias_registry import register_asr_alias
 
-        await register_asr_alias(
+        return await register_asr_alias(
             session,
             original_text=pattern,
             corrected_text=replacement,

@@ -14,12 +14,20 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.db.models import EntityAlias, EntityAsrError, NamedEntity
+from chronovista.db.models import (
+    EntityAlias,
+    EntityAsrError,
+    EntityMention,
+    NamedEntity,
+)
 from chronovista.models.entity_asr_error import EntityAsrErrorCreate
 from chronovista.repositories.entity_asr_error_repository import (
     EntityAsrErrorRepository,
 )
-from chronovista.services.asr_alias_registry import register_asr_alias
+from chronovista.services.asr_alias_registry import (
+    register_asr_alias,
+    resolve_entity_id_from_text,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -238,3 +246,179 @@ class TestRegisterAsrAliasBehaviours:
             "A single-word correction must register exactly the full-string form, "
             f"with no duplicate sub-token; got {forms!r}."
         )
+
+
+# ---------------------------------------------------------------------------
+# Feature 111 US2 (Deliverable B, R1+R2): context-aware disambiguation
+# ---------------------------------------------------------------------------
+
+
+async def _seed_person(db_session: AsyncSession, name: str) -> NamedEntity:
+    """Seed one active person entity with its normalized canonical name."""
+    entity = NamedEntity(
+        entity_type="person",
+        canonical_name=name,
+        canonical_name_normalized=name.lower(),
+    )
+    db_session.add(entity)
+    await db_session.flush()
+    return entity
+
+
+async def _seed_alias(
+    db_session: AsyncSession, entity: NamedEntity, alias: str
+) -> None:
+    """Attach a plain name-variant alias to an entity."""
+    db_session.add(
+        EntityAlias(
+            entity_id=entity.id,
+            alias_name=alias,
+            alias_name_normalized=alias.lower(),
+        )
+    )
+    await db_session.flush()
+
+
+async def _seed_mention(
+    db_session: AsyncSession, entity: NamedEntity, video_id: str
+) -> None:
+    """Record that an entity has a mention in a given video."""
+    db_session.add(
+        EntityMention(
+            entity_id=entity.id,
+            video_id=video_id,
+            mention_text="placeholder",
+        )
+    )
+    await db_session.flush()
+
+
+@pytest.mark.db
+@pytest.mark.integration
+class TestContextAwareResolution:
+    """FR-008 selection order replaces the three defective exits.
+
+    A bare surname shared by two people ("Ada Quorne" / "Ben Quorne") is the
+    running scenario: without context the old code attached to an arbitrary
+    entity via ``.scalars().first()``; now it disambiguates or skips.
+    """
+
+    async def test_fast_path_adjacent_first_name_resolves_one_candidate(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Adjacent first name folding to exactly one candidate resolves it."""
+        ada = await _seed_person(db_session, "Ada Quorne")
+        await _seed_person(db_session, "Ben Quorne")
+
+        result = await resolve_entity_id_from_text(
+            db_session, "Quorne", adjacent_token="Ada"
+        )
+
+        assert result is not None
+        entity_id, name = result
+        assert entity_id == uuid.UUID(str(ada.id))
+        assert name == "Ada Quorne"
+
+    async def test_video_context_fallback_resolves_known_entity(
+        self, db_session: AsyncSession
+    ) -> None:
+        """With no usable adjacent token, one video-known candidate resolves."""
+        await _seed_person(db_session, "Ada Quorne")
+        ben = await _seed_person(db_session, "Ben Quorne")
+        await _seed_mention(db_session, ben, "vidQuorne01")
+
+        # No adjacent first name; only Ben is known in this video.
+        result = await resolve_entity_id_from_text(
+            db_session, "Quorne", video_id="vidQuorne01"
+        )
+
+        assert result is not None
+        entity_id, name = result
+        assert entity_id == uuid.UUID(str(ben.id))
+        assert name == "Ben Quorne"
+
+    async def test_shared_alias_without_context_skips_and_counts(
+        self, db_session: AsyncSession
+    ) -> None:
+        """A shared alias with no disambiguator is skipped and counted.
+
+        This is the former arbitrary-mislink case: two entities carry the same
+        alias. The resolver must not pick one; ``register_asr_alias`` reports a
+        skip (the counter) and writes nothing.
+        """
+        ada = await _seed_person(db_session, "Ada Quorne")
+        ben = await _seed_person(db_session, "Ben Quorne")
+        await _seed_alias(db_session, ada, "Quorne")
+        await _seed_alias(db_session, ben, "Quorne")
+
+        # Resolver alone: never an arbitrary pick.
+        assert await resolve_entity_id_from_text(db_session, "Quorne") is None
+
+        skipped = await register_asr_alias(
+            db_session,
+            original_text="qorn",
+            corrected_text="Quorne",
+        )
+        await db_session.flush()
+
+        assert skipped == 1, "An ambiguous correction must increment the counter."
+
+        total = (
+            await db_session.execute(select(func.count()).select_from(EntityAsrError))
+        ).scalar_one()
+        assert total == 0, "An ambiguous correction must attach to no entity."
+
+    async def test_shared_alias_resolved_by_adjacent_context(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The same shared-alias case resolves correctly given an adjacent name."""
+        ada = await _seed_person(db_session, "Ada Quorne")
+        ben = await _seed_person(db_session, "Ben Quorne")
+        await _seed_alias(db_session, ada, "Quorne")
+        await _seed_alias(db_session, ben, "Quorne")
+
+        result = await resolve_entity_id_from_text(
+            db_session, "Quorne", adjacent_token="Ben"
+        )
+
+        assert result is not None
+        entity_id, _ = result
+        assert entity_id == uuid.UUID(str(ben.id)), "Context must pick Ben, not Ada."
+
+    async def test_r2_registers_full_name_form_beside_known_first_name(
+        self, db_session: AsyncSession
+    ) -> None:
+        """R2 (FR-009): a disambiguated bare surname registers the full-name form."""
+        ada = await _seed_person(db_session, "Ada Quorne")
+        await _seed_person(db_session, "Ben Quorne")
+
+        skipped = await register_asr_alias(
+            db_session,
+            original_text="qorn",
+            corrected_text="Quorne",
+            adjacent_token="Ada",
+        )
+        await db_session.flush()
+
+        assert skipped == 0
+
+        forms = set(
+            (
+                await db_session.execute(
+                    select(EntityAsrError.alias_name).where(
+                        EntityAsrError.entity_id == ada.id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert (
+            "Ada qorn" in forms
+        ), "The specific full GARBLE form (adjacent first name + garble) must register."
+        assert (
+            "qorn" not in forms
+        ), "The ambiguous bare fragment must not be registered."
+        assert (
+            "Ada Quorne" not in forms
+        ), "The corrected name is matched via canonical/alias; it is not an error form."

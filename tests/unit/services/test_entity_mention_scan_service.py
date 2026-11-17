@@ -196,7 +196,9 @@ class TestPatternConstruction:
         entity_result = _scalars_execute([entity_row])
         alias_result = _scalars_execute(alias_rows)
 
-        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+        session.execute = AsyncMock(
+            side_effect=[entity_result, alias_result, _raw_execute([])]
+        )
 
         svc = _build_service(MagicMock())
         result: list[Any] = await svc._load_entity_patterns(
@@ -292,17 +294,21 @@ class TestPatternConstruction:
         session = AsyncMock()
         entity_result = _scalars_execute([entity_row])
         alias_result = _scalars_execute([])
-        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+        session.execute = AsyncMock(
+            side_effect=[entity_result, alias_result, _raw_execute([])]
+        )
 
         svc = _build_service(MagicMock())
         await svc._load_entity_patterns(
             session, entity_type=None, new_entities_only=False
         )
 
-        # The alias query is the second execute() call
-        assert (
-            session.execute.call_count == 2
-        ), "Expected exactly two execute() calls: one for entities, one for aliases"
+        # Three execute() calls now: entities, aliases, then the ASR-error
+        # multi-word form load (Feature 111 US1b). The alias query is the second.
+        assert session.execute.call_count == 3, (
+            "Expected three execute() calls: entities, aliases, "
+            "and the ASR-error form load"
+        )
         alias_stmt = session.execute.call_args_list[1].args[0]
         sql_str = str(
             alias_stmt.compile(
@@ -595,7 +601,9 @@ class TestShortAliasWarning:
         session = AsyncMock()
         entity_result = _scalars_execute([entity_row])
         alias_result = _scalars_execute([short_alias])
-        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+        session.execute = AsyncMock(
+            side_effect=[entity_result, alias_result, _raw_execute([])]
+        )
 
         svc = _build_service(MagicMock())
 
@@ -624,7 +632,9 @@ class TestShortAliasWarning:
         session = AsyncMock()
         entity_result = _scalars_execute([entity_row])
         alias_result = _scalars_execute([short_alias])
-        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+        session.execute = AsyncMock(
+            side_effect=[entity_result, alias_result, _raw_execute([])]
+        )
 
         svc = _build_service(MagicMock())
 
@@ -653,7 +663,9 @@ class TestShortAliasWarning:
         session = AsyncMock()
         entity_result = _scalars_execute([entity_row])
         alias_result = _scalars_execute([ok_alias])
-        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+        session.execute = AsyncMock(
+            side_effect=[entity_result, alias_result, _raw_execute([])]
+        )
 
         svc = _build_service(MagicMock())
 
@@ -689,7 +701,9 @@ class TestFilterParameters:
 
         entity_result = _scalars_execute([entity_row])
         alias_result = _scalars_execute([])
-        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+        session.execute = AsyncMock(
+            side_effect=[entity_result, alias_result, _raw_execute([])]
+        )
 
         factory = _make_session_factory(session)
         svc = _build_service(factory)
@@ -723,7 +737,9 @@ class TestFilterParameters:
 
         entity_result = _scalars_execute([entity_row])
         alias_result = _scalars_execute([])
-        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+        session.execute = AsyncMock(
+            side_effect=[entity_result, alias_result, _raw_execute([])]
+        )
 
         factory = _make_session_factory(session)
         svc = _build_service(factory)
@@ -2424,7 +2440,9 @@ class TestEntityIdsFilter:
         session = AsyncMock()
         entity_result = _scalars_execute([entity_row])
         alias_result = _scalars_execute([])
-        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+        session.execute = AsyncMock(
+            side_effect=[entity_result, alias_result, _raw_execute([])]
+        )
 
         svc = _build_service(MagicMock())
         await svc._load_entity_patterns(
@@ -2467,7 +2485,9 @@ class TestEntityIdsFilter:
         session = AsyncMock()
         entity_result = _scalars_execute([entity_row])
         alias_result = _scalars_execute([])
-        session.execute = AsyncMock(side_effect=[entity_result, alias_result])
+        session.execute = AsyncMock(
+            side_effect=[entity_result, alias_result, _raw_execute([])]
+        )
 
         svc = _build_service(MagicMock())
         await svc._load_entity_patterns(
@@ -2575,6 +2595,7 @@ class TestAliasRegexOrdering:
             side_effect=[
                 _scalars_execute([entity_row]),
                 _raw_execute([short_alias, long_alias]),
+                _raw_execute([]),
             ]
         )
         factory = _make_session_factory(session)
@@ -2919,6 +2940,7 @@ class TestDiacriticFoldingLoadPatterns:
             side_effect=[
                 _scalars_execute([entity_row]),
                 _scalars_execute([]),
+                _raw_execute([]),
             ]
         )
         svc = _build_service(MagicMock())
@@ -3402,7 +3424,11 @@ class TestCaseSensitivityReachesTheCompiledPattern:
     async def _load(self, entity_row: MagicMock, alias_rows: list[MagicMock]) -> Any:
         session = AsyncMock()
         session.execute = AsyncMock(
-            side_effect=[_scalars_execute([entity_row]), _scalars_execute(alias_rows)]
+            side_effect=[
+                _scalars_execute([entity_row]),
+                _scalars_execute(alias_rows),
+                _raw_execute([]),
+            ]
         )
         svc = _build_service(MagicMock())
         patterns: list[Any] = await svc._load_entity_patterns(

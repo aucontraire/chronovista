@@ -20,6 +20,7 @@ from chronovista.models.enums import DetectionMethod
 from chronovista.services.entity_mention_scan_service import (
     EntityMentionScanService,
     ScanResult,
+    _build_entity_pattern,
     _EntityPattern,
 )
 
@@ -65,6 +66,7 @@ async def _run(
 
     repo.bulk_create_with_conflict_skip = AsyncMock(side_effect=_bulk)
     repo.delete_spanning_mentions_by_segments = AsyncMock(return_value=0)
+    repo.delete_in_segment_mentions_at = AsyncMock(return_value=0)
     repo.entities_with_transcript_mentions_in_segments = AsyncMock(
         return_value=delete_affected or []
     )
@@ -130,6 +132,53 @@ class TestCrossSegmentDetection:
         )
         assert captured == []
 
+    async def test_spanning_match_suppresses_overlapping_in_segment_only(
+        self,
+    ) -> None:
+        """Feature 111 US4 (FR-005/FR-006, T025): single longest-match-wins pool.
+
+        A surviving spanning match ("Alfa Bravo", seg1/seg2) must delete the
+        overlapping in-segment mention the per-segment pass wrote ("Bravo" in
+        seg2) and leave the non-overlapping far occurrence ("Bravo" in seg3)
+        untouched. The delete is asserted by its EXACT ``(segment_id, entity_id,
+        match_start, match_end)`` target, so an over-suppressing or mis-targeted
+        regression fails here at the unit level — the mutation sentinel.
+        """
+        short = _pattern("Bravo")
+        long_ = _pattern("Alfa Bravo")
+        captured, _result, repo = await _run(
+            [
+                _seg(1, "the name is Alfa"),
+                _seg(2, "Bravo speaking"),
+                _seg(3, "Bravo again"),
+            ],
+            [short, long_],
+        )
+
+        # The spanning match is written.
+        assert len(captured) == 1
+        assert (captured[0].segment_id, captured[0].end_segment_id) == (1, 2)
+
+        # Exactly the overlapping seg-2 "Bravo" is deleted; the far seg-3 one is not.
+        repo.delete_in_segment_mentions_at.assert_awaited_once()
+        targets = repo.delete_in_segment_mentions_at.await_args.kwargs["targets"]
+        assert targets == [(2, short.entity_id, 0, 5)]
+
+    async def test_non_overlapping_in_segment_is_not_suppressed(self) -> None:
+        """Feature 111 US4 (T040 no-regression companion).
+
+        With no spanning match in play (the long name never crosses a boundary),
+        the compete delete must not fire at all — the single-pool change removes
+        ONLY intentionally-suppressed overlaps, nothing else.
+        """
+        short = _pattern("Bravo")
+        long_ = _pattern("Alfa Bravo")
+        _captured, _result, repo = await _run(
+            [_seg(1, "Bravo here"), _seg(2, "Bravo again")],
+            [short, long_],
+        )
+        repo.delete_in_segment_mentions_at.assert_not_awaited()
+
     async def test_mangled_and_split_is_not_written(self) -> None:
         # Name mis-transcribed ("Alpha" not "Alfa") across the boundary: the regex
         # write-path won't match it; mangled-and-split stays in the suggestion domain.
@@ -138,6 +187,37 @@ class TestCrossSegmentDetection:
             [_seg(1, "intro Alpha"), _seg(2, "Bravo")], [pat]
         )
         assert captured == []
+
+    async def test_spanning_asr_garble_keeps_asr_match_provenance(self) -> None:
+        # A multiword ASR-error form landing across a segment boundary keeps its
+        # asr_match provenance: spanning asr_match is a valid transcript writer
+        # (SPANNING_DETECTION_METHODS), so the recovery stays revertible/auditable
+        # (FR-014/SC-009) rather than masquerading as a clean rule_match. The entity
+        # is a candidate because its real name token appears in seg1; the garble
+        # "qux zap" then spans the seg2/seg3 boundary. (A naive asr_match span once
+        # raised a pydantic ValidationError; the model now admits it.)
+        pat = _build_entity_pattern(
+            entity_id=uuid.uuid4(),
+            canonical_name="Vorna Dale",
+            entity_type="person",
+            names=["Vorna Dale"],
+            case_sensitive_names=set(),
+            exclusion_patterns=[],
+            asr_forms=["qux zap"],
+        )
+        captured, _result, _repo = await _run(
+            [
+                _seg(1, "vorna dale spoke"),
+                _seg(2, "the word qux"),
+                _seg(3, "zap ended"),
+            ],
+            [pat],
+        )
+        spanning = [m for m in captured if m.end_segment_id is not None]
+        assert len(spanning) == 1
+        assert spanning[0].mention_text.casefold() == "qux zap"
+        assert spanning[0].detection_method == DetectionMethod.ASR_MATCH
+        assert spanning[0].alias_id is None
 
     async def test_dry_run_writes_nothing_but_previews(self) -> None:
         pat = _pattern("Alfa Bravo")

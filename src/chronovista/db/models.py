@@ -1145,9 +1145,14 @@ class EntityAsrError(Base):
 
     The dedicated store for ``asr_error`` strings lifted out of ``entity_aliases``.
     The table *is* the type — there is no ``alias_type`` column — so a known-error
-    string is structurally incapable of being filed among names or used as a
-    name-match pattern. Read only by the corrections-discovery flow; never by a
-    name matcher.
+    string is structurally incapable of being filed among names. Two readers now
+    consume it: the corrections-discovery flow (always), and — since Feature 111 —
+    the name matcher, which folds *admissible* multi-word forms into the match
+    alternation so a garble can recover a mis-transcribed mention. The
+    ``usable_as_match_pattern`` flag (FR-011) is the per-form lever that excludes a
+    zero-signal form (a garble that is also a common phrase, idiom, or wrong-entity
+    collision) from the *matcher* while leaving it available to corrections
+    discovery.
 
     Deliberately carries no ``occurrence_count``: on ``entity_aliases`` that column
     was a derived counter recomputed to zero for these (scan-excluded) rows, with
@@ -1182,6 +1187,21 @@ class EntityAsrError(Base):
         server_default=text("false"),
     )
 
+    # Per-form match-pattern admissibility (FR-011). True (default) = usable as a
+    # match pattern; false = a reviewer has suppressed this form from matching
+    # (zero-signal garble) while it stays available to corrections discovery.
+    usable_as_match_pattern: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
+
+    # Why a form is suppressed (FR-011 policy, vs the capability flag above). NULL =
+    # no reason recorded; 'zero_signal' = permanent; 'mostly_false_redundant' =
+    # provisional. Value-only CHECK; no cross-column invariant (see migration).
+    suppression_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     # Timestamps (recorded — copied verbatim on relocation)
     first_seen_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -1191,6 +1211,11 @@ class EntityAsrError(Base):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "suppression_reason IS NULL OR suppression_reason IN "
+            "('zero_signal', 'mostly_false_redundant')",
+            name="chk_entity_asr_error_suppression_reason_valid",
+        ),
         UniqueConstraint(
             "alias_name_normalized", "entity_id", name="uq_entity_asr_error_name"
         ),

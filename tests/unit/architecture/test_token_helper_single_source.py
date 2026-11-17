@@ -18,6 +18,12 @@ in place of ``toks = _tokens(form)``) and
 ``test_token_fold_split_has_one_inline_home`` goes RED; revert, green. The docstring
 reference was rewritten to ``_tokens(form)`` precisely so the guard counts code, not
 prose. Confirmed on 2026-11-13.
+
+COMPANION (Feature 111 Deliverable B): this guard keys on a ONE-LINE literal, so a
+two-line re-inline splits it and passes. ``test_match_form_tokens_single_source`` adds
+the AST ``_tokens``-caller and ``_TOKEN_RE``-scope guards that close that gap for the
+entity match-form token relation. The single-source contract holds only by the
+CONJUNCTION of all three guards -- do not relax one without the others.
 """
 
 from __future__ import annotations

@@ -577,12 +577,15 @@ A confirmed ASR mis-transcription of an entity's name (Feature 110).
 | `alias_name` | VARCHAR(500) | no |  |  |
 | `alias_name_normalized` | VARCHAR(500) | no |  |  |
 | `case_sensitive` | BOOLEAN | no | `false` |  |
+| `usable_as_match_pattern` | BOOLEAN | no | `true` |  |
+| `suppression_reason` | VARCHAR(32) | yes |  |  |
 | `first_seen_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 | `last_seen_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 
 **Constraints:**
 
 - UNIQUE on `alias_name_normalized`, `entity_id` (`uq_entity_asr_error_name`)
+- CHECK `chk_entity_asr_error_suppression_reason_valid`: `suppression_reason IS NULL OR suppression_reason IN ('zero_signal', 'mostly_false_redundant')`
 
 **Indexes:**
 

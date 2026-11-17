@@ -93,7 +93,7 @@ class EntityAsrErrorRepository(
             return existing
         return await self.create(session, obj_in=obj_in)
 
-    async def get_multiword_candidates(
+    async def get_all_multiword_forms_for_discovery(
         self,
         session: AsyncSession,
         entity_name: str | None = None,
@@ -123,7 +123,7 @@ class EntityAsrErrorRepository(
         result = await session.execute(stmt)
         return [(row[0], row[1], row[2]) for row in result.all()]
 
-    async def get_multiword_forms_by_entity_ids(
+    async def get_multiword_forms_for_matching(
         self,
         session: AsyncSession,
         entity_ids: Sequence[uuid.UUID],
@@ -136,6 +136,12 @@ class EntityAsrErrorRepository(
         filtered out in SQL (``alias_name`` must contain a space), because a
         single-word form can never pass the admissibility gate anyway — this is
         the query-side half of that defence-in-depth.
+
+        Forms flagged ``usable_as_match_pattern = false`` (FR-011) are also excluded
+        here, because this is the *match* reader. The corrections-discovery reader
+        (:meth:`get_all_multiword_forms_for_discovery`) deliberately does NOT apply this filter —
+        the flag suppresses a zero-signal garble from matching only, never from
+        correction discovery.
 
         Parameters
         ----------
@@ -159,6 +165,7 @@ class EntityAsrErrorRepository(
         ).where(
             EntityAsrErrorDB.entity_id.in_(entity_ids),
             EntityAsrErrorDB.alias_name.contains(" "),
+            EntityAsrErrorDB.usable_as_match_pattern.is_(True),
         )
         result = await session.execute(stmt)
 

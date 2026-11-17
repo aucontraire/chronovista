@@ -15,7 +15,7 @@ import re
 import time
 import unicodedata
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from functools import cached_property
 from types import SimpleNamespace
@@ -256,6 +256,79 @@ def _tokens(form: str) -> list[str]:
         word characters.
     """
     return _TOKEN_RE.findall(_fold_diacritics(form)[0].casefold())
+
+
+def _match_form_tokens(
+    raw_forms: Iterable[str], folded_forms: Iterable[str] = ()
+) -> set[str]:
+    """Every token that can anchor a match for one entity -- the SINGLE home.
+
+    The one relation the scoped-scan widening
+    (:meth:`EntityMentionScanService._shared_token_neighbour_ids`) widens by and the
+    cross-segment / per-segment candidate pre-filters admit on. It is the union of
+    (a) the tokens of every raw form (names, and raw admissible ASR strings on the
+    neighbour path), folded + split via :func:`_tokens`, and (b) the tokens of every
+    already-folded form, split via ``_TOKEN_RE`` -- a built pattern's
+    :attr:`_EntityPattern.asr_folds` are diacritic-folded + casefolded, so they
+    tokenise directly, exactly as :attr:`_EntityPattern.gap_form_seqs` reads them.
+    (Folding is idempotent, so a raw ASR string folded via :func:`_tokens` yields the
+    same tokens as its pre-folded ``asr_fold`` -- the two input slots are a
+    convenience, not two tokenisers.)
+
+    WHY every consumer must route through here: an entity's ``pg_pattern`` alternation
+    is built from exactly these forms (names + admissible ASR folds; see
+    :func:`_build_entity_pattern`). A gap/regex match needs ALL of a form's tokens
+    present; the relation admits on ANY shared token; ``ALL => ANY`` makes the relation
+    a sound superset of the matcher -- but only while every form that can match also
+    contributes its tokens here. A consumer that reads names only silently drops
+    ASR-only matches (Feature 111: the scoped-widening shadowing false positive and the
+    cross-segment pre-filter false negative). Coverage, not provenance: the union is
+    unconditional -- a fold that coincides with a real name is kept out of ``asr_folds``
+    for provenance, but its tokens are already covered by the name.
+
+    Parameters
+    ----------
+    raw_forms : Iterable[str]
+        Forms folded + split here via :func:`_tokens`: an entity's names (canonical +
+        aliases), and on the neighbour-widening path its raw admissible ASR strings.
+    folded_forms : Iterable[str]
+        Already fold+casefolded forms split directly via ``_TOKEN_RE`` -- a built
+        pattern's :attr:`_EntityPattern.asr_folds`. Defaults to empty for callers that
+        pass every form raw.
+
+    Returns
+    -------
+    set[str]
+        Every token that can anchor a match for the entity.
+    """
+    tokens: set[str] = set()
+    for form in raw_forms:
+        tokens.update(_tokens(form))
+    for fold in folded_forms:
+        tokens.update(_TOKEN_RE.findall(fold))
+    return tokens
+
+
+def _any_form_tokenless(
+    raw_forms: Iterable[str], folded_forms: Iterable[str] = ()
+) -> bool:
+    """True if any match form (name OR ASR fold) has no word tokens.
+
+    Total over the SAME form set as :func:`_match_form_tokens` (raw forms split via
+    :func:`_tokens`, folded forms via ``_TOKEN_RE``), so the pre-filters' ``always_run``
+    decision never rests on the caller having pre-filtered admission. A token-empty
+    form -- a punctuation-only alias, or (should admission ever be bypassed) a
+    token-empty ASR fold -- still forces the entity to always run: it can match
+    ``\\b(...)\\b`` wedged between word characters yet carries no gating token.
+    Admissible ASR folds always carry tokens (:func:`_asr_form_admissible` rejects a
+    token-empty form), so in production -- admission applied at the single build site --
+    only names trigger this; making the check total removes the reliance on that
+    unenforced caller contract. The scope/neighbour widening does not need it (it only
+    intersects token sets).
+    """
+    return any(not _tokens(form) for form in raw_forms) or any(
+        not _TOKEN_RE.findall(fold) for fold in folded_forms
+    )
 
 
 # Per-language disfluency / filler phrases (Feature 111 US3, FR-010). At match
@@ -1166,17 +1239,17 @@ class EntityMentionScanService:
         token_to_entities: dict[str, set[uuid.UUID]] = {}
         always_run: set[uuid.UUID] = set()
         for pattern in patterns:
-            form_tokens: set[str] = set()
-            tokenless_form = False
-            for form in (pattern.canonical_name, *pattern.alias_names):
-                toks = _tokens(form)
-                if toks:
-                    form_tokens.update(toks)
-                else:
-                    tokenless_form = True
-            # A form with no word tokens (e.g. a punctuation-only alias) can't be
-            # gated by token presence, so such an entity always runs.
-            if tokenless_form or not form_tokens:
+            names = (pattern.canonical_name, *pattern.alias_names)
+            # Deliverable B: include ASR folds -- compiled_patterns carry ASR forms in
+            # the alternation, so a names-only index prunes a real ASR match before the
+            # regex runs (cross-segment false negative, NOTE 020 / _match_form_tokens).
+            form_tokens = _match_form_tokens(names, pattern.asr_folds)
+            # A match form with no word tokens (a punctuation-only alias, or -- should
+            # admission ever be bypassed -- a token-empty ASR fold) can still match
+            # \b(...)\b between word chars yet carries no gating token, so the entity
+            # must always run. _any_form_tokenless is total over the SAME form set as
+            # form_tokens above, so this never relies on admission being pre-applied.
+            if _any_form_tokenless(names, pattern.asr_folds) or not form_tokens:
                 always_run.add(pattern.entity_id)
             else:
                 for tok in form_tokens:
@@ -2143,8 +2216,11 @@ class EntityMentionScanService:
 
         scope_tokens: set[str] = set()
         for pattern in scope_patterns:
-            for form in (pattern.canonical_name, *pattern.alias_names):
-                scope_tokens.update(_tokens(form))
+            scope_tokens.update(
+                _match_form_tokens(
+                    (pattern.canonical_name, *pattern.alias_names), pattern.asr_folds
+                )
+            )
         if not scope_tokens:
             return set()
 
@@ -2177,13 +2253,28 @@ class EntityMentionScanService:
                     alias_row.alias_name
                 )
 
+        # Feature 111 (Deliverable B): ASR-error forms join the match alternation, so a
+        # neighbour can overlap the scope through a token only its GARBLE carries. The
+        # relation must cover names + admissible ASR forms, or the scoped scan silently
+        # shadows (NOTE 020). Load the raw forms and admit them with the one gate
+        # (_asr_form_admissible -- the repo's multiword filter is only one of its three
+        # arms); str-key the map for the uuid_utils/stdlib UUID boundary, as
+        # _load_entity_patterns does.
+        asr_by_str: dict[str, list[str]] = {}
+        if active_ids:
+            asr_by_entity = await self._asr_error_repo.get_multiword_forms_for_matching(
+                session, active_ids
+            )
+            asr_by_str = {str(k): v for k, v in asr_by_entity.items()}
+
         neighbours: set[uuid.UUID] = set()
         for entity_id, forms in forms_by_entity.items():
             if entity_id in scope_ids:
                 continue
-            tokens: set[str] = set()
-            for form in forms:
-                tokens.update(_tokens(form))
+            admissible_asr = [
+                f for f in asr_by_str.get(str(entity_id), []) if _asr_form_admissible(f)
+            ]
+            tokens = _match_form_tokens([*forms, *admissible_asr])
             if tokens & scope_tokens:
                 neighbours.add(entity_id)
         return neighbours
@@ -2256,7 +2347,7 @@ class EntityMentionScanService:
         # entity.id may be a uuid_utils value held in the identity map while the
         # query column round-trips as a stdlib UUID, and the two are unequal.
         asr_forms_by_entity = (
-            await self._asr_error_repo.get_multiword_forms_by_entity_ids(
+            await self._asr_error_repo.get_multiword_forms_for_matching(
                 session, entity_id_list
             )
         )

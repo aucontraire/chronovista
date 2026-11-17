@@ -32,12 +32,30 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import EntityAsrError, NamedEntity
+from chronovista.db.models import EntityAsrError as EntityAsrErrorDB
+from chronovista.db.models import EntityMention as EntityMentionDB
 from chronovista.models.entity_asr_error import EntityAsrErrorCreate
+from chronovista.models.enums import DetectionMethod
 from chronovista.repositories.entity_asr_error_repository import (
     EntityAsrErrorRepository,
+)
+from chronovista.services.entity_mention_scan_service import (
+    EntityMentionScanService,
+)
+from tests.factories.id_factory import video_id
+from tests.integration.services.test_entity_mention_scan_integration import (
+    _make_session_factory_from_session,
+    _seed_channel,
+    _seed_segment,
+    _seed_transcript,
+    _seed_video,
+)
+from tests.integration.services.test_entity_mention_scan_integration import (
+    _seed_entity as _seed_scan_entity,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -146,3 +164,72 @@ class TestFr011GatesMatchingOnly:
         assert reloaded is not None
         # Re-registration did NOT un-suppress the form.
         assert reloaded.usable_as_match_pattern is False
+
+
+@pytest.mark.db
+@pytest.mark.integration
+class TestFr011ScanSeam:
+    """The flag must gate the SCAN, not only the repository reader."""
+
+    async def test_scan_respects_usable_as_match_pattern_gate(
+        self, db_session: AsyncSession
+    ) -> None:
+        """End-to-end: a flagged garble yields no asr_match; unflagging yields one.
+
+        The garble ``zzq bravo`` is multiword, has no one-char token and is not a
+        common phrase, so it clears admission; the canonical name's third token is
+        absent from the text, so only the flag can stop the match.
+        """
+        vid = video_id(seed="fr011_scan_gate")
+        await _seed_channel(db_session)
+        await _seed_video(db_session, vid)
+        await _seed_transcript(db_session, vid)
+        await _seed_segment(db_session, vid, text="zzq bravo appears here")
+        entity = await _seed_scan_entity(db_session, "Zzq Bravo Delta", "person")
+        db_session.add(
+            EntityAsrErrorDB(
+                entity_id=entity.id,
+                alias_name="zzq bravo",
+                alias_name_normalized="zzq bravo",
+                usable_as_match_pattern=False,
+            )
+        )
+        await db_session.commit()
+
+        service = EntityMentionScanService(
+            session_factory=_make_session_factory_from_session(db_session)
+        )
+
+        async def _asr_hits() -> int:
+            return int(
+                (
+                    await db_session.execute(
+                        select(func.count()).where(
+                            EntityMentionDB.entity_id == entity.id,
+                            EntityMentionDB.detection_method
+                            == DetectionMethod.ASR_MATCH.value,
+                            func.lower(EntityMentionDB.mention_text) == "zzq bravo",
+                        )
+                    )
+                ).scalar()
+                or 0
+            )
+
+        await service.scan(full_rescan=True)
+        assert await _asr_hits() == 0, (
+            "scan wrote an asr_match for a form flagged "
+            "usable_as_match_pattern=False: the flag does not gate the scan"
+        )
+
+        await db_session.execute(
+            update(EntityAsrErrorDB)
+            .where(EntityAsrErrorDB.entity_id == entity.id)
+            .values(usable_as_match_pattern=True)
+        )
+        await db_session.commit()
+
+        await service.scan(full_rescan=True)
+        assert await _asr_hits() == 1, (
+            "with the flag enabled the garble must yield exactly one asr_match "
+            "mention (otherwise the zero above proved nothing about the flag)"
+        )

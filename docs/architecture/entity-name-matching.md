@@ -47,6 +47,41 @@ form. **Collision precedence:** if a garble folds to the same value as a real
 name of the entity, the real name wins — the garble's fold is subtracted from the
 ASR set — so a form that coincides with a name keeps clean-match provenance.
 
+## Suppressing a reviewed form
+
+The gate keeps *low-signal* garbles out, but some admitted forms are still wrong:
+a garble that is also a common phrase, an idiom, or a collision with a different
+entity can pass every gate and still produce false matches. These are not
+gate-sizing problems — the form keeps a distinctive token, so "all common words"
+never fires — they need a human verdict. FR-011 adds that: a per-form reviewer
+override, the `entity_asr_errors.usable_as_match_pattern` flag.
+
+When a reviewer sets it to `false`, the form is suppressed from **matching** while
+staying available to **corrections discovery**. That asymmetry is the whole point:
+a wrong suppression costs a recovery, never a correction. The split is enforced by
+two readers whose names carry the contract:
+
+- `get_multiword_forms_for_matching` — the scan's match reader, which applies
+  `usable_as_match_pattern = true`;
+- `get_all_multiword_forms_for_discovery` — the corrections-discovery reader,
+  which deliberately does **not** apply the flag.
+
+A mutation-verified architecture guard asserts the ungated reader has exactly one
+consumer, so no scan-side read can silently bypass the suppression (the failure
+would be invisible — the ungated result is a strict superset, so nothing errors;
+the extra matches just look like better recall).
+
+A companion `suppression_reason` column records *why* a form is suppressed:
+`zero_signal` for a permanent decision, `mostly_false_redundant` for a provisional
+one that may be reversed once finer (video-scoped) disambiguation ships. Without
+it, once every flagged row reads `false`, a later "un-suppress" could not tell a
+permanent verdict from a temporary one.
+
+Suppression is **prospective**: flagging a form stops it producing *new* matches;
+its existing mentions clear on the next `--full` rescan, because the gate is read
+at scan time rather than applied as a retroactive delete. The flag is a data-layer
+control today — a reviewer-facing surface is a follow-on.
+
 ## Provenance: how a mention identifies where it came from
 
 Each mention records a `detection_method`. Two matter here:

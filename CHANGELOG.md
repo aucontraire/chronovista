@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DELETE WHERE detection_method = 'asr_match'` restores the exact pre-backfill mention
   set, so the recovered-mention backfill stays cleanly revertible as a group.
 
+### Documentation
+
+- **Diátaxis docs for the FR-011 reviewer override.** The name-matching explanation
+  now covers suppressing a reviewed false ASR-match form (the
+  `usable_as_match_pattern` capability flag and `suppression_reason` policy column,
+  the gated/ungated reader split, and prospective clearing), and the entity-curation
+  how-to adds it to the "choose the right tool" menu for `asr_match`-specific false
+  positives.
+
 ## [0.122.0] - 2026-11-13
 
 ### Added

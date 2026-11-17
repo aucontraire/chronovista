@@ -41,7 +41,7 @@ from tests.integration.services.test_entity_mention_scan_integration import (
 )
 
 # CRITICAL: ensures async tests are not silently skipped under coverage.
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.db, pytest.mark.integration]
 
 # (segment_id, end_segment_id) per persisted mention of one entity.
 Anchor = tuple[int, int | None]
@@ -91,11 +91,17 @@ class TestUniformArbitration:
         assert await _anchors(db_session, long_.id, vid) == [(seg.id, None)]
         assert await _anchors(db_session, short.id, vid) == []
 
+    @pytest.mark.parametrize("short_name", ["Quillon", "Zephyr"])
     async def test_case_b_cross_segment_resolves_identically_to_case_a(
-        self, db_session: AsyncSession
+        self, db_session: AsyncSession, short_name: str
     ) -> None:
-        """Same entities as Case A; the long form now straddles the boundary."""
-        vid = video_id(seed="uniform_arb_b")
+        """Same entities as Case A; the long form now straddles the boundary.
+
+        Parametrized over WHICH segment holds the short sub-span: ``Quillon`` sits
+        in the second segment, ``Zephyr`` in the first. Both must be suppressed,
+        so a start-vs-end overlap bug in the cross-segment block cannot hide.
+        """
+        vid = video_id(seed=f"uniform_arb_b_{short_name.lower()}")
         await _seed_channel(db_session)
         await _seed_video(db_session, vid)
         await _seed_transcript(db_session, vid)
@@ -113,7 +119,7 @@ class TestUniformArbitration:
             sequence_number=1,
             start_time=5.0,
         )
-        short = await _seed_entity(db_session, "Quillon", entity_type="person")
+        short = await _seed_entity(db_session, short_name, entity_type="person")
         long_ = await _seed_entity(db_session, "Zephyr Quillon Dray", "person")
         await db_session.commit()
 
@@ -121,10 +127,11 @@ class TestUniformArbitration:
 
         # Long: exactly one SPANNING mention (start seg0, end seg1).
         assert await _anchors(db_session, long_.id, vid) == [(seg0.id, seg1.id)]
-        # Short "Quillon" sits wholly inside seg1 and overlaps the spanning match, so
-        # the per-segment row the first pass wrote must have been deleted -- the same
-        # zero-mention outcome as Case A.
+        # The short form sits wholly inside one segment and overlaps the spanning
+        # match, so the per-segment row the first pass wrote must have been
+        # deleted -- the same zero-mention outcome as Case A, whichever segment.
         assert await _anchors(db_session, short.id, vid) == [], (
-            "overlapping in-segment mention survived next to the spanning longer "
-            "match: within- and cross-segment arbitration are not one pool"
+            f"overlapping in-segment mention {short_name!r} survived next to the "
+            "spanning longer match: within- and cross-segment arbitration are not "
+            "one pool"
         )

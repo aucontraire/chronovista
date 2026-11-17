@@ -5,6 +5,12 @@ Feature 111 writes recovered ASR-error-form mentions with
 that it is cleanly revertible: ``DELETE WHERE detection_method='asr_match'``
 restores the *exact* pre-backfill mention set, touching nothing else.
 
+Counters are the exception: the scan also updates ``named_entities.mention_count``
+/ ``video_count`` (``EntityMentionRepository.update_entity_counters``), and a bare
+DELETE does NOT recompute them. A COMPLETE revert is therefore
+``DELETE WHERE detection_method='asr_match'`` plus a counter recompute (or a
+rescan, which recomputes). The DELETE alone restores rows but not counters.
+
 This proves it end-to-end against a real database with a three-step sequence:
 
 1. **Pre-backfill scan** — before any ASR-error form is registered. The only
@@ -17,7 +23,9 @@ This proves it end-to-end against a real database with a three-step sequence:
    rescan. Assert ``asr_match`` rows now exist and the non-asr subset still
    equals S0 (the backfill only ADDED recovered rows; the baseline is intact).
 3. **Revert** — ``DELETE WHERE detection_method='asr_match'`` and assert the
-   remaining set equals S0 exactly, with zero ``asr_match`` rows left.
+   remaining set equals S0 exactly, with zero ``asr_match`` rows left; assert
+   ``mention_count`` is still stale, then recompute counters and assert it
+   equals the pre-backfill value.
 
 All seed strings are deliberately INVENTED (no real entity names or ASR garble).
 """
@@ -40,6 +48,9 @@ from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.enums import DetectionMethod
+from chronovista.repositories.entity_mention_repository import (
+    EntityMentionRepository,
+)
 from chronovista.services.entity_mention_scan_service import EntityMentionScanService
 from tests.factories.id_factory import channel_id, video_id
 
@@ -203,6 +214,9 @@ class TestAsrBackfillRevert:
         await service.scan(full_rescan=True)
         pre_backfill = await _snapshot(db_session)
         assert pre_backfill, "pre-backfill scan must detect the canonical name"
+        await db_session.refresh(entity)
+        pre_backfill_mention_count = entity.mention_count
+        assert pre_backfill_mention_count >= 1, "scan must have counted the mention"
         assert (
             await _asr_count(db_session) == 0
         ), "no asr_match rows must exist before the ASR form is registered"
@@ -253,4 +267,21 @@ class TestAsrBackfillRevert:
         assert await _snapshot(db_session) == pre_backfill, (
             "DELETE WHERE detection_method='asr_match' did not restore the exact "
             "pre-backfill snapshot — the backfill is not cleanly revertible (SC-009)"
+        )
+
+        # A bare DELETE restores rows but NOT counters: mention_count is stale.
+        await db_session.refresh(entity)
+        assert entity.mention_count > pre_backfill_mention_count, (
+            "expected mention_count to remain elevated after a bare DELETE; if "
+            "this fails the DELETE recomputes counters and the recompute below "
+            "is redundant"
+        )
+
+        # Complete revert = DELETE + counter recompute.
+        await EntityMentionRepository().update_entity_counters(db_session, [entity.id])
+        await db_session.commit()
+        await db_session.refresh(entity)
+        assert entity.mention_count == pre_backfill_mention_count, (
+            "counter recompute did not restore the pre-backfill mention_count "
+            "(SC-009)"
         )

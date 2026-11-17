@@ -34,7 +34,7 @@ from tests.integration.services.test_entity_mention_scan_integration import (
 )
 
 # CRITICAL: ensures async tests are not silently skipped under coverage.
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.db, pytest.mark.integration]
 
 # (segment text, ((entity name, entity type), ...))
 _CORPUS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (

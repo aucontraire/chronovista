@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.123.0] - 2026-11-16
+
 ### Added
 
 - **Reviewer override for ASR-error match patterns (Feature 111 / FR-011).** A confirmed

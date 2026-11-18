@@ -121,6 +121,15 @@ def _render(node_a: GraphNode, node_b: GraphNode, result: GraphConnection) -> No
             f"  [green]✓ reviewed relationship[/green]: {verdict.relation} "
             f"[dim]({verdict.confidence} confidence)[/dim]"
         )
+    elif (
+        verdict is not None
+        and verdict.verdict == "coincidence"
+        and verdict.confidence == "high"
+    ):
+        # Say WHY co-occurrence is absent: a human reviewed the pair as coincidental.
+        console.print(
+            "  [dim]⚑ reviewed as coincidental — co-occurrence suppressed[/dim]"
+        )
     # Position is a by-kind precedence, not a strength ranking: the per-line scores use
     # different references across tiers (ln(entity_count/degree) vs ln(1e6/globalSize)), so a
     # score ranks within its kind only — never read one kind's score against another's.
@@ -182,13 +191,29 @@ def _render(node_a: GraphNode, node_b: GraphNode, result: GraphConnection) -> No
         and ConnectionKind.SHARED_REFERENT not in kinds
     ):
         _render_kb_gap(
-            node_a, node_b, has_other=bool(result.chains) or verdict is not None
+            node_a,
+            node_b,
+            # A coincidence verdict is a negative, not an "other" connection — only a
+            # relationship verdict or a surviving chain counts as a real connection here.
+            has_other=bool(result.chains)
+            or (verdict is not None and verdict.verdict == "relationship"),
+            max_hops=result.searched_max_hops,
         )
 
 
-def _render_kb_gap(a: GraphNode, b: GraphNode, *, has_other: bool) -> None:
-    """Attribute "no KB path" to endpoint coverage vs a stated non-relationship (FR-016)."""
-    prefix = "no asserted KB path" if has_other else "no connection found"
+def _render_kb_gap(
+    a: GraphNode, b: GraphNode, *, has_other: bool, max_hops: int
+) -> None:
+    """Attribute "no KB path" to endpoint coverage vs a stated non-relationship (FR-016).
+
+    The asserted search is bounded by ``max_hops``, so an absence is "within N hops", never
+    absolute (FR-007a); when nothing connects at all it is "no meaningful connection" (FR-007).
+    """
+    prefix = (
+        f"no asserted KB path within {max_hops} hops"
+        if has_other
+        else f"no meaningful connection (searched within {max_hops} hops)"
+    )
     da, db = a.kb_degree, b.kb_degree
     if da is None or db is None:
         console.print(f"  [dim]{prefix}.[/dim]")

@@ -23,6 +23,7 @@ import pytest
 from chronovista.graph import GraphUnavailableError, Neo4jClient
 from chronovista.models.graph_connection import ConnectionKind
 from chronovista.repositories.neo4j_graph_repository import Neo4jGraphRepository
+from chronovista.services.connection_service import ConnectionService
 
 pytestmark = pytest.mark.asyncio
 
@@ -87,6 +88,25 @@ _SHORTEST_ANY_LEN = (
     "RETURN length(p) AS len"
 )
 
+# A pair whose ONLY shared category is near-universal (globalSize >= 1e6) — the SC-002 case:
+# the category must self-suppress (never emitted), not be shown-and-labeled.
+_BROAD_ONLY_CATEGORY_PAIR = (
+    "MATCH (a:Entity)-[:IN_CATEGORY]->(c:Category)<-[:IN_CATEGORY]-(b:Entity) "
+    "WHERE a.entityId < b.entityId AND c.globalSize >= 1000000 "
+    "AND NOT EXISTS { MATCH (a)-[:IN_CATEGORY]->(c2:Category)<-[:IN_CATEGORY]-(b) "
+    "WHERE c2.globalSize < 1000000 } "
+    "RETURN a.entityId AS a, b.entityId AS b LIMIT 1"
+)
+
+# A co-occurring pair carrying a reviewed COINCIDENCE verdict, by confidence — for the scoped,
+# origin-gated suppression (high ⇒ co-occurrence dropped; medium ⇒ treated as no verdict).
+_COINCIDENCE_WITH_CO_OCCURRENCE = (
+    "MATCH (a:Entity)-[r:REVIEWED_COINCIDENCE]-(b:Entity) "
+    "WHERE r.confidence = $conf AND a.entityId < b.entityId "
+    "AND EXISTS { MATCH (a)-[c]-(b) WHERE type(c) STARTS WITH 'CO_OCCURS_' } "
+    "RETURN a.entityId AS a, b.entityId AS b LIMIT 1"
+)
+
 
 @pytest.fixture
 async def client() -> AsyncIterator[Neo4jClient]:
@@ -104,9 +124,11 @@ async def client() -> AsyncIterator[Neo4jClient]:
         await graph.close()
 
 
-async def _discover(graph: Neo4jClient, cypher: str) -> tuple[UUID, UUID] | None:
+async def _discover(
+    graph: Neo4jClient, cypher: str, **params: object
+) -> tuple[UUID, UUID] | None:
     async with graph.session() as session:
-        record = await (await session.run(cypher)).single()
+        record = await (await session.run(cypher, **params)).single()
     if record is None:
         return None
     return UUID(record["a"]), UUID(record["b"])
@@ -164,6 +186,46 @@ class TestConnectionShapeAndDirection:
         # enrichment coverage rather than asserted as a stated non-relationship.
         assert conn.entity_a.kb_degree is not None
         assert conn.entity_b.kb_degree is not None
+        # FR-007a: no asserted chain ⇒ the variable-length search reached the hop bound
+        # without connecting, so the result is marked bounded, not absolute.
+        assert conn.any_truncated is True
+
+    async def test_broad_grouping_only_category_is_suppressed(
+        self, client: Neo4jClient
+    ) -> None:
+        pair = await _discover(client, _BROAD_ONLY_CATEGORY_PAIR)
+        if pair is None:
+            pytest.skip("no broad-only shared-category pair in graph")
+        conn = await Neo4jGraphRepository(client).connection(*pair)
+        # SC-002: a broad-grouping-only overlap self-suppresses — no shared_category chain is
+        # emitted (shown-and-labeled was the US1 stopgap; US2 removes it entirely).
+        assert ConnectionKind.SHARED_CATEGORY not in {c.kind for c in conn.chains}
+
+    async def test_high_coincidence_suppresses_co_occurrence(
+        self, client: Neo4jClient
+    ) -> None:
+        pair = await _discover(client, _COINCIDENCE_WITH_CO_OCCURRENCE, conf="high")
+        if pair is None:
+            pytest.skip("no high-confidence coincidence pair with co-occurrence")
+        result = await ConnectionService(Neo4jGraphRepository(client)).connect(*pair)
+        assert result.reviewed_verdict is not None
+        assert result.reviewed_verdict.verdict == "coincidence"
+        assert result.reviewed_verdict.confidence == "high"
+        # T023: a high-confidence coincidence drops the pair's co-occurrence (scoped to the
+        # judged_over channels), via the SERVICE policy — so none survives.
+        assert not any(c.kind.value.startswith("co_occurrence_") for c in result.chains)
+
+    async def test_medium_coincidence_keeps_co_occurrence(
+        self, client: Neo4jClient
+    ) -> None:
+        pair = await _discover(client, _COINCIDENCE_WITH_CO_OCCURRENCE, conf="medium")
+        if pair is None:
+            pytest.skip("no medium-confidence coincidence pair with co-occurrence")
+        result = await ConnectionService(Neo4jGraphRepository(client)).connect(*pair)
+        # A suggested_agreed coincidence is treated as no verdict: dropped (not surfaced) and
+        # suppresses nothing — so the co-occurrence survives.
+        assert result.reviewed_verdict is None
+        assert any(c.kind.value.startswith("co_occurrence_") for c in result.chains)
 
     async def test_directed_absence_is_proven_not_shortest_sampled(
         self, client: Neo4jClient

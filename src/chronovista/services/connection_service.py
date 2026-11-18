@@ -81,6 +81,28 @@ class ConnectionService:
         GraphConnection
             ``has_connection`` is False when neither a verdict nor any inferred chain exists.
         """
-        return await self._repository.connection(
+        result = await self._repository.connection(
             a_id, b_id, max_hops=max_hops, max_category_size=max_category_size
         )
+        return self._apply_coincidence_policy(result)
+
+    @staticmethod
+    def _apply_coincidence_policy(result: GraphConnection) -> GraphConnection:
+        """Scoped, origin-gated coincidence suppression (US2).
+
+        A HIGH-confidence coincidence (origin human / reaudited_c) is a reliable negative over
+        its ``judged_over`` co-occurrence channels: those chains are dropped. It NEVER suppresses
+        an asserted / shared_category / shared_referent chain (the model forbids those in
+        ``judged_over``), and every surviving chain is still shown. A ``suggested_agreed``
+        coincidence is medium-confidence — treated as no verdict, so nothing is suppressed.
+        """
+        verdict = result.reviewed_verdict
+        if verdict is None or verdict.verdict != "coincidence":
+            return result
+        if verdict.confidence != "high":
+            # suggested_agreed (medium) → treated as no verdict: drop it entirely and suppress
+            # nothing, so a medium-only pair doesn't read as having a (negative) verdict.
+            return result.model_copy(update={"reviewed_verdict": None})
+        suppressed = set(verdict.judged_over)
+        kept = [chain for chain in result.chains if chain.kind not in suppressed]
+        return result.model_copy(update={"chains": kept})

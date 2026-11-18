@@ -10,7 +10,9 @@ Wikidata semantic layer.
     R  (connected/social)                 -> :ASSOCIATED_WITH
     R  with via="cast:<work>" (castmates) -> :CO_CAST          (co-cast != acquaintance)
     T  (covers/focus)                     -> :COVERS           (see DIRECTION caveat below)
-    C / A / ? / unmarked                  -> no edge (coincidence / artifact / undecided)
+    C  (coincidence)                      -> :REVIEWED_COINCIDENCE  (undirected; carries origin
+                                             so the explorer can origin-gate its suppression)
+    A / ? / unmarked                      -> no edge (artifact / undecided)
 
 Each edge carries provenance so downstream can filter on trust:
     verdict, confidence, source, origin, confirmedBy, confirmedAt, via, reason, layer='reviewed'
@@ -50,7 +52,12 @@ from pathlib import Path
 
 import neo4j_target  # shared Neo4j target resolver + remote-write guard (scripts/graph/)
 
-REL_TYPES = {"ASSOCIATED_WITH", "COVERS", "CO_CAST"}   # never interpolate untrusted text as a type
+REL_TYPES = {
+    "ASSOCIATED_WITH",
+    "COVERS",
+    "CO_CAST",
+    "REVIEWED_COINCIDENCE",
+}  # never interpolate untrusted text as a type
 HERE = Path(__file__).resolve().parent
 # verdicts live in the gitignored wayfinder tree, not next to this script. Derive the repo root
 # from this file's location (HERE = scripts/graph) so it works wherever the repo is checked out;
@@ -65,21 +72,29 @@ QUEUE = VERDICTS.with_name("novel_queue.json")
 
 def chunked(seq, size):
     for i in range(0, len(seq), size):
-        yield seq[i:i + size]
+        yield seq[i : i + size]
 
 
 def edge_type(rec) -> str | None:
     v = rec.get("verdict")
     if v == "R":
-        return "CO_CAST" if str(rec.get("via", "")).startswith("cast:") else "ASSOCIATED_WITH"
+        return (
+            "CO_CAST"
+            if str(rec.get("via", "")).startswith("cast:")
+            else "ASSOCIATED_WITH"
+        )
     if v == "T":
         return "COVERS"
-    return None   # C / A / ? -> not an edge
+    if v == "C":
+        return "REVIEWED_COINCIDENCE"  # undirected; the explorer origin-gates its suppression
+    return None  # A / ? -> not an edge
 
 
 def confidence(rec) -> str:
     o = rec.get("origin")
-    return "medium" if o == "suggested-agreed" else "high"   # absent or 'reaudited-C' -> high
+    return (
+        "medium" if o == "suggested-agreed" else "high"
+    )  # absent or 'reaudited-C' -> high
 
 
 def build_rows(high_only: bool):
@@ -88,9 +103,13 @@ def build_rows(high_only: bool):
     name, ev = {}, {}
     if QUEUE.exists():
         for r in json.load(QUEUE.open()):
-            name[r["entity_a"]] = r["name_a"]; name[r["entity_b"]] = r["name_b"]
+            name[r["entity_a"]] = r["name_a"]
+            name[r["entity_b"]] = r["name_b"]
             dv = r.get("discovered_via") or {}
-            ev["__".join(sorted((r["entity_a"], r["entity_b"])))] = (dv.get("shared_videos"), dv.get("lift"))
+            ev["__".join(sorted((r["entity_a"], r["entity_b"])))] = (
+                dv.get("shared_videos"),
+                dv.get("lift"),
+            )
     groups: dict[str, list[dict]] = defaultdict(list)
     skipped_conf = 0
     for rec in verdicts:
@@ -101,16 +120,27 @@ def build_rows(high_only: bool):
         if high_only and conf != "high":
             skipped_conf += 1
             continue
-        a, b = rec["pair"].split("__")   # already sorted
+        a, b = rec["pair"].split("__")  # already sorted
         sv, lift = ev.get(rec["pair"], (None, None))
-        groups[et].append({
-            "a": a, "b": b,
-            "na": name.get(a, rec.get("name_a")), "nb": name.get(b, rec.get("name_b")),
-            "verdict": rec.get("verdict"), "confidence": conf, "source": rec.get("source"),
-            "origin": rec.get("origin"), "cb": rec.get("confirmed_by"), "ca": rec.get("confirmed_at"),
-            "via": rec.get("via"), "reason": rec.get("reason"),
-            "sv": sv, "lift": lift, "directed": et != "COVERS",
-        })
+        groups[et].append(
+            {
+                "a": a,
+                "b": b,
+                "na": name.get(a, rec.get("name_a")),
+                "nb": name.get(b, rec.get("name_b")),
+                "verdict": rec.get("verdict"),
+                "confidence": conf,
+                "source": rec.get("source"),
+                "origin": rec.get("origin"),
+                "cb": rec.get("confirmed_by"),
+                "ca": rec.get("confirmed_at"),
+                "via": rec.get("via"),
+                "reason": rec.get("reason"),
+                "sv": sv,
+                "lift": lift,
+                "directed": et not in {"COVERS", "REVIEWED_COINCIDENCE"},
+            }
+        )
     return groups, skipped_conf
 
 
@@ -135,12 +165,21 @@ def load_group(session, rel, rows, batch_size):
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--batch-size", type=int, default=2000)
-    ap.add_argument("--wipe-reviewed", action="store_true",
-                    help="delete the reviewed layer (layer='reviewed' edges + orphan reviewedOnly nodes) first")
-    ap.add_argument("--high-only", action="store_true",
-                    help="load only confidence='high' edges (origin != 'suggested-agreed')")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="print the edge plan and exit — no DB connection, no creds needed")
+    ap.add_argument(
+        "--wipe-reviewed",
+        action="store_true",
+        help="delete the reviewed layer (layer='reviewed' edges + orphan reviewedOnly nodes) first",
+    )
+    ap.add_argument(
+        "--high-only",
+        action="store_true",
+        help="load only confidence='high' edges (origin != 'suggested-agreed')",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="print the edge plan and exit — no DB connection, no creds needed",
+    )
     neo4j_target.add_argument(ap)
     args = ap.parse_args()
 
@@ -149,31 +188,49 @@ def main() -> int:
 
     groups, skipped_conf = build_rows(args.high_only)
     n = sum(len(v) for v in groups.values())
-    print(f"Prepared {n} reviewed edges "
-          + ", ".join(f"{k} {len(v)}" for k, v in sorted(groups.items()))
-          + (f"  (skipped {skipped_conf} medium-confidence via --high-only)" if skipped_conf else ""))
+    print(
+        f"Prepared {n} reviewed edges "
+        + ", ".join(f"{k} {len(v)}" for k, v in sorted(groups.items()))
+        + (
+            f"  (skipped {skipped_conf} medium-confidence via --high-only)"
+            if skipped_conf
+            else ""
+        )
+    )
 
     if args.dry_run:
         print("\n[DRY RUN] no DB connection — edge plan:")
         for rel, rows in sorted(groups.items()):
             cc = Counter(r["confidence"] for r in rows)
             miss = sum(1 for r in rows if r["sv"] is None)
-            print(f"  :{rel:<16} {len(rows):>4}  (high {cc['high']}, medium {cc['medium']}"
-                  + (f", {miss} w/o evidence" if miss else "") + ")")
+            print(
+                f"  :{rel:<16} {len(rows):>4}  (high {cc['high']}, medium {cc['medium']}"
+                + (f", {miss} w/o evidence" if miss else "")
+                + ")"
+            )
             for r in rows[:3]:
                 arrow = "->" if rel == "COVERS" else "<->"
-                print(f"       {r['na']} {arrow} {r['nb']}  [{r['confidence']}]"
-                      + (f" via={r['via']}" if r['via'] else "")
-                      + (f" sv={r['sv']} lift={r['lift']}" if r['sv'] is not None else ""))
-        sparse = {e for rows in groups.values() for r in rows for e in (r['a'], r['b'])}
-        print(f"\n  distinct entities referenced: {len(sparse)} "
-              "(any not already in the graph are MERGEd as reviewedOnly nodes)")
-        print("  COVERS direction is not captured → written undirected (directed:false).")
+                print(
+                    f"       {r['na']} {arrow} {r['nb']}  [{r['confidence']}]"
+                    + (f" via={r['via']}" if r["via"] else "")
+                    + (f" sv={r['sv']} lift={r['lift']}" if r["sv"] is not None else "")
+                )
+        sparse = {e for rows in groups.values() for r in rows for e in (r["a"], r["b"])}
+        print(
+            f"\n  distinct entities referenced: {len(sparse)} "
+            "(any not already in the graph are MERGEd as reviewedOnly nodes)"
+        )
+        print(
+            "  COVERS direction is not captured → written undirected (directed:false)."
+        )
         return 0
 
     uri, user, pw, db_name = neo4j_target.resolve(allow_remote=args.allow_remote)
 
-    from neo4j import GraphDatabase   # lazy: --dry-run needs neither creds nor the driver installed
+    from neo4j import (
+        GraphDatabase,
+    )  # lazy: --dry-run needs neither creds nor the driver installed
+
     driver = GraphDatabase.driver(uri, auth=(user, pw))
     try:
         driver.verify_connectivity()
@@ -181,9 +238,15 @@ def main() -> int:
             if args.wipe_reviewed:
                 print("Wiping reviewed layer...")
                 for rel in REL_TYPES:
-                    session.run(f"MATCH ()-[r:{rel} {{layer:'reviewed'}}]->() DELETE r").consume()
-                session.run("MATCH (n:Entity {reviewedOnly:true}) WHERE NOT (n)--() DELETE n").consume()
-            session.run("CREATE INDEX entity_id IF NOT EXISTS FOR (e:Entity) ON (e.entityId)").consume()
+                    session.run(
+                        f"MATCH ()-[r:{rel} {{layer:'reviewed'}}]->() DELETE r"
+                    ).consume()
+                session.run(
+                    "MATCH (n:Entity {reviewedOnly:true}) WHERE NOT (n)--() DELETE n"
+                ).consume()
+            session.run(
+                "CREATE INDEX entity_id IF NOT EXISTS FOR (e:Entity) ON (e.entityId)"
+            ).consume()
             total = 0
             for rel, rows in sorted(groups.items()):
                 total += load_group(session, rel, rows, args.batch_size)

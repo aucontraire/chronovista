@@ -333,6 +333,12 @@ class Neo4jGraphRepository:
             for row in rows
         ]
         score = sum((spec for _, spec in scored), 0.0)
+        if score <= 0.0:
+            # SC-002 self-suppression: every shared referent is a universal hub (degree ≥
+            # entity_count, each term floored to 0) — not a real connection between these two.
+            # (Given current data this is unreachable — max local degree < entity_count — but
+            # the rule mirrors the category tier and holds if the graph's degrees change.)
+            return None
         best, best_spec = max(scored, key=lambda t: t[1])
         a_to_m = bool(best["a_to_m"])
         referent = GraphNode(
@@ -378,7 +384,8 @@ class Neo4jGraphRepository:
         category (the most specific bridge); its ``score`` is the SINGLE ranking value
         ``Σ max(0, ln(1e6 / globalSize(c)))`` over ALL shared categories — the count enters as
         the number of terms, and a broad category (globalSize ≥ 1e6) contributes 0, so a
-        broad-only overlap floors to 0 and self-suppresses (dropped downstream in US2).
+        broad-only overlap floors to 0 and self-suppresses — it returns ``None`` here and is
+        never emitted (SC-002).
         """
         query = (
             "MATCH (a:Entity {entityId: $a})-[:IN_CATEGORY]->(c:Category)"
@@ -395,6 +402,11 @@ class Neo4jGraphRepository:
             (row["cat_name"], self._specificity(row["global_size"])) for row in rows
         ]
         score = sum((term for _, term in terms), 0.0)
+        if score <= 0.0:
+            # SC-002 self-suppression: every shared category is near-universal (globalSize ≥
+            # 1e6, each term floored to 0). A broad-grouping-only overlap is not a real
+            # connection, so it is never emitted — not shown and labeled, but absent.
+            return None
         best_name, best_term = max(terms, key=lambda t: t[1])
         first = rows[0]
         category_node = GraphNode(
@@ -489,6 +501,34 @@ class Neo4jGraphRepository:
             provenance=record["source"] or "reviewed",
         )
 
+    async def get_coincidence_verdict(
+        self, a_id: UUID, b_id: UUID
+    ) -> ReviewedVerdict | None:
+        """The human-reviewed COINCIDENCE verdict for a direct A↔B reviewed edge, or None.
+
+        A coincidence is the least-reliable class: it says the pair's co-occurrence is
+        incidental. It is NOT a relationship (``relation=None``) and is judged only over the
+        co-occurrence channels (the model's ``judged_over`` default). Whether it actually
+        suppresses anything is origin-gated by the SERVICE (high confidence → suppress its
+        co-occurrence kinds; ``suggested_agreed`` → treated as no verdict); ``confidence`` is
+        computed from ``origin`` by the model. The edge is undirected, so the match is too.
+        """
+        query = (
+            "MATCH (a:Entity {entityId: $a})-[r:REVIEWED_COINCIDENCE]-"
+            "(b:Entity {entityId: $b}) "
+            "RETURN r.origin AS origin, r.source AS source LIMIT 1"
+        )
+        async with self._client.session() as session:
+            result = await session.run(query, a=str(a_id), b=str(b_id))
+            record = await result.single()
+        if record is None:
+            return None
+        return ReviewedVerdict(
+            verdict="coincidence",
+            origin=_normalize_origin(record["origin"]),
+            provenance=record["source"] or "reviewed",
+        )
+
     async def connection(
         self,
         a_id: UUID,
@@ -520,7 +560,10 @@ class Neo4jGraphRepository:
         entity_b = await self.get_entity_node(b_id)
         # One entity-count query shared by the two log-specificity tiers (chain + referent).
         entity_count = await self._entity_count()
-        reviewed = await self.get_reviewed_verdict(a_id, b_id)
+        # A pair carries at most one verdict (R/T/C): relationship first, else coincidence.
+        reviewed = await self.get_reviewed_verdict(
+            a_id, b_id
+        ) or await self.get_coincidence_verdict(a_id, b_id)
         kb_chain = await self.chain(
             a_id, b_id, max_hops=max_hops, entity_count=entity_count
         )
@@ -537,5 +580,9 @@ class Neo4jGraphRepository:
             reviewed_verdict=reviewed,
             chains=chains,
             searched_max_hops=max_hops,
-            any_truncated=False,
+            # The asserted tier is the only variable-length search; when it finds no chain it
+            # reached the hop bound WITHOUT connecting, so that absence is bounded, not absolute
+            # (FR-007a). The fixed-shape tiers (referent/category/co-occurrence) are exhaustive,
+            # so they never contribute truncation.
+            any_truncated=kb_chain is None,
         )

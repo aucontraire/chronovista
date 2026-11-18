@@ -267,7 +267,10 @@ class GraphConnection(BaseModel):
     searched_max_hops : int
         The hop budget the search used.
     any_truncated : bool
-        True if any chain (or the search) hit the hop budget.
+        True when the asserted tier (the only variable-length search) reached the hop bound
+        WITHOUT connecting — so a "no asserted path" is bounded, not absolute (FR-007a). The
+        fixed-shape tiers are exhaustive and never set this. A reported "no meaningful
+        connection" is thus always qualified by the bound the asserted search used.
     """
 
     entity_a: GraphNode

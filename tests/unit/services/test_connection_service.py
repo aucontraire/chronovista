@@ -23,7 +23,14 @@ from uuid import uuid4
 
 import pytest
 
-from chronovista.models.graph_connection import GraphConnection, GraphNode
+from chronovista.models.graph_connection import (
+    ConnectionChain,
+    ConnectionKind,
+    GraphConnection,
+    GraphNode,
+    PathStep,
+    ReviewedVerdict,
+)
 from chronovista.repositories import neo4j_graph_repository
 from chronovista.repositories.neo4j_graph_repository import (
     EntityNotInGraphError,
@@ -39,6 +46,12 @@ pytestmark = pytest.mark.asyncio
 
 def _node(name: str = "E") -> GraphNode:
     return GraphNode(entity_id=uuid4(), name=name)
+
+
+def _chain(kind: ConnectionKind, end: GraphNode, **kw: Any) -> ConnectionChain:
+    return ConnectionChain(
+        kind=kind, steps=[PathStep(edge_type="E", kind=kind, to_node=end)], **kw
+    )
 
 
 # --- Service policy (mocked repository) ---------------------------------------------------
@@ -176,6 +189,7 @@ _EXERCISED_QUERY_METHODS = {
     "find_entities_by_name",
     "_entity_count",
     "get_reviewed_verdict",
+    "get_coincidence_verdict",
     "chain",
     "shared_referents",
     "shared_category_chain",
@@ -287,3 +301,140 @@ class TestConnectionCypherGuards:
             f"new/unguarded: {sorted(literal_methods - _EXERCISED_QUERY_METHODS)}; "
             f"stale: {sorted(_EXERCISED_QUERY_METHODS - literal_methods)}"
         )
+
+
+# --- US2 self-suppression (SC-002): a broad-grouping-only overlap is never emitted ---------
+
+
+class _ScriptedSession:
+    def __init__(self, script: dict[str, list[dict[str, Any]]]) -> None:
+        self._script = script
+
+    async def __aenter__(self) -> _ScriptedSession:
+        return self
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+    async def run(self, query: str, **params: Any) -> _FakeResult:
+        for substring, rows in self._script.items():
+            if substring in query:
+                return _FakeResult(rows)
+        return _FakeResult([])
+
+
+class _ScriptedClient:
+    """A fake client returning canned rows for the first query matching a substring key."""
+
+    def __init__(self, script: dict[str, list[dict[str, Any]]]) -> None:
+        self._script = script
+
+    def session(self) -> _ScriptedSession:
+        return _ScriptedSession(self._script)
+
+
+def _category_row(global_size: int, b_id: str) -> dict[str, Any]:
+    return {
+        "cat_name": "C",
+        "global_size": global_size,
+        "b_id": b_id,
+        "b_name": "B",
+        "b_type": "PERSON",
+    }
+
+
+class TestUS2CategorySelfSuppression:
+    async def test_broad_only_category_is_not_emitted(self) -> None:
+        # Every shared category near-universal (globalSize >= 1e6) ⇒ each term 0 ⇒ score 0 ⇒
+        # None. SC-002: a broad-grouping-only overlap is absent, not shown-and-labeled.
+        client = _ScriptedClient(
+            {"IN_CATEGORY": [_category_row(2_000_000, str(uuid4()))]}
+        )
+        repo = Neo4jGraphRepository(client)  # type: ignore[arg-type]
+        assert await repo.shared_category_chain(uuid4(), uuid4()) is None
+
+    async def test_specific_category_is_emitted_with_positive_score(self) -> None:
+        client = _ScriptedClient({"IN_CATEGORY": [_category_row(5, str(uuid4()))]})
+        repo = Neo4jGraphRepository(client)  # type: ignore[arg-type]
+        chain = await repo.shared_category_chain(uuid4(), uuid4())
+        assert chain is not None and chain.score is not None and chain.score > 0.0
+
+    async def test_one_specific_among_broad_is_emitted(self) -> None:
+        # The count enters as the number of terms: a single specific category rescues an
+        # otherwise-broad overlap (sum > 0), so it is emitted rather than suppressed.
+        bid = str(uuid4())
+        client = _ScriptedClient(
+            {"IN_CATEGORY": [_category_row(2_000_000, bid), _category_row(10, bid)]}
+        )
+        repo = Neo4jGraphRepository(client)  # type: ignore[arg-type]
+        chain = await repo.shared_category_chain(uuid4(), uuid4())
+        assert chain is not None and chain.score is not None and chain.score > 0.0
+
+
+# --- US2 coincidence policy: scoped, origin-gated co-occurrence suppression (T023) ----------
+
+
+class TestUS2CoincidencePolicy:
+    @staticmethod
+    def _result(
+        end: GraphNode, verdict: ReviewedVerdict, chains: list[ConnectionChain]
+    ) -> GraphConnection:
+        return GraphConnection(
+            entity_a=_node("A"),
+            entity_b=end,
+            reviewed_verdict=verdict,
+            chains=chains,
+            searched_max_hops=4,
+        )
+
+    async def _connect_through(self, result: GraphConnection) -> GraphConnection:
+        repo = AsyncMock(spec=Neo4jGraphRepository)
+        repo.connection.return_value = result
+        return await ConnectionService(repo).connect(uuid4(), uuid4())
+
+    async def test_high_coincidence_suppresses_co_occurrence_keeps_rest(self) -> None:
+        # origin 'human' ⇒ high confidence ⇒ the pair's co-occurrence is dropped, but the
+        # asserted and shared_category chains (never in judged_over) are kept and shown.
+        b = _node("B")
+        verdict = ReviewedVerdict(verdict="coincidence", origin="human")
+        out = await self._connect_through(
+            self._result(
+                b,
+                verdict,
+                [
+                    _chain(ConnectionKind.ASSERTED, b, score=3.0),
+                    _chain(ConnectionKind.SHARED_CATEGORY, b, score=5.0),
+                    _chain(ConnectionKind.CO_OCCURRENCE_TRANSCRIPT, b),
+                    _chain(ConnectionKind.CO_OCCURRENCE_TAGS, b),
+                ],
+            )
+        )
+        kinds = {c.kind for c in out.chains}
+        assert ConnectionKind.CO_OCCURRENCE_TRANSCRIPT not in kinds
+        assert ConnectionKind.CO_OCCURRENCE_TAGS not in kinds
+        assert {ConnectionKind.ASSERTED, ConnectionKind.SHARED_CATEGORY} <= kinds
+
+    async def test_medium_coincidence_suppresses_nothing(self) -> None:
+        # origin 'suggested_agreed' ⇒ medium ⇒ treated as no verdict: co-occurrence survives.
+        b = _node("B")
+        verdict = ReviewedVerdict(verdict="coincidence", origin="suggested_agreed")
+        out = await self._connect_through(
+            self._result(
+                b, verdict, [_chain(ConnectionKind.CO_OCCURRENCE_TRANSCRIPT, b)]
+            )
+        )
+        assert ConnectionKind.CO_OCCURRENCE_TRANSCRIPT in {c.kind for c in out.chains}
+        assert out.reviewed_verdict is None  # dropped: treated as no verdict
+
+    async def test_relationship_verdict_never_suppresses_chains(self) -> None:
+        # A relationship verdict is a positive — the inferred chains are always shown alongside.
+        b = _node("B")
+        verdict = ReviewedVerdict(
+            verdict="relationship", relation="associated_with", origin="human"
+        )
+        out = await self._connect_through(
+            self._result(
+                b, verdict, [_chain(ConnectionKind.CO_OCCURRENCE_TRANSCRIPT, b)]
+            )
+        )
+        assert ConnectionKind.CO_OCCURRENCE_TRANSCRIPT in {c.kind for c in out.chains}

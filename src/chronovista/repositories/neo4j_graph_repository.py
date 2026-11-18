@@ -106,7 +106,8 @@ class Neo4jGraphRepository:
         Returns
         -------
         GraphNode
-            The hydrated node (``is_bridge=False``; ``label`` is the entity type).
+            The hydrated node (``is_bridge=False``; ``label`` is the entity type; ``kb_degree``
+            counts wikidata edges only, NOT reviewed edges — see the body comment for why).
 
         Raises
         ------
@@ -143,6 +144,28 @@ class Neo4jGraphRepository:
 
         Used by the CLI to resolve a human-typed name to an entity. Exact match only (the MVP
         does not fuzzy-match); the caller handles 0 (not found) and >1 (ambiguous).
+
+        Parameters
+        ----------
+        name : str
+            The human-typed name to resolve. Matched case-insensitively against ``e.name``.
+
+        Returns
+        -------
+        list[GraphNode]
+            Matching nodes (``is_bridge=False``), ordered by ``mentionCount`` descending and
+            capped at 25. ``kb_degree`` is NOT populated on this path (it defaults to ``None``);
+            only :meth:`get_entity_node` hydrates it, so a caller needing KB coverage must
+            re-fetch by id — which is why the FR-016 coverage renderer reads the id-resolved
+            node, not these. Empty when nothing matches — the "not found" case is an empty
+            list, NOT an exception, because an unresolved name is an ordinary CLI outcome here.
+
+        Raises
+        ------
+        GraphUnavailableError
+            If the graph cannot be reached on first connect. (Once the driver has connected, a
+            later outage surfaces a bare driver error instead — a pre-existing reconnect gap,
+            not specific to this method.)
         """
         query = (
             "MATCH (e:Entity) WHERE toLower(e.name) = toLower($name) "
@@ -218,6 +241,26 @@ class Neo4jGraphRepository:
         comparable to a shared_category score (different reference, different population) — so
         cross-kind ordering is by kind, never by score. A direct edge (no intermediate) tops
         the scale (:meth:`_top_specificity`).
+
+        Parameters
+        ----------
+        a_id, b_id : UUID
+            The two entities. Direction is searched both ways (A→…→B and B→…→A); the shorter
+            path wins and its direction is recorded per-step via ``PathStep.forward``.
+        max_hops : int, optional
+            The traversal hop budget (default 4). The variable-length ``shortestPath`` is
+            bounded by it, so a ``None`` result means "no directed KB chain within this many
+            hops", not "no chain at any distance" (FR-007a).
+        entity_count : int or None, optional
+            The ``:Entity`` reference population for log-specificity. ``None`` (the default)
+            looks it up; :meth:`connection` passes the shared count so the two scored tiers
+            avoid a duplicate round-trip.
+
+        Returns
+        -------
+        ConnectionChain or None
+            The scored asserted chain (``kind=ASSERTED``), or ``None`` when no directed
+            ``layer='wikidata'`` chain connects the pair within ``max_hops``.
         """
         if entity_count is None:
             entity_count = await self._entity_count()
@@ -292,6 +335,19 @@ class Neo4jGraphRepository:
         ``degree`` = how many library entities share the referent (a LOCAL count — so NOT
         the category tier's ``1e6`` global reference). A referent few entities share scores
         high; a hub everyone shares floors to ~0.
+
+        Parameters
+        ----------
+        degree : int or None
+            The referent's LOCAL degree — distinct ``:Entity`` neighbours over wikidata edges.
+            ``None``/0 (or a non-positive ``entity_count``) yields 0.0.
+        entity_count : int
+            The ``:Entity`` reference population (the numerator).
+
+        Returns
+        -------
+        float
+            The non-negative log-specificity of the referent.
         """
         if not degree or degree <= 0 or entity_count <= 0:
             return 0.0
@@ -303,6 +359,20 @@ class Neo4jGraphRepository:
         maximally specific. Named rather than spelled ``_referent_specificity(1, …)`` so the
         direct-edge score does not silently move if that referent formula changes for referent
         reasons — a direct edge has no referent to be specific about.
+
+        Parameters
+        ----------
+        entity_count : int
+            The ``:Entity`` reference population. ``<= 1`` yields 0.0 (``ln(1) = 0``).
+
+        Returns
+        -------
+        float
+            ``max(0, ln(entity_count))`` — the top of the chain-score scale, reached ONLY by a
+            direct edge. Any chain with an intermediate is capped below it at
+            ``ln(entity_count / 2)``: every interior node of a directed all-wikidata path is an
+            ``:Entity`` adjacent to both of its path neighbours (no non-``:Entity`` node has an
+            outgoing wikidata edge to transit), so its degree is ≥ 2 and its term ≤ that cap.
         """
         return max(0.0, math.log(entity_count)) if entity_count > 1 else 0.0
 
@@ -315,6 +385,25 @@ class Neo4jGraphRepository:
         nodes ``m`` — a co-membership / shared-affiliation tie, NOT a composed chain. Scored
         by how specific the shared node is (local degree); representative = the most specific.
         The ``forward`` flags encode convergent ("both → «m»") vs divergent ("«m» → both").
+
+        Parameters
+        ----------
+        a_id, b_id : UUID
+            The two entities. The ``(startNode(r1) = a) = (startNode(r2) = b)`` predicate keeps
+            only genuine co-membership (both point the SAME way at ``m``), not a disguised
+            directed chain that belongs to :meth:`chain`. This excludes the chain SHAPE from
+            this tier, NOT the pair: when antiparallel edges make both ties genuinely present,
+            the same pair can legitimately surface here AND in :meth:`chain`.
+        entity_count : int or None, optional
+            The reference population for log-specificity. ``None`` (default) looks it up;
+            :meth:`connection` passes the shared count.
+
+        Returns
+        -------
+        ConnectionChain or None
+            The scored convergence (``kind=SHARED_REFERENT``), its steps showing the single
+            most specific shared node, or ``None`` when no referent is shared OR every shared
+            referent is a universal hub (total score ≤ 0 — SC-002 self-suppression).
         """
         if entity_count is None:
             entity_count = await self._entity_count()
@@ -489,6 +578,18 @@ class Neo4jGraphRepository:
         The four channels (transcript / title-desc / tags / manual) are NEVER merged into a
         single score — each present channel is returned as its own labeled
         :class:`ConnectionChain` (measured review §4). A channel not present is simply absent.
+
+        Parameters
+        ----------
+        a_id, b_id : UUID
+            The two entities. The ``CO_OCCURS_*`` edge is undirected, so the match is too.
+
+        Returns
+        -------
+        list[ConnectionChain]
+            One single-step chain per distinct ``CO_OCCURS_*`` channel linking the pair, each
+            with its own co-occurrence kind. Empty when the pair shares no channel. An
+            unrecognized ``CO_OCCURS_*`` type (not in :data:`_CO_OCCURS_KIND`) is skipped.
         """
         query = (
             "MATCH (a:Entity {entityId: $a})-[r]-(b:Entity {entityId: $b}) "
@@ -530,6 +631,18 @@ class Neo4jGraphRepository:
         separate ``REVIEWED_COINCIDENCE`` edge read by :meth:`get_coincidence_verdict`.
         ``confidence`` is computed from ``origin`` by the model. ``ORDER BY`` makes the pick
         deterministic if a pair ever carries more than one reviewed edge type (F3).
+
+        Parameters
+        ----------
+        a_id, b_id : UUID
+            The two entities. The reviewed edge is undirected, so the match is too.
+
+        Returns
+        -------
+        ReviewedVerdict or None
+            The ``verdict="relationship"`` verdict (``relation`` mapped from the edge type via
+            :data:`_REVIEWED_RELATION`), or ``None`` when no relationship edge exists — which
+            does NOT rule out a coincidence verdict (see :meth:`get_coincidence_verdict`).
         """
         query = (
             "MATCH (a:Entity {entityId: $a})-[r]-(b:Entity {entityId: $b}) "
@@ -560,6 +673,19 @@ class Neo4jGraphRepository:
         suppresses anything is origin-gated by the SERVICE (high confidence → suppress its
         co-occurrence kinds; ``suggested_agreed`` → treated as no verdict); ``confidence`` is
         computed from ``origin`` by the model. The edge is undirected, so the match is too.
+
+        Parameters
+        ----------
+        a_id, b_id : UUID
+            The two entities. The ``REVIEWED_COINCIDENCE`` edge is undirected, so the match
+            is too.
+
+        Returns
+        -------
+        ReviewedVerdict or None
+            The ``verdict="coincidence"`` verdict (``relation=None``), or ``None`` when no
+            coincidence edge exists. Note this verdict is advisory until the service applies
+            its origin gate — the repository reports the edge, it does not act on it.
         """
         query = (
             "MATCH (a:Entity {entityId: $a})-[r:REVIEWED_COINCIDENCE]-"

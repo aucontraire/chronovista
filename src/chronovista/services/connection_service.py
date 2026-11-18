@@ -39,6 +39,20 @@ class ConnectionService:
     async def resolve(self, token: str) -> GraphNode:
         """Resolve a CLI token (an entity UUID, or an exact entity name) to a :class:`GraphNode`.
 
+        A token that parses as a UUID is looked up by id directly; anything else is treated as
+        an exact (case-insensitive) name. Name resolution is the only branch that can be
+        ambiguous — an id matches at most one entity.
+
+        Parameters
+        ----------
+        token : str
+            The user-supplied token: an entity ``entityId`` (UUID) or an exact entity name.
+
+        Returns
+        -------
+        GraphNode
+            The single resolved entity node.
+
         Raises
         ------
         EntityNotInGraphError

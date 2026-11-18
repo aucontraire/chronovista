@@ -10,6 +10,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from neo4j import READ_ACCESS
 
 from chronovista.graph import GraphUnavailableError, Neo4jClient
 
@@ -32,7 +33,10 @@ class TestNeo4jClient:
         async with client.session() as opened:
             assert opened is sess
         sess.close.assert_awaited_once()
-        driver.session.assert_called_once_with(database="neo4j")
+        # Sessions are opened READ-only (FR-008 enforcement, not just the test-side scan).
+        driver.session.assert_called_once_with(
+            database="neo4j", default_access_mode=READ_ACCESS
+        )
 
     async def test_session_closes_even_when_caller_raises(self) -> None:
         driver, sess = _mock_driver()
@@ -66,7 +70,9 @@ class TestNeo4jClient:
         )
         async with client.session():
             pass
-        driver.session.assert_called_once_with(database="graph")
+        driver.session.assert_called_once_with(
+            database="graph", default_access_mode=READ_ACCESS
+        )
 
     async def test_unreachable_wraps_and_closes_the_failed_driver(
         self, monkeypatch: pytest.MonkeyPatch

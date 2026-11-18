@@ -34,6 +34,8 @@ from pathlib import Path
 
 from neo4j import GraphDatabase
 
+from chronovista.models.enums import EntityType
+
 import neo4j_target  # shared Neo4j target resolver + remote-write guard (scripts/graph/)
 
 # Co-occurrence is split into one edge TYPE per presence channel (CO_OCCURS_TRANSCRIPT /
@@ -42,17 +44,13 @@ import neo4j_target  # shared Neo4j target resolver + remote-write guard (script
 # the export's channel set and is the injection guard for the type interpolated into Cypher.
 _SAFE_COOCCUR = re.compile(r"^CO_OCCURS_[A-Z]+$")
 
-# entity_type -> Neo4j secondary label. Whitelist (never interpolate untrusted text
-# into a label); anything unmapped gets just :Entity.
+# entity_type -> Neo4j secondary label (PascalCase), DERIVED from the single-source EntityType
+# enum rather than re-inlining the vocabulary here (architecture single-source guard). Still a
+# whitelist: only a known enum value becomes a label — an unmapped/untrusted entityType gets
+# just :Entity — because the label is interpolated into Cypher.
 TYPE_LABELS = {
-    "person": "Person",
-    "organization": "Organization",
-    "place": "Place",
-    "work": "Work",
-    "technical_term": "TechnicalTerm",
-    "concept": "Concept",
-    "event": "Event",
-    "other": "Other",
+    t.value: "".join(word.capitalize() for word in t.value.split("_"))
+    for t in EntityType
 }
 
 HERE = Path(__file__).resolve().parent

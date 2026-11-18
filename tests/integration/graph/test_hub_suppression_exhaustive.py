@@ -20,6 +20,7 @@ from collections.abc import AsyncIterator
 from uuid import UUID
 
 import pytest
+from neo4j.exceptions import DriverError, Neo4jError
 
 from chronovista.graph import GraphUnavailableError, Neo4jClient
 from chronovista.repositories.neo4j_graph_repository import Neo4jGraphRepository
@@ -44,9 +45,15 @@ async def client() -> AsyncIterator[Neo4jClient]:
     try:
         async with graph.session() as session:
             await (await session.run("RETURN 1 AS ok")).single()
-    except GraphUnavailableError:
+    except (GraphUnavailableError, Neo4jError, DriverError) as exc:
+        # Skip (don't error) when the configured graph is unreachable OR reachable-but-unusable
+        # — e.g. NEO4J_URI points at an instance whose 'neo4j' database is missing/empty, which
+        # surfaces as a bare DatabaseNotFound (a ClientError), NOT GraphUnavailableError. The
+        # RETURN 1 probe cannot fail for a query-logic reason, so any neo4j-level failure means
+        # the graph is not usable for these opportunistic integration tests. The type name keeps
+        # the skip reason legible (GraphUnavailableError = unreachable; ClientError = db issue).
         await graph.close()
-        pytest.skip("Neo4j graph unavailable")
+        pytest.skip(f"Neo4j graph unavailable or not usable ({type(exc).__name__})")
     try:
         yield graph
     finally:

@@ -95,3 +95,20 @@ class TestGraphConnectDegradation:
         conn = GraphConnection(entity_a=node, entity_b=node, searched_max_hops=4)
         result = _invoke(runner, _service(resolve=node, connect=conn))
         assert result.exit_code == 0
+
+    def test_kb_coverage_reads_hydrated_endpoints_not_resolved_nodes(
+        self, runner: CliRunner
+    ) -> None:
+        # The name path resolves nodes WITHOUT kb_degree; the FR-016 coverage line must read it
+        # from the id-hydrated result.entity_a/entity_b (which carry it). Before the fix it read
+        # the resolved nodes and the line silently vanished on the name path.
+        resolved = GraphNode(entity_id=uuid4(), name="X")  # kb_degree defaults None
+        hydrated_a = GraphNode(entity_id=uuid4(), name="X", kb_degree=1)
+        hydrated_b = GraphNode(entity_id=uuid4(), name="Y", kb_degree=40)
+        conn = GraphConnection(
+            entity_a=hydrated_a, entity_b=hydrated_b, searched_max_hops=4
+        )
+        result = _invoke(runner, _service(resolve=resolved, connect=conn))
+        assert result.exit_code == 0
+        assert "KB coverage" in result.output
+        assert "barely in the knowledge base" in result.output  # min degree 1 < 3

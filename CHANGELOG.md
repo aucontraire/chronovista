@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Connection explorer (Feature 112, dev-scoped graph).** `chronovista graph connect <a> <b>`
+  answers "how are two entities connected?" over the dev-scoped Neo4j graph: the human-reviewed
+  verdict where one exists, plus one labeled chain per connecting kind — asserted (a directed KB
+  chain, scored by its weakest intermediate hub), shared affiliation (a shared KB referent),
+  shared category (log-specificity ranked), and the four co-occurrence channels. Co-membership
+  renders as "both → «X»", never a fabricated directed chain; a broad-grouping-only overlap
+  self-suppresses (SC-002); a reviewed coincidence suppresses only its own co-occurrence
+  channels, scoped and origin-gated, never an asserted/category tie; and a missing KB path is
+  qualified by per-endpoint KB coverage and the hop bound rather than asserted as absolute
+  absence. Read-only, lazy-connecting, and graceful when the graph is unavailable. Backed by a
+  `Neo4jGraphRepository` + `ConnectionService`, with a `layer='wikidata'` loader stamp, no-write
+  / no-`LIMIT`-as-filter Cypher guards, and a skipif-gated integration suite.
+
 ## [0.123.0] - 2026-11-16
 
 ### Added

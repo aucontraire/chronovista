@@ -1,10 +1,13 @@
 """ConnectionService — the policy seam over the Neo4j connection repository (Feature 112).
 
-The repository owns the Cypher; this service owns the *policy*. In US1 that policy is thin:
-the reviewed relationship short-circuit, the by-kind ordering, and the single
-log-specificity ranking are all produced by the repository and the result model, so they flow
-through unchanged. US2 adds the coincidence policy (scoped, origin-gated suppression). Keeping
-the policy here rather than in the CLI lets the Phase-3 API reuse it unchanged.
+The repository owns the Cypher; this service owns the *policy*. It exists to keep domain
+decisions out of the Typer presentation command: ``resolve()`` (token → entity, with the
+ambiguous-name policy) and ``_apply_coincidence_policy`` (the US2 scoped, origin-gated
+suppression) are real policy that should not live in a CLI renderer. In US1 the policy is
+thin — the reviewed-relationship short-circuit, the by-kind ordering, and the single
+log-specificity ranking all come from the repository and the result model and flow through
+unchanged; US2 adds the coincidence suppression. That a future API could reuse the same seam
+is a bonus, not the reason it exists.
 """
 
 from __future__ import annotations

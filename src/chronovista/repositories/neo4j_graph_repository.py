@@ -47,6 +47,12 @@ _REVIEWED_RELATION: dict[str, Literal["associated_with", "covers", "co_cast"]] =
     "CO_CAST": "co_cast",
 }
 
+# The global reference population for a category's log-specificity: a category with at least
+# this many members contributes 0 (ln(1) = 0) and self-suppresses. It is the denominator
+# reference, NOT a signal ceiling, and is distinct from the referent/chain tier's LOCAL
+# entity_count reference — which is why the two tiers' scores are not cross-comparable.
+_CATEGORY_REFERENCE = 1_000_000.0
+
 
 def _normalize_origin(
     raw: object,
@@ -319,6 +325,7 @@ class Neo4jGraphRepository:
             "WHERE r1.layer = 'wikidata' AND r2.layer = 'wikidata' AND m <> a AND m <> b "
             "AND (startNode(r1) = a) = (startNode(r2) = b) "
             "WITH m, (startNode(r1) = a) AS a_to_m, type(r1) AS t1, type(r2) AS t2 "
+            "ORDER BY t1, t2 "  # F3: deterministic representative edge-pair per referent
             "WITH m, head(collect({a_to_m: a_to_m, t1: t1, t2: t2})) AS rep "
             "RETURN m.entityId AS m_id, m.name AS m_name, (m:WikidataItem) AS is_stub, "
             "rep.a_to_m AS a_to_m, rep.t1 AS t1, rep.t2 AS t2, "
@@ -342,7 +349,12 @@ class Neo4jGraphRepository:
             # (Given current data this is unreachable — max local degree < entity_count — but
             # the rule mirrors the category tier and holds if the graph's degrees change.)
             return None
-        best, best_spec = max(scored, key=lambda t: t[1])
+        # F3 determinism: tie-break equal-specificity referents by name then id, so the
+        # representative is reproducible across runs (US3), not dependent on row order.
+        best, best_spec = max(
+            scored,
+            key=lambda t: (t[1], t[0]["m_name"] or "", str(t[0]["m_id"] or "")),
+        )
         a_to_m = bool(best["a_to_m"])
         referent = GraphNode(
             entity_id=None if best["is_stub"] else best["m_id"],
@@ -372,32 +384,61 @@ class Neo4jGraphRepository:
 
     @staticmethod
     def _specificity(global_size: int | None) -> float:
-        """Log-specificity term ``max(0, ln(1e6 / globalSize))``; 0 for null/0/broad."""
+        """Log-specificity term ``max(0, ln(_CATEGORY_REFERENCE / globalSize))``; 0 if broad.
+
+        Parameters
+        ----------
+        global_size : int or None
+            The category's global member count. ``None``/0, or ≥ ``_CATEGORY_REFERENCE``,
+            yields 0 (a near-universal grouping carries no specificity).
+
+        Returns
+        -------
+        float
+            The non-negative log-specificity term for one shared category.
+        """
         if not global_size or global_size <= 0:
             return 0.0
-        return max(0.0, math.log(1e6 / global_size))
+        return max(0.0, math.log(_CATEGORY_REFERENCE / global_size))
 
     async def shared_category_chain(
-        self, a_id: UUID, b_id: UUID
+        self, a_id: UUID, b_id: UUID, *, max_category_size: int | None = None
     ) -> ConnectionChain | None:
         """The shared-category connection A↔B, scored by log-specificity, or ``None``.
 
         Two entities are category-connected when they share one or more Wikipedia categories
         (2-hop ``IN_CATEGORY``). The chain's steps show the single most specific shared
         category (the most specific bridge); its ``score`` is the SINGLE ranking value
-        ``Σ max(0, ln(1e6 / globalSize(c)))`` over ALL shared categories — the count enters as
-        the number of terms, and a broad category (globalSize ≥ 1e6) contributes 0, so a
-        broad-only overlap floors to 0 and self-suppresses — it returns ``None`` here and is
-        never emitted (SC-002).
+        ``Σ max(0, ln(_CATEGORY_REFERENCE / globalSize(c)))`` over ALL shared categories — the
+        count enters as the number of terms, and a broad category (globalSize ≥ the reference)
+        contributes 0, so a broad-only overlap floors to 0 and self-suppresses (returns
+        ``None``, never emitted — SC-002).
+
+        Parameters
+        ----------
+        a_id, b_id : UUID
+            The two entities.
+        max_category_size : int or None
+            A NAMED tractability bound: a category whose global size exceeds it is excluded
+            from the match before scoring (``None`` = no cut). NOT a signal ceiling — a broad
+            category already self-suppresses via its zero term; this only bounds the query.
+
+        Returns
+        -------
+        ConnectionChain or None
+            The scored shared-category chain, or ``None`` when nothing survives / all broad.
         """
         query = (
             "MATCH (a:Entity {entityId: $a})-[:IN_CATEGORY]->(c:Category)"
             "<-[:IN_CATEGORY]-(b:Entity {entityId: $b}) "
+            "WHERE $max IS NULL OR c.globalSize IS NULL OR c.globalSize <= $max "
             "RETURN c.name AS cat_name, c.globalSize AS global_size, "
             "b.entityId AS b_id, b.name AS b_name, b.entityType AS b_type"
         )
         async with self._client.session() as session:
-            result = await session.run(query, a=str(a_id), b=str(b_id))
+            result = await session.run(
+                query, a=str(a_id), b=str(b_id), max=max_category_size
+            )
             rows = [record async for record in result]
         if not rows:
             return None
@@ -410,7 +451,9 @@ class Neo4jGraphRepository:
             # 1e6, each term floored to 0). A broad-grouping-only overlap is not a real
             # connection, so it is never emitted — not shown and labeled, but absent.
             return None
-        best_name, best_term = max(terms, key=lambda t: t[1])
+        # F3 determinism: among equal-specificity categories pick by name, so the displayed
+        # representative is reproducible across runs (US3) rather than row-order dependent.
+        best_name, best_term = max(terms, key=lambda t: (t[1], t[0] or ""))
         first = rows[0]
         category_node = GraphNode(
             entity_id=None, name=best_name or "", label="Category", is_bridge=True
@@ -482,15 +525,17 @@ class Neo4jGraphRepository:
     ) -> ReviewedVerdict | None:
         """The human-reviewed RELATIONSHIP verdict for a direct A↔B reviewed edge, or None.
 
-        The graph carries only relationship verdicts (``ASSOCIATED_WITH`` / ``COVERS`` /
-        ``CO_CAST``); coincidence verdicts produce no edge, so ``None`` here means "no
-        relationship verdict", not "no verdict of any kind" (coincidence handling is US2 and
-        needs those verdicts loaded). ``confidence`` is computed from ``origin`` by the model.
+        Relationship verdicts are ``ASSOCIATED_WITH`` / ``COVERS`` / ``CO_CAST`` edges; ``None``
+        here means "no relationship verdict", not "no verdict of any kind" — a coincidence is a
+        separate ``REVIEWED_COINCIDENCE`` edge read by :meth:`get_coincidence_verdict`.
+        ``confidence`` is computed from ``origin`` by the model. ``ORDER BY`` makes the pick
+        deterministic if a pair ever carries more than one reviewed edge type (F3).
         """
         query = (
             "MATCH (a:Entity {entityId: $a})-[r]-(b:Entity {entityId: $b}) "
             "WHERE type(r) IN ['ASSOCIATED_WITH', 'COVERS', 'CO_CAST'] "
-            "RETURN type(r) AS rel_type, r.origin AS origin, r.source AS source LIMIT 1"
+            "RETURN type(r) AS rel_type, r.origin AS origin, r.source AS source "
+            "ORDER BY rel_type LIMIT 1"
         )
         async with self._client.session() as session:
             result = await session.run(query, a=str(a_id), b=str(b_id))
@@ -519,7 +564,8 @@ class Neo4jGraphRepository:
         query = (
             "MATCH (a:Entity {entityId: $a})-[r:REVIEWED_COINCIDENCE]-"
             "(b:Entity {entityId: $b}) "
-            "RETURN r.origin AS origin, r.source AS source LIMIT 1"
+            "RETURN r.origin AS origin, r.source AS source "
+            "ORDER BY r.origin LIMIT 1"
         )
         async with self._client.session() as session:
             result = await session.run(query, a=str(a_id), b=str(b_id))
@@ -571,7 +617,9 @@ class Neo4jGraphRepository:
             a_id, b_id, max_hops=max_hops, entity_count=entity_count
         )
         referent = await self.shared_referents(a_id, b_id, entity_count=entity_count)
-        category = await self.shared_category_chain(a_id, b_id)
+        category = await self.shared_category_chain(
+            a_id, b_id, max_category_size=max_category_size
+        )
         co_occurrence = await self.co_occurrence_chains(a_id, b_id)
         chains = [
             c for c in [kb_chain, referent, category, *co_occurrence] if c is not None

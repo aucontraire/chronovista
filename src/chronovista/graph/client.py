@@ -107,8 +107,13 @@ class Neo4jClient:
         GraphUnavailableError
             If the graph cannot be reached.
         """
+        from neo4j import READ_ACCESS
+
         driver = await self._ensure_driver()
-        sess = driver.session(database=self._database)
+        # default_access_mode=READ makes the read-only contract real, not just a docstring:
+        # on a cluster it routes to a reader and the server rejects writes — the one guard
+        # that survives a future unguarded query, where the test-side Cypher scans cannot.
+        sess = driver.session(database=self._database, default_access_mode=READ_ACCESS)
         try:
             yield sess
         finally:

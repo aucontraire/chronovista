@@ -55,7 +55,7 @@ def connect(
     a: str = typer.Argument(..., help="First entity: an exact name or an entity id"),
     b: str = typer.Argument(..., help="Second entity: an exact name or an entity id"),
     max_hops: int = typer.Option(
-        4, "--max-hops", help="Hop budget for the asserted tier"
+        4, "--max-hops", min=1, help="Hop budget for the asserted tier"
     ),
     max_category_size: int | None = typer.Option(
         None,
@@ -212,8 +212,11 @@ def _render(node_a: GraphNode, node_b: GraphNode, result: GraphConnection) -> No
         and ConnectionKind.SHARED_REFERENT not in kinds
     ):
         _render_kb_gap(
-            node_a,
-            node_b,
+            # Use the id-hydrated endpoints (they carry kb_degree); the name-resolved
+            # node_a/node_b do not, so reading them here silently dropped the coverage line
+            # on the name path. Names are identical between the two.
+            result.entity_a,
+            result.entity_b,
             # A coincidence verdict is a negative, not an "other" connection — only a
             # relationship verdict or a surviving chain counts as a real connection here.
             has_other=bool(result.chains)

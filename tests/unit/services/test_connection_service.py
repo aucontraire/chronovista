@@ -181,6 +181,10 @@ _WRITE_CLAUSE = re.compile(
     re.IGNORECASE,
 )
 
+# A variable-length relationship pattern — `[*1..4]`, `[r*1..3]`, `[:T*]`, etc. A bare
+# `"[*" in q` check misses the named/typed forms, so match a `[` then any non-`]` run then `*`.
+_VAR_LENGTH = re.compile(r"\[[^\]]*\*")
+
 # The repository methods the recording guards actually drive: connection() transitively, plus
 # resolve()'s name path (find_entities_by_name). Pinned against the AST truth below so a NEW
 # query-builder method can't escape the FR-008/FR-016 guards by living off connection()'s path.
@@ -275,7 +279,9 @@ class TestConnectionCypherGuards:
         await _exercise_all_query_methods(repo)
 
         # A variable-length pattern is written `[*...]`; it must never be bounded by LIMIT.
-        offenders = [q for q in client.queries if "[*" in q and "LIMIT" in q.upper()]
+        offenders = [
+            q for q in client.queries if _VAR_LENGTH.search(q) and "LIMIT" in q.upper()
+        ]
         assert (
             offenders == []
         ), f"FR-016: variable-length match bounded by LIMIT: {offenders}"

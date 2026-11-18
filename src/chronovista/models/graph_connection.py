@@ -2,7 +2,7 @@
 
 The engine answers "how are entity A and entity B connected?" by returning a
 :class:`GraphConnection`: the human-reviewed verdict where one exists, plus one labeled
-:class:`ConnectionChain` per inferred connecting kind, strongest first. These are domain
+:class:`ConnectionChain` per inferred connecting kind, in a fixed by-kind order. These are domain
 models (not API schemas) so the repository can return them without depending on the API
 layer, mirroring the Feature-066 association models.
 
@@ -29,15 +29,24 @@ from pydantic import (
 
 
 class ConnectionKind(str, Enum):
-    """The inferred connection kinds, declared strongest → weakest.
+    """The inferred connection kinds, declared in a fixed by-kind presentation order.
 
-    Declaration order IS presentation order and the sort key for a result's chains.
+    Declaration order IS presentation order and the sort key for a result's chains. It is a
+    CATEGORICAL precedence of connection type (a composed/stated fact is listed before a
+    co-mention) — NOT a numeric strength ranking across kinds. Each scored tier's ``score``
+    is a WITHIN-TIER quantity on its own scale: asserted/shared_referent use
+    ``ln(entity_count / local_degree)`` (reference ≈ a few thousand entities), shared_category
+    uses ``ln(1e6 / globalSize)`` (reference 1e6). Those are different references over
+    different populations, so a chain's score and a category's score are NOT comparable and
+    the list is never ordered by score across kinds.
+
     Co-occurrence is four DISTINCT kinds (one per presence channel), never merged or
     weighted into a single score (measured review §4). The human-reviewed layer is NOT a
     kind — it is a short-circuit (:class:`ReviewedVerdict`).
     """
 
     ASSERTED = "asserted"
+    SHARED_REFERENT = "shared_referent"
     SHARED_CATEGORY = "shared_category"
     CO_OCCURRENCE_TRANSCRIPT = "co_occurrence_transcript"
     CO_OCCURRENCE_TITLEDESC = "co_occurrence_titledesc"
@@ -45,7 +54,7 @@ class ConnectionKind(str, Enum):
     CO_OCCURRENCE_MANUAL = "co_occurrence_manual"
 
 
-# Enum-declaration order = strongest-first presentation/sort order.
+# Enum-declaration order = by-kind presentation/sort order (categorical, not a score ranking).
 _KIND_ORDER: dict[ConnectionKind, int] = {
     kind: index for index, kind in enumerate(ConnectionKind)
 }
@@ -55,6 +64,15 @@ _KIND_ORDER: dict[ConnectionKind, int] = {
 _CO_OCCURRENCE_KINDS: list[ConnectionKind] = [
     kind for kind in ConnectionKind if kind.value.startswith("co_occurrence_")
 ]
+
+# Kinds that carry a log-specificity `score`: asserted (its weakest intermediate hub's
+# specificity), shared_category (over category globalSize), and shared_referent (the shared
+# node's local degree). The four co-occurrence kinds never carry a score.
+_SCORED_KINDS: set[ConnectionKind] = {
+    ConnectionKind.ASSERTED,
+    ConnectionKind.SHARED_CATEGORY,
+    ConnectionKind.SHARED_REFERENT,
+}
 
 
 class ReviewedVerdict(BaseModel):
@@ -141,6 +159,11 @@ class GraphNode(BaseModel):
     name: str
     label: str = ""
     is_bridge: bool = False
+    # Count of this entity's WIKIDATA KB edges (reviewed edges excluded — they are human
+    # judgments, not knowledge-base coverage) — set only for the queried endpoints, so "no
+    # asserted path" can be attributed to under-enrichment vs a genuine non-relationship
+    # (FR-016). None for bridges and intermediate nodes.
+    kb_degree: int | None = None
 
     model_config = ConfigDict(strict=True)
 
@@ -178,6 +201,7 @@ class PathStep(BaseModel):
     kind: ConnectionKind
     to_node: GraphNode
     specificity: float | None = None
+    forward: bool = True
 
     model_config = ConfigDict(strict=True)
 
@@ -194,9 +218,10 @@ class ConnectionChain(BaseModel):
     truncated : bool
         True if the search hit its hop budget before fully resolving this chain.
     score : float or None
-        ``shared_category`` only: the SINGLE ranking value
-        ``Σ max(0, ln(1e6 / globalSize(c)))`` over the shared categories (count enters as
-        the number of terms). One field — never a separate ``count`` field.
+        The log-specificity ranking value for a scored kind (asserted / shared_category /
+        shared_referent); ``None`` for a co-occurrence chain. For shared_category it is
+        ``Σ max(0, ln(1e6 / globalSize(c)))`` over the shared categories; for a chain, its
+        weakest intermediate hub's specificity. One field — never a separate ``count`` field.
     """
 
     kind: ConnectionKind
@@ -216,13 +241,16 @@ class ConnectionChain(BaseModel):
     def _check(self) -> Self:
         if not self.steps:
             raise ValueError("a ConnectionChain must have at least one step")
-        if self.score is not None and self.kind is not ConnectionKind.SHARED_CATEGORY:
-            raise ValueError("score is only meaningful for a shared_category chain")
+        if self.score is not None and self.kind not in _SCORED_KINDS:
+            raise ValueError(
+                "score is only meaningful for an asserted, shared_category, or "
+                "shared_referent chain"
+            )
         return self
 
 
 class GraphConnection(BaseModel):
-    """The result: the reviewed verdict (if any) + one chain per inferred kind, strongest first.
+    """The result: the reviewed verdict (if any) + one chain per inferred kind, in by-kind order.
 
     Attributes
     ----------
@@ -234,8 +262,8 @@ class GraphConnection(BaseModel):
         The inferred ``chains`` are always populated alongside it (a false coincidence is
         invisible to the inferred signals, so showing them keeps it recoverable).
     chains : list[ConnectionChain]
-        One chain per inferred connecting kind, ordered strongest-first (enforced here).
-        Empty ⇒ no inferred connection.
+        One chain per inferred connecting kind, ordered by kind (enforced here); the order
+        is categorical, not a cross-kind score ranking. Empty ⇒ no inferred connection.
     searched_max_hops : int
         The hop budget the search used.
     any_truncated : bool
@@ -262,8 +290,8 @@ class GraphConnection(BaseModel):
         kinds = [chain.kind for chain in self.chains]
         if len(kinds) != len(set(kinds)):
             raise ValueError("at most one chain per ConnectionKind")
-        # Guarantee the strongest-first invariant by construction (sort, don't merely assert),
-        # so a service ordering bug can't produce a mis-ranked result.
+        # Guarantee the by-kind order by construction (sort, don't merely assert), so a
+        # service ordering bug can't produce an out-of-kind-order result.
         self.chains.sort(key=lambda chain: _KIND_ORDER[chain.kind])
         # Every chain must actually land on entity_b — catches a malformed path that stops
         # short of the target. When entity_b is a real entity (has an id), the last node must

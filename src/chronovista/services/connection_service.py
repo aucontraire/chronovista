@@ -1,0 +1,86 @@
+"""ConnectionService — the policy seam over the Neo4j connection repository (Feature 112).
+
+The repository owns the Cypher; this service owns the *policy*. In US1 that policy is thin:
+the reviewed relationship short-circuit, the by-kind ordering, and the single
+log-specificity ranking are all produced by the repository and the result model, so they flow
+through unchanged. US2 adds the coincidence policy (scoped, origin-gated suppression). Keeping
+the policy here rather than in the CLI lets the Phase-3 API reuse it unchanged.
+"""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from chronovista.models.graph_connection import GraphConnection, GraphNode
+from chronovista.repositories.neo4j_graph_repository import (
+    EntityNotInGraphError,
+    Neo4jGraphRepository,
+)
+
+
+class AmbiguousEntityError(LookupError):
+    """A CLI token matched more than one entity by name; the user must disambiguate by id."""
+
+    def __init__(self, token: str, matches: list[GraphNode]) -> None:
+        super().__init__(f"'{token}' matches {len(matches)} entities")
+        self.token = token
+        self.matches = matches
+
+
+class ConnectionService:
+    """Answer "how are entity A and entity B connected?" with policy applied."""
+
+    def __init__(self, repository: Neo4jGraphRepository) -> None:
+        self._repository = repository
+
+    async def resolve(self, token: str) -> GraphNode:
+        """Resolve a CLI token (an entity UUID, or an exact entity name) to a :class:`GraphNode`.
+
+        Raises
+        ------
+        EntityNotInGraphError
+            No entity matches the token.
+        AmbiguousEntityError
+            The name matches more than one entity (the user must pick by id).
+        """
+        try:
+            entity_id: UUID | None = UUID(token)
+        except ValueError:
+            entity_id = None
+        if entity_id is not None:
+            return await self._repository.get_entity_node(entity_id)
+        matches = await self._repository.find_entities_by_name(token)
+        if not matches:
+            raise EntityNotInGraphError(token)
+        if len(matches) > 1:
+            raise AmbiguousEntityError(token, matches)
+        return matches[0]
+
+    async def connect(
+        self,
+        a_id: UUID,
+        b_id: UUID,
+        *,
+        max_hops: int = 4,
+        max_category_size: int | None = None,
+    ) -> GraphConnection:
+        """Every connecting kind between two entities, in by-kind order, plus the reviewed verdict.
+
+        Parameters
+        ----------
+        a_id, b_id : UUID
+            The two entities to connect.
+        max_hops : int
+            Traversal hop budget for the asserted tier (default 4).
+        max_category_size : int | None
+            A named tractability bound on a shared category's global size (default ``None`` —
+            no cut; rank by log-specificity, never filter by breadth).
+
+        Returns
+        -------
+        GraphConnection
+            ``has_connection`` is False when neither a verdict nor any inferred chain exists.
+        """
+        return await self._repository.connection(
+            a_id, b_id, max_hops=max_hops, max_category_size=max_category_size
+        )

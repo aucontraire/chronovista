@@ -33,6 +33,7 @@ class TestConnectionKind:
         # co-occurrence kinds (which share a prefix and are otherwise indistinguishable).
         assert [k.value for k in ConnectionKind] == [
             "asserted",
+            "shared_referent",
             "shared_category",
             "co_occurrence_transcript",
             "co_occurrence_titledesc",
@@ -77,11 +78,13 @@ class TestConnectionChain:
         with pytest.raises(ValueError):
             ConnectionChain(kind=ConnectionKind.ASSERTED, steps=[])
 
-    def test_score_allowed_only_on_shared_category(self) -> None:
+    def test_score_allowed_only_on_scored_kinds(self) -> None:
         b = _node("B")
+        _chain(ConnectionKind.ASSERTED, b, score=3.5)  # ok (weakest-hub specificity)
         _chain(ConnectionKind.SHARED_CATEGORY, b, score=3.5)  # ok
-        with pytest.raises(ValueError):
-            _chain(ConnectionKind.ASSERTED, b, score=3.5)
+        _chain(ConnectionKind.SHARED_REFERENT, b, score=3.5)  # ok
+        with pytest.raises(ValueError):  # a co-occurrence channel never carries a score
+            _chain(ConnectionKind.CO_OCCURRENCE_TRANSCRIPT, b, score=3.5)
 
 
 class TestReviewedVerdict:

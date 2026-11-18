@@ -70,16 +70,22 @@ def load_edges(session, edges, batch_size):
     total = 0
     for (rel, is_entity), rows in groups.items():
         target_label = "Entity" if is_entity == "1" else "WikidataItem"
+        # Stamp layer='wikidata' so the connection explorer can tell KB facts from the
+        # reviewed layer (layer='reviewed') with ONE predicate — drift-proof vs an
+        # allowlist of rel-type names (Feature 112, DESIGN §9.3).
         cypher = (
             f"UNWIND $rows AS r "
             f"MATCH (s:Entity {{entityId: r.src}}) "
             f"MATCH (t:{target_label} {{qid: r.targetqid}}) "
-            f"MERGE (s)-[:{rel}]->(t)"
+            f"MERGE (s)-[e:{rel}]->(t) "
+            f"SET e.layer = 'wikidata'"
         )
         for batch in chunked(rows, batch_size):
             session.run(cypher, rows=batch).consume()
             total += len(batch)
-            print(f"  edges :{rel:<16}->{target_label:<13} +{len(batch):>5}  (total {total})")
+            print(
+                f"  edges :{rel:<16}->{target_label:<13} +{len(batch):>5}  (total {total})"
+            )
     return total
 
 
@@ -88,14 +94,19 @@ def main() -> int:
     ap.add_argument("--stubs", default=str(HERE / "wikidata_stubs.jsonl"))
     ap.add_argument("--edges", default=str(HERE / "semantic_edges.csv"))
     ap.add_argument("--batch-size", type=int, default=5000)
-    ap.add_argument("--wipe-semantic", action="store_true",
-                    help="delete all WikidataItem nodes and semantic rel types first")
+    ap.add_argument(
+        "--wipe-semantic",
+        action="store_true",
+        help="delete all WikidataItem nodes and semantic rel types first",
+    )
     neo4j_target.add_argument(ap)
     args = ap.parse_args()
 
     uri, user, pw, db_name = neo4j_target.resolve(allow_remote=args.allow_remote)
 
-    stubs = [json.loads(l) for l in Path(args.stubs).read_text().splitlines() if l.strip()]
+    stubs = [
+        json.loads(l) for l in Path(args.stubs).read_text().splitlines() if l.strip()
+    ]
     with Path(args.edges).open() as f:
         edges = list(csv.DictReader(f))  # src, reltype, targetqid, targetIsEntity
     print(f"Loaded {len(stubs)} stubs and {len(edges)} semantic edges from disk.")
@@ -119,7 +130,9 @@ def main() -> int:
                 "CREATE CONSTRAINT wikidata_qid IF NOT EXISTS "
                 "FOR (w:WikidataItem) REQUIRE w.qid IS UNIQUE"
             ).consume()
-            session.run("CREATE INDEX entity_qid IF NOT EXISTS FOR (e:Entity) ON (e.qid)").consume()
+            session.run(
+                "CREATE INDEX entity_qid IF NOT EXISTS FOR (e:Entity) ON (e.qid)"
+            ).consume()
             print("Loading stub nodes...")
             n_stubs = load_stubs(session, stubs, args.batch_size)
             print("Loading semantic edges...")
@@ -130,7 +143,9 @@ def main() -> int:
                 "RETURN stubs, count(r) AS semrels"
             ).single()
         print(f"\nDone. Wrote {n_stubs} stubs / {n_edges} semantic edges.")
-        print(f"Graph now holds {counts['stubs']} :WikidataItem nodes and {counts['semrels']} semantic relationships.")
+        print(
+            f"Graph now holds {counts['stubs']} :WikidataItem nodes and {counts['semrels']} semantic relationships."
+        )
     finally:
         driver.close()
     return 0

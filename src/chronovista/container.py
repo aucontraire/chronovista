@@ -83,6 +83,7 @@ from chronovista.repositories.wikipedia_category_repository import (
     WikipediaCategoryRepository,
 )
 from chronovista.services import YouTubeService
+from chronovista.services.connection_service import ConnectionService
 from chronovista.services.enrichment.enrichment_service import EnrichmentService
 from chronovista.services.enrichment.seeders import CategorySeeder, TopicSeeder
 from chronovista.services.transcript_service import TranscriptService
@@ -689,6 +690,14 @@ class Container:
             category_repository=self.create_video_category_repository(),
             youtube_service=self.youtube_service,
         )
+
+    def create_connection_service(self) -> ConnectionService:
+        """Create a ConnectionService wired to the graph repository (Feature 112).
+
+        Transient (new per call); the repository shares the singleton :class:`Neo4jClient`
+        (one connection pool). This is the seam the CLI and the Phase-3 API both build on.
+        """
+        return ConnectionService(self.create_neo4j_graph_repository())
 
     # -------------------------------------------------------------------------
     # Singleton Service Properties (Cached - same instance on repeated access)

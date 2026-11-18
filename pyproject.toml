@@ -55,6 +55,10 @@ jellyfish = "^1.2.1"
 metaphone = "^0.6"
 selenium = "^4.25.0"
 webdriver-manager = "^4.0.0"
+# Neo4j async driver — the only supported client for the dev-scoped connection-explorer
+# graph (Feature 112). Optional at runtime: the graph client connects lazily and the
+# capability is absent by default from the shipped stack.
+neo4j = "^5.26.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

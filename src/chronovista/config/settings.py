@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
 
 from chronovista import __version__
@@ -55,6 +55,23 @@ class Settings(BaseSettings):
     )
     database_integration_url: str = Field(
         default="postgresql+asyncpg://dev_user:dev_password@localhost:5434/chronovista_integration_test"
+    )
+
+    # Graph (Neo4j — dev-scoped connection explorer, Feature 112). The read-only
+    # explorer connects lazily and degrades gracefully; the graph is absent by default
+    # from the shipped stack. Defaults target the LOCAL `--profile graph` dev container
+    # on bolt://localhost:7688 (host-mapped off 7687 to avoid colliding with another
+    # local project's Neo4j). `.env` overrides these — point NEO4J_URI at the local
+    # container for Feature-112 work. The explorer is read-only (safe against any
+    # target); the destructive load scripts separately refuse a remote target without
+    # --allow-remote. NOTE: `.env` uses NEO4J_PWD, so neo4j_password aliases it — else
+    # the password would silently fall back to the default while uri/user resolve to a
+    # remote instance (the "Frankenstein" the Phase-1 review flagged).
+    neo4j_uri: str = Field(default="bolt://localhost:7688")
+    neo4j_user: str = Field(default="neo4j")
+    neo4j_password: str = Field(
+        default="dev_password",
+        validation_alias=AliasChoices("neo4j_password", "neo4j_pwd"),
     )
 
     # OAuth

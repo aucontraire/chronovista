@@ -54,6 +54,24 @@ class TestGraphConnectDegradation:
         assert "docker compose" in result.output  # a recovery hint, not a traceback
         assert not isinstance(result.exception, GraphUnavailableError)
 
+    def test_mid_session_unavailable_from_connect_degrades_cleanly(
+        self, runner: CliRunner
+    ) -> None:
+        # The reconnect-gap fix makes a mid-query connectivity loss surface as
+        # GraphUnavailableError from connect() (not a bare driver error). It must land on the
+        # same clean handler — "Graph unavailable" + restart hint — not the generic
+        # "Graph query failed" catch-all it used to fall through to.
+        node = GraphNode(entity_id=uuid4(), name="X")
+        result = _invoke(
+            runner,
+            _service(resolve=node, connect=GraphUnavailableError("lost connection")),
+        )
+        assert result.exit_code == 1
+        assert "Graph unavailable" in result.output
+        assert "docker compose" in result.output
+        assert "Graph query failed" not in result.output
+        assert not isinstance(result.exception, GraphUnavailableError)
+
     def test_name_not_found_message(self, runner: CliRunner) -> None:
         result = _invoke(
             runner, _service(resolve=EntityNotInGraphError("nobody", kind="name"))

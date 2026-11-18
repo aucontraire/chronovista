@@ -1,0 +1,18 @@
+# Generated graph-export artifacts — produced by export_graph.sh / export_tag_edges.py.
+#
+# These files contain REAL library content: canonical_name, description, Wikidata
+# qid / wikidataUrl, and category names. QIDs in particular are library content that
+# the private-terms commit hook does NOT catch (see CLAUDE.md). This repository is
+# public. NEVER commit these.
+#
+# `scripts/graph/` is a tracked directory, so this .gitignore keeps the export output
+# un-stageable even when someone runs `git add scripts/graph/`.
+*.jsonl
+*.csv
+
+# Explicit names (belt and suspenders — the generated set):
+entities.jsonl
+wikidata_stubs.jsonl
+category_edges.jsonl
+cooccurs.csv
+semantic_edges.csv

@@ -134,6 +134,7 @@ nav:
           - YouTube API Setup: getting-started/youtube-api-setup.md
           - Installation: getting-started/installation.md
           - Quick Start: getting-started/quickstart.md
+          - Your first connection query: getting-started/first-connection.md
   - How-to guides:
       - Authenticate: user-guide/authentication.md
       - Populate your data: user-guide/data-population.md
@@ -143,6 +144,7 @@ nav:
       - Correct transcripts: user-guide/corrections.md
       - Analyze topics: user-guide/topic-analytics.md
       - Find entity intersections: user-guide/entity-intersection.md
+      - See how two entities connect: user-guide/connection-explorer.md
       - See what a channel is about: user-guide/channel-entities.md
       - See which channels an entity operates: user-guide/channel-ownership.md
       - Fix an over-matching entity: user-guide/entity-curation.md
@@ -170,6 +172,7 @@ nav:
       - System design: architecture/system-design.md
       - Data model: architecture/data-model.md
       - The knowledge model: architecture/knowledge-model.md
+      - Connection explorer: architecture/connection-explorer.md
       - Tags and aliases: architecture/tags-and-aliases.md
       - Recovery provenance: architecture/recovery-provenance.md
       - API integration: architecture/api-integration.md

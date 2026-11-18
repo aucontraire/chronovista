@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
 
+from chronovista.graph import Neo4jClient
 from chronovista.repositories import (
     CandidateSuggestionRepository,
     CanonicalTagRepository,
@@ -71,6 +72,7 @@ from chronovista.repositories.entity_operation_log_repository import (
 from chronovista.repositories.entity_video_exclusion_repository import (
     EntityVideoExclusionRepository,
 )
+from chronovista.repositories.neo4j_graph_repository import Neo4jGraphRepository
 from chronovista.repositories.playlist_membership_repository import (
     PlaylistMembershipRepository,
 )
@@ -81,6 +83,7 @@ from chronovista.repositories.wikipedia_category_repository import (
     WikipediaCategoryRepository,
 )
 from chronovista.services import YouTubeService
+from chronovista.services.connection_service import ConnectionService
 from chronovista.services.enrichment.enrichment_service import EnrichmentService
 from chronovista.services.enrichment.seeders import CategorySeeder, TopicSeeder
 from chronovista.services.transcript_service import TranscriptService
@@ -584,6 +587,14 @@ class Container:
         """
         return UserLanguagePreferenceRepository()
 
+    def create_neo4j_graph_repository(self) -> Neo4jGraphRepository:
+        """Create a Neo4jGraphRepository wired to the shared (cached) Neo4j client.
+
+        Transient (new per call) but shares the singleton :class:`Neo4jClient` — one
+        connection pool — mirroring how the services reuse ``youtube_service`` (Feature 112).
+        """
+        return Neo4jGraphRepository(self.neo4j_client)
+
     # -------------------------------------------------------------------------
     # Service Factory Methods (Transient - new instance per call)
     # -------------------------------------------------------------------------
@@ -680,6 +691,14 @@ class Container:
             youtube_service=self.youtube_service,
         )
 
+    def create_connection_service(self) -> ConnectionService:
+        """Create a ConnectionService wired to the graph repository (Feature 112).
+
+        Transient (new per call); the repository shares the singleton :class:`Neo4jClient`
+        (one connection pool). This is the seam the CLI and the Phase-3 API both build on.
+        """
+        return ConnectionService(self.create_neo4j_graph_repository())
+
     # -------------------------------------------------------------------------
     # Singleton Service Properties (Cached - same instance on repeated access)
     # -------------------------------------------------------------------------
@@ -730,6 +749,15 @@ class Container:
         """
         return TranscriptService()
 
+    @cached_property
+    def neo4j_client(self) -> Neo4jClient:
+        """Get the singleton Neo4jClient (one lazily-connected driver / pool).
+
+        Cached so the connection pool is reused; lazy, so no connection is opened at import
+        or DI time — only when a graph read actually runs (Feature 112).
+        """
+        return Neo4jClient.from_settings()
+
     # -------------------------------------------------------------------------
     # Testing Support
     # -------------------------------------------------------------------------
@@ -742,13 +770,19 @@ class Container:
         inject mocks and then restore the container to a clean state.
         It clears all @cached_property values from the instance __dict__.
 
+        Note
+        ----
+        This drops the cached ``neo4j_client`` without awaiting ``close()`` (reset is
+        sync). The client is lazy, so this is benign unless a test materialized a real
+        driver — such a test should ``await client.close()`` itself.
+
         Examples
         --------
         >>> container.reset()
         >>> # All cached singletons are cleared
         """
         # Clear all cached_property values
-        properties_to_clear = ["youtube_service", "transcript_service"]
+        properties_to_clear = ["youtube_service", "transcript_service", "neo4j_client"]
         for prop in properties_to_clear:
             self.__dict__.pop(prop, None)
 

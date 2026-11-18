@@ -59,10 +59,37 @@ services:
     profiles:
       - admin  # Only start with: docker-compose --profile admin up
 
+  # Optional: Neo4j for the dev-scoped connection explorer (Feature 112).
+  # Dev-only — never part of the shipped stack (docker-compose.yml).
+  # Start with: docker compose -f docker-compose.dev.yml --profile graph up -d neo4j-dev
+  # Load with:  scripts/graph/reload_all.sh   (reads prod Postgres, writes this container)
+  neo4j-dev:
+    image: neo4j:5.26-community
+    container_name: chronovista-neo4j-dev
+    environment:
+      NEO4J_AUTH: neo4j/dev_password
+      NEO4J_server_memory_heap_max__size: 1G
+    ports:
+      - "7475:7474"   # HTTP browser (host 7475 — 7474 is taken by another project's Neo4j)
+      - "7688:7687"   # Bolt        (host 7688 — 7687 is taken by another project's Neo4j)
+    volumes:
+      - chronovista-neo4j-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - chronovista-dev
+    profiles:
+      - graph  # Only start with: docker compose --profile graph up
+
 networks:
   chronovista-dev:
     driver: bridge
 
 volumes:
   chronovista-pgdata:
+    driver: local
+  chronovista-neo4j-data:
     driver: local

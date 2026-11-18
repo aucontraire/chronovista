@@ -51,7 +51,7 @@ class ConnectionService:
             return await self._repository.get_entity_node(entity_id)
         matches = await self._repository.find_entities_by_name(token)
         if not matches:
-            raise EntityNotInGraphError(token)
+            raise EntityNotInGraphError(token, kind="name")
         if len(matches) > 1:
             raise AmbiguousEntityError(token, matches)
         return matches[0]

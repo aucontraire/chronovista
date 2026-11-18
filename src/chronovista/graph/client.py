@@ -9,6 +9,7 @@ module (or the result models) never requires the package.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
@@ -17,6 +18,8 @@ from chronovista.config.settings import settings
 
 if TYPE_CHECKING:
     from neo4j import AsyncDriver, AsyncSession
+
+logger = logging.getLogger(__name__)
 
 
 class GraphUnavailableError(RuntimeError):
@@ -82,6 +85,9 @@ class Neo4jClient:
             # the graceful-degradation path (which runs every time the graph is down) can't
             # leak a pool on a long-lived, retrying process.
             await driver.close()
+            # FR-015: log the unavailable event with diagnostic context (the target URI and
+            # the driver error) — never library content; the URI is configuration, not data.
+            logger.warning("Neo4j graph unavailable at %s: %s", self._uri, exc)
             raise GraphUnavailableError(
                 f"cannot reach Neo4j at {self._uri}: {exc}"
             ) from exc

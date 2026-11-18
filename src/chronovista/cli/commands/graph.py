@@ -8,6 +8,7 @@ rather than a traceback (FR-009).
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import typer
 from rich.console import Console
@@ -24,6 +25,7 @@ from chronovista.repositories.neo4j_graph_repository import EntityNotInGraphErro
 from chronovista.services.connection_service import AmbiguousEntityError
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(
     name="graph",
@@ -102,7 +104,26 @@ async def _connect(
             console.print(f"  [cyan]{match.entity_id}[/cyan]  {match.name}")
         raise typer.Exit(1) from exc
     except EntityNotInGraphError as exc:
-        console.print(f"[yellow]Not found:[/yellow] {exc}")
+        if exc.kind == "id":
+            # §77: a well-formed id absent from the loaded graph — distinct from a name miss.
+            console.print(
+                f"[yellow]Not in the loaded graph:[/yellow] «{exc.identifier}» is a valid id "
+                "but absent — the graph may be stale or only partially loaded."
+            )
+        else:
+            console.print(
+                f"[yellow]Not found:[/yellow] no entity named «{exc.identifier}»."
+            )
+        raise typer.Exit(1) from exc
+    except typer.Exit:
+        raise  # our own clean exits (e.g. the non-entity-node guard) pass straight through
+    except Exception as exc:
+        # FR-009: a graph-query failure (graph up, query errored) degrades cleanly — no
+        # traceback to the user. The known cases above are handled first; this catches an
+        # unexpected query error. FR-015: log it with the user's own identifiers (never the
+        # resolved library names) plus the traceback for diagnosis.
+        logger.error("graph query failed for (%s, %s)", a, b, exc_info=True)
+        console.print(f"[red]Graph query failed:[/red] {exc}")
         raise typer.Exit(1) from exc
     finally:
         await container.neo4j_client.close()

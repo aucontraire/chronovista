@@ -69,9 +69,12 @@ class EntityNotInGraphError(LookupError):
     isn't there) so the CLI can tell "no such entity" from "graph is down".
     """
 
-    def __init__(self, identifier: object) -> None:
+    def __init__(self, identifier: object, *, kind: str = "identifier") -> None:
         super().__init__(f"no entity matching '{identifier}' in the graph")
         self.identifier = identifier
+        # "id"  = a well-formed id absent from the loaded graph (likely stale / partial load);
+        # "name" = an exact-name lookup that matched nothing. The CLI messages them apart (§77).
+        self.kind = kind
 
 
 class Neo4jGraphRepository:
@@ -120,7 +123,7 @@ class Neo4jGraphRepository:
             result = await session.run(query, entity_id=str(entity_id))
             record = await result.single()
         if record is None:
-            raise EntityNotInGraphError(entity_id)
+            raise EntityNotInGraphError(entity_id, kind="id")
         return GraphNode(
             entity_id=record["entity_id"],
             name=record["name"] or "",

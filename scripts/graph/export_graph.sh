@@ -44,10 +44,27 @@ THRESHOLD="${1:-2}"
 # Per-channel threshold overrides: THRESHOLD_TRANSCRIPT/_TITLEDESC/_MANUAL/_TAGS (default = $1, 2).
 CHANNELS=(transcript titledesc manual tags)
 RELTYPES=(CO_OCCURS_TRANSCRIPT CO_OCCURS_TITLEDESC CO_OCCURS_MANUAL CO_OCCURS_TAGS)
+# Feature-091 manual exclusions (entity_video_exclusions): a (entity, video) pair the user has
+# marked a FALSE mention. The three MENTION channels below subtract it with a correlated NOT EXISTS,
+# so an excluded mention stops producing a co-occurrence edge (and stops seeding a phantom node).
+# Without this anti-join, QC in the app never reached the graph: the CO_OCCURS_* edge counted that
+# video forever, and gap-mining rankings (which read co-occurrence strength) could never improve.
+# Defined ONCE here so BOTH LINKS consumers inherit it identically — the per-channel edge loop AND
+# the ALL_LINKS nodeset union below.
+# The TAG channel already subtracts exclusions in export_tag_edges.py (the repo association layer).
+# LINKS[3] (the SQL tag arm) is kept UN-subtracted ON PURPOSE: it feeds ONLY the nodeset spine (the
+# edge loop skips `tags`), which must stay a SUPERSET covering every tag-edge endpoint. Subtracting
+# it could drop a non-grounded endpoint (a dangling edge) for zero benefit. This asymmetry is pinned
+# by tests/unit/architecture/test_graph_export_honors_exclusions.py.
+EXCL_ANTIJOIN="AND NOT EXISTS (SELECT 1 FROM entity_video_exclusions x
+                   WHERE x.entity_id = em.entity_id AND x.video_id = em.video_id)"
 LINKS=(
-  "SELECT DISTINCT entity_id, video_id FROM entity_mentions WHERE mention_source='transcript'"
-  "SELECT DISTINCT entity_id, video_id FROM entity_mentions WHERE mention_source IN ('title','description')"
-  "SELECT DISTINCT entity_id, video_id FROM entity_mentions WHERE mention_source='manual'"
+  "SELECT DISTINCT em.entity_id, em.video_id FROM entity_mentions em
+     WHERE em.mention_source='transcript' ${EXCL_ANTIJOIN}"
+  "SELECT DISTINCT em.entity_id, em.video_id FROM entity_mentions em
+     WHERE em.mention_source IN ('title','description') ${EXCL_ANTIJOIN}"
+  "SELECT DISTINCT em.entity_id, em.video_id FROM entity_mentions em
+     WHERE em.mention_source='manual' ${EXCL_ANTIJOIN}"
   "SELECT DISTINCT ct.entity_id AS entity_id, vt.video_id AS video_id
      FROM canonical_tags ct
      JOIN tag_aliases ta ON ta.canonical_tag_id = ct.id

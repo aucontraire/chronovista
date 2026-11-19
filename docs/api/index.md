@@ -66,6 +66,9 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/entities/{id}/videos` | GET | Videos associated with entity (filter by `source`, multi-select over `manual`/`transcript`/`title`/`description`/`tag`) |
 | `/entities/{id}/aliases` | POST | Add alias to entity |
 | `/entities/{id}/co-occurring` | GET | Entities sharing videos with this entity |
+| `/graph/health` | GET | Connection-graph serving state (`ServingHealth`) |
+| `/graph/entities` | POST | Which of the given entity ids are present in the graph |
+| `/graph/connect` | GET | How two entities connect (`a`, `b`, `max_hops`, `max_category_size`) |
 | `/corrections/batch/preview` | POST | Preview batch find-replace matches |
 | `/corrections/batch/apply` | POST | Apply batch corrections to selected segments |
 | `/corrections/batch/rebuild-text` | POST | Rebuild transcript text for affected videos |
@@ -79,6 +82,47 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/sync/status` | GET | Sync status |
 | `/videos/{id}/recover` | POST | Recover video metadata via Wayback Machine |
 | `/channels/{id}/recover` | POST | Recover channel metadata via Wayback Machine |
+
+### Connection Graph (Feature 113)
+
+Three read-only endpoints back the web [Connection Explorer](../user-guide/connection-explorer.md).
+All require auth and read the production connection graph (a separate Neo4j datastore, not Postgres).
+
+**`GET /graph/health`** → `ServingHealth`. Reports whether the graph may be served. Degrades
+gracefully: an unreachable graph returns `servable: false`, never a 500.
+
+```json
+{
+  "status": "complete",
+  "loaded_at": "2026-11-18T09:30:00+00:00",
+  "declared_layers": ["observed", "semantic", "categories", "reviewed"],
+  "servable": true
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `status` | `"complete"` \| `"loading"` \| `null` | Build state: complete (servable), rebuilding, or never loaded. |
+| `loaded_at` | string \| null | ISO-8601 time the current build completed, if any. |
+| `declared_layers` | string[] | Layers this build was configured to contain. |
+| `servable` | bool | True iff `status == "complete"` **and** every declared layer is present. |
+
+**`POST /graph/entities`** → `{ "present": [uuid, …] }`. Given `{ "entity_ids": [uuid, …] }` (at most
+500), returns the subset present in the graph — for the graph-present-only picker. On an unavailable
+graph returns an empty set.
+
+**`GET /graph/connect`** → `GraphConnection`. Query parameters:
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `a` | UUID | required | First entity id. |
+| `b` | UUID | required | Second entity id. Must differ from `a`. |
+| `max_hops` | int ≥ 3 | 3 | Reach of the knowledge-base search (a lower value reliably returns nothing, so it is rejected). |
+| `max_category_size` | int ≥ 1 | 500 | Specificity floor — shared categories broader than this are ignored. |
+
+The response carries the reviewed verdict (if any), one chain per connecting kind in by-kind order,
+the `searched_max_hops` it used, and `any_truncated` (the knowledge-base search hit its hop bound
+without connecting). This endpoint refuses a non-servable graph — see the error responses below.
 
 ### Interactive Documentation
 

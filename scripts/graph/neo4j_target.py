@@ -37,12 +37,37 @@ _PLAIN_SCHEMES = {"neo4j", "bolt"}
 _KNOWN_SCHEMES = _SECURE_SCHEMES | _PLAIN_SCHEMES
 
 
+def _allowed_hosts() -> set[str]:
+    """Local hosts, plus ONE explicitly-declared internal deployment host (Feature 113).
+
+    When Neo4j ships inside the stack the loader reaches it at ``bolt://neo4j:7687`` — a
+    non-local host. Rather than disarm the guard with a blanket ``--allow-remote`` in the
+    deployment entrypoint (which would also wave through Aura), the deployment DECLARES its one
+    internal host via ``CHRONO_GRAPH_INTERNAL_HOST=neo4j``. That host is then treated as local;
+    every other non-local target — including any ``neo4j+s://`` Aura URI (always remote via its
+    secure scheme) — still requires a deliberate ``--allow-remote``. Scoped allowance, not an
+    override.
+
+    Caveat: the declared host is trusted over PLAIN bolt (no TLS). Declare only a host you
+    control on the deployment's internal network (the compose ``neo4j`` service), never a name
+    that could resolve to an external Neo4j — a misdeclared internal host would be silently
+    writable (DETACH DELETE) without ``--allow-remote``.
+    """
+    hosts = set(_LOCAL_HOSTS)
+    declared = os.environ.get("CHRONO_GRAPH_INTERNAL_HOST", "").strip().lower()
+    if declared:
+        hosts.add(declared)
+    return hosts
+
+
 def is_remote(uri: str) -> bool:
-    """True if *uri* points at anything other than the local machine.
+    """True if *uri* points at anything other than the local machine (or the one declared
+    internal deployment host — see :func:`_allowed_hosts`).
 
     Fail safe: a URI whose scheme is not one the neo4j driver recognizes (a schemeless string
     included, since urlparse can extract no host from it) is treated as remote — the guard must
-    treat what it cannot classify as the dangerous case, not the safe one.
+    treat what it cannot classify as the dangerous case, not the safe one. A secure scheme
+    (Aura's ``neo4j+s://``) is always remote regardless of host.
     """
     parsed = urlparse(uri)
     if parsed.scheme not in _KNOWN_SCHEMES:
@@ -50,7 +75,7 @@ def is_remote(uri: str) -> bool:
     if parsed.scheme in _SECURE_SCHEMES:
         return True
     host = (parsed.hostname or "").lower()
-    return host not in _LOCAL_HOSTS
+    return host not in _allowed_hosts()
 
 
 def add_argument(parser: argparse.ArgumentParser) -> None:

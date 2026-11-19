@@ -146,7 +146,7 @@ describe('CooccurringPanel (Feature 062, US3)', () => {
       hookMock.mockReturnValue(state({ partners: [partner()] }));
       renderPanel();
 
-      const href = screen.getByRole('link').getAttribute('href') ?? '';
+      const href = screen.getByRole('link', { name: /videos/ }).getAttribute('href') ?? '';
       const params = new URLSearchParams(href.split('?')[1]);
       // Both entities present, as repeated keys — the same scheme the videos
       // list reads, not a parallel one.
@@ -166,7 +166,7 @@ describe('CooccurringPanel (Feature 062, US3)', () => {
       hookMock.mockReturnValue(state({ partners: [partner()] }));
       renderPanel();
 
-      const href = screen.getByRole('link').getAttribute('href') ?? '';
+      const href = screen.getByRole('link', { name: /videos/ }).getAttribute('href') ?? '';
       expect(href.split('?')[0]).toBe('/videos');
     });
 
@@ -176,7 +176,7 @@ describe('CooccurringPanel (Feature 062, US3)', () => {
       hookMock.mockReturnValue(state({ partners: [partner()] }));
       renderPanel({ minEvidence: 'transcript' });
 
-      const href = screen.getByRole('link').getAttribute('href') ?? '';
+      const href = screen.getByRole('link', { name: /videos/ }).getAttribute('href') ?? '';
       expect(new URLSearchParams(href.split('?')[1]).get('min_evidence')).toBe(
         'transcript'
       );
@@ -186,7 +186,7 @@ describe('CooccurringPanel (Feature 062, US3)', () => {
       hookMock.mockReturnValue(state({ partners: [partner()] }));
       renderPanel();
 
-      const href = screen.getByRole('link').getAttribute('href') ?? '';
+      const href = screen.getByRole('link', { name: /videos/ }).getAttribute('href') ?? '';
       expect(new URLSearchParams(href.split('?')[1]).has('min_evidence')).toBe(
         false
       );
@@ -226,6 +226,15 @@ describe('CooccurringPanel (Feature 062, US3)', () => {
       renderPanel({ minEvidence: 'transcript' });
 
       expect(hookMock).toHaveBeenCalledWith(SUBJECT, 12, 'transcript');
+    });
+  });
+
+  describe('connection explorer deep-link (Feature 113, FR-023)', () => {
+    it('links each row to /connections with both endpoints prefilled', () => {
+      hookMock.mockReturnValue(state({ partners: [partner()] }));
+      renderPanel();
+      const link = screen.getByRole('link', { name: /how do these connect/i });
+      expect(link).toHaveAttribute('href', `/connections?a=${SUBJECT}&b=${PARTNER}`);
     });
   });
 });

@@ -15,6 +15,8 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.64.0",
+    "cytoscape": "^3.30.2",
+    "cytoscape-fcose": "^2.2.0",
     "@tanstack/react-virtual": "^3.13.18",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -28,6 +30,8 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/cytoscape": "^3.21.8",
+    "@types/cytoscape-fcose": "^2.2.5",
     "@vitejs/plugin-react": "^4.3.0",
     "@vitest/coverage-v8": "^4.0.18",
     "@vitest/ui": "^4.0.18",

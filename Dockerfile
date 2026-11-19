@@ -64,6 +64,14 @@ RUN pip install --no-cache-dir --no-deps -e .
 COPY alembic.ini ./alembic.ini
 COPY src/chronovista/db/migrations/ ./src/chronovista/db/migrations/
 
+# Copy the graph loader (Features 112/113). Prod Neo4j publishes no host ports, so the connection
+# graph can only be built from inside the container: `docker compose exec app bash -lc 'cd
+# scripts/graph && ./reload_all.sh'`. Only the loader CODE is copied — .dockerignore keeps the
+# generated .jsonl/.csv exports (which carry library content) out of the build context; they are
+# rebuilt here at load time from the live database.
+COPY scripts/graph/*.py scripts/graph/*.sh ./scripts/graph/
+RUN chmod +x ./scripts/graph/*.sh
+
 # Copy built frontend static assets
 COPY --from=frontend-builder /app/frontend/dist ./static/
 

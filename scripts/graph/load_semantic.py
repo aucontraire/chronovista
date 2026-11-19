@@ -26,6 +26,8 @@ from pathlib import Path
 
 from neo4j import GraphDatabase
 
+from chronovista.graph import serving_state  # serving-state bracket (Feature 113)
+
 import neo4j_target  # shared Neo4j target resolver + remote-write guard (scripts/graph/)
 
 # Whitelist of relationship types we emit (never interpolate untrusted text as a type).
@@ -115,6 +117,7 @@ def main() -> int:
     try:
         driver.verify_connectivity()
         with driver.session(database=db_name) as session:
+            serving_state.enter(session)  # bracket this layer (Feature 113)
             if args.wipe_semantic:
                 print("Wiping semantic layer...")
                 # Delete every non-co-occurrence edge. Guards the WHOLE CO_OCCURS_* family (the
@@ -142,6 +145,7 @@ def main() -> int:
                 "MATCH ()-[r]->() WHERE NOT type(r) STARTS WITH 'CO_OCCURS_' "
                 "RETURN stubs, count(r) AS semrels"
             ).single()
+            serving_state.leave(session)  # close bracket only on success (Feature 113)
         print(f"\nDone. Wrote {n_stubs} stubs / {n_edges} semantic edges.")
         print(
             f"Graph now holds {counts['stubs']} :WikidataItem nodes and {counts['semrels']} semantic relationships."

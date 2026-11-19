@@ -50,6 +50,8 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from chronovista.graph import serving_state  # serving-state bracket (Feature 113)
+
 import neo4j_target  # shared Neo4j target resolver + remote-write guard (scripts/graph/)
 
 REL_TYPES = {
@@ -183,6 +185,14 @@ def main() -> int:
     neo4j_target.add_argument(ap)
     args = ap.parse_args()
 
+    # Declared-optional (Feature 113): the reviewed layer is skipped only when the deployment
+    # DECLARES it is not expected (CHRONO_REVIEWED_EXPECTED=0) — never inferred from whether
+    # verdicts.jsonl happens to exist. When expected (the default) a missing file still fails
+    # LOUD below, so an accidental loss of the owner-only file is caught, not silently skipped.
+    if os.environ.get("CHRONO_REVIEWED_EXPECTED", "1") == "0":
+        print("Reviewed layer declared NOT expected (CHRONO_REVIEWED_EXPECTED=0) — skipping.")
+        return 0
+
     if not VERDICTS.exists():
         sys.exit(f"verdicts not found: {VERDICTS}")
 
@@ -235,6 +245,7 @@ def main() -> int:
     try:
         driver.verify_connectivity()
         with driver.session(database=db_name) as session:
+            serving_state.enter(session)  # bracket this layer (Feature 113)
             if args.wipe_reviewed:
                 print("Wiping reviewed layer...")
                 for rel in REL_TYPES:
@@ -254,6 +265,7 @@ def main() -> int:
                 "MATCH ()-[r]->() WHERE r.layer='reviewed' "
                 "RETURN type(r) AS t, r.confidence AS c, count(*) AS n ORDER BY t, c"
             ).data()
+            serving_state.leave(session)  # close bracket only on success (Feature 113)
         print(f"\nDone. Wrote {total} reviewed edges.")
         for row in counts:
             print(f"  :{row['t']:<16} {row['c']:<7} {row['n']}")

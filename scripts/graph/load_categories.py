@@ -40,6 +40,8 @@ from pathlib import Path
 
 from neo4j import GraphDatabase
 
+from chronovista.graph import serving_state  # serving-state bracket (Feature 113)
+
 import neo4j_target  # shared Neo4j target resolver + remote-write guard (scripts/graph/)
 
 HERE = Path(__file__).resolve().parent
@@ -112,6 +114,7 @@ def main() -> int:
     try:
         driver.verify_connectivity()
         with driver.session(database=db_name) as session:
+            serving_state.enter(session)  # bracket this layer (Feature 113)
             if args.wipe_categories:
                 print("Wiping category layer...")
                 session.run("MATCH (c:Category) DETACH DELETE c").consume()
@@ -129,6 +132,7 @@ def main() -> int:
                 "OPTIONAL MATCH ()-[r:IN_CATEGORY]->() "
                 "RETURN cats, count(r) AS edges"
             ).single()
+            serving_state.leave(session)  # close bracket only on success (Feature 113)
         print(f"\nDone. Wrote {n_nodes} category nodes / {n_edges} edges.")
         print(
             f"Graph now holds {counts['cats']} :Category nodes "

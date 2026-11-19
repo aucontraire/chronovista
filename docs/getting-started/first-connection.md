@@ -84,9 +84,27 @@ docker compose -f docker-compose.dev.yml --profile graph down
 Run the same query with the graph stopped and you'll get a clean "Graph unavailable" message
 with how to restart it — never a crash.
 
+## Prefer the browser?
+
+Everything above uses the CLI against a graph you stand up yourself. If you run the full Docker
+stack, there is a second path: the **web Connection Explorer**, served by the app against the
+production graph. Build that graph once with `make graph-reload` (it runs inside the app container
+and rebuilds from your database); until then the page honestly reports *"not available yet."*
+
+1. With the stack running and the graph built (`make graph-reload`), open **`/connections`** (for
+   example `http://localhost:8765/connections`).
+2. Search and pick **Entity A**, then **Entity B**. Entities already in the graph are offered first;
+   ones missing from it are shown but disabled.
+3. Read the result as an interactive graph plus an equivalent table — and notice it draws the same
+   five honest states (connected / no knowledge-base path / unavailable / not in the current graph /
+   error) rather than ever collapsing them into one.
+
+A quick shortcut: on any entity detail page, the **Appears with** panel has a **"How do these
+connect?"** link per row that opens the explorer with both entities already filled in.
+
 ## Where to go next
 
 - [See how two entities connect](../user-guide/connection-explorer.md) — all the options and
-  output details.
+  output details, including the full web-UI walkthrough.
 - [How the connection explorer answers honestly](../architecture/connection-explorer.md) — why
   it's built this way.

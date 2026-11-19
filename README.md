@@ -58,6 +58,7 @@ Not a multi-user service, not cloud-hosted, not a YouTube analytics competitor. 
 | **Tag Canonicalization** | Collapse raw tag variants into canonical forms; fuzzy search, alias tracking, reversible curation (merge / split / classify / deprecate) |
 | **Named Entity Mentions** | Alias-matched mentions across transcript, title, description, and tags, with longest-match disambiguation and exclusion patterns |
 | **Entity–Channel Ownership** | Record which entities operate which channels — imported from a knowledge base and asserted by hand, kept distinct by provenance, surfaced on both entity and channel pages |
+| **Connection Explorer** | See how any two entities connect — reviewed verdicts, knowledge-base chains, shared categories, and co-occurrence — as an interactive graph plus an accessible edge table in the web UI, or via `chronovista graph connect`; honest about a stale or rebuilding graph rather than faking "no connection" |
 | **Deleted Video Recovery** | Reconstruct metadata for unavailable videos via the Wayback Machine CDX API |
 | **Multi-Language Transcripts** | Per-language download preferences across a quality hierarchy (manual CC > professional > auto-synced > ASR) |
 | **Channel Analytics** | Per-channel subscription tracking, keyword extraction, and topic analysis |
@@ -160,6 +161,9 @@ chronovista tags merge "peruu" "peruvia" --into "Peru" --reason "spelling varian
 # Detect named entity mentions across transcripts, titles, descriptions, and tags
 chronovista entities scan --full
 
+# See how two entities connect (or open the /connections page in the web UI)
+chronovista graph connect <entity-a-id> <entity-b-id>
+
 # Recover deleted videos from the Wayback Machine
 chronovista recover video --all --start-year 2018
 
@@ -170,7 +174,7 @@ chronovista identity repair --dry-run
 chronovista api start --port 8765
 ```
 
-The web dashboard — video browsing with tag/category/topic filters, transcript search with inline corrections, entity detail pages, and guided onboarding — runs at `http://localhost:8766` via `make dev`.
+The web dashboard — video browsing with tag/category/topic filters, transcript search with inline corrections, entity detail pages, a connection explorer at `/connections` that graphs how any two entities relate, and guided onboarding — runs at `http://localhost:8766` via `make dev`.
 
 The full [CLI, REST API, and code reference](https://aucontraire.github.io/chronovista/reference/) is generated from source.
 

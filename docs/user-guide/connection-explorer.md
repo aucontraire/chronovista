@@ -18,9 +18,23 @@ returns, strongest kind first:
 
 Everything is read-only. The command never changes a mention, an entity, or the graph.
 
-!!! warning "This is a dev-scoped tool"
-    The connection explorer reads a local Neo4j graph you stand up yourself (below). It is not
-    part of the production stack, and it is built from a read-only snapshot of your data.
+There are two ways to ask the question, and they read **different graphs**:
+
+- **The `chronovista graph connect` CLI** reads a **dev-scoped** Neo4j you stand up yourself (the
+  steps below). It is not part of the production stack.
+- **The web Connection Explorer** (at `/connections`, documented under
+  [In the web UI](#in-the-web-ui)) is served by the production app against the **production** Neo4j
+  that now ships in the main Docker stack. You do not stand that one up by hand — it comes up with
+  the rest of the stack.
+
+Both are read-only, and both answer the same question with the same honest states; they differ
+only in which graph they read and how you reach them.
+
+!!! warning "The CLI path is dev-scoped"
+    The `chronovista graph connect` command reads a local Neo4j graph you stand up yourself (the
+    [prerequisite](#prerequisite-stand-up-the-dev-graph) below), built from a read-only snapshot of
+    your data. The web explorer is the production-served path and needs no manual graph — see
+    [In the web UI](#in-the-web-ui).
 
 ## Prerequisite: stand up the dev graph
 
@@ -110,8 +124,90 @@ Every failure is a clean, non-zero exit with a clear message — never a traceba
 - a well-formed id that isn't loaded → "not in the loaded graph" (it may be stale);
 - a name that matches nothing → "no entity named …".
 
+## In the web UI
+
+The web Connection Explorer answers the same question in the browser, with an interactive graph and
+an equivalent table. It lives at **`/connections`** and is served by the production app against the
+production Neo4j in the Docker stack.
+
+The graph is built from your database on demand. Build it once — and re-run whenever you want to
+refresh it from newer data:
+
+```bash
+make graph-reload
+```
+
+The loader runs **inside the app container** (production Neo4j publishes no host ports), reads your
+database read-only, and rebuilds all four layers. Until it has been built, the page honestly reports
+*"not available yet"* and names this step — never a false *"no connection."*
+
+### Open it and pick two entities
+
+1. Go to **`/connections`** (for example `http://localhost:8765/connections`).
+2. In **Entity A**, type at least two characters and pick an entity. The picker lists
+   **graph-present entities first**; an entity that is in your library but *not in the current
+   graph* is shown but **disabled** with a "not in current graph" note, so you are never led into a
+   guaranteed dead end.
+3. Pick **Entity B** the same way. The result loads as soon as both are chosen (and they differ).
+
+!!! tip "Jump straight from an entity's 'Appears with' panel"
+    Every row of the **Appears with** panel on an entity detail page has a **"How do these
+    connect?"** action. It opens `/connections` with *both* endpoints already filled in — the page
+    carries them in the address as `?a=<id>&b=<id>`, so the link is shareable and reproduces the
+    same query.
+
+### Read the graph
+
+- The graph is an **interactive node-link view**: the two entities are the endpoints, with the
+  connecting neighbourhood between them. Pan and zoom to explore; a legend explains the encoding.
+- **Nothing depends on colour alone.** Connection kind is shown by **line style** — a solid line is
+  a knowledge-base relationship, a dotted line is a shared category, and a dashed curve is the
+  **co-occurrence overlay**. Node **role** is shown by shape, and a **category bridge node is sized
+  by its specificity** (a narrow, meaningful category is drawn larger than a broad one).
+- **Co-occurrence is a separate overlay**, drawn as a distinct dashed curve between the endpoints —
+  never folded into the knowledge-base path, and shown even when a knowledge-base path also exists.
+- Below the graph is an **equivalent table** (source, relationship, target, kind) built from the
+  same data as the graph, so the two can never disagree. The table is the **keyboard and
+  screen-reader path**: a "Skip to table" link jumps to it, and it conveys every node and edge the
+  graph shows. A very large result hides the graph (to stay readable) and shows the table alone —
+  tighten the controls if that happens.
+
+### Tune the search
+
+Two controls bound the result:
+
+| Control | Effect |
+|---|---|
+| **Reach (hops)** | How far the knowledge-base search looks between the two entities. Minimum **3** (a lower reach reliably returns nothing, so it is not offered); default **3**. |
+| **Largest category size** | The specificity floor — shared categories broader than this are ignored. Default **500**. |
+
+### The five honest states
+
+The web explorer never conflates these outcomes — each reads as itself:
+
+1. **Connected** — the graph and table render the connection. A **human-reviewed *relationship***
+   verdict reads as **connected** even when no chain was inferred (a confirmed tie the knowledge
+   base may not state yet), shown as a "Reviewed: confirmed relationship" note plus a direct edge.
+2. **No knowledge-base connection** — a "no path" result that still shows **each endpoint's
+   knowledge-base coverage** (its count of KB facts) and a **link to each endpoint's external
+   record**, so you can act on the gap. An endpoint that is not yet enriched gets a **"Look up on
+   Wikidata"** fallback link rather than a dead end.
+3. **Graph unavailable** — the graph is **rebuilding** ("try again in a few minutes") or has
+   **never been loaded / can't be reached** (names the next action). This is never shown as "no
+   connection" or as an error.
+4. **Not in the current graph** — a chosen entity is valid in your library but absent from the
+   current graph (the graph may be **older than your library**). This is distinct from "no
+   connection": pick a different entity, or rebuild the graph.
+5. **Error** — a generic request failure with a Retry button.
+
+A **"Graph as of &lt;date&gt;"** line shows when the served graph was last built, so you can judge
+how current it is.
+
 ## See also
 
 - [How the connection explorer answers honestly](../architecture/connection-explorer.md) — the
-  design: the tiers, the shape-split, log-specificity, and why order is by kind.
+  design: the tiers, the shape-split, log-specificity, the serving-state honesty contract, and why
+  order is by kind.
 - [Your first connection query](../getting-started/first-connection.md) — a guided walkthrough.
+- [Find what entities have in common](entity-intersection.md) — the **Appears with** panel the
+  web explorer deep-links from.

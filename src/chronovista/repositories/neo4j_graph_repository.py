@@ -15,7 +15,7 @@ import math
 from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
-from chronovista.graph import Neo4jClient
+from chronovista.graph import Neo4jClient, serving_state
 from chronovista.models.graph_connection import (
     ConnectionChain,
     ConnectionKind,
@@ -23,6 +23,7 @@ from chronovista.models.graph_connection import (
     GraphNode,
     PathStep,
     ReviewedVerdict,
+    ServingHealth,
 )
 
 if TYPE_CHECKING:
@@ -94,6 +95,95 @@ class Neo4jGraphRepository:
     def __init__(self, client: Neo4jClient) -> None:
         self._client = client
 
+    async def entity_ids_in_graph(self, entity_ids: list[UUID]) -> set[UUID]:
+        """Return the subset of *entity_ids* present as ``:Entity`` nodes — for the graph-present-
+        only picker (FR-002). The graph is a periodically-rebuilt projection, so the library can
+        hold entities the graph does not; the picker uses this to prefer present ones.
+        """
+        if not entity_ids:
+            return set()
+        query = (
+            "UNWIND $ids AS id MATCH (e:Entity {entityId: id}) RETURN e.entityId AS id"
+        )
+        async with self._client.session() as session:
+            result = await session.run(query, ids=[str(i) for i in entity_ids])
+            return {UUID(record["id"]) async for record in result}
+
+    async def read_meta(self) -> tuple[str | None, object, list[str]]:
+        """Read the ``:Meta`` serving-state node: ``(status, loadedAt, declaredLayers)``. Absent
+        (never loaded) -> ``(None, None, [])``. (Named ``read_meta``, not ``serving_state``, to not
+        shadow the imported :mod:`serving_state` module.)
+        """
+        async with self._client.session() as session:
+            result = await session.run(serving_state.META_READ_CYPHER)
+            record = await result.single()
+        if record is None:
+            return None, None, []
+        return (
+            record["status"],
+            record["loaded_at"],
+            list(record["declared_layers"] or []),
+        )
+
+    @staticmethod
+    def _to_iso(loaded_at: object) -> str | None:
+        """Serialize a Neo4j ``DateTime`` (or python datetime) as ISO-8601. Neo4j stringifies
+        with nanosecond precision which some JS ``Date`` parsers reject, so prefer ``isoformat``.
+        """
+        if loaded_at is None:
+            return None
+        native = getattr(loaded_at, "to_native", None)
+        value = native() if callable(native) else loaded_at
+        iso = getattr(value, "isoformat", None)
+        return iso() if callable(iso) else str(value)
+
+    async def health(self) -> ServingHealth:
+        """Serving-state + servability as a :class:`ServingHealth`. Servable iff the build is
+        ``complete`` AND every DECLARED layer is present (FR-010/FR-011); the predicate lives once
+        in :func:`serving_state.is_servable`.
+
+        This is one ``:Meta`` read followed by up to one presence probe per declared layer (a
+        fixed, small set — not an unbounded N+1), short-circuiting to the Meta read alone when the
+        build is not ``complete``. It is NOT atomic: a loader could flip ``:Meta`` to ``loading``
+        (which the bracket does *before* any wipe) between the Meta read and a probe, so a verdict
+        read as servable can be stale by one query — optimistically so, in the sub-millisecond gap
+        against a rebuild that runs for minutes. That window is acceptable and deliberately not
+        closed end-to-end: ``/connect`` re-gates on every request, and the far larger gap is
+        between this gate and ``/connect``'s own queries, which no single-query Meta read would
+        close anyway.
+        """
+        status, loaded_at, declared = await self.read_meta()
+        loaded_iso = self._to_iso(loaded_at)
+        if status != "complete" or not declared:
+            # short-circuit: skip presence probes
+            return ServingHealth(
+                status=status,
+                loaded_at=loaded_iso,
+                declared_layers=declared,
+                servable=False,
+            )
+        present: set[str] = set()
+        async with self._client.session() as session:
+            for layer in serving_state.GraphLayer:
+                if layer.value not in declared:
+                    continue
+                probe = await session.run(serving_state.LAYER_PRESENCE_CYPHER[layer])
+                if await probe.single() is not None:
+                    present.add(layer.value)
+        return ServingHealth(
+            status=status,
+            loaded_at=loaded_iso,
+            declared_layers=declared,
+            servable=serving_state.is_servable(status, declared, present),
+        )
+
+    async def is_servable(self) -> bool:
+        """Whether a connection result may be served (FR-010/FR-011). Delegates to
+        :meth:`health` so the presence logic lives in one place — used as the ``/connect``
+        precondition (Phase 3).
+        """
+        return (await self.health()).servable
+
     async def get_entity_node(self, entity_id: UUID) -> GraphNode:
         """Hydrate the :class:`GraphNode` for an entity, by its ``entityId``.
 
@@ -163,9 +253,8 @@ class Neo4jGraphRepository:
         Raises
         ------
         GraphUnavailableError
-            If the graph cannot be reached on first connect. (Once the driver has connected, a
-            later outage surfaces a bare driver error instead — a pre-existing reconnect gap,
-            not specific to this method.)
+            If the graph cannot be reached — on first connect or a mid-session outage alike; the
+            client wraps both (#408).
         """
         query = (
             "MATCH (e:Entity) WHERE toLower(e.name) = toLower($name) "
@@ -545,7 +634,13 @@ class Neo4jGraphRepository:
         best_name, best_term = max(terms, key=lambda t: (t[1], t[0] or ""))
         first = rows[0]
         category_node = GraphNode(
-            entity_id=None, name=best_name or "", label="Category", is_bridge=True
+            entity_id=None,
+            name=best_name or "",
+            label="Category",
+            is_bridge=True,
+            # Server-computed log-specificity (same value the PathStep carries) so the frontend
+            # sizes the category node by it and never recomputes the log scale (T015, FR-008).
+            specificity=best_term,
         )
         b_node = GraphNode(
             entity_id=first["b_id"],

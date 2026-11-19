@@ -71,6 +71,8 @@ This is the discovery path: you don't need to know what to search for. Open an e
 
 If **Transcript only** is active, the panel honours it and carries it forward, so the count and the page it opens are computed under one definition.
 
+Each row also has a **"How do these connect?"** link. Where clicking the row shows you the shared *videos*, this opens the [Connection Explorer](connection-explorer.md#in-the-web-ui) with both entities pre-filled — so you can ask not just *where* they appear together but *how* they are related (a knowledge-base path, a shared category, or only co-occurrence).
+
 ## Share a filtered view
 
 Everything lives in the page address — required entities, exclusions, and the transcript-only setting. Copy the URL and it reproduces the same result set, ordering, and total:

@@ -60,6 +60,12 @@ export function CooccurringPanel({
     return `/videos?${params.toString()}`;
   }
 
+  /** Deep-link into the Connection Explorer with both endpoints prefilled (FR-023). */
+  function connectionHref(partnerId: string): string {
+    const params = new URLSearchParams({ a: entityId, b: partnerId });
+    return `/connections?${params.toString()}`;
+  }
+
   return (
     <section
       className={`rounded-lg border border-slate-200 bg-white p-4 ${className}`.trim()}
@@ -118,10 +124,10 @@ export function CooccurringPanel({
         <>
           <ul className="space-y-1">
             {partners.map((partner) => (
-              <li key={partner.entity_id}>
+              <li key={partner.entity_id} className="flex items-center gap-2">
                 <Link
                   to={intersectionHref(partner.entity_id)}
-                  className="flex items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50"
+                  className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded px-2 py-1.5 text-sm hover:bg-slate-50"
                 >
                   <EntityName
                     name={partner.canonical_name}
@@ -132,6 +138,14 @@ export function CooccurringPanel({
                     {partner.shared_video_count}{" "}
                     {partner.shared_video_count === 1 ? "video" : "videos"}
                   </span>
+                </Link>
+                {/* Sibling, not nested: an anchor inside an anchor is invalid (FR-023). */}
+                <Link
+                  to={connectionHref(partner.entity_id)}
+                  aria-label={`How do these connect? ${partner.canonical_name}`}
+                  className="shrink-0 text-xs text-indigo-700 hover:underline"
+                >
+                  How do these connect?
                 </Link>
               </li>
             ))}

@@ -27,6 +27,7 @@ from chronovista.api.routers import (
     categories,
     channels,
     entity_mentions,
+    graph,
     health,
     images,
     onboarding,
@@ -248,6 +249,7 @@ async def log_requests(
 
 # Mount routers under /api/v1 prefix (FR-028 versioning)
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
+app.include_router(graph.router, prefix="/api/v1", tags=["graph"])
 app.include_router(channels.router, prefix="/api/v1", tags=["channels"])
 app.include_router(playlists.router, prefix="/api/v1", tags=["playlists"])
 app.include_router(overview.router, prefix="/api/v1", tags=["overview"])

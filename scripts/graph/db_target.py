@@ -24,6 +24,7 @@ resolves to a development database without being asked for.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -32,8 +33,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from chronovista.config.settings import settings  # noqa: E402
 
-# The database the rest of this directory already points at by default.
-DEFAULT_URL = "postgresql+asyncpg://chronovista:chronovista@localhost:5435/chronovista"
+# The database the rest of this directory already points at by default. In a container the
+# deployment redirects this via CHRONO_GRAPH_PG_URL, which MUST point at the SAME Postgres as
+# export_graph.sh's CHRONO_PGHOST/PORT/USER/DB (the two target mechanisms have to agree —
+# Feature 113). The default keeps the local prod port for dev use.
+DEFAULT_URL = os.environ.get("CHRONO_GRAPH_PG_URL") or (
+    "postgresql+asyncpg://chronovista:chronovista@localhost:5435/chronovista"
+)
 
 _CREDENTIALS = re.compile(r"//[^/@]*@")
 

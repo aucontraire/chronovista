@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.125.0] - 2026-11-18
+
+### Added
+
+- **Connection explorer frontend (Feature 113).** A `/connections` page brings the Feature-112
+  graph connection explorer to the web UI: pick two entities and see how — and whether — they
+  connect, as an interactive Cytoscape.js neighbourhood graph plus a role-queryable accessibility
+  table built from the same pure transform. Edges are styled by connecting kind and category
+  bridges are sized by server-computed specificity (never recomputed in the browser);
+  co-occurrence renders as a separate overlay, not folded into the shortest-path edges. The picker
+  lists graph-present entities first (a membership probe), and each `CooccurringPanel` row deep-links
+  into the explorer with both endpoints pre-filled.
+- **Read-only graph API (`/api/v1/graph/*`).** `GET /graph/health` (serving state), `POST
+  /graph/entities` (graph membership for the picker), and `GET /graph/connect` (the neighbourhood),
+  all over `Neo4jGraphRepository`. RFC-7807 problems: 503 when the graph is not servable, 404 for a
+  valid id absent from the current graph (distinct from "no connection"), 422 for `a == b` or a
+  reach below the floor of 3. The connection result reads as *connected* even with zero inferred
+  chains when a human-reviewed relationship verdict exists.
+- **Graph serving-state contract.** A label-isolated `:Meta` node records each build's status and
+  *declared* layers; a re-entrant bracket spans all destructive loaders, and the API serves a graph
+  only when the build is `complete` **and** every declared layer is present — so a mid-rebuild or
+  partially-wiped graph is reported "not available," never mistaken for a real "no connection"
+  result. The reviewed layer is declared-optional (absent-by-declaration ≠ accidentally missing).
+- **Neo4j in the production stack.** The compose stack runs Neo4j with no published host ports
+  (bolt internal only); the loader write-guard allows the one internal host without opening up to
+  arbitrary remote targets (Aura stays remote). The graph loader (`scripts/graph/`) ships in the
+  app image so the graph can be built from inside the container (`docker compose exec app …
+  reload_all.sh`) — the only load path, since Neo4j has no host ports. Only the loader *code* is
+  copied; the generated exports (which carry library data) stay out and are rebuilt at load time.
+
 ## [0.124.0] - 2026-11-17
 
 ### Added

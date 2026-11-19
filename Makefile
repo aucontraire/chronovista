@@ -1,5 +1,5 @@
 # Makefile for chronovista development (Poetry-based)
-.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit pre-push run build docs docs-serve docs-build docs-deploy dev dev-backend dev-frontend generate-api docker-build docker-up docker-down docker-logs docker-shell docker-db-shell docker-status docker-setup docker-clean docker-restart
+.PHONY: help install install-dev clean test test-cov test-unit test-integration test-integration-reset lint format type-check quality pre-commit pre-push run build docs docs-serve docs-build docs-deploy dev dev-backend dev-frontend generate-api docker-build docker-up docker-down docker-logs docker-shell docker-db-shell docker-status docker-setup docker-clean docker-restart graph-reload
 
 # Default target
 help:
@@ -103,6 +103,7 @@ help:
 	@echo "  docker-status     - Show container status and health"
 	@echo "  docker-shell      - Open a bash shell in the app container"
 	@echo "  docker-db-shell   - Open psql shell in the Docker postgres"
+	@echo "  graph-reload      - Rebuild the Neo4j connection-graph from the live database"
 	@echo "  docker-clean      - Stop stack and remove volumes (destroys DB data)"
 	@echo ""
 	@echo "Environment:"
@@ -726,6 +727,12 @@ docker-shell:
 # Open psql shell in Docker postgres
 docker-db-shell:
 	docker compose exec postgres psql -U $${DB_USER:-chronovista} -d chronovista
+
+# Rebuild the connection-graph (Neo4j) from the live database. Runs the loader inside the app
+# container (prod Neo4j has no host ports); all env comes from the app service (docker-compose.yml),
+# so no vars are needed here. Safe to re-run — it wipes and reloads all layers.
+graph-reload:
+	docker compose exec app bash -lc 'cd scripts/graph && ./reload_all.sh'
 
 # Stop stack and remove volumes (DESTROYS database data)
 docker-clean:

@@ -311,6 +311,49 @@ External service (e.g., YouTube API) unavailable:
 }
 ```
 
+### Connection Graph errors
+
+The connection-graph endpoints (`/api/v1/graph/*`, Feature 113) reuse the shared problem vocabulary
+rather than inventing graph-specific codes — a client keys on the HTTP **status**, not on a bespoke
+`type` URI. Three statuses carry distinct meanings:
+
+**503 `SERVICE_UNAVAILABLE`** — `GET /graph/connect` refuses to answer from a graph that is
+rebuilding, missing a declared layer, has never been loaded, or is unreachable. This is the "graph
+unavailable" state, never a "no connection" result:
+
+```json
+{
+  "type": "https://api.chronovista.com/errors/SERVICE_UNAVAILABLE",
+  "title": "Service Unavailable",
+  "status": 503,
+  "detail": "The connection graph is rebuilding or not yet loaded.",
+  "instance": "/api/v1/graph/connect",
+  "code": "SERVICE_UNAVAILABLE",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**404 `NOT_FOUND`** — a well-formed entity id that is valid in the library but **not present in the
+current graph** (the graph is a periodically-rebuilt projection and can lag the library). The
+`detail` text is what distinguishes "valid id, not in this graph" from "no connection" — the latter
+is a normal `200` result with empty chains, not an error:
+
+```json
+{
+  "type": "https://api.chronovista.com/errors/NOT_FOUND",
+  "title": "Resource Not Found",
+  "status": 404,
+  "detail": "The id is valid but is not in the current graph (the graph may be older than the library).",
+  "instance": "/api/v1/graph/connect",
+  "code": "NOT_FOUND",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**422 `VALIDATION_ERROR`** — the two endpoints are the same id (`a == b`), or `max_hops` is below its
+floor of 3. (`GET /graph/health` and `POST /graph/entities` do not 503 on an unavailable graph; they
+degrade gracefully — `servable: false` and an empty `present` set respectively.)
+
 ---
 
 ## Client Integration

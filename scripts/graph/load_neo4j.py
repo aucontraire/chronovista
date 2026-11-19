@@ -34,6 +34,7 @@ from pathlib import Path
 
 from neo4j import GraphDatabase
 
+from chronovista.graph import serving_state  # serving-state bracket (Feature 113)
 from chronovista.models.enums import EntityType
 
 import neo4j_target  # shared Neo4j target resolver + remote-write guard (scripts/graph/)
@@ -133,9 +134,16 @@ def main() -> int:
     try:
         driver.verify_connectivity()
         with driver.session(database=db_name) as session:
+            # Enter the serving-state bracket BEFORE the wipe so :Meta exists and reads
+            # 'loading' while the graph is torn down. leave() runs only on success (below),
+            # so a crash mid-load leaves the graph unservable — the fail-safe (Feature 113).
+            serving_state.enter(session)
             if args.wipe:
-                print("Wiping graph (DETACH DELETE)...")
-                session.run("MATCH (n) DETACH DELETE n").consume()
+                # Scope the wipe so the serving-state node survives the rebuild (the only
+                # unqualified node delete in the loaders). The other loaders' deletes are
+                # label-/relationship-scoped and already leave :Meta alone.
+                print("Wiping graph (DETACH DELETE, keeping :Meta)...")
+                session.run("MATCH (n) WHERE NOT n:Meta DETACH DELETE n").consume()
             # Uniqueness constraint makes MERGE fast (index-backed) and blocks dupes.
             session.run(
                 "CREATE CONSTRAINT entity_id IF NOT EXISTS "
@@ -154,6 +162,9 @@ def main() -> int:
                 "MATCH ()-[c]->() WHERE type(c) STARTS WITH 'CO_OCCURS_' "
                 "RETURN type(c) AS t, count(c) AS n ORDER BY n DESC"
             ).data()
+            # Leave the bracket only after a successful load (not in finally): a failure
+            # above keeps :Meta at 'loading' so the graph stays unservable.
+            serving_state.leave(session)
         print(f"\nDone. Wrote {n_nodes} nodes / {n_edges} edges.")
         print(f"Graph now holds {counts['nodes']} :Entity nodes and {counts['edges']} CO_OCCURS_* edges:")
         for row in by_type:

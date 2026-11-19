@@ -20,6 +20,11 @@ PGPORT="${CHRONO_PGPORT:-5435}"
 PGUSER="${CHRONO_PGUSER:-chronovista}"
 PGDATABASE="${CHRONO_PGDB:-chronovista}"
 export PGPASSWORD="${CHRONO_PGPASSWORD:-chronovista}"
+# The tag channel (export_tag_edges.py -> db_target.py) reads CHRONO_GRAPH_PG_URL; derive it from
+# the psql vars above so the TWO Postgres targets agree by default — a mismatch would silently
+# split the export across two databases (nodes from one, tag edges from another). An explicit
+# CHRONO_GRAPH_PG_URL still wins.
+export CHRONO_GRAPH_PG_URL="${CHRONO_GRAPH_PG_URL:-postgresql+asyncpg://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}}"
 THRESHOLD="${1:-2}"
 # Co-occurrence is SPLIT into one edge TYPE per presence channel (Option 1, 2026-10-26), so a
 # co-tagged pair is distinguishable from a discussed-together pair. Each channel is a
@@ -102,7 +107,18 @@ NODESET_CTE="nodeset AS (
 # significant_person, unmarried_partner, field_of_work). reltype = field name upper-cased, which
 # reproduces the historical mapping exactly. Override the repo location with CHRONO_REPO.
 REPO="${CHRONO_REPO:-$(cd "$HERE/../.." && pwd)}"
-REL_VALUES=$(cd "$REPO" && poetry run python -c "
+# The repo-backed export steps need the chronovista package. In dev that's `poetry run python`;
+# in the container chronovista is pip-installed and there is no poetry. Auto-detect so the loader
+# works in both without ceremony: honour CHRONO_EXPORT_PYTHON if set, else `poetry run python` when
+# poetry is on PATH, else plain `python` (the container — matching load steps [2]-[5]).
+if [ -n "${CHRONO_EXPORT_PYTHON:-}" ]; then
+  GRAPH_PY="$CHRONO_EXPORT_PYTHON"
+elif command -v poetry >/dev/null 2>&1; then
+  GRAPH_PY="poetry run python"
+else
+  GRAPH_PY="python"
+fi
+REL_VALUES=$(cd "$REPO" && $GRAPH_PY -c "
 from chronovista.services.wikidata_properties import RELATIONS
 print(','.join(f\"('{f}','{f.upper()}')\" for f in dict.fromkeys(RELATIONS.values())))
 ")
@@ -130,7 +146,7 @@ fi
 # (opt-outs, the one key override, single-valued items, the relation-as-attribute extra) live here,
 # not in the registry, which stays display-agnostic. A coverage FAIL exits non-zero → empty capture
 # → the check below aborts the export.
-ATTR_PAIRS=$(cd "$REPO" && poetry run python - <<'PY'
+ATTR_PAIRS=$(cd "$REPO" && $GRAPH_PY - <<'PY'
 import sys
 from chronovista.services.wikidata_properties import (
     ATTRIBUTES_ITEM,
@@ -268,7 +284,7 @@ SQL
   done
   # CO_OCCURS_TAGS from the repo's association layer (Option B). Same PROD DB as the psql queries
   # (db_target DEFAULT_URL = :5435). Emits e1,e2,CO_OCCURS_TAGS,n rows.
-  ( cd "$REPO" && CHRONO_REPO="$REPO" poetry run python "$HERE/export_tag_edges.py" \
+  ( cd "$REPO" && CHRONO_REPO="$REPO" $GRAPH_PY "$HERE/export_tag_edges.py" \
       --threshold "${THRESHOLD_TAGS:-$THRESHOLD}" )
 } > "$HERE/cooccurs.csv"
 

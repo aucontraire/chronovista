@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "chronovista"
-version = "0.124.0"
+version = "0.125.0"
 description = "Personal YouTube data analytics tool for comprehensive access to your YouTube engagement history"
 authors = ["chronovista <noreply@chronovista.dev>"]
 maintainers = ["chronovista <noreply@chronovista.dev>"]
@@ -55,9 +55,9 @@ jellyfish = "^1.2.1"
 metaphone = "^0.6"
 selenium = "^4.25.0"
 webdriver-manager = "^4.0.0"
-# Neo4j async driver — the only supported client for the dev-scoped connection-explorer
-# graph (Feature 112). Optional at runtime: the graph client connects lazily and the
-# capability is absent by default from the shipped stack.
+# Neo4j async driver — the only supported client for the connection-explorer graph
+# (Features 112/113). Ships in the production stack (docker-compose.yml `neo4j` service);
+# the graph client connects lazily and degrades gracefully when the graph is unavailable.
 neo4j = "^5.26.0"
 
 [tool.poetry.group.dev.dependencies]

@@ -161,6 +161,18 @@ class _FakeSession:
                     }
                 ]
             )
+        if "(m:Meta" in query:
+            # A complete build with one declared layer, so health() does not short-circuit and
+            # goes on to issue the per-layer presence probes (which this guard then scans).
+            return _FakeResult(
+                [
+                    {
+                        "status": "complete",
+                        "loaded_at": None,
+                        "declared_layers": ["observed"],
+                    }
+                ]
+            )
         return _FakeResult([])
 
 
@@ -186,8 +198,9 @@ _WRITE_CLAUSE = re.compile(
 _VAR_LENGTH = re.compile(r"\[[^\]]*\*")
 
 # The repository methods the recording guards actually drive: connection() transitively, plus
-# resolve()'s name path (find_entities_by_name). Pinned against the AST truth below so a NEW
-# query-builder method can't escape the FR-008/FR-016 guards by living off connection()'s path.
+# resolve()'s name path (find_entities_by_name) and the serving-state reads (health → read_meta +
+# the presence probes; entity_ids_in_graph for the picker). Pinned against the AST truth below so a
+# NEW query-builder method can't escape the FR-008/FR-016 guards by living off another path.
 _EXERCISED_QUERY_METHODS = {
     "get_entity_node",
     "find_entities_by_name",
@@ -198,6 +211,9 @@ _EXERCISED_QUERY_METHODS = {
     "shared_referents",
     "shared_category_chain",
     "co_occurrence_chains",
+    "entity_ids_in_graph",
+    "health",
+    "read_meta",
 }
 
 
@@ -205,6 +221,8 @@ async def _exercise_all_query_methods(repo: Neo4jGraphRepository) -> None:
     """Drive every query-issuing path so the recording client sees every query it builds."""
     await repo.connection(uuid4(), uuid4())
     await repo.find_entities_by_name("x")
+    await repo.health()  # exercises read_meta + the per-layer presence probes
+    await repo.entity_ids_in_graph([uuid4()])
 
 
 def _query_builder_methods() -> set[str]:
@@ -302,10 +320,14 @@ class TestConnectionCypherGuards:
         # holding a Cypher-shaped literal to the exercised set, so one fails here instead of
         # slipping both the session.run scan and the FR-008/FR-016 guards.
         literal_methods = _cypher_literal_methods()
-        assert literal_methods == _EXERCISED_QUERY_METHODS, (
-            "methods holding Cypher literals drifted from the guard's exercised set — "
-            f"new/unguarded: {sorted(literal_methods - _EXERCISED_QUERY_METHODS)}; "
-            f"stale: {sorted(_EXERCISED_QUERY_METHODS - literal_methods)}"
+        # Subset, not equality: a method may issue Cypher via session.run using a Cypher CONSTANT
+        # imported from serving_state (health, read_meta) — exercised and caught by the session.run
+        # scan above, but holding no inline literal. The contract this guard enforces is the
+        # converse — every method that DOES hold a Cypher literal is in the exercised set, so one
+        # issuing it via a non-session path (driver.execute_query) cannot escape the scans.
+        assert literal_methods <= _EXERCISED_QUERY_METHODS, (
+            "a method holding a Cypher literal is not in the guard's exercised set — "
+            f"unguarded: {sorted(literal_methods - _EXERCISED_QUERY_METHODS)}"
         )
 
 

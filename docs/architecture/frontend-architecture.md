@@ -30,7 +30,8 @@ frontend/src/
 │   ├── video/          # VideoCard, VideoList, VideoDetailPage
 │   ├── channel/        # ChannelCard, ChannelList
 │   ├── batch/          # BatchCorrectionsPage components: PatternInput, MatchCard, EntityAutocomplete
-│   ├── entity/         # EntityMentionsPanel (manual entity-video associations)
+│   ├── entity/         # EntityMentionsPanel (manual entity-video associations), CooccurringPanel
+│   ├── graph/          # Connection explorer: ConnectionGraph (Cytoscape), ConnectionTable, EntityPicker, connectionModel (pure transform)
 │   └── playlist/       # PlaylistCard, PlaylistNavigation
 ├── stores/             # Zustand state stores
 │   └── recoveryStore.ts           # Recovery session state with localStorage persist
@@ -78,6 +79,7 @@ Routes are defined in `App.tsx` using React Router v6:
 | `/transcripts` | TranscriptSearchPage | Transcript-specific search |
 | `/corrections/batch` | BatchCorrectionsPage | Batch find-and-replace corrections |
 | `/entities/:entityId` | EntityDetailPage | Entity detail with aliases and videos |
+| `/connections` | ConnectionExplorerPage | Connection explorer; accepts `?a=<id>&b=<id>` to prefill both endpoints |
 
 ## State Management
 
@@ -229,6 +231,40 @@ The `EntityMentionsPanel` (Feature 050) enables manual entity-video linking dire
   - `onSuccess`: invalidates with `refetchType: "none"` for video-entities (prevents race with optimistic update), immediate refetch for `entitySearch`, `entity-videos`, `entity-detail`
 - **204 No Content handling** — `apiFetch` returns `undefined` for 204/205 responses without calling `response.json()`, preventing `SyntaxError` on empty body
 - **Multi-source display** — `VideoEntitySummary` includes `has_manual` flag and `sources` array for source badge rendering (`[TRANSCRIPT ×N]`, `[MANUAL]`)
+
+### Connection Explorer (Feature 113)
+
+The `ConnectionExplorerPage` (`/connections`) renders "how do these two entities connect?" against
+the production connection graph (see
+[How the connection explorer answers honestly](connection-explorer.md)). Its design is shaped by one
+rule: the interactive graph and its accessible equivalent must never be able to disagree.
+
+- **One pure model feeds both views** — `components/graph/connectionModel.ts` is a DOM-free,
+  unit-testable transform from the API's `GraphConnection` to a `{ nodes, edges }` model. Both
+  `ConnectionGraph` (Cytoscape.js) and `ConnectionTable` (an edge-list `<table>`) are built from that
+  single model, so they always show the same nodes and edges (FR-005, SC-004). The table is the
+  canonical keyboard/screen-reader view; the graph is a focusable `role="img"` that owns no key
+  handling, so Tab is never trapped, and a "Skip to table" control jumps to the table.
+- **Lazy, bounded rendering** — Cytoscape and its `fcose` layout are dynamically imported so they
+  never load for other pages or for tests. Above `MAX_RENDERED_NODES` (150) the graph is suppressed
+  with a "tighten the controls" prompt while the table still renders (FR-024). Reduced-motion is
+  honoured — the layout settles without animation (FR-027).
+- **Non-colour encoding** — connection kind is line **style** (solid = knowledge base, dotted =
+  shared category, dashed curve = co-occurrence overlay), role is node **shape**, and a category
+  bridge node's **size** comes from the server's log-specificity passed through untouched — never
+  recomputed client-side (FR-008, FR-025). Co-occurrence edges are marked `overlay` and excluded from
+  the force layout so they don't imply a knowledge-base proximity (FR-007).
+- **Five distinct outcome states** — `useConnection` (`hooks/useConnection.ts`) classifies failures
+  by HTTP status into `unavailable` (503), `not_in_graph` (404), and `error`, which the page renders
+  as separate states alongside "connected" and "no knowledge-base path"; 503/404/422 are treated as
+  answers, not retried. A `useGraphHealth` query drives the "graph as of &lt;date&gt;" line and
+  short-circuits the request when the graph is known unservable.
+- **Graph-present-only picker** — `EntityPicker` orders search results so graph-present entities come
+  first and disables entities absent from the current graph (via `useGraphPresence` →
+  `POST /graph/entities`), so a user is not led into a guaranteed "not in graph" result (FR-002).
+- **Deep-link entry** — endpoints live in the URL (`?a=<id>&b=<id>`), so a result is shareable and
+  the `CooccurringPanel`'s per-row "How do these connect?" action can prefill both endpoints
+  (FR-023).
 
 ### React Router v7 Future Flags
 

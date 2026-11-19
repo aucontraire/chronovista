@@ -58,8 +58,24 @@ if ! python -c "import neo4j" >/dev/null 2>&1; then
 fi
 
 echo "===> [1/5] export_graph.sh (read-only from prod)";  ./export_graph.sh "${THRESHOLD_ARG:-2}"
+# Serving-state (Feature 113): DECLARE which layers this build will contain (declared, not
+# inferred from whether verdicts.jsonl exists). The reviewed layer is included unless the
+# deployment opts out with CHRONO_REVIEWED_EXPECTED=0 (a fresh deployment with no owner-only
+# verdicts file; load_reviewed.py then self-skips). `begin` runs AFTER the read-only export and
+# BEFORE the wipe, so the previous complete graph stays servable until the wipe tears it down —
+# minimising the unavailability window. A failed load step below aborts (set -e) before `end`,
+# leaving :Meta at 'loading' = unservable (the fail-safe).
+if [ "${CHRONO_REVIEWED_EXPECTED:-1}" = "0" ]; then
+  DECLARED_LAYERS="observed,semantic,categories"
+else
+  DECLARED_LAYERS="observed,semantic,categories,reviewed"
+fi
+echo "===> serving-state: begin build (declared: $DECLARED_LAYERS)"
+python serving_state_cli.py begin --layers "$DECLARED_LAYERS" $ALLOW_REMOTE_FLAG
 echo "===> [2/5] load_neo4j.py --wipe (observed layer)";  python load_neo4j.py --wipe $ALLOW_REMOTE_FLAG
 echo "===> [3/5] load_semantic.py (Wikidata semantic layer)"; python load_semantic.py $ALLOW_REMOTE_FLAG
 echo "===> [4/5] load_reviewed.py (reviewed layer — the step that gets forgotten)"; python load_reviewed.py $ALLOW_REMOTE_FLAG
 echo "===> [5/5] load_categories.py (category layer — loaded last so a semantic wipe can't clobber it)"; python load_categories.py $ALLOW_REMOTE_FLAG
+echo "===> serving-state: end build (close outer bracket -> graph becomes servable)"
+python serving_state_cli.py end $ALLOW_REMOTE_FLAG
 echo "===> Done. All four layers reloaded and in sync with prod + verdicts.jsonl."

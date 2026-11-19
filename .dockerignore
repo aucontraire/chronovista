@@ -20,7 +20,15 @@ dist/
 *.egg-info/
 .specify/
 specs/
-scripts/
+# Exclude scripts/, EXCEPT the graph loader CODE — the production image needs
+# scripts/graph/reload_all.sh (prod Neo4j has no host ports, so the graph can only be loaded from
+# inside the container). The generated *.jsonl/*.csv exports in scripts/graph/ carry library
+# content and are rebuilt in-container at load time, so they stay excluded.
+scripts/*
+!scripts/graph
+scripts/graph/*
+!scripts/graph/*.py
+!scripts/graph/*.sh
 docs/
 backups/
 transcripts/

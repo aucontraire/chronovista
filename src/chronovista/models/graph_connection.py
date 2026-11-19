@@ -28,6 +28,29 @@ from pydantic import (
 )
 
 
+class ServingHealth(BaseModel):
+    """Serving-state + servability of the graph (Feature 113, FR-009/FR-010/FR-017).
+
+    A Pydantic model rather than a tuple so the repository→API boundary names its fields: ``status``
+    and ``loaded_at`` are both ``str | None``, so a positional tuple could silently transpose them
+    (mypy would not catch it). Domain model, not an API schema — the repository returns it directly
+    and the router reuses it as its response model.
+    """
+
+    status: str | None = Field(
+        default=None,
+        description="'complete' (servable), 'loading' (rebuilding), or null (never loaded / down).",
+    )
+    loaded_at: str | None = Field(
+        default=None, description="When the current build completed (ISO-8601), if any."
+    )
+    declared_layers: list[str] = Field(default_factory=list)
+    servable: bool = Field(
+        default=False,
+        description="True iff the build is complete AND every declared layer is present.",
+    )
+
+
 class ConnectionKind(str, Enum):
     """The inferred connection kinds, declared in a fixed by-kind presentation order.
 
@@ -153,6 +176,11 @@ class GraphNode(BaseModel):
     is_bridge : bool
         True for a bridge node (category intermediary or stub shared referent), which may
         never be a transit node on an asserted path — only a shared endpoint.
+    specificity : float or None
+        For a category bridge node, its log-specificity ``max(0, ln(1e6 / globalSize))`` — the
+        SAME value and ``_specificity()`` source as :attr:`PathStep.specificity` (one notion,
+        one home; the frontend sizes category nodes by it and NEVER recomputes the log scale).
+        ``None`` for endpoints and non-category nodes.
     """
 
     entity_id: UUID | None = None
@@ -164,6 +192,9 @@ class GraphNode(BaseModel):
     # asserted path" can be attributed to under-enrichment vs a genuine non-relationship
     # (FR-016). None for bridges and intermediate nodes.
     kb_degree: int | None = None
+    # Category-node log-specificity (server-computed via the same _specificity() as
+    # PathStep.specificity). One field — never a separate globalSize/count field. None elsewhere.
+    specificity: float | None = None
 
     model_config = ConfigDict(strict=True)
 

@@ -112,6 +112,11 @@ const MergeTagsPage = lazy(() =>
     default: m.MergeTagsPage,
   })),
 );
+const ConnectionExplorerPage = lazy(() =>
+  import("../pages/ConnectionExplorerPage").then((m) => ({
+    default: m.ConnectionExplorerPage,
+  })),
+);
 
 /**
  * Loading fallback shown while a lazy-loaded page chunk is being fetched.
@@ -252,6 +257,12 @@ export const router = createBrowserRouter([
       {
         path: "settings",
         element: lazySuspense(<SettingsPage />),
+      },
+      {
+        // Connection explorer (Feature 113). Accepts ?a=<id>&b=<id> for the
+        // co-occurring-panel deep-link prefill (FR-023).
+        path: "connections",
+        element: lazySuspense(<ConnectionExplorerPage />),
       },
       {
         path: "*",

@@ -28,7 +28,12 @@ from pydantic import BaseModel, Field
 from chronovista.api.deps import require_auth
 from chronovista.exceptions import APIError, APIValidationError, NotFoundError
 from chronovista.graph import GraphUnavailableError, Neo4jClient
-from chronovista.models.graph_connection import GraphConnection, ServingHealth
+from chronovista.models.graph_connection import (
+    EdgeLayer,
+    GraphConnection,
+    GraphSubgraph,
+    ServingHealth,
+)
 from chronovista.repositories.neo4j_graph_repository import (
     EntityNotInGraphError,
     Neo4jGraphRepository,
@@ -188,4 +193,92 @@ async def graph_connect(
         )
         raise NotFoundError(
             resource_type="Entity", identifier=str(exc.identifier), hint=hint
+        ) from exc
+
+
+@router.get(
+    "/graph/neighborhood",
+    response_model=GraphSubgraph,
+    summary="A bounded neighborhood subgraph around one or more seed entities",
+)
+async def graph_neighborhood(
+    seed: list[UUID] = Query(
+        ...,
+        description="seed entity id(s): 1 = single-entity, 2 = pair (the explorer default)",
+    ),
+    radius: int = Query(
+        1, ge=1, le=2, description="hop radius (1 default, 2 max) — FR-014"
+    ),
+    limit: int = Query(60, ge=1, description="initial node cap — FR-003"),
+    ceiling: int = Query(
+        250, ge=1, description="total node ceiling for accumulated expansion — FR-008"
+    ),
+    edge_types: list[str] | None = Query(
+        None,
+        description=(
+            "trust layers to include: verified, category, co_occurrence "
+            "(default: verified + category; co-occurrence hidden — FR-007)"
+        ),
+    ),
+    max_category_size: int = Query(
+        500,
+        ge=1,
+        description="category-specificity floor; broader categories excluded — FR-013",
+    ),
+    repo: Neo4jGraphRepository = Depends(get_graph_repository),
+) -> GraphSubgraph:
+    """Return the Explore-mode neighborhood subgraph for the seed(s).
+
+    Read-only (FR-012). Same servability contract as ``/graph/connect``: a rebuilding /
+    not-yet-loaded / unreachable graph returns **503**; a seed id valid but absent from the
+    current graph returns **404**; invalid parameters (no seed, ``ceiling < limit``, unknown
+    layer name, out-of-range bounds) return **422**.
+    """
+    if not seed:
+        raise APIValidationError(message="At least one seed entity id is required.")
+    if ceiling < limit:
+        raise APIValidationError(
+            message="ceiling must be greater than or equal to limit."
+        )
+    layers: frozenset[EdgeLayer] | None
+    if edge_types is None:
+        layers = None
+    else:
+        try:
+            layers = frozenset(EdgeLayer(value) for value in edge_types)
+        except ValueError as exc:
+            raise APIValidationError(
+                message="edge_types must be layer names: verified, category, co_occurrence."
+            ) from exc
+    # Servability gate (FR-010): never serve from a non-servable graph.
+    try:
+        servable = await repo.is_servable()
+    except GraphUnavailableError as exc:
+        raise GraphUnavailableAPIError("The connection graph is unavailable.") from exc
+    if not servable:
+        raise GraphUnavailableAPIError(
+            "The connection graph is rebuilding or not yet loaded."
+        )
+    service = ConnectionService(repo)
+    try:
+        return await service.neighborhood(
+            seed,
+            radius=radius,
+            limit=limit,
+            ceiling=ceiling,
+            layers=layers,
+            max_category_size=max_category_size,
+        )
+    except GraphUnavailableError as exc:
+        raise GraphUnavailableAPIError(
+            "The connection graph became unavailable."
+        ) from exc
+    except EntityNotInGraphError as exc:
+        raise NotFoundError(
+            resource_type="Entity",
+            identifier=str(exc.identifier),
+            hint=(
+                "The id is valid but is not in the current graph (the graph may be older "
+                "than the library)."
+            ),
         ) from exc

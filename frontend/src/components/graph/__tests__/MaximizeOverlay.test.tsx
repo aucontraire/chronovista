@@ -123,6 +123,41 @@ describe("maximize: same cy instance, resize + fit", () => {
     expect(within(toolbar).getByRole("list", { name: /colour by entity type/i })).toHaveTextContent("Person");
   });
 
+  it("shares one relationship-filter state between the toolbar and the table slot", async () => {
+    const { user } = await setup();
+    const slotFilter = () => screen.getByTestId("relationship-filter");
+    const edgeTypeBox = () => within(slotFilter()).getAllByRole("checkbox")[0]!;
+    const label = edgeTypeBox().closest("label")!.textContent;
+
+    // Toggle off in full screen (the toolbar copy; the table-slot copy is not rendered then).
+    await user.click(screen.getByRole("button", { name: "Maximize graph" }));
+    const toolbar = screen.getByRole("toolbar", { name: /graph controls/i });
+    expect(screen.getAllByTestId("relationship-filter")).toHaveLength(1);
+    await user.click(within(toolbar).getAllByRole("checkbox").find((c) => c.closest("label")?.textContent === label)!);
+    expect(edgeTypeBox()).not.toBeChecked();
+    await user.keyboard("{Escape}");
+
+    // Back in the page: the table-slot copy shows it still off.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(edgeTypeBox()).not.toBeChecked();
+    expect(screen.getAllByRole("row")).toHaveLength(1); // header only: its edges are hidden in the table
+
+    // And the other way round: turn it back on here, re-open full screen, it is on there too.
+    await user.click(edgeTypeBox());
+    await user.click(screen.getByRole("button", { name: "Maximize graph" }));
+    expect(within(screen.getByTestId("relationship-filter")).getAllByRole("checkbox")[0]).toBeChecked();
+  });
+
+  it("keeps the toolbar actions first and the panel scrollable, so nothing is cramped out of reach", async () => {
+    const { user } = await setup();
+    await user.click(screen.getByRole("button", { name: "Maximize graph" }));
+    const toolbar = screen.getByRole("toolbar", { name: /graph controls/i });
+    expect(toolbar.className).toContain("overflow-y-auto");
+    const buttons = within(toolbar).getAllByRole("button").map((b) => b.textContent);
+    expect(buttons.slice(0, 3)).toEqual(["Fit to view", "View table", "Exit full screen"]);
+    expect(within(toolbar).getByRole("button", { name: "Hide all" })).toBeInTheDocument();
+  });
+
   it("View table leaves the dialog and focuses the table", async () => {
     const { user } = await setup();
     await user.click(screen.getByRole("button", { name: "Maximize graph" }));

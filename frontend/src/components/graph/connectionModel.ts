@@ -357,3 +357,62 @@ export function mergeExpansions(
     atCeiling: refused > 0 || nodes.size >= ceiling,
   };
 }
+
+// --- Focus filters (node kinds + relationship types) --------------------------------------
+// One computation decides what is hidden; the canvas (display:none, positions untouched) and the
+// accessible table (a filtered copy of the model) both consume its result, so they cannot
+// disagree about what is visible (SC-004).
+
+export interface ModelFilter {
+  /** Node kinds to hide: an entity type (lower-case label) or "category" / "bridge". */
+  hiddenNodeKinds: ReadonlySet<string>;
+  /** Relationship types (`ModelEdge.edgeType`) to hide. */
+  hiddenRelationships: ReadonlySet<string>;
+}
+
+export const NO_FILTER: ModelFilter = {
+  hiddenNodeKinds: new Set(),
+  hiddenRelationships: new Set(),
+};
+
+/** The legend/filter key of a node: its structural kind, else its entity type. */
+export function nodeKind(node: ModelNode): string {
+  if (node.role === "category") return "category";
+  if (node.role === "bridge") return "bridge";
+  return node.label.toLowerCase();
+}
+
+export function isEndpoint(node: ModelNode): boolean {
+  return node.role === "endpoint-a" || node.role === "endpoint-b";
+}
+
+/**
+ * Ids of the nodes and edges to hide. Endpoints are never hidden; an edge is hidden when its
+ * relationship type is hidden or either end is hidden (it cannot be drawn without its node).
+ */
+export function computeHiddenIds(model: ConnectionModel, filter: ModelFilter): ReadonlySet<string> {
+  const hidden = new Set<string>();
+  for (const n of model.nodes) {
+    if (!isEndpoint(n) && filter.hiddenNodeKinds.has(nodeKind(n))) hidden.add(n.id);
+  }
+  for (const e of model.edges) {
+    if (
+      filter.hiddenRelationships.has(e.edgeType) ||
+      hidden.has(e.source) ||
+      hidden.has(e.target)
+    ) {
+      hidden.add(e.id);
+    }
+  }
+  return hidden;
+}
+
+/** The model as the table must show it: the same elements the canvas leaves visible. */
+export function withoutHidden(model: ConnectionModel, hidden: ReadonlySet<string>): ConnectionModel {
+  if (hidden.size === 0) return model;
+  return {
+    ...model,
+    nodes: model.nodes.filter((n) => !hidden.has(n.id)),
+    edges: model.edges.filter((e) => !hidden.has(e.id)),
+  };
+}

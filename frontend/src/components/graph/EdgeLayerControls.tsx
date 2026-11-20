@@ -7,6 +7,7 @@
  */
 
 import type { EdgeLayer } from "../../api/graph";
+import { ToggleRow } from "./ToggleRow";
 
 export const EDGE_LAYERS: readonly EdgeLayer[] = ["verified", "category", "co_occurrence"];
 
@@ -40,13 +41,12 @@ export function EdgeLayerControls({ enabled, onToggle }: EdgeLayerControlsProps)
       {EDGE_LAYERS.map((layer) => {
         const { label, hint, dash, color, width } = COPY[layer];
         return (
-          <label key={layer} className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={enabled.has(layer)}
-              onChange={() => onToggle(layer)}
-              className="h-4 w-4"
-            />
+          <ToggleRow
+            key={layer}
+            checked={enabled.has(layer)}
+            onChange={() => onToggle(layer)}
+            className="text-sm"
+          >
             <svg width="28" height="8" aria-hidden="true" focusable="false">
               <line
                 x1="0"
@@ -61,7 +61,7 @@ export function EdgeLayerControls({ enabled, onToggle }: EdgeLayerControlsProps)
             <span>
               {label} <span className="text-xs text-slate-500">({hint})</span>
             </span>
-          </label>
+          </ToggleRow>
         );
       })}
     </fieldset>

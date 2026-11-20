@@ -19,11 +19,12 @@ import type cytoscape from "cytoscape";
 import type { ElementDefinition, Core, Layouts, StylesheetJson } from "cytoscape";
 import type { FcoseLayoutOptions } from "cytoscape-fcose";
 
+import { GRAPH_STRUCTURAL_COLORS, entityTypeGraphColor } from "../../constants/entityTypes";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { MAX_RENDERED_NODES, collapseParallelOverlays } from "./connectionModel";
 import type { ConnectionModel } from "./connectionModel";
 
-const PALETTE = ["#4338ca", "#0f766e", "#b45309", "#be123c", "#1d4ed8", "#6d28d9", "#15803d"];
+const PALETTE = ["#0369a1", "#0f766e", "#b45309", "#be123c", "#1d4ed8", "#6d28d9", "#15803d"];
 
 /** Stable colour per relationship type (a secondary channel; labels carry the meaning). */
 export function edgeColor(edgeType: string): string {
@@ -41,6 +42,10 @@ export function toCytoscapeElements(model: ConnectionModel): ElementDefinition[]
       size: n.size,
       role: n.role,
       ...(n.entityId ? { entityId: n.entityId } : {}),
+      // Entities and endpoints are filled by entity type; categories/bridges keep their own look.
+      ...(n.role === "entity" || n.role.startsWith("endpoint")
+        ? { fill: entityTypeGraphColor(n.label) }
+        : {}),
     },
     classes: n.role,
   }));
@@ -82,16 +87,25 @@ const STYLE: StylesheetJson = [
       "text-valign": "bottom",
       "text-margin-y": 4,
       "background-color": "#e2e8f0",
-      "border-width": 1,
-      "border-color": "#475569",
+      "border-width": 1.5,
+      "border-color": "#1e293b",
       shape: "ellipse",
     },
   },
-  { selector: "node.category", style: { shape: "diamond", "background-color": "#fef3c7" } },
-  { selector: "node.bridge", style: { shape: "round-rectangle", "background-color": "#f1f5f9" } },
+  { selector: "node[fill]", style: { "background-color": "data(fill)" } },
+  { selector: "node.category", style: { shape: "diamond", "background-color": GRAPH_STRUCTURAL_COLORS.category } },
+  {
+    selector: "node.bridge",
+    // Dashed outline: "a reference value, not an entity in your library".
+    style: {
+      shape: "round-rectangle",
+      "background-color": GRAPH_STRUCTURAL_COLORS.bridge,
+      "border-style": "dashed",
+    },
+  },
   {
     selector: "node.endpoint-a, node.endpoint-b",
-    style: { "border-width": 4, "font-weight": "bold", "background-color": "#c7d2fe", "font-size": 12 },
+    style: { "border-width": 4, "font-weight": "bold", "font-size": 12 },
   },
   { selector: "node.endpoint-b", style: { shape: "round-hexagon" } },
   {
@@ -140,7 +154,11 @@ const STYLE: StylesheetJson = [
       opacity: 0.45,
     },
   },
-  { selector: ":focus, :selected", style: { "overlay-color": "#4338ca", "overlay-opacity": 0.2 } },
+  // Selection/hover halo: neutral and thin, so it marks without washing the graph in one colour.
+  {
+    selector: ":focus, :selected, :active",
+    style: { "overlay-color": "#334155", "overlay-opacity": 0.1, "overlay-padding": 3 },
+  },
 ];
 
 interface ConnectionGraphProps {

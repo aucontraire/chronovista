@@ -208,9 +208,16 @@ Two rendering rules protect the honesty of the picture:
   endpoints together and imply a knowledge-base proximity that isn't there (FR-007). They are never
   merged into the shortest-path edges.
 
-Encoding is non-colour-dependent throughout (FR-025): line **style** carries connection kind, node
-**shape** carries role, node **size** carries category specificity, and every edge carries a text
-label — colour is only ever a redundant fourth channel.
+Encoding adds meaning in colour without ever depending on it (FR-025): line **style** carries
+connection kind, node **shape** carries role, node **size** carries category specificity, and every
+node and edge carries a text **label**. Node **colour** encodes **entity type** (with two muted
+neutrals for the structural *category* and *reference-value/bridge* kinds), defined once in
+`entityTypes.ts` (`GRAPH_STRUCTURAL_COLORS` plus the per-type map) so the graph stylesheet and the
+on-screen legend read the same values. The palette is the dataviz categorical set, chosen for
+colour-vision safety and held by an OKLab-distance test that keeps every fill perceptually distinct
+from the others and from the typed hues. Because role, kind, specificity and identity each have a
+non-colour channel — and the accessible table carries everything — no information depends on colour
+alone.
 
 ## Explore mode: the neighborhood view (Feature 115)
 

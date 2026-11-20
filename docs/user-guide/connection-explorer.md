@@ -159,11 +159,23 @@ database read-only, and rebuilds all four layers. Until it has been built, the p
 ### Read the graph
 
 - The graph is an **interactive node-link view**: the two entities are the endpoints, with the
-  connecting neighbourhood between them. Pan and zoom to explore; a legend explains the encoding.
+  connecting neighbourhood between them. Pan and zoom to explore; a **colour key** explains the
+  encoding (and is also shown in full-screen).
+- **Nodes are colour-coded by entity type** — person, organization, place, work, event, and so on —
+  with the key naming every type currently on screen. Two structural node kinds read as muted
+  neutrals, kept visually distinct from the typed colours: a **shared-category** node (a sand
+  diamond, **sized by its specificity** — a narrow, meaningful category is drawn larger than a broad
+  one) and a **reference value that is not an entity in your library** (a muted sage node with a
+  dashed outline — the target of a fact such as *educated at* or *position held*). Entities whose
+  type is uncategorised fall back to a neutral grey.
 - **Nothing depends on colour alone.** Connection kind is shown by **line style** — a solid line is
   a knowledge-base relationship, a dotted line is a shared category, and a dashed curve is the
-  **co-occurrence overlay**. Node **role** is shown by shape, and a **category bridge node is sized
-  by its specificity** (a narrow, meaningful category is drawn larger than a broad one).
+  **co-occurrence overlay**. Node **role** is shown by **shape**, every node carries a **text
+  label**, and the equivalent table below conveys everything the graph does — so the colour coding
+  is an extra channel for reading the graph, never the only one.
+- When both entities are chosen, each gets a small card with a link to its **external record** (or a
+  **"Look up on Wikidata"** fallback when it isn't enriched yet) and its internal **Entity page** —
+  available while you explore, not only on a "no connection" result.
 - **Co-occurrence is a separate overlay**, drawn as a distinct dashed curve between the endpoints —
   never folded into the knowledge-base path, and shown even when a knowledge-base path also exists.
 - Below the graph is an **equivalent table** (source, relationship, target, kind) built from the

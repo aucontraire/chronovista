@@ -13,6 +13,7 @@ import type { EdgeLayer } from "../../api/graph";
 import { useExpansions, useNeighborhood } from "../../hooks/useNeighborhood";
 import { ConnectionGraph } from "./ConnectionGraph";
 import { ConnectionTable } from "./ConnectionTable";
+import { NodeTypeLegend } from "./NodeTypeLegend";
 import { MaximizeOverlay } from "./MaximizeOverlay";
 import { DEFAULT_ENABLED_LAYERS, EDGE_LAYERS, EdgeLayerControls } from "./EdgeLayerControls";
 import { buildSubgraphModel, mergeExpansions } from "./connectionModel";
@@ -183,6 +184,7 @@ export function ExplorePanel({ seeds, maxCategorySize, enabled = true }: Explore
               {merged && merged.refused > 0 ? `; ${merged.refused} expansion${merged.refused === 1 ? " was" : "s were"} not added` : ""}.
             </p>
           )}
+          <NodeTypeLegend model={model} />
           <button
             ref={maximizeButtonRef}
             type="button"
@@ -206,6 +208,7 @@ export function ExplorePanel({ seeds, maxCategorySize, enabled = true }: Explore
                   {countText}
                 </p>
                 <EdgeLayerControls enabled={layers} onToggle={toggleLayer} />
+                <NodeTypeLegend model={model} />
                 <div className="flex flex-wrap gap-2 text-sm">
                   <button type="button" onClick={() => setFitToken((n) => n + 1)} className="rounded border border-slate-300 px-2 py-1">
                     Fit to view

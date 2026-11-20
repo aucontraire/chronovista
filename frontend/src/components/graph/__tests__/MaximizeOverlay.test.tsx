@@ -116,6 +116,13 @@ describe("maximize: same cy instance, resize + fit", () => {
     expect(cy.destroy).not.toHaveBeenCalled();
   });
 
+  it("shows the node-type legend inside the maximized overlay too", async () => {
+    const { user } = await setup();
+    await user.click(screen.getByRole("button", { name: "Maximize graph" }));
+    const toolbar = screen.getByRole("toolbar", { name: /graph controls/i });
+    expect(within(toolbar).getByRole("list", { name: /colour by entity type/i })).toHaveTextContent("Person");
+  });
+
   it("View table leaves the dialog and focuses the table", async () => {
     const { user } = await setup();
     await user.click(screen.getByRole("button", { name: "Maximize graph" }));

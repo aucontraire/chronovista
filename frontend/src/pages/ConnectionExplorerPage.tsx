@@ -19,6 +19,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ConnectionGraph } from "../components/graph/ConnectionGraph";
 import { ConnectionTable } from "../components/graph/ConnectionTable";
 import { EntityPicker } from "../components/graph/EntityPicker";
+import { EvidencePanel } from "../components/graph/EvidencePanel";
 import { buildConnectionModel, hasKnowledgeBaseConnection } from "../components/graph/connectionModel";
 import type { GraphConnection, GraphNode } from "../api/graph";
 import { useConnection, useGraphHealth } from "../hooks/useConnection";
@@ -321,6 +322,13 @@ export function ConnectionExplorerPage() {
                 </p>
               )}
             </>
+          )}
+          {/* Sibling of the edges block so it also renders in the gap case (no KB edge). */}
+          {connection.entity_a.entity_id && connection.entity_b.entity_id && (
+            <EvidencePanel
+              entityAId={connection.entity_a.entity_id}
+              entityBId={connection.entity_b.entity_id}
+            />
           )}
         </div>
       )}

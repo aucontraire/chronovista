@@ -124,6 +124,31 @@ The response carries the reviewed verdict (if any), one chain per connecting kin
 the `searched_max_hops` it used, and `any_truncated` (the knowledge-base search hit its hop bound
 without connecting). This endpoint refuses a non-servable graph — see the error responses below.
 
+**`GET /graph/connect/evidence`** → `ConnectionEvidence` (Feature 114). The transcript passages
+behind a pair's co-occurrence (the evidence panel). Unlike the three endpoints above, this one is
+**Postgres-backed** (it reads `entity_mentions` / `transcript_segments`), so there is no servability
+gate and no 503.
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `a` | UUID | required | First entity id. |
+| `b` | UUID | required | Second entity id. Must differ from `a`. |
+| `limit` | int 1–50 | 12 | Max video items per page. |
+| `offset` | int ≥ 0 | 0 | Pagination offset over the ordered videos. |
+
+Each item is one **video**: a `representative` (the video's minimum-separation co-mention — language,
+the mention pair, the rendered passage(s), the segment separation) plus `other_language_variants`
+(the same pair in the video's other co-occurring languages, for an expander) and the video/channel
+titles. There is no cross-video collapse — every co-occurring video is a row (closest-first;
+`cooccurring_language_count` = 1 + the expander count). The response reports `total_available`
+(distinct co-occurring **videos** — the pagination total), `raw_cooccurrence_count` (the
+`(video, language)` transcript count, giving "spoken together in N videos (M transcripts)"), `offset`,
+and `truncated`. When the pair has no transcript passage it returns `items: []` and names the
+non-transcript `basis_when_empty` (`title` / `description` / `tag` / `manual`) — set only when
+`total_available == 0`; an empty page with `total_available > 0` is past the end, not "no
+co-occurrence". RFC-7807: **422** for `a == b`, **404** for an entity id absent from the database. No
+**503** — it reads live Postgres, which is why its view can be briefly fresher than the graph snapshot.
+
 ### Interactive Documentation
 
 - Swagger UI: `/docs`

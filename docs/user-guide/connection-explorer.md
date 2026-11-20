@@ -203,6 +203,36 @@ The web explorer never conflates these outcomes — each reads as itself:
 A **"Graph as of &lt;date&gt;"** line shows when the served graph was last built, so you can judge
 how current it is.
 
+### The evidence panel
+
+Below the graph and table, the panel shows the **transcript passages where the two entities are
+actually discussed together** — the evidence behind the co-occurrence edges. A count ("they share N
+videos") can't be checked by eye; a passage can, so this is where you catch a false match (a name
+collision, or a common word that is also an entity name).
+
+- There is **one row per video** — the grain at which you exclude a false mention — ordered
+  closest-first, so the tightest (most suspicious) co-mentions are at the top. A dense pair streams in
+  by **infinite scroll** rather than being collapsed, so no video is hidden from audit.
+- Each row shows the video's strongest co-mention: the passage(s) around the closest pair of mentions
+  — one window when the two are near each other, one per mention when they are far apart — with both
+  matched surface forms highlighted, how far apart they are, and a timestamped link into the video.
+- When the pair also co-occurs in the video's **other transcript languages**, an expander ("also in N
+  other transcripts") reveals them — so a surface form that differs by language (a different match,
+  with a different false-positive risk) stays visible instead of being hidden.
+- It is framed as **co-mention** ("where they're discussed together"), never as a factual
+  relationship — the passages are what speakers *said*, not asserted facts.
+- The header reports **"spoken together in N videos (M transcripts)"** — a video with transcripts in
+  several languages counts once as a video but several times as transcripts. This "spoken together"
+  count is narrower than the *any-source* intersection on the videos page, which also counts title,
+  description and tag matches.
+- When a pair co-occurs only via tags or title/description (no spoken passage), the panel says so and
+  names that basis instead of implying there is nothing there.
+- It reflects your **live** library, while the graph edges are a periodic snapshot — so just after
+  you exclude a false mention, the panel drops it before the edges do (until the next graph rebuild).
+
+To act on a false match you spot here, exclude it with the existing entity–video exclusion tooling;
+the next graph rebuild then drops it from the edges too.
+
 ## See also
 
 - [How the connection explorer answers honestly](../architecture/connection-explorer.md) — the

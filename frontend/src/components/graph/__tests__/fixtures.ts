@@ -58,3 +58,84 @@ export function fixtureConnection(): GraphConnection {
 export function noPathConnection(): GraphConnection {
   return { ...fixtureConnection(), chains: [], has_connection: false };
 }
+
+// --- Feature 114: transcript evidence ----------------------------------------
+import type {
+  ConnectionEvidence,
+  EvidenceItem,
+  EvidenceVariant,
+  MentionRef,
+} from "../../../api/graph";
+
+export function fixtureMention(
+  overrides: Partial<MentionRef> = {},
+): MentionRef {
+  return {
+    segment_id: 101,
+    end_segment_id: null,
+    language_code: "en",
+    sequence_number: 1,
+    start_time: 12.4,
+    mention_text: "Alpha",
+    match_start: 0,
+    match_end: 5,
+    detection_method: "rule_match",
+    ...overrides,
+  };
+}
+
+/** One (video, language) variant (the representative, or an expander row). */
+export function fixtureVariant(
+  overrides: Partial<EvidenceVariant> = {},
+): EvidenceVariant {
+  return {
+    language_code: "en",
+    mention_a: fixtureMention(),
+    mention_b: fixtureMention({
+      segment_id: 103,
+      mention_text: "Beta",
+      start_time: 20,
+    }),
+    separation_segments: 2,
+    passages: [
+      {
+        text: "Alpha was discussed alongside Beta here.",
+        start_time: 12.4,
+        segment_id: 101,
+      },
+    ],
+    separation_seconds: 7.6,
+    ...overrides,
+  };
+}
+
+export function fixtureEvidenceItem(
+  overrides: Partial<EvidenceItem> = {},
+): EvidenceItem {
+  return {
+    video_id: "vid00000001",
+    representative: fixtureVariant(),
+    other_language_variants: [],
+    video_title: "Generic Video Title",
+    channel_title: "Generic Channel",
+    cooccurring_language_count: 1,
+    ...overrides,
+  };
+}
+
+export function fixtureEvidence(
+  overrides: Partial<ConnectionEvidence> = {},
+): ConnectionEvidence {
+  return {
+    entity_a_id: A_ID,
+    entity_b_id: B_ID,
+    items: [fixtureEvidenceItem()],
+    total_available: 1,
+    raw_cooccurrence_count: 3,
+    offset: 0,
+    basis_when_empty: null,
+    returned: 1,
+    truncated: false,
+    ...overrides,
+  };
+}

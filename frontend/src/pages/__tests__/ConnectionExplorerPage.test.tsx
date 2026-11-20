@@ -19,6 +19,10 @@ vi.mock("../../hooks/useConnection", () => ({
   useGraphHealth: () => healthMock(),
   useGraphPresence: () => ({ present: new Set<string>(), isLoading: false }),
 }));
+vi.mock("../../hooks/useConnectionEvidence", () => ({
+  EVIDENCE_PAGE_SIZE: 12,
+  useConnectionEvidence: () => ({ evidence: undefined, isLoading: true, isError: false, error: null }),
+}));
 vi.mock("../../hooks/useEntitySearch", () => ({
   useEntitySearch: () => ({ entities: [], isLoading: false, isFetched: false, isError: false, isBelowMinChars: true }),
 }));
@@ -46,6 +50,12 @@ describe("ConnectionExplorerPage", () => {
     connectionMock.mockReset();
     healthMock.mockReset();
     healthMock.mockReturnValue({ health: { status: "complete", servable: true, loaded_at: null, declared_layers: [] }, isLoading: false });
+  });
+
+  it("mounts the evidence panel even when there is no KB edge (gap case)", () => {
+    connectionMock.mockReturnValue(result({ connection: noPathConnection() }));
+    renderAt(`/connections?a=${A_ID}&b=${B_ID}`);
+    expect(screen.getByTestId("evidence-panel")).toBeInTheDocument();
   });
 
   it("asks for both entities when none are chosen", () => {

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.126.0] - 2026-11-19
+
+### Added
+
+- **Transcript-evidence panel (Feature 114).** The connection explorer now shows, below the graph
+  and edge table, the transcript passages where two entities co-occur — the falsifiable evidence
+  behind the `CO_OCCURS_*` edges. There is one row per **video** (the grain at which a false mention
+  is excluded), closest-first, streamed in by infinite scroll — a dense pair is never collapsed away.
+  Each row shows the video's strongest co-mention: the passage(s) around the closest mention pair
+  (one window when they are near each other, one per mention when far apart), with the matched surface
+  forms highlighted, the segment separation, and a timestamped in-app deep-link. When a video's pair
+  also co-occurs in other transcript languages, an expander reveals them, so a surface form that
+  differs by language (a different match, a different false-positive risk) stays visible. The header
+  reports "spoken together in N videos (M transcripts)". Evidence is framed as co-mention — never a
+  factual relationship — and the pair is always drawn from a single transcript language, so it can
+  never be fabricated across two languages.
+- **Read-only evidence API (`GET /api/v1/graph/connect/evidence`).** A SQL-backed companion to the
+  Neo4j graph router that gates on the same exclusion-clean association layer, so the panel and the
+  co-occurrence edges agree on which mentions count. Returns one video-grain item per co-occurring
+  video (`representative` + other-language variants), paged over videos. RFC-7807 problems: 422 for
+  equal ids, 404 for an entity id absent from the database.
+
+### Fixed
+
+- **Co-occurrence graph export honors manual exclusions (Feature 091).** The exported
+  `CO_OCCURS_{TRANSCRIPT,TITLEDESC,MANUAL}` edges now subtract `entity_video_exclusions`, so
+  excluding a false mention removes it from the graph instead of the edge counting that video
+  indefinitely. (The tag channel already honored exclusions; the three mention channels did not.)
+
 ## [0.125.0] - 2026-11-18
 
 ### Added

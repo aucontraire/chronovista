@@ -341,3 +341,121 @@ class GraphConnection(BaseModel):
             if not ends_at_b:
                 raise ValueError(f"{chain.kind.value} chain does not end at entity_b")
         return self
+
+
+# ---------------------------------------------------------------------------
+# Explore mode (Feature 115): neighborhood subgraph models + the trust-layer
+# classifier. Separate from Connect mode's path-shaped GraphConnection above;
+# GraphNode is reused UNCHANGED so Connect's response shape is untouched (FR-026).
+# ---------------------------------------------------------------------------
+
+
+class EdgeLayer(str, Enum):
+    """Trust classification of a rendered neighborhood edge (Feature 115, Explore mode).
+
+    Drives default visibility and cap-ranking: VERIFIED and CATEGORY show by default,
+    CO_OCCURRENCE is hidden until requested, and when a cap binds co-occurrence is dropped
+    first (FR-004/FR-007). A co-occurrence edge must never read as a verified fact (FR-006).
+
+    GOVERNING TAXONOMY (the committed contract — guarded by ``test_edge_layer_coverage``).
+    Every graph edge carries a ``layer`` property and a type; the mapping is:
+
+    - ``layer='wikidata'`` (KB relationship types: MEMBER_OF, EDUCATED_AT, AWARD_RECEIVED, …)
+      → **VERIFIED**
+    - a human-REVIEWED relationship (``layer='reviewed'``: ASSOCIATED_WITH / COVERS / CO_CAST)
+      → **VERIFIED** (a human-confirmed tie is at least as trustworthy as a KB fact)
+    - ``IN_CATEGORY`` → **CATEGORY**
+    - ``CO_OCCURS_*`` → **CO_OCCURRENCE**
+    - ``REVIEWED_COINCIDENCE`` (a human "these merely co-occur" verdict) → **CO_OCCURRENCE**
+      (it is the opposite of a verified relationship, so it belongs with the weak layer)
+
+    An edge matching none of these raises in :func:`edge_layer_for` — no silent "unknown".
+    """
+
+    VERIFIED = "verified"
+    CATEGORY = "category"
+    CO_OCCURRENCE = "co_occurrence"
+
+
+def edge_layer_for(rel_type: str, rel_layer: str | None) -> EdgeLayer:
+    """Classify a graph edge into its :class:`EdgeLayer` — the SINGLE home for this mapping.
+
+    The backend stamps the result onto every :class:`GraphEdge`; the frontend consumes it and
+    MUST NOT re-derive a layer from ``rel_type`` (FR-024, single source). See :class:`EdgeLayer`
+    for the governing taxonomy. Raises ``ValueError`` for an unclassified edge so a new graph
+    edge type can never silently render at the wrong trust level (mutation-guarded by a test).
+    """
+    if rel_type == "IN_CATEGORY":
+        return EdgeLayer.CATEGORY
+    if rel_type == "REVIEWED_COINCIDENCE" or rel_type.startswith("CO_OCCURS_"):
+        return EdgeLayer.CO_OCCURRENCE
+    if rel_layer in ("wikidata", "reviewed"):
+        return EdgeLayer.VERIFIED
+    raise ValueError(
+        f"unclassified graph edge: type={rel_type!r} layer={rel_layer!r} "
+        "(update edge_layer_for and the EdgeLayer taxonomy docstring)"
+    )
+
+
+class GraphEdge(BaseModel):
+    """A typed relationship between two nodes in an Explore-mode subgraph (Feature 115).
+
+    References nodes by ``node_key`` (see :class:`SubgraphNode`), carries the concrete graph
+    ``edge_type``, its server-assigned trust ``layer`` (FR-024), its stored direction, and a
+    category edge's log-specificity (``None`` otherwise).
+    """
+
+    source_key: str
+    target_key: str
+    edge_type: str
+    layer: EdgeLayer
+    forward: bool = True
+    specificity: float | None = None
+
+    model_config = ConfigDict(strict=True)
+
+
+class SubgraphNode(BaseModel):
+    """A node in an Explore subgraph: its stable ``node_key`` plus the reused :class:`GraphNode`.
+
+    ``node_key`` is the entity UUID (as a string) for an entity, or the graph element id for a
+    bridge (category / stub). Edges reference this key. ``GraphNode`` is reused unchanged, so
+    Connect mode's response shape is untouched (FR-026).
+    """
+
+    node_key: str
+    node: GraphNode
+
+    model_config = ConfigDict(strict=True)
+
+
+class GraphSubgraph(BaseModel):
+    """A bounded neighborhood subgraph around one or more seed entities (Feature 115).
+
+    The Explore-mode response: a node set + edge set (not A→B chains), plus truncation and
+    ceiling signals. ``total_available`` drives the "showing N of M" affordance (FR-005);
+    ``truncated`` means a cap bound the result; ``at_ceiling`` means the total ceiling was
+    reached and further expansion is refused (FR-008).
+    """
+
+    nodes: list[SubgraphNode] = Field(default_factory=list)
+    edges: list[GraphEdge] = Field(default_factory=list)
+    truncated: bool = False
+    total_available: int = Field(default=0, ge=0)
+    seeds: list[UUID] = Field(default_factory=list)
+    at_ceiling: bool = False
+
+    model_config = ConfigDict(strict=True)
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        keys = [node.node_key for node in self.nodes]
+        if len(keys) != len(set(keys)):
+            raise ValueError("node_key values must be unique within a subgraph")
+        keyset = set(keys)
+        for edge in self.edges:
+            if edge.source_key not in keyset or edge.target_key not in keyset:
+                raise ValueError(
+                    "every edge must reference source_key/target_key present in nodes"
+                )
+        return self

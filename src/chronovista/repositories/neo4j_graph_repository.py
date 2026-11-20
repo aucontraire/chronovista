@@ -12,18 +12,26 @@ co-occurrence), the log-specificity ranking, and proven-absence handling land in
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Literal
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict
 
 from chronovista.graph import Neo4jClient, serving_state
 from chronovista.models.graph_connection import (
     ConnectionChain,
     ConnectionKind,
+    EdgeLayer,
     GraphConnection,
+    GraphEdge,
     GraphNode,
+    GraphSubgraph,
     PathStep,
     ReviewedVerdict,
     ServingHealth,
+    SubgraphNode,
+    edge_layer_for,
 )
 
 if TYPE_CHECKING:
@@ -82,6 +90,63 @@ class EntityNotInGraphError(LookupError):
         # "id"  = a well-formed id absent from the loaded graph (likely stale / partial load);
         # "name" = an exact-name lookup that matched nothing. The CLI messages them apart (§77).
         self.kind = kind
+
+
+# Explore-mode neighborhood ranking (Feature 115). Verified facts rank before categories,
+# categories before co-occurrence hints — so when a cap binds, CO_OCCURRENCE is dropped FIRST
+# (FR-004/SC-005). Single home for that order; the guarantee is mutation-tested.
+_LAYER_RANK: dict[EdgeLayer, int] = {
+    EdgeLayer.VERIFIED: 0,
+    EdgeLayer.CATEGORY: 1,
+    EdgeLayer.CO_OCCURRENCE: 2,
+}
+
+
+class NeighborCandidate(BaseModel):
+    """One already-layer-classified candidate neighbor for the Explore neighborhood.
+
+    A Pydantic model (Principle I), kept minimal: the stable ``node_key``, its trust ``layer``,
+    a secondary sort size (a category's ``globalSize`` — smaller = more specific; 0 otherwise),
+    and the display ``name`` for a stable tie-break.
+    """
+
+    node_key: str
+    layer: EdgeLayer
+    sort_size: int = 0
+    name: str = ""
+
+    model_config = ConfigDict(frozen=True, strict=True)
+
+
+def rank_and_cap_neighbors(
+    candidates: Iterable[NeighborCandidate],
+    *,
+    seed_count: int,
+    limit: int,
+    ceiling: int,
+) -> tuple[list[str], bool, int]:
+    """Dedupe, rank, and cap neighbor candidates — the pure core of the neighborhood cap.
+
+    Candidates are already filtered to the requested layers by the caller. A neighbor seen on
+    several edges is deduped to its BEST (lowest) rank. Ranking is ``(_LAYER_RANK[layer],
+    sort_size, name)`` — verified beats category beats co-occurrence, then more-specific
+    (smaller category) first, then name for determinism. At most ``min(limit, ceiling) -
+    seed_count`` neighbors are kept; the rest are dropped **co-occurrence-first** by construction.
+
+    Returns ``(kept_node_keys, truncated, total_distinct)``: ``truncated`` is True iff a distinct
+    candidate was dropped, ``total_distinct`` is the distinct candidate count (the "showing N of
+    M" denominator, FR-005). Pure, so the FR-004/SC-005 drop-order is unit- and mutation-testable
+    without a live graph.
+    """
+    best: dict[str, tuple[int, int, str]] = {}
+    for candidate in candidates:
+        rank = (_LAYER_RANK[candidate.layer], candidate.sort_size, candidate.name)
+        if candidate.node_key not in best or rank < best[candidate.node_key]:
+            best[candidate.node_key] = rank
+    total_distinct = len(best)
+    room = max(0, min(limit, ceiling) - seed_count)
+    kept = [key for key, _ in sorted(best.items(), key=lambda item: item[1])[:room]]
+    return kept, total_distinct > len(kept), total_distinct
 
 
 class Neo4jGraphRepository:
@@ -857,4 +922,199 @@ class Neo4jGraphRepository:
             # (FR-007a). The fixed-shape tiers (referent/category/co-occurrence) are exhaustive,
             # so they never contribute truncation.
             any_truncated=kb_chain is None,
+        )
+
+    # ---- Explore mode: neighborhood subgraph (Feature 115) ------------------
+
+    async def _resolve_seed_nodes(self, seeds: list[UUID]) -> list[dict[str, Any]]:
+        """Seed entities → rows with ``elem`` (elementId node_key) + GraphNode fields.
+
+        The three neighborhood query helpers return ``dict[str, Any]`` rows: Neo4j record values
+        are dynamically typed at the driver boundary (Principle II documented ``Any``), and the
+        values flow into ``GraphNode``/``int`` which validate/coerce them at use.
+        """
+        query = (
+            "MATCH (s:Entity) WHERE s.entityId IN $ids "
+            "RETURN s.entityId AS entity_id, elementId(s) AS elem, s.name AS name, "
+            "s.entityType AS label"
+        )
+        async with self._client.session() as session:
+            result = await session.run(query, ids=[str(s) for s in seeds])
+            return [dict(record) async for record in result]
+
+    async def _neighbor_edges(
+        self, frontier: list[str], max_category_size: int | None
+    ) -> list[dict[str, Any]]:
+        """Edges from the frontier (elementIds) to admissible neighbours (entities / bridges).
+
+        Fetches ALL layers and filters in Python via :func:`edge_layer_for` (the single
+        taxonomy home) — not a Cypher layer filter, which would duplicate the taxonomy. If a
+        dense co-occurrence-off call ever proves slow, a Cypher ``NOT type(r) STARTS WITH
+        'CO_OCCURS_'`` exclusion is the deferred optimisation (a structural fact, not the full
+        mapping); not done now (anti-slop: no premature optimisation).
+        """
+        if not frontier:
+            return []
+        query = (
+            "MATCH (s) WHERE elementId(s) IN $frontier "
+            "MATCH (s)-[r]-(n) "
+            "WHERE (n:Entity OR n:Category OR n:WikidataItem) "
+            "AND ($maxcat IS NULL OR NOT (n:Category) OR n.globalSize IS NULL "
+            "OR n.globalSize <= $maxcat) "
+            "RETURN type(r) AS rtype, r.layer AS rlayer, elementId(n) AS n_elem, "
+            "n.entityId AS n_entity_id, n.name AS n_name, n.globalSize AS n_globalsize, "
+            "CASE WHEN n:Entity THEN coalesce(n.entityType, '') "
+            "ELSE head(labels(n)) END AS n_label"
+        )
+        async with self._client.session() as session:
+            result = await session.run(
+                query, frontier=frontier, maxcat=max_category_size
+            )
+            return [dict(record) async for record in result]
+
+    async def _mesh_edges(
+        self, kept: list[str], wanted: frozenset[EdgeLayer]
+    ) -> list[GraphEdge]:
+        """All edges AMONG the kept node set (a real mesh, not spokes — D9), layer-filtered.
+
+        ``elementId(a) < elementId(b)`` collapses each undirected edge to one row while keeping
+        parallel relationships (distinct ``r``) as separate rows → distinct ``GraphEdge``s
+        (FR-023). ``forward`` records the stored direction relative to ``source_key``.
+        """
+        if len(kept) < 2:
+            return []
+        query = (
+            "MATCH (a)-[r]-(b) "
+            "WHERE elementId(a) IN $kept AND elementId(b) IN $kept "
+            "AND elementId(a) < elementId(b) "
+            "RETURN elementId(a) AS a_elem, elementId(b) AS b_elem, type(r) AS rtype, "
+            "r.layer AS rlayer, (startNode(r) = a) AS a_src"
+        )
+        async with self._client.session() as session:
+            result = await session.run(query, kept=kept)
+            rows = [record async for record in result]
+        edges: list[GraphEdge] = []
+        for row in rows:
+            layer = edge_layer_for(str(row["rtype"]), row["rlayer"])
+            if layer not in wanted:
+                continue
+            edges.append(
+                GraphEdge(
+                    source_key=str(row["a_elem"]),
+                    target_key=str(row["b_elem"]),
+                    edge_type=str(row["rtype"]),
+                    layer=layer,
+                    forward=bool(row["a_src"]),
+                )
+            )
+        return edges
+
+    async def neighborhood(
+        self,
+        seeds: list[UUID],
+        *,
+        radius: int = 1,
+        limit: int = 60,
+        ceiling: int = 250,
+        layers: frozenset[EdgeLayer] | None = None,
+        max_category_size: int | None = 500,
+    ) -> GraphSubgraph:
+        """A bounded, ranked neighborhood subgraph around *seeds* (Feature 115, read-only).
+
+        The Explore-mode counterpart to :meth:`connection`: a node set + edge set, not A→B
+        chains. Neighbours are fetched per hop (``radius`` 1–2), classified into trust layers by
+        :func:`edge_layer_for`, filtered to ``layers`` (default verified + category — FR-007),
+        and ranked/capped by :func:`rank_and_cap_neighbors` so co-occurrence is dropped first
+        (FR-004). The first hop caps at ``limit`` (the initial load — FR-003); deeper hops grow
+        toward ``ceiling`` (FR-008). Edges among the kept set form a real mesh (D9); node_key is
+        a node's ``elementId``.
+
+        Raises :class:`EntityNotInGraphError` (``kind='id'``) if a seed is absent from the graph
+        (→ 404), consistent with :meth:`get_entity_node`.
+        """
+        wanted = (
+            layers
+            if layers is not None
+            else frozenset({EdgeLayer.VERIFIED, EdgeLayer.CATEGORY})
+        )
+        radius = max(1, min(int(radius), 2))
+        seed_rows = await self._resolve_seed_nodes(seeds)
+        present = {UUID(str(row["entity_id"])) for row in seed_rows}
+        for seed in seeds:
+            if seed not in present:
+                raise EntityNotInGraphError(seed, kind="id")
+        nodes: dict[str, GraphNode] = {}
+        for row in seed_rows:
+            elem = str(row["elem"])
+            nodes[elem] = GraphNode(
+                entity_id=row["entity_id"],
+                name=str(row["name"] or ""),
+                label=str(row["label"] or ""),
+                is_bridge=False,
+            )
+        kept: set[str] = set(nodes)
+        frontier = list(nodes)
+        truncated = False
+        candidates_seen: set[str] = set()
+        for hop in range(radius):
+            rows = await self._neighbor_edges(frontier, max_category_size)
+            hop_candidates: list[NeighborCandidate] = []
+            row_by_key: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                layer = edge_layer_for(str(row["rtype"]), row["rlayer"])
+                if layer not in wanted:
+                    continue
+                nkey = str(row["n_elem"])
+                if nkey in kept:
+                    continue
+                candidates_seen.add(nkey)
+                row_by_key.setdefault(nkey, row)
+                hop_candidates.append(
+                    NeighborCandidate(
+                        node_key=nkey,
+                        layer=layer,
+                        sort_size=int(row["n_globalsize"] or 0),
+                        name=str(row["n_name"] or ""),
+                    )
+                )
+            # First hop = the initial-load cap (``limit``); deeper hops grow toward ``ceiling``.
+            kept_keys, hop_trunc, _ = rank_and_cap_neighbors(
+                hop_candidates,
+                seed_count=len(kept),
+                limit=limit if hop == 0 else ceiling,
+                ceiling=ceiling,
+            )
+            truncated = truncated or hop_trunc
+            new_frontier: list[str] = []
+            for nkey in kept_keys:
+                row = row_by_key[nkey]
+                is_bridge = row["n_entity_id"] is None
+                label = str(row["n_label"] or "")
+                nodes[nkey] = GraphNode(
+                    entity_id=None if is_bridge else row["n_entity_id"],
+                    name=str(row["n_name"] or ""),
+                    label=label,
+                    is_bridge=is_bridge,
+                    specificity=(
+                        self._specificity(row["n_globalsize"])
+                        if label == "Category"
+                        else None
+                    ),
+                )
+                kept.add(nkey)
+                new_frontier.append(nkey)
+            frontier = new_frontier
+            if not frontier or len(kept) >= ceiling:
+                break
+        edges = await self._mesh_edges(sorted(kept), wanted)
+        subnodes = [
+            SubgraphNode(node_key=key, node=node) for key, node in nodes.items()
+        ]
+        return GraphSubgraph(
+            nodes=subnodes,
+            edges=edges,
+            truncated=truncated,
+            total_available=len(seed_rows) + len(candidates_seen),
+            seeds=list(seeds),
+            at_ceiling=len(kept) >= ceiling,
         )

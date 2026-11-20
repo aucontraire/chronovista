@@ -10,7 +10,14 @@
  * together) from knowledge-base edges and must stay visually distinct (FR-007).
  */
 
-import type { ConnectionKind, GraphConnection, GraphNode } from "../../api/graph";
+import type {
+  ConnectionKind,
+  EdgeLayer,
+  GraphConnection,
+  GraphEdge,
+  GraphNode,
+  GraphSubgraph,
+} from "../../api/graph";
 
 export type NodeRole = "endpoint-a" | "endpoint-b" | "category" | "bridge" | "entity";
 
@@ -19,6 +26,8 @@ export interface ModelNode {
   name: string;
   label: string;
   role: NodeRole;
+  /** Explore only: the entity to navigate/expand by (the id above is the graph wiring key). */
+  entityId?: string | null;
   /** Server specificity, passed through untouched (FR-008). */
   specificity: number | null;
   /** Pixel diameter; category nodes scale with the server's log-specificity. */
@@ -36,6 +45,8 @@ export interface ModelEdge {
   overlay: boolean;
   /** A human-confirmed reviewed relationship (not an inferred chain) — rendered distinctly. */
   reviewed?: boolean;
+  /** Explore only: the backend-assigned trust layer, carried through untouched (FR-024). */
+  layer?: EdgeLayer;
 }
 
 export interface ConnectionModel {
@@ -213,4 +224,136 @@ export function collapseParallelOverlays(edges: ModelEdge[]): ModelEdge[] {
     out.push({ ...e, relationship: "co-occurs" });
   }
   return out;
+}
+
+/** Layer-accurate wording for Explore (FR-006); the table and legend both read this. */
+export const LAYER_LABELS: Record<EdgeLayer, string> = {
+  verified: "Verified relationship (knowledge base)",
+  category: "Shared category",
+  co_occurrence: "Co-occurrence hint (appear together; not a knowledge-base fact)",
+};
+
+/**
+ * Explore mode: GraphSubgraph -> the same ConnectionModel Connect uses, so the graph and the
+ * table render it through the unchanged Connect code path. Element ids are the server's
+ * `node_key` and a content-derived edge key that includes the layer (stable across refetches,
+ * and distinct for parallel edges in different layers — FR-023). The backend `layer` is carried
+ * through as-is; it is never derived from `edge_type` (FR-024). Styling and wording read
+ * `layer`; `kind` below only satisfies the Connect-shaped `ModelEdge` type.
+ */
+/** Composite edge identity: dedupes merged expansions and keeps parallel layers distinct. */
+export function edgeKey(e: GraphEdge): string {
+  return `${e.source_key}|${e.target_key}|${e.edge_type}|${e.layer}`;
+}
+
+const LAYER_KIND: Record<EdgeLayer, ConnectionKind> = {
+  verified: "asserted",
+  category: "shared_category",
+  co_occurrence: "co_occurrence_transcript",
+};
+
+export function buildSubgraphModel(subgraph: GraphSubgraph): ConnectionModel {
+  const [seedA, seedB] = subgraph.seeds;
+  const isSeed = (seed: string | undefined, key: string, entityId: string | null) =>
+    seed !== undefined && (seed === key || seed === entityId);
+
+  const nodes: ModelNode[] = subgraph.nodes.map(({ node_key, node }) => {
+    let role: NodeRole = "entity";
+    let size = DEFAULT_SIZE;
+    if (isSeed(seedA, node_key, node.entity_id)) {
+      role = "endpoint-a";
+      size = ENDPOINT_SIZE;
+    } else if (isSeed(seedB, node_key, node.entity_id)) {
+      role = "endpoint-b";
+      size = ENDPOINT_SIZE;
+    } else if (node.label === "Category") {
+      role = "category";
+      size = categorySize(node.specificity);
+    } else if (node.is_bridge) {
+      role = "bridge";
+    }
+    return {
+      id: node_key,
+      name: node.name,
+      label: node.label,
+      role,
+      specificity: node.specificity,
+      size,
+      entityId: node.entity_id,
+    };
+  });
+
+  const edges: ModelEdge[] = subgraph.edges.map((e) => {
+    const source = e.forward ? e.source_key : e.target_key;
+    const target = e.forward ? e.target_key : e.source_key;
+    return {
+      id: edgeKey(e),
+      source,
+      target,
+      edgeType: e.edge_type,
+      relationship: relationshipLabel(e.edge_type),
+      kind: LAYER_KIND[e.layer],
+      overlay: e.layer === "co_occurrence",
+      layer: e.layer,
+    };
+  });
+
+  const idOf = (role: NodeRole) => nodes.find((n) => n.role === role)?.id ?? "";
+  return {
+    nodes,
+    edges,
+    endpointAId: idOf("endpoint-a"),
+    endpointBId: idOf("endpoint-b"),
+  };
+}
+
+export interface MergedNeighborhood {
+  subgraph: GraphSubgraph;
+  /** Expansions refused because merging them would pass the ceiling (FR-008). */
+  refused: number;
+  /** True when the ceiling is reached or an expansion was refused. */
+  atCeiling: boolean;
+}
+
+/**
+ * Client-side accumulation of expansions into the base neighborhood (FR-020/FR-008). Nodes are
+ * deduped by `node_key`, edges by {@link edgeKey}. An expansion that would take the node count
+ * past `ceiling` is refused whole: nothing already shown is ever dropped. `total_available`
+ * grows by the nodes added plus each expansion's own unseen remainder.
+ */
+export function mergeExpansions(
+  base: GraphSubgraph,
+  expansions: readonly (GraphSubgraph | undefined)[],
+  ceiling: number,
+): MergedNeighborhood {
+  const nodes = new Map(base.nodes.map((n) => [n.node_key, n]));
+  const edges = new Map(base.edges.map((e) => [edgeKey(e), e]));
+  let total = base.total_available;
+  let truncated = base.truncated;
+  let refused = 0;
+
+  for (const exp of expansions) {
+    if (!exp) continue;
+    const incoming = exp.nodes.filter((n) => !nodes.has(n.node_key));
+    if (nodes.size + incoming.length > ceiling) {
+      refused += 1;
+      continue;
+    }
+    for (const n of incoming) nodes.set(n.node_key, n);
+    for (const e of exp.edges) edges.set(edgeKey(e), e);
+    total += incoming.length + Math.max(0, exp.total_available - exp.nodes.length);
+    truncated = truncated || exp.truncated;
+  }
+
+  return {
+    subgraph: {
+      ...base,
+      nodes: [...nodes.values()],
+      edges: [...edges.values()],
+      truncated,
+      total_available: Math.max(total, nodes.size),
+    },
+    refused,
+    atCeiling: refused > 0 || nodes.size >= ceiling,
+  };
 }

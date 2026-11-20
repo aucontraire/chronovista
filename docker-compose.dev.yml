@@ -22,8 +22,8 @@ services:
       -c maintenance_work_mem=64MB
       -c random_page_cost=1.1
       -c temp_file_limit=100MB
-      -c log_min_duration_statement=0
-      -c log_statement=all
+      -c log_min_duration_statement=1000
+      -c log_statement=ddl
       -c log_min_messages=warning
       -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
     volumes:

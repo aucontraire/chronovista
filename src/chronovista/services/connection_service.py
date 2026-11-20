@@ -14,7 +14,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from chronovista.models.graph_connection import GraphConnection, GraphNode
+from chronovista.models.graph_connection import (
+    EdgeLayer,
+    GraphConnection,
+    GraphNode,
+    GraphSubgraph,
+)
 from chronovista.repositories.neo4j_graph_repository import (
     EntityNotInGraphError,
     Neo4jGraphRepository,
@@ -102,6 +107,31 @@ class ConnectionService:
             a_id, b_id, max_hops=max_hops, max_category_size=max_category_size
         )
         return self._apply_coincidence_policy(result)
+
+    async def neighborhood(
+        self,
+        seeds: list[UUID],
+        *,
+        radius: int = 1,
+        limit: int = 60,
+        ceiling: int = 250,
+        layers: frozenset[EdgeLayer] | None = None,
+        max_category_size: int | None = 500,
+    ) -> GraphSubgraph:
+        """Explore-mode neighborhood subgraph (Feature 115) — thin seam over the repository.
+
+        A read-only passthrough: the repository owns the Cypher, ranking, and assembly (as with
+        :meth:`connect`'s delegation to ``connection``). There is no coincidence policy to apply
+        here — co-occurrence is handled structurally by the trust-layer ranking, not by a verdict.
+        """
+        return await self._repository.neighborhood(
+            seeds,
+            radius=radius,
+            limit=limit,
+            ceiling=ceiling,
+            layers=layers,
+            max_category_size=max_category_size,
+        )
 
     @staticmethod
     def _apply_coincidence_policy(result: GraphConnection) -> GraphConnection:

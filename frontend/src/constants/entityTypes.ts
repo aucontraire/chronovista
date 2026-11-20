@@ -54,6 +54,47 @@ export const ENTITY_TYPE_COLORS: Record<string, string> = {
 };
 
 /**
+ * Fill colour of an entity node in the connection graph (hex: Cytoscape cannot read Tailwind
+ * classes). The first eight entity types take the data-viz categorical palette's eight hues in its
+ * validated slot order (adjacent CVD separation and normal-vision floors pass); `technical_term`,
+ * `other` and unknown types fold into a neutral gray rather than a generated ninth hue. Violet is
+ * used for exactly one type. Node labels are always drawn as text, and every node has a dark
+ * outline, so identity never rests on colour alone (the aqua, yellow and magenta fills are below
+ * 3:1 against white on their own).
+ */
+export const ENTITY_TYPE_GRAPH_COLORS: Record<string, string> = {
+  person: "#2a78d6", // blue
+  organization: "#eb6834", // orange
+  place: "#1baf7a", // aqua
+  work: "#eda100", // yellow
+  event: "#e87ba4", // magenta
+  law: "#008300", // green
+  concept: "#6250d6", // violet
+  product: "#e34948", // red
+};
+
+/**
+ * Neutral graph fills, chosen to sit apart from the eight hues and from each other (pairwise
+ * OKLab distance >= 16; each >= 11 from the nearest typed hue). Lightness does most of the work:
+ * a mid slate for folded entity types, a pale sand for categories, a muted sage for reference
+ * values. Shape (ellipse / diamond / dashed round-rect) and the text key reinforce them.
+ */
+export const ENTITY_TYPE_GRAPH_FALLBACK_COLOR = "#6b7a8f";
+
+/** Structural (non-entity) node fills; the graph stylesheet and the legend both read these. */
+export const GRAPH_STRUCTURAL_COLORS = {
+  /** Shared category (diamond). */
+  category: "#efe1bb",
+  /** Reference value that is not an entity in the library — a Wikidata target (dashed round-rect). */
+  bridge: "#a9cdbd",
+} as const;
+
+/** Graph fill for a node's type (`GraphNode.label`, any case), with the neutral fallback. */
+export function entityTypeGraphColor(label: string | null | undefined): string {
+  return ENTITY_TYPE_GRAPH_COLORS[(label ?? "").toLowerCase()] ?? ENTITY_TYPE_GRAPH_FALLBACK_COLOR;
+}
+
+/**
  * Neutral badge treatment for an unrecognised or missing entity_type.
  *
  * Defined here so it has exactly one definition point (FR-029). It was

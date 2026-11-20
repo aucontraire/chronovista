@@ -9,6 +9,7 @@
 
 import { useId, useState } from "react";
 
+import { useEntityDetail } from "../../hooks/useEntityDetail";
 import { useEntitySearch } from "../../hooks/useEntitySearch";
 import { useGraphPresence } from "../../hooks/useConnection";
 
@@ -30,6 +31,8 @@ export function EntityPicker({
 }: EntityPickerProps) {
   const inputId = useId();
   const [text, setText] = useState("");
+  // A reload or deep link knows only the id: resolve the name instead of showing the raw id.
+  const { entityDetail } = useEntityDetail(selectedId && !selectedName ? selectedId : null);
   const { entities, isLoading, isBelowMinChars } = useEntitySearch(text);
   const { present, isLoading: presenceLoading } = useGraphPresence(
     entities.map((e) => e.entity_id),
@@ -45,7 +48,7 @@ export function EntityPicker({
         <span className="block text-sm font-medium text-slate-700">{label}</span>
         <div className="mt-1 flex items-center justify-between gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">
           <span data-testid="picker-selected">
-            {selectedName ?? `Entity ${selectedId.slice(0, 8)}…`}
+            {selectedName ?? entityDetail?.canonical_name ?? `Entity ${selectedId.slice(0, 8)}…`}
           </span>
           <button
             type="button"

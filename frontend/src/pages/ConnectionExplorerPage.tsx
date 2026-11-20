@@ -19,6 +19,10 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ConnectionGraph } from "../components/graph/ConnectionGraph";
 import { ConnectionTable } from "../components/graph/ConnectionTable";
 import { EntityPicker } from "../components/graph/EntityPicker";
+import { ExplorePanel } from "../components/graph/ExplorePanel";
+import { GraphModeToggle } from "../components/graph/GraphModeToggle";
+import type { GraphMode } from "../components/graph/GraphModeToggle";
+import { NodeTypeLegend } from "../components/graph/NodeTypeLegend";
 import { EvidencePanel } from "../components/graph/EvidencePanel";
 import { buildConnectionModel, hasKnowledgeBaseConnection } from "../components/graph/connectionModel";
 import type { GraphConnection, GraphNode } from "../api/graph";
@@ -30,9 +34,48 @@ const MIN_HOPS = 3;
 const MAX_HOPS = 6; // mirror the server cap (/graph/connect max_hops le=6)
 const DEFAULT_CATEGORY_SIZE = 500;
 
-function EndpointCoverage({ node, id }: { node: GraphNode; id: string | null }) {
+/**
+ * The external-record and entity-page links for one entity. Shared by the no-path coverage cards
+ * and the selected-entity cards shown with a connection / in Explore.
+ */
+function EntityLinks({ id, name }: { id: string | null; name: string | undefined }) {
   const { entityDetail } = useEntityDetail(id);
   const externalUrl = entityDetail?.enrichment?.identifiers[0]?.url;
+  return (
+    <p className="mt-1 flex gap-3 text-sm">
+      {externalUrl ? (
+        <a
+          href={externalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-indigo-700 hover:underline"
+        >
+          External record
+        </a>
+      ) : (
+        // FR-012: the gap case is an UN-enriched endpoint — always offer an actionable
+        // "look it up" external path (a Wikidata search), not nothing.
+        name && (
+          <a
+            href={`https://www.wikidata.org/w/index.php?search=${encodeURIComponent(name)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-indigo-700 hover:underline"
+          >
+            Look up on Wikidata
+          </a>
+        )
+      )}
+      {id && (
+        <Link to={`/entities/${id}`} className="text-indigo-700 hover:underline">
+          Entity page
+        </Link>
+      )}
+    </p>
+  );
+}
+
+function EndpointCoverage({ node, id }: { node: GraphNode; id: string | null }) {
   return (
     <li className="rounded-md border border-slate-200 bg-white p-3 text-sm">
       <p className="font-medium text-slate-800">{node.name}</p>
@@ -41,34 +84,19 @@ function EndpointCoverage({ node, id }: { node: GraphNode; id: string | null }) 
           ? "Knowledge-base coverage unknown"
           : `${node.kb_degree} knowledge-base ${node.kb_degree === 1 ? "fact" : "facts"}`}
       </p>
-      <p className="mt-1 flex gap-3">
-        {externalUrl ? (
-          <a
-            href={externalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-indigo-700 hover:underline"
-          >
-            External record
-          </a>
-        ) : (
-          // FR-012: the gap case is an UN-enriched endpoint — always offer an actionable
-          // "look it up" external path (a Wikidata search), not nothing.
-          <a
-            href={`https://www.wikidata.org/w/index.php?search=${encodeURIComponent(node.name)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-indigo-700 hover:underline"
-          >
-            Look up on Wikidata
-          </a>
-        )}
-        {id && (
-          <Link to={`/entities/${id}`} className="text-indigo-700 hover:underline">
-            Entity page
-          </Link>
-        )}
-      </p>
+      <EntityLinks id={id} name={node.name} />
+    </li>
+  );
+}
+
+/** A selected entity with its links; the name falls back to the looked-up canonical name. */
+function SelectedEntityCard({ id, knownName }: { id: string; knownName: string | undefined }) {
+  const { entityDetail } = useEntityDetail(id);
+  const name = knownName ?? entityDetail?.canonical_name;
+  return (
+    <li className="rounded-md border border-slate-200 bg-white p-3 text-sm">
+      <p className="font-medium text-slate-800">{name ?? `Entity ${id.slice(0, 8)}…`}</p>
+      <EntityLinks id={id} name={name} />
     </li>
   );
 }
@@ -125,6 +153,17 @@ export function ConnectionExplorerPage() {
   const [maxHops, setMaxHops] = useState(MIN_HOPS);
   const [maxCategorySize, setMaxCategorySize] = useState(DEFAULT_CATEGORY_SIZE);
   const tableRef = useRef<HTMLDivElement>(null);
+  // The mode lives in the URL beside the selection, so switching modes cannot drop `a`/`b`
+  // and an Explore view is shareable (FR-010).
+  const mode: GraphMode = searchParams.get("mode") === "explore" ? "explore" : "connect";
+  const exploring = mode === "explore";
+
+  function setMode(next: GraphMode) {
+    const params = new URLSearchParams(searchParams);
+    if (next === "explore") params.set("mode", "explore");
+    else params.delete("mode");
+    setSearchParams(params);
+  }
 
   const { health } = useGraphHealth();
   const knownUnservable = health !== undefined && !health.servable;
@@ -133,7 +172,7 @@ export function ConnectionExplorerPage() {
   const { connection, isLoading, failure, refetch } = useConnection(
     ready ? a : null,
     ready ? b : null,
-    { maxHops, maxCategorySize, enabled: !knownUnservable },
+    { maxHops, maxCategorySize, enabled: !knownUnservable && !exploring },
   );
 
   const model = useMemo(
@@ -156,6 +195,9 @@ export function ConnectionExplorerPage() {
     return names[id];
   };
 
+  // FR-009: the current pair (or a single chosen entity) seeds Explore as a union.
+  const exploreSeeds = [...new Set([a, b].filter((id): id is string => Boolean(id)))];
+
   const hasKb = model ? hasKnowledgeBaseConnection(model) : false;
   const unavailable = knownUnservable || failure?.kind === "unavailable";
 
@@ -176,6 +218,8 @@ export function ConnectionExplorerPage() {
         </p>
       )}
 
+      <GraphModeToggle mode={mode} onChange={setMode} />
+
       <div className="grid gap-4 sm:grid-cols-2">
         <EntityPicker
           label="Entity A"
@@ -193,7 +237,17 @@ export function ConnectionExplorerPage() {
         />
       </div>
 
+      {/* Links for the selected pair: always in Explore, and with a knowledge-base connection in
+          Connect (the no-path view already shows them via its coverage cards). */}
+      {ready && a && b && (exploring || (connection && hasKb)) && (
+        <ul className="grid gap-2 sm:grid-cols-2" aria-label="Selected entities" data-testid="selected-entities">
+          <SelectedEntityCard id={a} knownName={nameFor(a)} />
+          <SelectedEntityCard id={b} knownName={nameFor(b)} />
+        </ul>
+      )}
+
       <div className="flex flex-wrap gap-4 text-sm">
+        {!exploring && (
         <label className="flex items-center gap-2">
           Reach (hops, {MIN_HOPS}–{MAX_HOPS})
           <input
@@ -209,6 +263,7 @@ export function ConnectionExplorerPage() {
             className="w-20 rounded border border-slate-300 px-2 py-1"
           />
         </label>
+        )}
         <label className="flex items-center gap-2">
           Largest category size
           <input
@@ -223,7 +278,7 @@ export function ConnectionExplorerPage() {
         </label>
       </div>
 
-      {!ready && !unavailable && (
+      {!exploring && !ready && !unavailable && (
         <p role="status" className="text-sm text-slate-600" data-testid="pick-prompt">
           {a && a === b
             ? "Pick two different entities."
@@ -231,7 +286,7 @@ export function ConnectionExplorerPage() {
         </p>
       )}
 
-      {unavailable && (
+      {!exploring && unavailable && (
         <div
           role="status"
           data-testid="graph-unavailable"
@@ -253,13 +308,13 @@ export function ConnectionExplorerPage() {
         </div>
       )}
 
-      {ready && !unavailable && isLoading && (
+      {!exploring && ready && !unavailable && isLoading && (
         <p role="status" className="text-sm text-slate-500" data-testid="connection-loading">
           Finding connections…
         </p>
       )}
 
-      {ready && !unavailable && failure?.kind === "not_in_graph" && (
+      {!exploring && ready && !unavailable && failure?.kind === "not_in_graph" && (
         <div
           role="status"
           data-testid="not-in-graph"
@@ -274,7 +329,7 @@ export function ConnectionExplorerPage() {
         </div>
       )}
 
-      {ready && !unavailable && failure?.kind === "error" && (
+      {!exploring && ready && !unavailable && failure?.kind === "error" && (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           Couldn&apos;t load the connection.{" "}
           <button type="button" onClick={refetch} className="underline">
@@ -283,7 +338,20 @@ export function ConnectionExplorerPage() {
         </div>
       )}
 
-      {ready && !unavailable && connection && model && (
+      {exploring && (
+        <ExplorePanel
+          seeds={exploreSeeds}
+          maxCategorySize={maxCategorySize}
+          enabled={!knownUnservable}
+        />
+      )}
+
+      {/* The evidence panel is about a PAIR, so Explore shows it only with both entities chosen. */}
+      {exploring && ready && a && b && (
+        <EvidencePanel entityAId={a} entityBId={b} />
+      )}
+
+      {!exploring && ready && !unavailable && connection && model && (
         <div className="space-y-4">
           {connection.reviewed_verdict?.verdict === "relationship" && (
             <p role="status" className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900">
@@ -303,6 +371,7 @@ export function ConnectionExplorerPage() {
                   tableId={TABLE_ID}
                   summary={`Graph of ${model.edges.length} relationships between ${connection.entity_a.name} and ${connection.entity_b.name}. The table below lists the same relationships.`}
                 />
+                <NodeTypeLegend model={model} />
                 {legend()}
                 <button
                   type="button"

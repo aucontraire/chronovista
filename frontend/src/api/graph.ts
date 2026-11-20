@@ -214,3 +214,62 @@ export async function fetchConnectionEvidence(
     },
   );
 }
+
+// --- Explore mode neighborhood (Feature 115) --------------------------------
+// Mirrors the `GET /graph/neighborhood` response. Keep field names identical.
+
+/** Trust layer, assigned by the backend; never re-derive it from `edge_type` (FR-024). */
+export type EdgeLayer = "verified" | "category" | "co_occurrence";
+
+export interface GraphEdge {
+  source_key: string;
+  target_key: string;
+  edge_type: string;
+  layer: EdgeLayer;
+  forward: boolean;
+  specificity: number | null;
+}
+
+export interface SubgraphNode {
+  /** Cytoscape wiring id (the element id). Use `node.entity_id` for navigation. */
+  node_key: string;
+  node: GraphNode;
+}
+
+export interface GraphSubgraph {
+  nodes: SubgraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+  total_available: number;
+  seeds: string[];
+  at_ceiling: boolean;
+}
+
+export interface NeighborhoodParams {
+  seeds: string[];
+  radius?: number | undefined;
+  limit?: number | undefined;
+  ceiling?: number | undefined;
+  /** Edge-layer/type filter, sent as repeated `edge_types` params. */
+  edgeTypes?: string[] | undefined;
+  maxCategorySize?: number | undefined;
+}
+
+export async function fetchNeighborhood(
+  { seeds, radius, limit, ceiling, edgeTypes, maxCategorySize }: NeighborhoodParams,
+  signal?: AbortSignal,
+): Promise<GraphSubgraph> {
+  const params = new URLSearchParams();
+  for (const seed of seeds) params.append("seed", seed);
+  if (radius !== undefined) params.set("radius", String(radius));
+  if (limit !== undefined) params.set("limit", String(limit));
+  if (ceiling !== undefined) params.set("ceiling", String(ceiling));
+  for (const t of edgeTypes ?? []) params.append("edge_types", t);
+  if (maxCategorySize !== undefined) {
+    params.set("max_category_size", String(maxCategorySize));
+  }
+  return apiFetch<GraphSubgraph>(`/graph/neighborhood?${params.toString()}`, {
+    timeout: 30000,
+    ...(signal !== undefined ? { externalSignal: signal } : {}),
+  });
+}

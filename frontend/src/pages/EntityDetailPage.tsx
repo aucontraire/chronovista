@@ -1806,6 +1806,16 @@ export function EntityDetailPage() {
               <AssociationBreakdown bySource={entity.by_source} />
             </div>
 
+            {/* Feature 115 (FR-016): open the Connection Explorer pre-seeded with this entity. */}
+            <div className="mt-4">
+              <Link
+                to={`/connections?${new URLSearchParams({ a: entity.entity_id }).toString()}`}
+                className="inline-flex items-center text-sm font-medium text-indigo-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              >
+                See connections
+              </Link>
+            </div>
+
             {/* T008: Scan for mentions button + inline feedback */}
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <button

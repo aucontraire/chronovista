@@ -214,6 +214,9 @@ _EXERCISED_QUERY_METHODS = {
     "entity_ids_in_graph",
     "health",
     "read_meta",
+    "_resolve_seed_nodes",
+    "_neighbor_edges",
+    "_mesh_edges",
 }
 
 
@@ -223,6 +226,11 @@ async def _exercise_all_query_methods(repo: Neo4jGraphRepository) -> None:
     await repo.find_entities_by_name("x")
     await repo.health()  # exercises read_meta + the per-layer presence probes
     await repo.entity_ids_in_graph([uuid4()])
+    # Feature 115 Explore-mode query builders. Issued directly so the FR-008/FR-016 scans see
+    # them: neighborhood() delegates to these three and holds no session.run of its own.
+    await repo._resolve_seed_nodes([uuid4()])
+    await repo._neighbor_edges(["node-a"], 500)
+    await repo._mesh_edges(["node-a", "node-b"], frozenset())
 
 
 def _query_builder_methods() -> set[str]:

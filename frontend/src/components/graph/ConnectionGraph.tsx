@@ -155,6 +155,7 @@ const STYLE: StylesheetJson = [
     },
   },
   // Selection/hover halo: neutral and thin, so it marks without washing the graph in one colour.
+  { selector: ".filtered", style: { display: "none" } },
   {
     selector: ":focus, :selected, :active",
     style: { "overlay-color": "#334155", "overlay-opacity": 0.1, "overlay-padding": 3 },
@@ -182,6 +183,11 @@ interface ConnectionGraphProps {
   fitToken?: number;
   /** Above this many nodes the graph is hidden (default suits Connect; Explore passes its ceiling). */
   maxRenderedNodes?: number;
+  /**
+   * Ids of nodes/edges hidden by the focus filters. They are hidden in place (display:none), never
+   * removed, so positions survive. The table is given the same set (see `withoutHidden`).
+   */
+  hiddenIds?: ReadonlySet<string>;
 }
 
 let fcoseRegistered = false;
@@ -222,6 +228,7 @@ export function ConnectionGraph({
   maximized = false,
   fitToken = 0,
   maxRenderedNodes = MAX_RENDERED_NODES,
+  hiddenIds,
 }: ConnectionGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -233,6 +240,8 @@ export function ConnectionGraph({
   const onNodeExpandRef = useRef(onNodeExpand);
   onNodeExpandRef.current = onNodeExpand;
   const [cyReady, setCyReady] = useState(false);
+  // Mouse-only affordance (the table carries every full name for assistive tech).
+  const [hoverName, setHoverName] = useState<{ name: string; x: number; y: number } | null>(null);
   const tooLarge = model.nodes.length > maxRenderedNodes;
 
   // Create the single long-lived instance. It is destroyed only on unmount (or when the graph
@@ -264,6 +273,18 @@ export function ConnectionGraph({
         wheelSensitivity: 0.2,
       });
       cyRef.current = cy;
+      cy.on("mouseover", "node", (evt) => {
+        const rect = container.getBoundingClientRect();
+        const pos = evt.target.renderedPosition() as { x: number; y: number };
+        setHoverName({
+          name: String(evt.target.data("label")),
+          x: rect.left + pos.x,
+          y: rect.top + pos.y,
+        });
+      });
+      cy.on("mouseout", "node", () => setHoverName(null));
+      // A pan/zoom/drag moves nodes under a stale tooltip.
+      cy.on("pan zoom drag", () => setHoverName(null));
       cy.on("dbltap", "node", (evt) => {
         const entityId: unknown = evt.target.data("entityId");
         if (typeof entityId === "string") onNodeExpandRef.current?.(entityId);
@@ -288,6 +309,7 @@ export function ConnectionGraph({
       layoutRef.current = null;
       cyRef.current?.destroy();
       cyRef.current = null;
+      setHoverName(null);
       setCyReady(false);
     };
   }, [tooLarge]);
@@ -346,6 +368,16 @@ export function ConnectionGraph({
     layout.run();
   }, [model, cyReady, updateMode]);
 
+  // Focus filters: toggle a class, never add/remove, so the arranged layout is untouched.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !cyReady) return;
+    cy.elements().forEach((el) => {
+      if (hiddenIds?.has(el.id())) el.addClass("filtered");
+      else el.removeClass("filtered");
+    });
+  }, [hiddenIds, model, cyReady]);
+
   if (tooLarge) {
     return (
       <p
@@ -360,16 +392,28 @@ export function ConnectionGraph({
   }
 
   return (
-    <div
-      ref={containerRef}
-      role="img"
-      tabIndex={0}
-      aria-label={summary}
-      aria-describedby={tableId}
-      data-testid="connection-graph"
-      className={`w-full border border-slate-200 bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 ${
-        maximized ? "h-full rounded-none" : "h-[28rem] rounded-lg"
-      }`}
-    />
+    <>
+      <div
+        ref={containerRef}
+        role="img"
+        tabIndex={0}
+        aria-label={summary}
+        aria-describedby={tableId}
+        data-testid="connection-graph"
+        className={`w-full border border-slate-200 bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 ${
+          maximized ? "h-full rounded-none" : "h-[28rem] rounded-lg"
+        }`}
+      />
+      {hoverName && (
+        <div
+          aria-hidden="true"
+          data-testid="node-hover-name"
+          style={{ left: hoverName.x, top: hoverName.y }}
+          className="pointer-events-none fixed z-[60] max-w-xs -translate-x-1/2 -translate-y-full rounded bg-slate-900 px-2 py-1 text-xs text-white shadow"
+        >
+          {hoverName.name}
+        </div>
+      )}
+    </>
   );
 }

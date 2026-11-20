@@ -16,7 +16,14 @@ import { ConnectionTable } from "./ConnectionTable";
 import { NodeTypeLegend } from "./NodeTypeLegend";
 import { MaximizeOverlay } from "./MaximizeOverlay";
 import { DEFAULT_ENABLED_LAYERS, EDGE_LAYERS, EdgeLayerControls } from "./EdgeLayerControls";
-import { buildSubgraphModel, mergeExpansions } from "./connectionModel";
+import {
+  NO_FILTER,
+  buildSubgraphModel,
+  computeHiddenIds,
+  mergeExpansions,
+  withoutHidden,
+} from "./connectionModel";
+import { RelationshipFilter } from "./RelationshipFilter";
 
 const TABLE_ID = "explore-table";
 /** FR-008: total node ceiling for accumulated expansion; also sent to the server. */
@@ -83,6 +90,39 @@ export function ExplorePanel({ seeds, maxCategorySize, enabled = true }: Explore
   }
   const tableRef = useRef<HTMLDivElement>(null);
   const model = useMemo(() => (subgraph ? buildSubgraphModel(subgraph) : null), [subgraph]);
+
+  // Focus filters. One computation decides what is hidden; the canvas hides exactly those ids in
+  // place, and the table is built from the model minus the same ids — one model, two views.
+  const [hiddenKinds, setHiddenKinds] = useState<ReadonlySet<string>>(NO_FILTER.hiddenNodeKinds);
+  const [hiddenRels, setHiddenRels] = useState<ReadonlySet<string>>(NO_FILTER.hiddenRelationships);
+  const hiddenIds = useMemo(
+    () =>
+      model
+        ? computeHiddenIds(model, { hiddenNodeKinds: hiddenKinds, hiddenRelationships: hiddenRels })
+        : new Set<string>(),
+    [model, hiddenKinds, hiddenRels],
+  );
+  const visibleModel = useMemo(() => (model ? withoutHidden(model, hiddenIds) : null), [model, hiddenIds]);
+  const hiddenNodeCount = model && visibleModel ? model.nodes.length - visibleModel.nodes.length : 0;
+
+  function toggleIn(set: ReadonlySet<string>, key: string): ReadonlySet<string> {
+    const next = new Set(set);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  }
+  function setAllRelationships(hide: boolean) {
+    setHiddenRels(hide ? new Set((model?.edges ?? []).map((e) => e.edgeType)) : new Set());
+  }
+
+  const relationshipFilter = model && (
+    <RelationshipFilter
+      model={model}
+      hidden={hiddenRels}
+      onToggle={(edgeType) => setHiddenRels((prev) => toggleIn(prev, edgeType))}
+      onSetAll={setAllRelationships}
+    />
+  );
 
   // Maximize (FR-017): same graph instance, same cap/ceiling/layers (FR-019); only the size changes.
   const graphVisible = !noLayers && model !== null;
@@ -165,6 +205,7 @@ export function ExplorePanel({ seeds, maxCategorySize, enabled = true }: Explore
         <>
           <p className="text-sm text-slate-700" data-testid="explore-count">
             {countText}
+            {hiddenNodeCount > 0 && ` (${hiddenNodeCount} hidden by filters)`}
           </p>
           {expansions.pending > 0 && (
             <p role="status" className="text-sm text-slate-500" data-testid="explore-expanding">
@@ -184,7 +225,11 @@ export function ExplorePanel({ seeds, maxCategorySize, enabled = true }: Explore
               {merged && merged.refused > 0 ? `; ${merged.refused} expansion${merged.refused === 1 ? " was" : "s were"} not added` : ""}.
             </p>
           )}
-          <NodeTypeLegend model={model} />
+          <NodeTypeLegend
+            model={model}
+            hiddenKinds={hiddenKinds}
+            onToggleKind={(kind) => setHiddenKinds((prev) => toggleIn(prev, kind))}
+          />
           <button
             ref={maximizeButtonRef}
             type="button"
@@ -202,13 +247,12 @@ export function ExplorePanel({ seeds, maxCategorySize, enabled = true }: Explore
               <div
                 role="toolbar"
                 aria-label="Graph controls"
-                className="absolute right-4 top-4 z-10 max-w-xs space-y-2 rounded-lg border border-slate-300 bg-white/95 p-3 shadow-lg"
+                className="absolute right-4 top-4 z-10 max-h-[calc(100vh-2rem)] w-80 max-w-[calc(100vw-2rem)] space-y-2 overflow-y-auto rounded-lg border border-slate-300 bg-white/95 p-3 shadow-lg"
               >
                 <p className="text-xs text-slate-600" data-testid="maximized-count">
                   {countText}
                 </p>
-                <EdgeLayerControls enabled={layers} onToggle={toggleLayer} />
-                <NodeTypeLegend model={model} />
+                {/* Actions first: the panel scrolls when many types are listed. */}
                 <div className="flex flex-wrap gap-2 text-sm">
                   <button type="button" onClick={() => setFitToken((n) => n + 1)} className="rounded border border-slate-300 px-2 py-1">
                     Fit to view
@@ -224,6 +268,13 @@ export function ExplorePanel({ seeds, maxCategorySize, enabled = true }: Explore
                     Exit full screen
                   </button>
                 </div>
+                <EdgeLayerControls enabled={layers} onToggle={toggleLayer} />
+                <NodeTypeLegend
+                  model={model}
+                  hiddenKinds={hiddenKinds}
+                  onToggleKind={(kind) => setHiddenKinds((prev) => toggleIn(prev, kind))}
+                />
+                {relationshipFilter}
               </div>
             }
           >
@@ -235,7 +286,8 @@ export function ExplorePanel({ seeds, maxCategorySize, enabled = true }: Explore
               maximized={maximized}
               fitToken={fitToken}
               maxRenderedNodes={NODE_CEILING}
-              summary={`Neighborhood graph of ${model.nodes.length} entities and ${model.edges.length} relationships. The table below lists the same relationships.`}
+              hiddenIds={hiddenIds}
+              summary={`Neighborhood graph of ${visibleModel?.nodes.length ?? model.nodes.length} entities and ${visibleModel?.edges.length ?? model.edges.length} relationships. The table below lists the same relationships.`}
             />
           </MaximizeOverlay>
           <button
@@ -245,10 +297,13 @@ export function ExplorePanel({ seeds, maxCategorySize, enabled = true }: Explore
           >
             Skip to table
           </button>
+          {/* Rendered in one slot at a time (this one, or the toolbar while maximized); both read
+              the same state above, so a toggle in either shows in the other. */}
+          {!maximized && relationshipFilter}
           <div id={TABLE_ID}>
             <ConnectionTable
               ref={tableRef}
-              model={model}
+              model={visibleModel ?? model}
               caption="Relationships in the neighborhood, one row per edge, with its trust layer"
               onExpand={expandNode}
               expandedIds={expandedSet}

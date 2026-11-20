@@ -116,3 +116,101 @@ export async function fetchGraphPresence(
   });
   return res.present;
 }
+
+// --- Transcript-evidence panel (Feature 114) --------------------------------
+// Mirrors `src/chronovista/models/connection_evidence.py`. Keep field names identical.
+
+/** Mirrors the backend `DetectionMethod` literal. */
+export type DetectionMethod =
+  | "rule_match"
+  | "spacy_ner"
+  | "llm_extraction"
+  | "manual"
+  | "user_correction"
+  | "asr_match";
+
+export interface MentionRef {
+  segment_id: number;
+  end_segment_id: number | null;
+  language_code: string;
+  sequence_number: number;
+  start_time: number;
+  mention_text: string;
+  match_start: number | null;
+  match_end: number | null;
+  detection_method: DetectionMethod;
+}
+
+/** A bounded run of transcript segments rendered as prose. */
+export interface Passage {
+  text: string;
+  start_time: number;
+  /** Lead segment id — the deep-link `seg` / scroll anchor. */
+  segment_id: number;
+}
+
+/** One (video, language) co-occurrence: the min-separation pair in a single transcript language. */
+export interface EvidenceVariant {
+  language_code: string;
+  mention_a: MentionRef;
+  mention_b: MentionRef;
+  separation_segments: number;
+  /** One window when the mentions are close, else one per mention (never empty). */
+  passages: Passage[];
+  /** Server-computed (computed_field); never recompute on the client. */
+  separation_seconds: number;
+}
+
+/** One co-occurrence grained by VIDEO (the panel row + the audit/exclusion unit). */
+export interface EvidenceItem {
+  video_id: string;
+  /** The video's strongest co-mention (min separation across its co-occurring languages). */
+  representative: EvidenceVariant;
+  /** The same pair in the video's OTHER co-occurring languages (the expander); [] if single-language. */
+  other_language_variants: EvidenceVariant[];
+  video_title: string | null;
+  channel_title: string | null;
+  /** Server-computed: 1 + other_language_variants.length. */
+  cooccurring_language_count: number;
+  // No `deep_link`: the client builds a per-passage in-app link via `utils/videoDeepLink.ts`.
+}
+
+export interface ConnectionEvidence {
+  entity_a_id: string;
+  entity_b_id: string;
+  items: EvidenceItem[];
+  /** Distinct co-occurring VIDEOS (one row each; paginate on this). Narrower than the any-source
+   *  `/videos` intersection — the panel labels its denominator rather than implying they match. */
+  total_available: number;
+  /** (video, language) transcript count — "spoken together in N videos (M transcripts)". */
+  raw_cooccurrence_count: number;
+  /** Page offset these items start at (so `truncated` is offset-aware). */
+  offset: number;
+  /** Non-transcript basis when `items` is empty; else null. */
+  basis_when_empty: "title" | "description" | "tag" | "manual" | null;
+  /** Server-computed (computed_field). */
+  returned: number;
+  truncated: boolean;
+}
+
+export interface ConnectionEvidenceParams {
+  a: string;
+  b: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchConnectionEvidence(
+  { a, b, limit, offset }: ConnectionEvidenceParams,
+  signal?: AbortSignal,
+): Promise<ConnectionEvidence> {
+  const params = new URLSearchParams({ a, b });
+  if (limit !== undefined) params.set("limit", String(limit));
+  if (offset !== undefined) params.set("offset", String(offset));
+  return apiFetch<ConnectionEvidence>(
+    `/graph/connect/evidence?${params.toString()}`,
+    {
+      ...(signal !== undefined ? { externalSignal: signal } : {}),
+    },
+  );
+}

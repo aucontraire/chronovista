@@ -19,6 +19,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { CooccurringPanel } from "../components/entity/CooccurringPanel";
 import { SharedCategoriesPanel } from "../components/entity/SharedCategoriesPanel";
+import { buildVideoDeepLink } from "../utils/videoDeepLink";
 import { DistinctiveCategoriesPanel } from "../components/entity/DistinctiveCategoriesPanel";
 import { AllCategoriesPanel } from "../components/entity/AllCategoriesPanel";
 import { CategoryMembersPanel } from "../components/entity/CategoryMembersPanel";
@@ -318,11 +319,13 @@ function EntityVideoCard({
   // transcript timestamp to seek to.
   const isTagOnly = !sources.includes("transcript") && !has_manual;
 
-  const to = isTagOnly || isManualOnly || first_mention_time == null
-    ? `/videos/${video_id}`
-    : first_segment_id > 0
-      ? `/videos/${video_id}?seg=${first_segment_id}&t=${Math.floor(first_mention_time)}`
-      : `/videos/${video_id}?t=${Math.floor(first_mention_time)}`;
+  const to =
+    isTagOnly || isManualOnly || first_mention_time == null
+      ? buildVideoDeepLink(video_id)
+      : buildVideoDeepLink(video_id, {
+          t: first_mention_time,
+          ...(first_segment_id > 0 ? { seg: first_segment_id } : {}),
+        });
 
   const ariaLabel = isManualOnly
     ? `${video_title} — Manually linked`

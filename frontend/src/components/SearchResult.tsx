@@ -30,6 +30,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { SearchResultSegment } from "../types/search";
 import { HighlightedText } from "./HighlightedText";
+import { buildVideoDeepLink } from "../utils/videoDeepLink";
 import { ContextExpander } from "./ContextExpander";
 import { formatTimestamp } from "../utils/formatTimestamp";
 import { formatDate } from "../utils/formatters";
@@ -81,7 +82,11 @@ export function SearchResult({ segment, queryTerms }: SearchResultProps) {
   const displayChannelTitle = channel_title ?? "Unknown Channel";
 
   // Generate deep link URL with language, segment, and timestamp (FR-005, Feature 022 FR-001)
-  const videoDeepLinkUrl = `/videos/${video_id}?lang=${language_code}&seg=${segment_id}&t=${Math.floor(start_time)}`;
+  const videoDeepLinkUrl = buildVideoDeepLink(video_id, {
+    lang: language_code,
+    seg: segment_id,
+    t: start_time,
+  });
 
   return (
     <article

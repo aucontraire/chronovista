@@ -134,7 +134,10 @@ def test_alias_linkable_methods_are_rule_match_only() -> None:
 # v0.122.0 counter bug was. Its behaviour is pinned by
 # test_delete_removes_auto_keeps_manual_and_correction + the asr recovery gating
 # test, not by this count.
-_EXPECTED_QUALIFICATION_CALL_SITES = 7
+# 8th site added by Feature 114: EntityMentionRepository.co_occurrence_evidence's locate query
+# qualifies transcript mentions via the shared predicate (admits asr_match, excludes manual) so the
+# evidence panel and the CO_OCCURS_* counts share one mention definition (FR-014).
+_EXPECTED_QUALIFICATION_CALL_SITES = 8
 
 
 def test_all_association_surfaces_use_the_shared_qualification() -> None:

@@ -161,6 +161,13 @@ export const navRoutes: NavEntry[] = [
         tooltip: "Review candidate entity relationships",
         icon: CandidatesIcon,
       },
+      {
+        kind: "route",
+        path: "/connections",
+        label: "Connections",
+        tooltip: "Explore how entities connect",
+        icon: EntityIcon,
+      },
     ],
   },
   {

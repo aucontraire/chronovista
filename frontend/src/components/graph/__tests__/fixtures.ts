@@ -139,3 +139,35 @@ export function fixtureEvidence(
     ...overrides,
   };
 }
+
+// --- Feature 115: Explore subgraph -------------------------------------------
+import type { EdgeLayer, GraphEdge, GraphSubgraph } from "../../../api/graph";
+
+/** Synthetic neighborhood: 2 seeds + `neighbors` others, edges alternating verified/category. */
+export function fixtureSubgraph(neighbors = 10, totalAvailable = neighbors): GraphSubgraph {
+  const nodes = [
+    { node_key: "key-a", node: entityA },
+    { node_key: "key-b", node: entityB },
+    ...Array.from({ length: neighbors }, (_, i) => ({
+      node_key: `key-n${i}`,
+      node: node({ entity_id: `n${i}`, name: `Neighbor ${i}`, label: "Person" }),
+    })),
+  ];
+  const layers: EdgeLayer[] = ["verified", "category", "co_occurrence"];
+  const edges: GraphEdge[] = Array.from({ length: neighbors }, (_, i) => ({
+    source_key: i % 2 === 0 ? "key-a" : "key-b",
+    target_key: `key-n${i}`,
+    edge_type: "RELATED_TO",
+    layer: layers[i % layers.length] ?? "verified",
+    forward: true,
+    specificity: null,
+  }));
+  return {
+    nodes,
+    edges,
+    truncated: totalAvailable > neighbors,
+    total_available: totalAvailable,
+    seeds: [A_ID, B_ID],
+    at_ceiling: false,
+  };
+}

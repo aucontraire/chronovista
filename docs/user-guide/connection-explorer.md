@@ -233,6 +233,35 @@ collision, or a common word that is also an entity name).
 To act on a false match you spot here, exclude it with the existing entity–video exclusion tooling;
 the next graph rebuild then drops it from the edges too.
 
+### Explore mode: the whole neighborhood
+
+Connect answers "how are these two related?" with the single cleanest path. **Explore** answers a
+different question — "what's *around* these entities?" — by drawing a bounded **neighborhood
+subgraph**: the entities, their neighbors, and the edges among them, the way a Neo4j/AuraDB query
+result looks, rather than one pruned thread.
+
+- Switch with the **Connect / Explore** toggle. Your selected entities carry over, and the mode is
+  in the URL (`?mode=explore`), so an Explore view is linkable.
+- Explore seeds from the entities you've chosen (one or both) and shows the **union** of their
+  neighborhoods. It loads up to 60 nodes at first — a legible starting view, not the whole graph.
+- **Trust layers.** Every edge is labeled by how far it can be trusted, and each layer toggles on
+  its own:
+    - **Verified** — a knowledge-base fact (or a human-reviewed relationship). Solid, prominent.
+    - **Category** — a shared Wikipedia category. Dashed, de-emphasized.
+    - **Co-occurrence** — the two were merely *discussed together*; **not** a stated relationship.
+      Faint, dotted, a distinct colour — and **off by default**. Turn it on deliberately.
+  The styling never relies on colour alone, so a co-occurrence hint can't be mistaken for a fact.
+- **Grow outward.** Double-click a node — or use the **Expand** control in the table row (the
+  keyboard path) — to add that entity's neighbors *in place*, without disturbing the layout you've
+  arranged. The graph accumulates up to a ceiling (250 nodes); past that it tells you it's full and
+  stops, rather than dropping what you're looking at.
+- **"Showing N of M nodes"** tells you how much of the available neighborhood is on screen.
+- **Maximize** gives a dense neighborhood room: the graph fills the window (Esc exits), with a
+  pared-down toolbar; the node cap still applies, so it's more space, not an uncapped hairball.
+
+Explore is strictly read-only: it draws only relationships already in the graph and never infers a
+new one — that is a separate, deliberately-not-built capability.
+
 ## See also
 
 - [How the connection explorer answers honestly](../architecture/connection-explorer.md) — the

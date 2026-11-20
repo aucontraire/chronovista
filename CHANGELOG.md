@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.127.0] - 2026-11-20
+
+### Added
+
+- **Connection-graph Explore mode (Feature 115).** The connection explorer gains a second mode
+  beside Connect: an interactive, bounded **neighborhood subgraph** around one or two entities —
+  nodes and edges across every relationship kind, rendered like a Neo4j/AuraDB query result,
+  instead of the single pruned path Connect shows. Edges are grouped into trust layers — verified
+  knowledge-base facts, category memberships, and co-occurrence hints — each visually distinct and
+  independently toggleable (co-occurrence off by default); when the node cap binds, co-occurrence
+  is dropped before verified facts. Double-click a node (or a keyboard control in the table)
+  expands its neighbors in place, accumulating up to a bounded ceiling without losing the arranged
+  layout. A new "Connections" entry in the primary navigation and a "see connections" link on each
+  entity page make the explorer directly reachable, and an in-app maximized view gives dense
+  neighborhoods room. Backed by a new read-only `GET /api/v1/graph/neighborhood` endpoint.
+  Read-only throughout; renders only relationships already in the graph.
+
 ## [0.126.0] - 2026-11-19
 
 ### Added

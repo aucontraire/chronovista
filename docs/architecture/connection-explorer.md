@@ -212,6 +212,37 @@ Encoding is non-colour-dependent throughout (FR-025): line **style** carries con
 **shape** carries role, node **size** carries category specificity, and every edge carries a text
 label — colour is only ever a redundant fourth channel.
 
+## Explore mode: the neighborhood view (Feature 115)
+
+Connect returns the single cleanest *path* between two entities. Explore answers the complementary
+question — the **neighborhood** — and returns a different shape: a bounded node-and-edge **subgraph**,
+not a set of A→B chains. The two modes share the same renderer and the same accessible table (the
+one-model-two-views rule above still holds); Explore just feeds that renderer a `GraphSubgraph`
+instead of a `GraphConnection`.
+
+Three design points carry over from the engine's honesty rules and a prior measurement:
+
+- **Trust layers are server-assigned, consumed verbatim.** Every edge is classified once, on the
+  server, into `verified` / `category` / `co_occurrence` (the `EdgeLayer` taxonomy — the single home
+  for the mapping, guarded by a contract test). The browser styles by that layer and never
+  re-derives it from the edge type (FR-024), so the picture cannot disagree with the engine. The
+  classifier folds the graph's two "stated" edge kinds — Wikidata facts and human-reviewed
+  relationships — into *verified*, and a reviewed *coincidence* verdict into *co-occurrence*, since a
+  coincidence is the opposite of a verified tie.
+- **The cap keeps facts over hints.** A neighborhood is bounded — a legible initial load (default 60)
+  growing by expansion to a ceiling (default 250). When a cap binds, co-occurrence edges are dropped
+  **before** verified ones (FR-004). This encodes the finding that co-occurrence means "discussed
+  together", not "related": it is shown (opt-in), distinctly, but it is the first thing sacrificed
+  for legibility and never crowds out a fact.
+- **Read-only, and only what's loaded.** Explore infers nothing. It renders relationships already in
+  the graph; the "extract new relationships from transcripts" idea a prior spike refuted is
+  deliberately absent.
+
+The endpoint is `GET /api/v1/graph/neighborhood` — read-only, behind the same servability gate and
+RFC-7807 error mapping as `/graph/connect` (503 for a degraded graph, 404 for a seed absent from the
+current graph, 422 for invalid parameters). Expansion is the same endpoint re-seeded on one node and
+merged client-side, so the layout the user has arranged is preserved.
+
 ## Where the graph runs: dev vs production
 
 The two surfaces read two different Neo4j instances, and conflating them is the easy mistake:

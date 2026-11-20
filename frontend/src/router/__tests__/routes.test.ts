@@ -114,7 +114,7 @@ describe("navRoutes — flat NavRoute entries", () => {
     expect(route?.icon).toBeDefined();
   });
 
-  it("Entities group children are /entities (All) then /candidates (Candidates)", () => {
+  it("Entities group children are /entities, /candidates, /relationship-candidates, /connections", () => {
     const group = findGroup(navRoutes, "Entities");
     expect(group?.kind).toBe("group");
     expect(group?.defaultExpanded).toBe(true);
@@ -123,6 +123,7 @@ describe("navRoutes — flat NavRoute entries", () => {
       ["/entities", "All"],
       ["/candidates", "Candidates"],
       ["/relationship-candidates", "Relationships"],
+      ["/connections", "Connections"],
     ]);
   });
 

@@ -19,6 +19,9 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ConnectionGraph } from "../components/graph/ConnectionGraph";
 import { ConnectionTable } from "../components/graph/ConnectionTable";
 import { EntityPicker } from "../components/graph/EntityPicker";
+import { ExplorePanel } from "../components/graph/ExplorePanel";
+import { GraphModeToggle } from "../components/graph/GraphModeToggle";
+import type { GraphMode } from "../components/graph/GraphModeToggle";
 import { EvidencePanel } from "../components/graph/EvidencePanel";
 import { buildConnectionModel, hasKnowledgeBaseConnection } from "../components/graph/connectionModel";
 import type { GraphConnection, GraphNode } from "../api/graph";
@@ -125,6 +128,17 @@ export function ConnectionExplorerPage() {
   const [maxHops, setMaxHops] = useState(MIN_HOPS);
   const [maxCategorySize, setMaxCategorySize] = useState(DEFAULT_CATEGORY_SIZE);
   const tableRef = useRef<HTMLDivElement>(null);
+  // The mode lives in the URL beside the selection, so switching modes cannot drop `a`/`b`
+  // and an Explore view is shareable (FR-010).
+  const mode: GraphMode = searchParams.get("mode") === "explore" ? "explore" : "connect";
+  const exploring = mode === "explore";
+
+  function setMode(next: GraphMode) {
+    const params = new URLSearchParams(searchParams);
+    if (next === "explore") params.set("mode", "explore");
+    else params.delete("mode");
+    setSearchParams(params);
+  }
 
   const { health } = useGraphHealth();
   const knownUnservable = health !== undefined && !health.servable;
@@ -133,7 +147,7 @@ export function ConnectionExplorerPage() {
   const { connection, isLoading, failure, refetch } = useConnection(
     ready ? a : null,
     ready ? b : null,
-    { maxHops, maxCategorySize, enabled: !knownUnservable },
+    { maxHops, maxCategorySize, enabled: !knownUnservable && !exploring },
   );
 
   const model = useMemo(
@@ -156,6 +170,9 @@ export function ConnectionExplorerPage() {
     return names[id];
   };
 
+  // FR-009: the current pair (or a single chosen entity) seeds Explore as a union.
+  const exploreSeeds = [...new Set([a, b].filter((id): id is string => Boolean(id)))];
+
   const hasKb = model ? hasKnowledgeBaseConnection(model) : false;
   const unavailable = knownUnservable || failure?.kind === "unavailable";
 
@@ -176,6 +193,8 @@ export function ConnectionExplorerPage() {
         </p>
       )}
 
+      <GraphModeToggle mode={mode} onChange={setMode} />
+
       <div className="grid gap-4 sm:grid-cols-2">
         <EntityPicker
           label="Entity A"
@@ -194,6 +213,7 @@ export function ConnectionExplorerPage() {
       </div>
 
       <div className="flex flex-wrap gap-4 text-sm">
+        {!exploring && (
         <label className="flex items-center gap-2">
           Reach (hops, {MIN_HOPS}–{MAX_HOPS})
           <input
@@ -209,6 +229,7 @@ export function ConnectionExplorerPage() {
             className="w-20 rounded border border-slate-300 px-2 py-1"
           />
         </label>
+        )}
         <label className="flex items-center gap-2">
           Largest category size
           <input
@@ -223,7 +244,7 @@ export function ConnectionExplorerPage() {
         </label>
       </div>
 
-      {!ready && !unavailable && (
+      {!exploring && !ready && !unavailable && (
         <p role="status" className="text-sm text-slate-600" data-testid="pick-prompt">
           {a && a === b
             ? "Pick two different entities."
@@ -231,7 +252,7 @@ export function ConnectionExplorerPage() {
         </p>
       )}
 
-      {unavailable && (
+      {!exploring && unavailable && (
         <div
           role="status"
           data-testid="graph-unavailable"
@@ -253,13 +274,13 @@ export function ConnectionExplorerPage() {
         </div>
       )}
 
-      {ready && !unavailable && isLoading && (
+      {!exploring && ready && !unavailable && isLoading && (
         <p role="status" className="text-sm text-slate-500" data-testid="connection-loading">
           Finding connections…
         </p>
       )}
 
-      {ready && !unavailable && failure?.kind === "not_in_graph" && (
+      {!exploring && ready && !unavailable && failure?.kind === "not_in_graph" && (
         <div
           role="status"
           data-testid="not-in-graph"
@@ -274,7 +295,7 @@ export function ConnectionExplorerPage() {
         </div>
       )}
 
-      {ready && !unavailable && failure?.kind === "error" && (
+      {!exploring && ready && !unavailable && failure?.kind === "error" && (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           Couldn&apos;t load the connection.{" "}
           <button type="button" onClick={refetch} className="underline">
@@ -283,7 +304,15 @@ export function ConnectionExplorerPage() {
         </div>
       )}
 
-      {ready && !unavailable && connection && model && (
+      {exploring && (
+        <ExplorePanel
+          seeds={exploreSeeds}
+          maxCategorySize={maxCategorySize}
+          enabled={!knownUnservable}
+        />
+      )}
+
+      {!exploring && ready && !unavailable && connection && model && (
         <div className="space-y-4">
           {connection.reviewed_verdict?.verdict === "relationship" && (
             <p role="status" className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-900">

@@ -14,9 +14,9 @@
  * Cytoscape is imported lazily so it never loads for tests or other pages.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type cytoscape from "cytoscape";
-import type { ElementDefinition, Core, StylesheetJson } from "cytoscape";
+import type { ElementDefinition, Core, Layouts, StylesheetJson } from "cytoscape";
 import type { FcoseLayoutOptions } from "cytoscape-fcose";
 
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
@@ -35,10 +35,22 @@ export function edgeColor(edgeType: string): string {
 export function toCytoscapeElements(model: ConnectionModel): ElementDefinition[] {
   const nodes: ElementDefinition[] = model.nodes.map((n) => ({
     group: "nodes",
-    data: { id: n.id, label: n.name, size: n.size, role: n.role },
+    data: {
+      id: n.id,
+      label: n.name,
+      size: n.size,
+      role: n.role,
+      ...(n.entityId ? { entityId: n.entityId } : {}),
+    },
     classes: n.role,
   }));
-  const edges: ElementDefinition[] = collapseParallelOverlays(model.edges).map((e) => ({
+  // Connect collapses parallel co-occurrence edges; Explore edges (which carry a backend layer)
+  // are never merged, so each layer stays an independent edge (FR-023).
+  const edgeModels = [
+    ...collapseParallelOverlays(model.edges.filter((e) => e.layer === undefined)),
+    ...model.edges.filter((e) => e.layer !== undefined),
+  ];
+  const edges: ElementDefinition[] = edgeModels.map((e) => ({
     group: "edges",
     data: {
       id: e.id,
@@ -46,8 +58,13 @@ export function toCytoscapeElements(model: ConnectionModel): ElementDefinition[]
       target: e.target,
       label: e.relationship,
       color: e.overlay ? "#475569" : edgeColor(e.edgeType),
+      ...(e.layer !== undefined ? { layer: e.layer } : {}),
     },
-    classes: [e.overlay ? "overlay" : "kb", e.kind].join(" "),
+    // Layered (Explore) edges are styled by `layer-*` only; Connect edges by their kind.
+    classes: [
+      e.overlay ? "overlay" : "kb",
+      e.layer !== undefined ? `layer-${e.layer}` : e.kind,
+    ].join(" "),
   }));
   return [...nodes, ...edges];
 }
@@ -107,6 +124,22 @@ const STYLE: StylesheetJson = [
       width: 2.5,
     },
   },
+  // Explore trust layers (FR-006): shape of the line, weight and opacity differ, not just colour.
+  { selector: "edge.layer-verified", style: { "line-style": "solid", width: 3.5, opacity: 1 } },
+  {
+    selector: "edge.layer-category",
+    style: { "line-style": "dashed", "line-dash-pattern": [6, 4], width: 1.5, opacity: 0.7 },
+  },
+  {
+    selector: "edge.layer-co_occurrence",
+    style: {
+      "line-style": "dotted",
+      "line-color": "#c026d3",
+      "target-arrow-color": "#c026d3",
+      width: 1,
+      opacity: 0.45,
+    },
+  },
   { selector: ":focus, :selected", style: { "overlay-color": "#4338ca", "overlay-opacity": 0.2 } },
 ];
 
@@ -115,20 +148,83 @@ interface ConnectionGraphProps {
   /** DOM id of the table, referenced by the canvas for assistive tech. */
   tableId: string;
   summary: string;
+  /**
+   * How a model change is applied to the long-lived instance.
+   *  - "replace" (default, Connect): the previous elements are swapped for the new model and the
+   *    whole layout is recomputed and fitted — the same visual result as before the refactor.
+   *  - "incremental" (Explore, FR-020): elements already present keep their positions, only new
+   *    elements are added and laid out, and pan/zoom are untouched.
+   */
+  updateMode?: "replace" | "incremental";
+  /** Explore: double-clicking a node that has an entity id asks to expand it in place. */
+  onNodeExpand?: (entityId: string) => void;
+  /** Explore maximize (FR-017): fills its (fixed) parent instead of a fixed height. */
+  maximized?: boolean;
+  /** Bumping this re-fits the view (the "Fit to view" control). */
+  fitToken?: number;
+  /** Above this many nodes the graph is hidden (default suits Connect; Explore passes its ceiling). */
+  maxRenderedNodes?: number;
 }
 
 let fcoseRegistered = false;
 
-export function ConnectionGraph({ model, tableId, summary }: ConnectionGraphProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const reducedMotion = usePrefersReducedMotion();
-  const tooLarge = model.nodes.length > MAX_RENDERED_NODES;
+// Co-occurrence overlay edges are drawn but excluded from layout, so they do not
+// pull the two poles together and imply a knowledge-base proximity.
+function layoutOptionsFor(
+  animate: boolean,
+  initial: boolean,
+  pinned: { nodeId: string; position: { x: number; y: number } }[],
+): cytoscape.LayoutOptions {
+  const options: FcoseLayoutOptions = {
+    name: "fcose",
+    // Reduced motion: settle immediately, no animation (FR-027).
+    animate,
+    animationDuration: 400,
+    // Only a from-scratch layout may randomize; an incremental one must not move what is placed.
+    randomize: initial,
+    fit: initial,
+    padding: 40,
+    // Keep endpoints (and any pair with no KB edges between them) clearly apart.
+    nodeRepulsion: () => 12000,
+    idealEdgeLength: () => 140,
+    nodeSeparation: 120,
+    numIter: 3000,
+    ...(initial ? {} : { fixedNodeConstraint: pinned }),
+  };
+  // @types/cytoscape-fcose is incompatible with exactOptionalPropertyTypes.
+  return options as unknown as cytoscape.LayoutOptions;
+}
 
+export function ConnectionGraph({
+  model,
+  tableId,
+  summary,
+  updateMode = "replace",
+  onNodeExpand,
+  maximized = false,
+  fitToken = 0,
+  maxRenderedNodes = MAX_RENDERED_NODES,
+}: ConnectionGraphProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cyRef = useRef<Core | null>(null);
+  const layoutRef = useRef<Layouts | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  const reducedMotionRef = useRef(reducedMotion);
+  reducedMotionRef.current = reducedMotion;
+  // Read through a ref so a new callback identity never rebuilds the instance or its handlers.
+  const onNodeExpandRef = useRef(onNodeExpand);
+  onNodeExpandRef.current = onNodeExpand;
+  const [cyReady, setCyReady] = useState(false);
+  const tooLarge = model.nodes.length > maxRenderedNodes;
+
+  // Create the single long-lived instance. It is destroyed only on unmount (or when the graph
+  // is hidden as too large), never on a data change.
   useEffect(() => {
     const container = containerRef.current;
     if (!container || tooLarge) return;
-    let cy: Core | undefined;
     let cancelled = false;
+    let observer: ResizeObserver | undefined;
+    let frame = 0;
 
     void (async () => {
       const [{ default: cytoscape }, { default: fcose }] = await Promise.all([
@@ -140,46 +236,97 @@ export function ConnectionGraph({ model, tableId, summary }: ConnectionGraphProp
         cytoscape.use(fcose);
         fcoseRegistered = true;
       }
-      cy = cytoscape({
+      const cy = cytoscape({
         container,
-        elements: toCytoscapeElements(model),
+        elements: [],
         style: STYLE,
         // The page, not the canvas, owns keyboard focus; avoid canvas-level wheel hijack.
         userPanningEnabled: true,
         userZoomingEnabled: true,
         wheelSensitivity: 0.2,
       });
-      // Co-occurrence overlay edges are drawn but excluded from layout, so they do not
-      // pull the two poles together and imply a knowledge-base proximity.
-      const layoutOptions: FcoseLayoutOptions = {
-        name: "fcose",
-        // Reduced motion: settle immediately, no animation (FR-027).
-        animate: !reducedMotion,
-        animationDuration: 400,
-        randomize: true,
-        fit: true,
-        padding: 40,
-        // Keep endpoints (and any pair with no KB edges between them) clearly apart.
-        nodeRepulsion: () => 12000,
-        idealEdgeLength: () => 140,
-        nodeSeparation: 120,
-        numIter: 3000,
-      };
-      // With no non-overlay edge the layout would see two unconnected nodes and stack them;
-      // include overlays then (nothing KB-related is implied: there is no KB edge to mislead).
-      const hasKbEdge = cy.edges().not(".overlay").length > 0;
-      const layoutEles = hasKbEdge ? cy.elements().not(".overlay") : cy.elements();
-      layoutEles.layout(
-          // @types/cytoscape-fcose is incompatible with exactOptionalPropertyTypes.
-          layoutOptions as unknown as cytoscape.LayoutOptions,
-        ).run();
+      cyRef.current = cy;
+      cy.on("dbltap", "node", (evt) => {
+        const entityId: unknown = evt.target.data("entityId");
+        if (typeof entityId === "string") onNodeExpandRef.current?.(entityId);
+      });
+      // The canvas caches its pixel size, so a CSS-only resize (maximize, sidebar) leaves it
+      // stale. Resize only; never re-run the layout here (FR-020).
+      if (typeof ResizeObserver !== "undefined") {
+        observer = new ResizeObserver(() => {
+          cancelAnimationFrame(frame);
+          frame = requestAnimationFrame(() => cy.resize());
+        });
+        observer.observe(container);
+      }
+      setCyReady(true);
     })();
 
     return () => {
       cancelled = true;
-      cy?.destroy();
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+      layoutRef.current?.stop();
+      layoutRef.current = null;
+      cyRef.current?.destroy();
+      cyRef.current = null;
+      setCyReady(false);
     };
-  }, [model, reducedMotion, tooLarge]);
+  }, [tooLarge]);
+
+  // Maximize/exit and "Fit to view": the canvas caches its pixel size, so resize explicitly (the
+  // ResizeObserver also fires, but a fit before it would use the stale size), then fit. The same
+  // instance is reused; nothing is rebuilt. Skips the mount run (the first layout fits itself).
+  const sizeKey = `${String(maximized)}|${fitToken}`;
+  const lastSizeKey = useRef(sizeKey);
+  useEffect(() => {
+    if (lastSizeKey.current === sizeKey) return;
+    lastSizeKey.current = sizeKey;
+    const frame = requestAnimationFrame(() => {
+      const cy = cyRef.current;
+      if (!cy) return;
+      cy.resize();
+      cy.fit(undefined, 40);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sizeKey]);
+
+  // Apply the model to the existing instance.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !cyReady) return;
+    const next = toCytoscapeElements(model);
+    const nextIds = new Set(next.map((e) => String(e.data["id"])));
+    layoutRef.current?.stop();
+
+    const incremental = updateMode === "incremental" && cy.elements().length > 0;
+    const existingIds = new Set<string>();
+    if (incremental) {
+      cy.elements().forEach((el) => {
+        if (nextIds.has(el.id())) existingIds.add(el.id());
+      });
+      cy.elements().filter((el) => !nextIds.has(el.id())).remove();
+    } else {
+      cy.elements().remove();
+    }
+
+    const added = next.filter((e) => !existingIds.has(String(e.data["id"])));
+    if (added.length === 0) return;
+    cy.add(added);
+
+    const hasKbEdge = cy.edges().not(".overlay").length > 0;
+    const layoutEles = hasKbEdge ? cy.elements().not(".overlay") : cy.elements();
+    const pinned = cy
+      .nodes()
+      .toArray()
+      .filter((n) => existingIds.has(n.id()))
+      .map((n) => ({ nodeId: n.id(), position: { ...n.position() } }));
+    const layout = layoutEles.layout(
+      layoutOptionsFor(!reducedMotionRef.current, !incremental, pinned),
+    );
+    layoutRef.current = layout;
+    layout.run();
+  }, [model, cyReady, updateMode]);
 
   if (tooLarge) {
     return (
@@ -202,7 +349,9 @@ export function ConnectionGraph({ model, tableId, summary }: ConnectionGraphProp
       aria-label={summary}
       aria-describedby={tableId}
       data-testid="connection-graph"
-      className="h-[28rem] w-full rounded-lg border border-slate-200 bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
+      className={`w-full border border-slate-200 bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 ${
+        maximized ? "h-full rounded-none" : "h-[28rem] rounded-lg"
+      }`}
     />
   );
 }

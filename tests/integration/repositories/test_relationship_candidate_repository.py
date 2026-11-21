@@ -158,6 +158,124 @@ class TestListRanked:
         tight, tight_total, _ = await repo.list_ranked(db_session, min_support=10)
         assert tight_total == 1 and tight[0].shared_video_count == 20
 
+    async def test_review_filter_subsets_reviewed_unreviewed_all(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo = RelationshipCandidateRepository()
+        e1 = await _make_entity(db_session, "RV1")
+        e2 = await _make_entity(db_session, "RV2")
+        e3 = await _make_entity(db_session, "RV3")
+        await repo.upsert_many(
+            db_session,
+            candidates=[
+                _cand(e1.id, e2.id, lift=100.0),
+                _cand(e1.id, e3.id, lift=50.0),
+            ],
+        )
+        all_rows, all_total, _ = await repo.list_ranked(db_session)
+        assert all_total == 2
+        # Mark the top-ranked row reviewed (no repo writer exists; set it directly).
+        all_rows[0].review_status = "associated_with"
+        await db_session.flush()
+
+        rev, rev_total, _ = await repo.list_ranked(db_session, review="reviewed")
+        assert rev_total == 1 and rev[0].review_status == "associated_with"
+        unrev, unrev_total, _ = await repo.list_ranked(db_session, review="unreviewed")
+        assert unrev_total == 1 and unrev[0].review_status is None
+        _, all2_total, _ = await repo.list_ranked(db_session, review="all")
+        assert all2_total == 2
+
+    async def test_sort_by_reorders_display_without_changing_membership(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo = RelationshipCandidateRepository()
+        e1 = await _make_entity(db_session, "SV1")
+        e2 = await _make_entity(db_session, "SV2")
+        e3 = await _make_entity(db_session, "SV3")
+        await repo.upsert_many(
+            db_session,
+            candidates=[
+                _cand(e1.id, e2.id, lift=100.0, shared_video_count=5),
+                _cand(e1.id, e3.id, lift=50.0, shared_video_count=40),
+            ],
+        )
+        # Default ("rank") = lift desc, so the lift=100 row is first.
+        ranked, total, _ = await repo.list_ranked(db_session)
+        assert total == 2 and ranked[0].lift == 100.0
+        # Sort by shared_video_count asc flips the DISPLAY order (5 before 40); the same two
+        # rows are present (membership is still lift-defined, unchanged).
+        asc, asc_total, _ = await repo.list_ranked(
+            db_session, sort_by="shared_video_count", sort_dir="asc"
+        )
+        assert asc_total == 2
+        assert [r.shared_video_count for r in asc] == [5, 40]
+
+    async def test_review_and_sort_never_promote_a_below_head_row(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # §23: filters/sort subset WITHIN the lift-defined head and must never surface a below-head
+        # row. Shrink the head to 2 so the lowest-lift pair is outside it, cheaply.
+        from chronovista.repositories import relationship_candidate_repository as mod
+
+        monkeypatch.setattr(mod, "HEAD_CUTOFF", 2)
+        repo = RelationshipCandidateRepository()
+        e1 = await _make_entity(db_session, "HS1")
+        e2 = await _make_entity(db_session, "HS2")
+        e3 = await _make_entity(db_session, "HS3")
+        e4 = await _make_entity(db_session, "HS4")
+        await repo.upsert_many(
+            db_session,
+            candidates=[
+                _cand(e1.id, e2.id, lift=300.0),
+                _cand(e1.id, e3.id, lift=200.0),
+                _cand(e1.id, e4.id, lift=10.0),  # rank 3 -> outside the 2-row head
+            ],
+        )
+        # Review the below-head row (read the full set via head_only=False to reach it).
+        all_rows, _, _ = await repo.list_ranked(db_session, head_only=False)
+        low = next(r for r in all_rows if r.lift == 10.0)
+        low.review_status = "associated_with"
+        await db_session.flush()
+
+        # review=reviewed must NOT surface it — it is outside the head.
+        rev, rev_total, _ = await repo.list_ranked(db_session, review="reviewed")
+        assert rev_total == 0 and rev == []
+        # Sorting by reviewed_at must not pull it in either (sort reorders the head only).
+        srt, _, _ = await repo.list_ranked(
+            db_session, sort_by="reviewed_at", sort_dir="desc"
+        )
+        assert all(r.lift != 10.0 for r in srt)
+
+    async def test_verdict_category_filter(self, db_session: AsyncSession) -> None:
+        repo = RelationshipCandidateRepository()
+        e1 = await _make_entity(db_session, "VC1")
+        e2 = await _make_entity(db_session, "VC2")
+        e3 = await _make_entity(db_session, "VC3")
+        await repo.upsert_many(
+            db_session,
+            candidates=[
+                _cand(e1.id, e2.id, lift=100.0),
+                _cand(e1.id, e3.id, lift=50.0),
+            ],
+        )
+        rows, _, _ = await repo.list_ranked(db_session)
+        rows[0].review_status = "covers"
+        rows[1].review_status = "coincidence"
+        await db_session.flush()
+
+        covers, covers_total, _ = await repo.list_ranked(
+            db_session, verdicts=("covers",)
+        )
+        assert covers_total == 1 and covers[0].review_status == "covers"
+        # Multiple categories OR within the verdict dimension.
+        both, both_total, _ = await repo.list_ranked(
+            db_session, verdicts=("covers", "coincidence")
+        )
+        assert both_total == 2
+        # Empty = no category filter.
+        _, none_total, _ = await repo.list_ranked(db_session, verdicts=())
+        assert none_total == 2
+
 
 class TestDeleteStale:
     async def test_removes_unemitted_unverdicted_keeps_others(

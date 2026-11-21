@@ -45,7 +45,17 @@ class RelationshipCandidateItem(BaseModel):
     )
     status: Literal["candidate"] = Field(
         default="candidate",
-        description="Always 'candidate' — the MVP exposes no verdict",
+        description="Always 'candidate' — the row kind (the human verdict is in review_status)",
+    )
+    review_status: str | None = Field(
+        default=None,
+        description=(
+            "The human verdict (rtca-v1: associated_with / co_cast / covers / coincidence / "
+            "artifact), or null if the pair is not yet reviewed"
+        ),
+    )
+    reviewed_at: datetime | None = Field(
+        default=None, description="When the verdict was recorded, or null if unreviewed"
     )
 
 

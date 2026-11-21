@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -64,6 +64,44 @@ _HEAD_ORDER_BY = (
     RelationshipCandidateDB.shared_video_count.desc(),
     RelationshipCandidateDB.id,
 )
+
+# Valid list_ranked review/sort values — the API router validates against these same sets.
+ReviewFilter = Literal["all", "reviewed", "unreviewed"]
+SortBy = Literal[
+    "rank", "lift", "shared_video_count", "kb_corroboration_count", "reviewed_at"
+]
+SortDir = Literal["asc", "desc"]
+# The rtca-v1 verdict categories — a SEPARATE dimension from the review-state filter; a row carries
+# one as its review_status once judged.
+VerdictCategory = Literal[
+    "associated_with", "co_cast", "covers", "coincidence", "artifact"
+]
+
+# Display-sort columns (review view). The sort reorders the SHOWN page WITHIN the lift-defined head
+# — it never changes head membership, which stays `_HEAD_ORDER_BY`. "rank" is the default lift
+# ranking (and ignores sort_dir); a terminal `id` keeps every sort deterministic.
+_SORT_COLUMNS = {
+    "lift": RelationshipCandidateDB.lift,
+    "shared_video_count": RelationshipCandidateDB.shared_video_count,
+    "kb_corroboration_count": RelationshipCandidateDB.kb_corroboration_count,
+    "reviewed_at": RelationshipCandidateDB.reviewed_at,
+}
+
+
+def _display_order_by(sort_by: SortBy, sort_dir: SortDir) -> tuple[Any, ...]:
+    # tuple[Any, ...]: SQLAlchemy order_by elements are heterogeneous clause types
+    # (InstrumentedAttribute / UnaryExpression) with no single precise annotation — the same
+    # shape `_HEAD_ORDER_BY` already is.
+    col = _SORT_COLUMNS.get(sort_by)
+    if col is None:  # "rank" -> the default lift ranking (sort_dir has no effect here)
+        return _HEAD_ORDER_BY
+    ordered = col.desc() if sort_dir == "desc" else col.asc()
+    if (
+        sort_by == "reviewed_at"
+    ):  # nullable: unreviewed rows sort last in either direction
+        ordered = ordered.nulls_last()
+    return (ordered, RelationshipCandidateDB.id)
+
 
 # asyncpg rejects a statement with > 32,767 bind parameters. Each candidate row
 # binds ~14 params (12 create fields + last_generated_at + the uuid7 id default),
@@ -148,6 +186,10 @@ class RelationshipCandidateRepository(
         *,
         eligible_only: bool = False,
         min_support: int = 5,
+        review: ReviewFilter = "all",
+        verdicts: tuple[VerdictCategory, ...] = (),
+        sort_by: SortBy = "rank",
+        sort_dir: SortDir = "desc",
         skip: int = 0,
         limit: int = 50,
         head_only: bool = True,
@@ -161,12 +203,17 @@ class RelationshipCandidateRepository(
 
         ``head_only`` (default True) scopes the result to the queue's HEAD: the GLOBAL
         top-``HEAD_CUTOFF`` of the qualifying floor (``shared_video_count >= 5``) by the ranking.
-        Head membership is independent of the user filters — ``min_support`` and ``eligible_only``
-        subset WITHIN the head, they never promote a below-head row into it (Feature 108 §23 /
+        Head membership is independent of the user filters — ``min_support``, ``eligible_only`` and
+        ``review`` ({all, reviewed, unreviewed}) subset WITHIN the head, they never promote a
+        below-head row into it (Feature 108 §23 /
         FR-001), so those parameters keep their documented "only filters rows, never re-floors the
         ranking" contract. A large ``limit`` cannot reach the tail because the head is bounded to
         ``HEAD_CUTOFF`` rows by construction (FR-004). The API always uses the default; the
         CLI/measurement path passes ``head_only=False`` to read the retained tail (no cap).
+
+        ``sort_by``/``sort_dir`` reorder only the DISPLAYED page (default ``"rank"`` = the lift
+        ranking; ``sort_dir`` has no effect on ``"rank"``). They never change head membership or
+        either count.
 
         Returns ``(rows, total, total_before_scoping)``, both over the SAME active-filter
         population so the "N of M" provenance is coherent: ``total`` is how many rows match the
@@ -181,6 +228,16 @@ class RelationshipCandidateRepository(
         ]
         if eligible_only:
             active_filters.append(RelationshipCandidateDB.both_typed_eligible.is_(True))
+        # Review filter subsets WITHIN the head, exactly like eligible_only — it never promotes a
+        # below-head row into view, so the head-membership contract (§23) is preserved.
+        if review == "reviewed":
+            active_filters.append(RelationshipCandidateDB.review_status.isnot(None))
+        elif review == "unreviewed":
+            active_filters.append(RelationshipCandidateDB.review_status.is_(None))
+        if (
+            verdicts
+        ):  # verdict-CATEGORY dimension; ANDs with the review-state filter, within the head
+            active_filters.append(RelationshipCandidateDB.review_status.in_(verdicts))
 
         # total_before_scoping = the full population matching the active filters — the "M" in
         # "N of M", about the SAME population as `total`, never the unfiltered global count.
@@ -220,7 +277,7 @@ class RelationshipCandidateRepository(
         stmt = (
             select(RelationshipCandidateDB)
             .where(*row_where)
-            .order_by(*_HEAD_ORDER_BY)
+            .order_by(*_display_order_by(sort_by, sort_dir))
             .offset(skip)
             .limit(limit)
             # A bulk Core upsert does not sync cached ORM instances; force the read

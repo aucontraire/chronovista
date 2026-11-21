@@ -25,7 +25,26 @@ export interface RelationshipCandidate {
   channel: string;
   channel_video_universe: number;
   status: "candidate";
+  /** Human verdict (e.g. `associated_with`, `co_cast`, `covers`, `coincidence`, `artifact`); null = unreviewed. */
+  review_status: string | null;
+  /** ISO 8601 timestamp of the verdict, or null when unreviewed. */
+  reviewed_at: string | null;
 }
+
+export type ReviewFilter = "all" | "reviewed" | "unreviewed";
+export type SortBy =
+  | "rank"
+  | "lift"
+  | "shared_video_count"
+  | "kb_corroboration_count"
+  | "reviewed_at";
+export type VerdictCategory =
+  | "associated_with"
+  | "co_cast"
+  | "covers"
+  | "coincidence"
+  | "artifact";
+export type SortDir = "asc" | "desc";
 
 export interface RelationshipCandidateListResponse {
   items: RelationshipCandidate[];
@@ -44,6 +63,11 @@ export interface RelationshipCandidateParams {
   limit: number;
   offset: number;
   eligible_only: boolean;
+  review: ReviewFilter;
+  /** Repeatable `verdict` filter; empty = no category filter. */
+  verdict: readonly VerdictCategory[];
+  sort_by: SortBy;
+  sort_dir: SortDir;
 }
 
 export const RELATIONSHIP_CANDIDATES_KEY = ["relationship-candidates"] as const;
@@ -56,7 +80,11 @@ export async function fetchRelationshipCandidates(
     limit: String(params.limit),
     offset: String(params.offset),
     eligible_only: String(params.eligible_only),
+    review: params.review,
+    sort_by: params.sort_by,
+    sort_dir: params.sort_dir,
   });
+  params.verdict.forEach((v) => qs.append("verdict", v));
   return apiFetch<RelationshipCandidateListResponse>(
     `/relationship-candidates?${qs.toString()}`,
     { ...(signal !== undefined ? { externalSignal: signal } : {}) }
@@ -70,6 +98,10 @@ export function useRelationshipCandidates(params: RelationshipCandidateParams) {
       params.limit,
       params.offset,
       params.eligible_only,
+      params.review,
+      [...params.verdict],
+      params.sort_by,
+      params.sort_dir,
     ],
     queryFn: ({ signal }) => fetchRelationshipCandidates(params, signal),
     placeholderData: keepPreviousData,

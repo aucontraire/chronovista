@@ -12,6 +12,47 @@ import type { RelationshipCandidate } from "../../hooks/useRelationshipCandidate
 const LINK_CLASS =
   "font-semibold text-indigo-700 hover:underline focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded";
 
+export const VERDICT_BADGES: Record<
+  string,
+  { label: string; glyph: string; cls: string; meaning: string }
+> = {
+  associated_with: { label: "associated_with", glyph: "\u2713", cls: "bg-emerald-50 text-emerald-900 border-emerald-300", meaning: "A connected / social relationship." },
+  co_cast: { label: "co_cast", glyph: "\u25CE", cls: "bg-sky-50 text-sky-900 border-sky-300", meaning: "Castmates: appeared together in the same work." },
+  covers: { label: "covers", glyph: "\u25A4", cls: "bg-violet-50 text-violet-900 border-violet-300", meaning: "One entity covers or focuses on the other." },
+  coincidence: { label: "coincidence", glyph: "\u2248", cls: "bg-amber-50 text-amber-900 border-amber-300", meaning: "Merely discussed together; not a relationship." },
+  artifact: { label: "artifact", glyph: "\u2715", cls: "bg-rose-50 text-rose-900 border-rose-300", meaning: "Not a real pair, or undecided." },
+};
+
+/** Labeled verdict badge: text plus a distinct glyph, so it is never colour-only. */
+export function ReviewStatusBadge({ status }: { status: string | null }) {
+  if (status === null) {
+    return (
+      <span
+        data-testid="review-status-badge"
+        className="text-xs px-2 py-0.5 rounded-full border border-dashed border-gray-400 bg-white text-gray-600"
+      >
+        <span aria-hidden="true">{"\u25CB "}</span>
+        <span className="sr-only">Verdict: </span>unreviewed
+      </span>
+    );
+  }
+  const badge = VERDICT_BADGES[status] ?? {
+    label: status,
+    glyph: "?",
+    cls: "bg-gray-50 text-gray-900 border-gray-300",
+  };
+  return (
+    <span
+      data-testid="review-status-badge"
+      className={`text-xs px-2 py-0.5 rounded-full border font-medium ${badge.cls}`}
+    >
+      <span aria-hidden="true">{`${badge.glyph} `}</span>
+      <span className="sr-only">Verdict: </span>
+      {badge.label}
+    </span>
+  );
+}
+
 export function RelationshipCandidateRow({
   candidate,
 }: {
@@ -43,6 +84,7 @@ export function RelationshipCandidateRow({
         <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
           candidate
         </span>
+        <ReviewStatusBadge status={candidate.review_status} />
         {candidate.both_typed_eligible && (
           <span
             className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-800"
@@ -71,6 +113,16 @@ export function RelationshipCandidateRow({
             {candidate.lift.toFixed(2)}
           </dd>
         </div>
+        {candidate.reviewed_at && (
+          <div className="flex gap-1">
+            <dt>Reviewed</dt>
+            <dd className="font-semibold text-gray-700">
+              <time dateTime={candidate.reviewed_at}>
+                {new Date(candidate.reviewed_at).toLocaleDateString()}
+              </time>
+            </dd>
+          </div>
+        )}
         <div className="flex gap-1">
           <dt>Video universe</dt>
           <dd className="font-semibold text-gray-700">

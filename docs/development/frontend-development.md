@@ -161,8 +161,32 @@ Configure in `frontend/.env` (create from `frontend/.env.example`).
 - URL state via React Router's `useSearchParams`
 - Virtualized lists via `@tanstack/react-virtual` for large datasets
 
+## Connection graph (Cytoscape)
+
+The connection explorer's graph (`src/components/graph/`) has a few non-obvious conventions worth
+knowing before you touch it:
+
+- **One long-lived instance.** The Cytoscape instance is created once and updated *in place* — not
+  rebuilt on every data change. Incremental updates pin existing nodes and lay out only new ones.
+- **One model, two views.** `connectionModel.ts` is the single transform from the API response to the
+  rendered model; **both** the graph and the accessible edge table are built from it, so they can
+  never disagree. Filters compute a hidden-id set from that one model — never hide elements on the
+  canvas directly. A property test asserts the table's rows equal the graph's visible edges.
+- **Colours are single-sourced and guarded.** Node colours (per entity type, plus the structural
+  neutrals for category / reference-value nodes) live only in `constants/entityTypes.ts`; the
+  stylesheet and the legend both read them. A test checks the fills are perceptually distinct (OKLab
+  distance), so **don't hardcode hex values in tests** — change the constant and the guard
+  re-validates.
+- **Edge trust layers come from the server.** Each edge's `layer` (verified / category /
+  co-occurrence) is assigned server-side and consumed verbatim; don't re-derive it on the client.
+- **Layout.** fcose, lazy-imported. The `ResizeObserver` only calls `cy.resize()` — it never re-runs
+  the layout, so a maximize or sidebar resize can't disturb an arranged graph. A module-level
+  `graphLayoutCache` remembers node positions + viewport per seed pair and restores them (as a
+  `preset`) when you return to a graph, instead of reshuffling.
+
 ## See Also
 
+- [How the connection explorer answers honestly](../architecture/connection-explorer.md) - the graph's design, encoding, and serving-state contract
 - [Frontend Architecture](../architecture/frontend-architecture.md) - Component hierarchy and routing
 - [Makefile Reference](makefile-reference.md) - All development commands
 - [Testing Guide](testing.md) - Backend testing

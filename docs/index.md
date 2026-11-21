@@ -75,6 +75,12 @@ chronovista is a CLI application that enables users to access, store, and explor
 
     Recover metadata for deleted/unavailable videos and channels from the Wayback Machine via CLI, REST API, or frontend with year filters, progress tracking, and idempotent caching
 
+-   :material-graph-outline:{ .lg .middle } **Connection Explorer**
+
+    ---
+
+    See how any two entities connect — or explore the colour-coded, filterable neighborhood subgraph around them — as an interactive graph plus an accessible edge table, honest about a stale or rebuilding graph
+
 </div>
 
 ## Project Status
@@ -86,7 +92,7 @@ chronovista is a CLI application that enables users to access, store, and explor
     - **Advanced repository pattern** with async support and composite keys
     - **Rate-limited API service** with intelligent error handling and retry logic
     - **Wayback Machine recovery** for deleted/unavailable video and channel metadata via CLI, REST API, and frontend
-    - **React frontend** with video browsing, transcript search, deep link navigation, tag merging, and recovery UI
+    - **React frontend** with video browsing, transcript search, deep link navigation, tag merging, the connection explorer (Connect + Explore graph modes), and recovery UI
 
 ## Quick Example
 

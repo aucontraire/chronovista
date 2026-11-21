@@ -250,6 +250,24 @@ RFC-7807 error mapping as `/graph/connect` (503 for a degraded graph, 404 for a 
 current graph, 422 for invalid parameters). Expansion is the same endpoint re-seeded on one node and
 merged client-side, so the layout the user has arranged is preserved.
 
+Two refinements keep Explore legible without weakening the one-model rule:
+
+- **Focus filters run through the same model.** Toggling a node's entity type or an edge's
+  relationship type off never reaches into the canvas directly; it computes a hidden-id set from the
+  one shared model, and *both* the Cytoscape graph (which hides those elements in place) and the
+  accessible table (built from the model minus those ids) consume it — so a filter can never make the
+  two views disagree (SC-004). Hiding an entity type never hides the two endpoints, and hiding a node
+  takes its incident edges with it. A property test asserts the table's rows equal the graph's
+  visible edges across filter combinations.
+- **The arranged layout survives navigation.** The Cytoscape instance is destroyed when the page
+  unmounts, so returning would otherwise re-run a randomized layout. A small module-level cache keyed
+  by the seed pair remembers each graph's node positions and viewport — saved when the layout settles
+  and on unmount — and on return to the same graph they are reapplied as a fixed `preset` with no
+  randomized layout, so the view comes back exactly as it was left. The from-scratch layout also runs
+  only when nothing is mid-animation: an earlier defect stopped an in-flight layout on a no-op
+  re-render, freezing the nodes mid-spread into a line. (Expanded nodes, which live in component
+  state, are not yet persisted.)
+
 ## Where the graph runs: dev vs production
 
 The two surfaces read two different Neo4j instances, and conflating them is the easy mistake:
@@ -267,8 +285,8 @@ The two surfaces read two different Neo4j instances, and conflating them is the 
 
 ## The read-only API
 
-Feature 113 exposes three read-only endpoints under `/api/v1/graph/*`, all behind auth, all through
-the read-only repository. They are documented as reference in the
+Features 113 and 115 expose four read-only endpoints under `/api/v1/graph/*`, all behind auth, all
+through the read-only repository. They are documented as reference in the
 [API overview](../api/index.md#connection-graph-feature-113) and
 [error responses](../api/error-responses.md#connection-graph-errors); the design points are:
 
@@ -283,6 +301,11 @@ the read-only repository. They are documented as reference in the
   not a one-time check that a mid-session rebuild could slip past. A valid id absent from the current
   graph is a **404** (distinguished by its detail text, not a bespoke type), and `a == b` or
   `max_hops < 3` is a **422**.
+- `GET /graph/neighborhood` (Feature 115) backs Explore: it returns a bounded `GraphSubgraph` around
+  one or two seeds behind the **same servability gate** as `/graph/connect` (503 / 404 / 422). Each
+  edge carries its server-assigned trust **layer** — the single home for that classification, which
+  the browser consumes verbatim rather than re-deriving, so the picture can't disagree with the
+  engine.
 
 The frontend keys on the HTTP status (503 / 404 / 422), not on a graph-specific `type` URI, so the
 honest states map onto the shared RFC-7807 problem vocabulary (Feature 013) without inventing new

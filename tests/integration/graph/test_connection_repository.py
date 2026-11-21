@@ -99,6 +99,14 @@ _BROAD_ONLY_CATEGORY_PAIR = (
     "RETURN a.entityId AS a, b.entityId AS b LIMIT 1"
 )
 
+# A pair sharing a SPECIFIC (sub-reference) category, so a shared_category chain IS emitted
+# (score > 0) — used to assert both legs read "entity → category" (the b-leg is not forward).
+_SPECIFIC_CATEGORY_PAIR = (
+    "MATCH (a:Entity)-[:IN_CATEGORY]->(c:Category)<-[:IN_CATEGORY]-(b:Entity) "
+    "WHERE a.entityId < b.entityId AND c.globalSize IS NOT NULL AND c.globalSize < 1000000 "
+    "RETURN a.entityId AS a, b.entityId AS b LIMIT 1"
+)
+
 # A co-occurring pair carrying a reviewed COINCIDENCE verdict, by confidence — for the scoped,
 # origin-gated suppression (high ⇒ co-occurrence dropped; medium ⇒ treated as no verdict).
 _COINCIDENCE_WITH_CO_OCCURRENCE = (
@@ -210,6 +218,19 @@ class TestConnectionShapeAndDirection:
         # SC-002: a broad-grouping-only overlap self-suppresses — no shared_category chain is
         # emitted (shown-and-labeled was the US1 stopgap; US2 removes it entirely).
         assert ConnectionKind.SHARED_CATEGORY not in {c.kind for c in conn.chains}
+
+    async def test_shared_category_chain_directs_both_into_category(
+        self, client: Neo4jClient
+    ) -> None:
+        pair = await _discover(client, _SPECIFIC_CATEGORY_PAIR)
+        if pair is None:
+            pytest.skip("no specific (sub-reference) shared-category pair in graph")
+        chain = await Neo4jGraphRepository(client).shared_category_chain(*pair)
+        assert chain is not None and chain.kind is ConnectionKind.SHARED_CATEGORY
+        # Both entities are IN_CATEGORY the bridge: A→c (forward), then B→c. The chain linearizes
+        # A→c→B, so the b-leg is traversed c→B — the reverse of the stored edge — and must be
+        # NOT forward. A regression to [True, True] draws the b-leg arrow backwards (c→B).
+        assert [step.forward for step in chain.steps] == [True, False]
 
     async def test_high_coincidence_suppresses_co_occurrence(
         self, client: Neo4jClient

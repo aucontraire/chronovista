@@ -14,12 +14,13 @@
  * Cytoscape is imported lazily so it never loads for tests or other pages.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type cytoscape from "cytoscape";
 import type { ElementDefinition, Core, Layouts, StylesheetJson } from "cytoscape";
 import type { FcoseLayoutOptions } from "cytoscape-fcose";
 
 import { GRAPH_STRUCTURAL_COLORS, entityTypeGraphColor } from "../../constants/entityTypes";
+import { getSavedLayout, saveLayout } from "./graphLayoutCache";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { MAX_RENDERED_NODES, collapseParallelOverlays } from "./connectionModel";
 import type { ConnectionModel } from "./connectionModel";
@@ -188,6 +189,11 @@ interface ConnectionGraphProps {
    * removed, so positions survive. The table is given the same set (see `withoutHidden`).
    */
   hiddenIds?: ReadonlySet<string>;
+  /**
+   * Identifies this graph (e.g. the seed pair). When set, the arrangement is remembered across
+   * unmounts and restored verbatim if the same graph comes back — no re-layout (see graphLayoutCache).
+   */
+  layoutKey?: string;
 }
 
 let fcoseRegistered = false;
@@ -229,6 +235,7 @@ export function ConnectionGraph({
   fitToken = 0,
   maxRenderedNodes = MAX_RENDERED_NODES,
   hiddenIds,
+  layoutKey,
 }: ConnectionGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
@@ -239,7 +246,28 @@ export function ConnectionGraph({
   // Read through a ref so a new callback identity never rebuilds the instance or its handlers.
   const onNodeExpandRef = useRef(onNodeExpand);
   onNodeExpandRef.current = onNodeExpand;
+  const layoutKeyRef = useRef(layoutKey);
+  layoutKeyRef.current = layoutKey;
+  const maximizedRef = useRef(maximized);
+  maximizedRef.current = maximized;
+  const layoutRunningRef = useRef(false);
   const [cyReady, setCyReady] = useState(false);
+
+  // Remember the arrangement (not while a layout is mid-flight: those positions are intermediate).
+  const rememberLayout = useCallback(() => {
+    const cy = cyRef.current;
+    const key = layoutKeyRef.current;
+    if (!cy || !key || layoutRunningRef.current || cy.nodes().length === 0) return;
+    const positions: Record<string, { x: number; y: number }> = {};
+    cy.nodes().forEach((n) => {
+      positions[n.id()] = { ...n.position() };
+    });
+    saveLayout(key, {
+      positions,
+      // A maximized viewport means nothing in the normal-size canvas; re-fit instead.
+      viewport: maximizedRef.current ? null : { pan: { ...cy.pan() }, zoom: cy.zoom() },
+    });
+  }, []);
   // Mouse-only affordance (the table carries every full name for assistive tech).
   const [hoverName, setHoverName] = useState<{ name: string; x: number; y: number } | null>(null);
   const tooLarge = model.nodes.length > maxRenderedNodes;
@@ -273,6 +301,13 @@ export function ConnectionGraph({
         wheelSensitivity: 0.2,
       });
       cyRef.current = cy;
+      cy.on("layoutstart", () => {
+        layoutRunningRef.current = true;
+      });
+      cy.on("layoutstop", () => {
+        layoutRunningRef.current = false;
+        rememberLayout();
+      });
       cy.on("mouseover", "node", (evt) => {
         const rect = container.getBoundingClientRect();
         const pos = evt.target.renderedPosition() as { x: number; y: number };
@@ -305,6 +340,8 @@ export function ConnectionGraph({
       cancelled = true;
       cancelAnimationFrame(frame);
       observer?.disconnect();
+      // Before stopping anything: stopping fires layoutstop, and a half-run layout is not worth keeping.
+      rememberLayout(); // captures any drag / pan / zoom since the last layout
       layoutRef.current?.stop();
       layoutRef.current = null;
       cyRef.current?.destroy();
@@ -312,7 +349,7 @@ export function ConnectionGraph({
       setHoverName(null);
       setCyReady(false);
     };
-  }, [tooLarge]);
+  }, [tooLarge, rememberLayout]);
 
   // Maximize/exit and "Fit to view": the canvas caches its pixel size, so resize explicitly (the
   // ResizeObserver also fires, but a fit before it would use the stale size), then fit. The same
@@ -337,7 +374,6 @@ export function ConnectionGraph({
     if (!cy || !cyReady) return;
     const next = toCytoscapeElements(model);
     const nextIds = new Set(next.map((e) => String(e.data["id"])));
-    layoutRef.current?.stop();
 
     const incremental = updateMode === "incremental" && cy.elements().length > 0;
     const existingIds = new Set<string>();
@@ -345,14 +381,42 @@ export function ConnectionGraph({
       cy.elements().forEach((el) => {
         if (nextIds.has(el.id())) existingIds.add(el.id());
       });
-      cy.elements().filter((el) => !nextIds.has(el.id())).remove();
-    } else {
-      cy.elements().remove();
     }
-
+    const stale = incremental ? cy.elements().filter((el) => !nextIds.has(el.id())) : cy.elements();
     const added = next.filter((e) => !existingIds.has(String(e.data["id"])));
+    // A re-render can hand us a new model object with identical content. That must not interrupt a
+    // layout already in flight: stopping it mid-way freezes nodes at an intermediate (collapsed,
+    // line-like) stage, and nothing would restart it.
+    if (added.length === 0 && stale.length === 0) return;
+
+    layoutRef.current?.stop();
+    layoutRunningRef.current = false;
+    stale.remove();
     if (added.length === 0) return;
     cy.add(added);
+    // A from-scratch layout needs the canvas's real size (it caches it); an incremental one must
+    // not touch the view.
+    if (!incremental) cy.resize();
+
+    // Same graph coming back (every node has a remembered position): put it back exactly as it
+    // was left — a preset layout, no randomized force layout — and skip the fresh layout.
+    const saved = !incremental && layoutKeyRef.current ? getSavedLayout(layoutKeyRef.current) : undefined;
+    if (
+      saved &&
+      added.every((e) => e.group !== "nodes" || saved.positions[String(e.data["id"])] !== undefined)
+    ) {
+      const restore = cy.elements().layout({
+        name: "preset",
+        positions: saved.positions,
+        animate: false,
+        ...(saved.viewport
+          ? { fit: false, pan: saved.viewport.pan, zoom: saved.viewport.zoom }
+          : { fit: true, padding: 40 }),
+      });
+      layoutRef.current = restore;
+      restore.run();
+      return;
+    }
 
     const hasKbEdge = cy.edges().not(".overlay").length > 0;
     const layoutEles = hasKbEdge ? cy.elements().not(".overlay") : cy.elements();

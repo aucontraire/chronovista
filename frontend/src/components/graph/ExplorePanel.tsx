@@ -287,6 +287,7 @@ export function ExplorePanel({ seeds, maxCategorySize, enabled = true }: Explore
               fitToken={fitToken}
               maxRenderedNodes={NODE_CEILING}
               hiddenIds={hiddenIds}
+              layoutKey={`explore|${seedKey}`}
               summary={`Neighborhood graph of ${visibleModel?.nodes.length ?? model.nodes.length} entities and ${visibleModel?.edges.length ?? model.edges.length} relationships. The table below lists the same relationships.`}
             />
           </MaximizeOverlay>

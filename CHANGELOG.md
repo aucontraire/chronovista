@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with **Show all / Hide all** (also available in the full-screen toolbar, sharing one filter
   state), and **hover a node** to read its full, untruncated name. Filters flow through one shared
   model, so the graph and the accessible table always show the same filtered set.
+- **Relationship-candidate review view.** The `/relationship-candidates` page now surfaces each
+  pair's human verdict and is filterable: toggle **reviewed / not reviewed / all**, filter by
+  **verdict category** (associated-with / co-cast / covers / coincidence / artifact), sort by column,
+  and read the verdict key plus the lift and corroboration definitions in a single "i" glossary. The
+  list endpoint exposes the verdict additively (`review_status`, `reviewed_at`) behind new `review`,
+  `verdict`, and `sort_by` / `sort_dir` query params; the defaults reproduce the prior behaviour.
 
 ### Fixed
 

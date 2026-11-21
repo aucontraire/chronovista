@@ -64,7 +64,7 @@ export function formatSources(sources: readonly string[]): string {
 
 type DerivedTermKey = "grounds_nowhere" | "salience";
 
-interface TermEntry {
+export interface TermEntry {
   term: string;
   definition: string;
 }
@@ -114,15 +114,24 @@ interface TermsExplainerProps {
   /** Heading element rendered beside the info button. */
   heading: ReactNode;
   /** Terms this page actually displays, in display order. */
-  terms: readonly TermKey[];
+  terms: readonly (TermKey | TermEntry)[];
   /** Sources the salience corpus searches; defaults to all current sources. */
   corpusSources?: readonly string[] | undefined;
+  /** Accessible name of the panel; defaults to the F097 candidate-review copy. */
+  panelLabel?: string;
+  /** Lead-in sentence; defaults to the F097 triage-labels copy. */
+  intro?: string;
+  /** Extra content rendered inside the panel, above the term list. */
+  children?: ReactNode;
 }
 
 export function TermsExplainer({
   heading,
   terms,
   corpusSources,
+  panelLabel = "Candidate review terms",
+  children,
+  intro = "Triage labels are advisory. They pre-sort the queue but never approve or reject anything for you.",
 }: TermsExplainerProps) {
   const sources = corpusSources ?? DEFAULT_CORPUS_SOURCES;
   const [open, setOpen] = useState(false);
@@ -179,18 +188,18 @@ export function TermsExplainer({
       {open && (
         <section
           id={panelId}
-          aria-label="Candidate review terms"
+          aria-label={panelLabel}
           className="mt-3 max-w-3xl bg-white rounded-xl border border-gray-200 shadow-sm p-4"
         >
           <p className="text-sm text-gray-600 mb-3">
-            Triage labels are advisory. They pre-sort the queue but never
-            approve or reject anything for you.
+            {intro}
           </p>
+          {children}
           <dl className="grid grid-cols-1 sm:grid-cols-[11rem_1fr] gap-x-4 gap-y-2 text-sm">
             {terms.map((key) => {
-              const entry = lookupTerm(key, sources);
+              const entry = typeof key === "string" ? lookupTerm(key, sources) : key;
               return (
-                <div key={key} className="contents">
+                <div key={entry.term} className="contents">
                   <dt className="font-medium text-gray-900">{entry.term}</dt>
                   <dd className="text-gray-600 mb-2 sm:mb-0">
                     {entry.definition}

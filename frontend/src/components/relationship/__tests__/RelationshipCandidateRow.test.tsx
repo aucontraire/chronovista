@@ -21,6 +21,8 @@ const candidate: RelationshipCandidate = {
   channel: "title_description",
   channel_video_universe: 1000,
   status: "candidate",
+  review_status: null,
+  reviewed_at: null,
 };
 
 describe("RelationshipCandidateRow", () => {

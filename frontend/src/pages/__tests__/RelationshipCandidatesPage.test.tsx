@@ -33,6 +33,8 @@ function makeCandidate(
     channel: "title_description",
     channel_video_universe: 1000,
     status: "candidate",
+    review_status: null,
+    reviewed_at: null,
     ...over,
   };
 }
@@ -155,5 +157,127 @@ describe("RelationshipCandidatesPage", () => {
     renderPage();
     expect(screen.getByText("Showing 1-1 of 388")).toBeInTheDocument();
     expect(screen.queryByText(/top 500/)).not.toBeInTheDocument();
+  });
+
+  it("defaults to review=all, sort_by=rank desc", () => {
+    respond([makeCandidate(1)]);
+    renderPage();
+    expect(hookMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ review: "all", sort_by: "rank", sort_dir: "desc" })
+    );
+    expect(screen.getByRole("radio", { name: "All" })).toBeChecked();
+  });
+
+  it("review toggle sets the review param, resets offset, and changes the shown set", () => {
+    const all = [
+      makeCandidate(1, { review_status: "co_cast" }),
+      makeCandidate(2),
+    ];
+    hookMock.mockImplementation((...args: unknown[]) => {
+      const p = (args[0] ?? { review: "all" }) as { review: string };
+      const items = all.filter((c) =>
+        p.review === "all" ? true : p.review === "reviewed" ? c.review_status !== null : c.review_status === null
+      );
+      return {
+        data: { items, total: items.length, total_before_scoping: items.length, head_cutoff: items.length, limit: 50, offset: 0, generated_at: null },
+        isLoading: false, isError: false, error: null, refetch: vi.fn(),
+      };
+    });
+    renderPage();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("radio", { name: "Reviewed" }));
+    expect(hookMock).toHaveBeenLastCalledWith(expect.objectContaining({ review: "reviewed", offset: 0 }));
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("radio", { name: "Not reviewed" }));
+    expect(hookMock).toHaveBeenLastCalledWith(expect.objectContaining({ review: "unreviewed" }));
+    expect(screen.getByText("Entity A2")).toBeInTheDocument();
+    expect(screen.queryByText("Entity A1")).toBeNull();
+  });
+
+  it("clicking a sort header sets sort_by desc, toggles dir on re-click, and resets offset", () => {
+    respond([makeCandidate(1)], { total: 120 });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Lift, not sorted" }));
+    expect(hookMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort_by: "lift", sort_dir: "desc", offset: 0 })
+    );
+    const lift = screen.getByRole("button", { name: "Lift, sorted descending" });
+    expect(lift).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(lift);
+    expect(hookMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort_by: "lift", sort_dir: "asc" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Shared videos, not sorted" }));
+    expect(hookMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort_by: "shared_video_count", sort_dir: "desc" })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reset to rank" }));
+    expect(hookMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort_by: "rank", sort_dir: "desc" })
+    );
+  });
+
+  it("shows the verdict badge from review_status, and an unreviewed treatment when null", () => {
+    respond([
+      makeCandidate(1, { review_status: "coincidence", reviewed_at: "2026-01-02T00:00:00Z" }),
+      makeCandidate(2),
+    ]);
+    renderPage();
+    const rows = screen.getAllByRole("listitem");
+    expect(within(rows[0]!).getByTestId("review-status-badge")).toHaveTextContent("coincidence");
+    expect(within(rows[1]!).getByTestId("review-status-badge")).toHaveTextContent("unreviewed");
+  });
+
+  it("verdict checkboxes send a repeatable verdict param, reset offset, and change the shown set", () => {
+    const all = [
+      makeCandidate(1, { review_status: "co_cast" }),
+      makeCandidate(2, { review_status: "covers" }),
+      makeCandidate(3, { review_status: "artifact" }),
+    ];
+    hookMock.mockImplementation((...args: unknown[]) => {
+      const p = (args[0] ?? { verdict: [] }) as { verdict: string[] };
+      const items = all.filter((c) => p.verdict.length === 0 || p.verdict.includes(c.review_status ?? ""));
+      return {
+        data: { items, total: 120, total_before_scoping: 120, head_cutoff: 120, limit: 50, offset: 0, generated_at: null },
+        isLoading: false, isError: false, error: null, refetch: vi.fn(),
+      };
+    });
+    renderPage();
+    expect(hookMock).toHaveBeenLastCalledWith(expect.objectContaining({ verdict: [] }));
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /co_cast/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /covers/ }));
+    expect(hookMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ verdict: ["co_cast", "covers"], offset: 0 })
+    );
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Clear categories" }));
+    expect(hookMock).toHaveBeenLastCalledWith(expect.objectContaining({ verdict: [] }));
+  });
+
+  it("has a keyboard-operable info button that reveals lift and corroboration help, and an updated intro", () => {
+    respond([makeCandidate(1)]);
+    renderPage();
+    expect(screen.getByText(/Pairs you.ve reviewed show their verdict/)).toBeInTheDocument();
+    expect(screen.queryByText(/nothing here is a verdict/i)).toBeNull();
+    const btn = screen.getByRole("button", { name: "What do these terms mean?" });
+    expect(btn).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText(/Legend & glossary/)).toBeNull();
+    expect(screen.queryByText("co_cast", { selector: "span" })).toBeNull();
+    fireEvent.click(btn);
+    expect(btn).toHaveAttribute("aria-expanded", "true");
+    const panel = screen.getByRole("region", { name: "Relationship candidate key" });
+    for (const v of ["associated_with", "co_cast", "covers", "coincidence", "artifact", "unreviewed"]) {
+      expect(within(panel).getByText(v)).toBeInTheDocument();
+    }
+    expect(within(panel).getByText(/castmates/i)).toBeInTheDocument();
+    expect(within(panel).getByText("Lift")).toBeInTheDocument();
+    expect(within(panel).getByText("Corroboration")).toBeInTheDocument();
+    expect(within(panel).getByText(/than chance would predict/)).toBeInTheDocument();
+    expect(within(panel).getByText(/knowledge base already partially supports/)).toBeInTheDocument();
+    fireEvent.keyDown(panel, { key: "Escape" });
+    expect(btn).toHaveAttribute("aria-expanded", "false");
   });
 });

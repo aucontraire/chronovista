@@ -8,6 +8,8 @@ never surfaced). Generation is an operator CLI (see the service), not an endpoin
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +22,7 @@ from chronovista.api.schemas.relationship_candidate import (
 from chronovista.repositories import relationship_candidate_repository as rc_repo
 from chronovista.repositories.relationship_candidate_repository import (
     RelationshipCandidateRepository,
+    VerdictCategory,
 )
 
 router = APIRouter(dependencies=[Depends(require_auth)])
@@ -44,6 +47,23 @@ async def list_relationship_candidates(
         ge=5,
         description="Filter rows by shared-video count; never below the qualifying floor of 5",
     ),
+    review: Literal["all", "reviewed", "unreviewed"] = Query(
+        "all",
+        description="Filter by review state (default 'all' — unchanged behaviour)",
+    ),
+    verdict: list[VerdictCategory] = Query(
+        default_factory=list,
+        description=(
+            "Filter to these verdict categories (repeatable; empty = no category filter). "
+            "Composes with 'review'."
+        ),
+    ),
+    sort_by: Literal[
+        "rank", "lift", "shared_video_count", "kb_corroboration_count", "reviewed_at"
+    ] = Query(
+        "rank", description="Display sort ('rank' = the default lift-based ranking)"
+    ),
+    sort_dir: Literal["asc", "desc"] = Query("desc", description="Sort direction"),
 ) -> RelationshipCandidateListResponse:
     """Return a lift-ranked page of candidates (strongest first). Read-only.
 
@@ -57,6 +77,10 @@ async def list_relationship_candidates(
         session,
         eligible_only=eligible_only,
         min_support=min_support,
+        review=review,
+        verdicts=tuple(verdict),
+        sort_by=sort_by,
+        sort_dir=sort_dir,
         skip=offset,
         limit=limit,
     )
@@ -93,6 +117,8 @@ async def list_relationship_candidates(
                 kb_corroboration_detail=detail,
                 channel=row.channel,
                 channel_video_universe=row.channel_video_universe,
+                review_status=row.review_status,
+                reviewed_at=row.reviewed_at,
             )
         )
 

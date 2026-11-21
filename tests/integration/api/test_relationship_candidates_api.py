@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import delete
+from sqlalchemy import delete, update
 
 import chronovista.repositories.relationship_candidate_repository as rc_repo
 from chronovista.db.models import NamedEntity as NamedEntityDB
@@ -104,6 +105,55 @@ class TestList:
         assert item["channel"] == "title_description"
         assert item["channel_video_universe"] == 40000  # provenance N is present
         assert r.json()["generated_at"] is not None
+        # Additive verdict fields are present (null when unreviewed).
+        assert "review_status" in item and item["review_status"] is None
+        assert "reviewed_at" in item and item["reviewed_at"] is None
+
+    async def test_review_filter_and_verdict_fields(
+        self, async_client: AsyncClient, integration_db_session: Callable[[], object]
+    ) -> None:
+        e1, _e2, e3 = await _seed(integration_db_session)
+        lo, hi = (e1, e3) if e1 < e3 else (e3, e1)
+        async with integration_db_session() as session:  # type: ignore[attr-defined]
+            await session.execute(
+                update(RelationshipCandidateDB)
+                .where(
+                    RelationshipCandidateDB.entity_a_id == lo,
+                    RelationshipCandidateDB.entity_b_id == hi,
+                )
+                .values(
+                    review_status="associated_with",
+                    reviewed_at=datetime.now(UTC),
+                )
+            )
+            await session.commit()
+
+        rev = (
+            await async_client.get("/api/v1/relationship-candidates?review=reviewed")
+        ).json()
+        assert rev["total"] == 1
+        assert rev["items"][0]["review_status"] == "associated_with"
+        assert rev["items"][0]["reviewed_at"] is not None
+
+        unrev = (
+            await async_client.get("/api/v1/relationship-candidates?review=unreviewed")
+        ).json()
+        assert unrev["total"] == 2
+        assert all(it["review_status"] is None for it in unrev["items"])
+
+        allr = (
+            await async_client.get("/api/v1/relationship-candidates?review=all")
+        ).json()
+        assert allr["total"] == 3
+
+        # The verdict-category filter (a separate dimension) narrows to that one verdict.
+        verd = (
+            await async_client.get(
+                "/api/v1/relationship-candidates?verdict=associated_with"
+            )
+        ).json()
+        assert verd["total"] == 1
+        assert verd["items"][0]["review_status"] == "associated_with"
 
     async def test_pagination(
         self, async_client: AsyncClient, integration_db_session: Callable[[], object]

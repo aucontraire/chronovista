@@ -69,6 +69,7 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/graph/health` | GET | Connection-graph serving state (`ServingHealth`) |
 | `/graph/entities` | POST | Which of the given entity ids are present in the graph |
 | `/graph/connect` | GET | How two entities connect (`a`, `b`, `max_hops`, `max_category_size`) |
+| `/graph/neighborhood` | GET | Explore the bounded neighbourhood subgraph around one or two entities (`seed`, `radius`, `limit`, `ceiling`, `edge_types`, `max_category_size`) |
 | `/corrections/batch/preview` | POST | Preview batch find-replace matches |
 | `/corrections/batch/apply` | POST | Apply batch corrections to selected segments |
 | `/corrections/batch/rebuild-text` | POST | Rebuild transcript text for affected videos |
@@ -85,8 +86,10 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 
 ### Connection Graph (Feature 113)
 
-Three read-only endpoints back the web [Connection Explorer](../user-guide/connection-explorer.md).
-All require auth and read the production connection graph (a separate Neo4j datastore, not Postgres).
+Four read-only endpoints back the web [Connection Explorer](../user-guide/connection-explorer.md) —
+its **Connect** mode (the single pruned path between two entities) and its **Explore** mode (the
+bounded neighbourhood subgraph around one or two entities). All require auth and read the production
+connection graph (a separate Neo4j datastore, not Postgres).
 
 **`GET /graph/health`** → `ServingHealth`. Reports whether the graph may be served. Degrades
 gracefully: an unreachable graph returns `servable: false`, never a 500.
@@ -123,6 +126,23 @@ graph returns an empty set.
 The response carries the reviewed verdict (if any), one chain per connecting kind in by-kind order,
 the `searched_max_hops` it used, and `any_truncated` (the knowledge-base search hit its hop bound
 without connecting). This endpoint refuses a non-servable graph — see the error responses below.
+
+**`GET /graph/neighborhood`** → `GraphSubgraph` (Feature 115). The bounded neighbourhood around one
+or two seed entities — Explore mode's subgraph of nodes and edges across every relationship kind,
+rather than a single path. Query parameters:
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `seed` | UUID (repeatable) | required | One or two seed entity ids. |
+| `radius` | int 1–2 | 1 | How many hops out from the seeds to gather. |
+| `limit` | int ≥ 1 | 60 | Neighbours added per load — a legible initial view. |
+| `ceiling` | int ≥ `limit` | 250 | Hard cap on total nodes; expansion accumulates up to it. |
+| `edge_types` | string (repeatable) | all | Restrict to these relationship / trust kinds. |
+| `max_category_size` | int ≥ 1 | 500 | Specificity floor for category edges, as in `/graph/connect`. |
+
+Each edge carries its server-assigned trust **layer** (verified / category / co-occurrence) and its
+stored direction; when the node cap binds, co-occurrence edges are dropped before verified ones. Like
+`/graph/connect`, this endpoint refuses a non-servable graph — see the error responses below.
 
 **`GET /graph/connect/evidence`** → `ConnectionEvidence` (Feature 114). The transcript passages
 behind a pair's co-occurrence (the evidence panel). Unlike the three endpoints above, this one is

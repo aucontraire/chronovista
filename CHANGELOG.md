@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Connection-graph focus / filter controls (Explore mode).** The Explore graph gains controls to
+  tame busy neighborhoods: toggle nodes by **entity type** from the colour legend (the two
+  endpoints are always kept), toggle edges by **relationship type** from a list beside the table
+  with **Show all / Hide all** (also available in the full-screen toolbar, sharing one filter
+  state), and **hover a node** to read its full, untruncated name. Filters flow through one shared
+  model, so the graph and the accessible table always show the same filtered set.
+
+### Fixed
+
+- **Shared-category edge arrow direction.** A shared-category ("in category") connection in Connect
+  drew its second leg's arrow backwards (`category → B` instead of `B → category`); the chain now
+  carries the correct stored direction on both legs, fixing the arrow in both the web graph and the
+  CLI.
+- **Explore graph layout on return.** Navigating away from the Connections page and back no longer
+  reshuffles — or collapses into a line — the Explore graph: a no-op re-render can no longer
+  interrupt an in-flight layout, and the node positions and zoom are remembered and restored, so the
+  graph comes back exactly as it was left. (Expanded nodes are not yet restored across navigation.)
+
 ## [0.127.0] - 2026-11-20
 
 ### Added
@@ -23,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entity page make the explorer directly reachable, and an in-app maximized view gives dense
   neighborhoods room. Backed by a new read-only `GET /api/v1/graph/neighborhood` endpoint.
   Read-only throughout; renders only relationships already in the graph.
+- **Connection explorer visual and UX polish (Feature 115).** Explore-mode nodes are **colour-coded
+  by entity type** with a colour-vision-safe categorical palette and an on-screen legend, with muted
+  neutral treatments distinguishing shared-category nodes and not-in-your-library reference nodes;
+  the selection halo was thinned for legibility; the picked entities keep their names across a page
+  refresh; the transcript-evidence panel stays available in Explore mode; and the per-entity
+  external-record / entity-page links are shown whenever both entities are selected.
 
 ## [0.126.0] - 2026-11-19
 

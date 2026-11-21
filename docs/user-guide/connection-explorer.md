@@ -267,9 +267,20 @@ result looks, rather than one pruned thread.
   keyboard path) — to add that entity's neighbors *in place*, without disturbing the layout you've
   arranged. The graph accumulates up to a ceiling (250 nodes); past that it tells you it's full and
   stops, rather than dropping what you're looking at.
+- **Focus the view.** Busy neighborhoods pare down without losing your place: the colour **key
+  doubles as a filter** — untick an entity type to hide its nodes (the two endpoints always stay) —
+  and a **relationship-type list beside the table** (with **Show all / Hide all**) hides whole kinds
+  of edge, such as every "in category" link at once. Both work in the maximized view too, and every
+  filter applies to the graph and the equivalent table together, so the two never disagree.
+- **Hover a node** to read its full name when the on-canvas label is truncated (the table always
+  carries the full names for assistive tech).
 - **"Showing N of M nodes"** tells you how much of the available neighborhood is on screen.
 - **Maximize** gives a dense neighborhood room: the graph fills the window (Esc exits), with a
   pared-down toolbar; the node cap still applies, so it's more space, not an uncapped hairball.
+- **Your arrangement is remembered.** Move nodes or change the zoom, navigate away, and come back:
+  the graph returns exactly as you left it — positions and zoom — instead of reshuffling into a fresh
+  layout. (A full page reload still re-lays out, and nodes you expanded aren't restored across
+  navigation yet.)
 
 Explore is strictly read-only: it draws only relationships already in the graph and never infers a
 new one — that is a separate, deliberately-not-built capability.

@@ -313,11 +313,12 @@ External service (e.g., YouTube API) unavailable:
 
 ### Connection Graph errors
 
-The connection-graph endpoints (`/api/v1/graph/*`, Feature 113) reuse the shared problem vocabulary
-rather than inventing graph-specific codes — a client keys on the HTTP **status**, not on a bespoke
-`type` URI. Three statuses carry distinct meanings:
+The connection-graph endpoints (`/api/v1/graph/*`, Features 113 and 115) reuse the shared problem
+vocabulary rather than inventing graph-specific codes — a client keys on the HTTP **status**, not on a
+bespoke `type` URI. The two servability-gated endpoints, `GET /graph/connect` (Connect) and
+`GET /graph/neighborhood` (Explore), share the same three statuses:
 
-**503 `SERVICE_UNAVAILABLE`** — `GET /graph/connect` refuses to answer from a graph that is
+**503 `SERVICE_UNAVAILABLE`** — either endpoint refuses to answer from a graph that is
 rebuilding, missing a declared layer, has never been loaded, or is unreachable. This is the "graph
 unavailable" state, never a "no connection" result:
 

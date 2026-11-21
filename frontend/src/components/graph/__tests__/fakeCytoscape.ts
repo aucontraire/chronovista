@@ -32,6 +32,8 @@ export interface FakeCy {
   pan: ReturnType<typeof vi.fn>;
   /** Simulates a layout having placed a node. */
   setPosition: (id: string, pos: { x: number; y: number }) => void;
+  /** Sets what `cy.pan()` / `cy.zoom()` report (the user's current view). */
+  setViewport: (v: { pan: { x: number; y: number }; zoom: number }) => void;
   /** Fires registered handlers for an event on an element, e.g. `emit("dbltap", "node-id")`. */
   emit: (event: string, id?: string) => void;
   /** Ids of elements currently carrying a class (e.g. "filtered"). */
@@ -41,9 +43,15 @@ export interface FakeCy {
 export const fake = {
   instances: [] as FakeCy[],
   layoutCalls: [] as Record<string, unknown>[],
+  /** Ordered "resize" / "layout" calls, to assert what ran before a layout. */
+  events: [] as string[],
+  /** How many times a running layout was stopped. */
+  layoutStops: 0,
   reset() {
     fake.instances.length = 0;
     fake.layoutCalls.length = 0;
+    fake.events.length = 0;
+    fake.layoutStops = 0;
   },
 };
 
@@ -78,7 +86,13 @@ class Coll {
     );
   }
   layout(opts: Record<string, unknown>) {
-    return { run: () => void fake.layoutCalls.push(opts), stop: () => undefined };
+    return {
+      run: () => {
+        fake.layoutCalls.push(opts);
+        fake.events.push("layout");
+      },
+      stop: () => void fake.layoutStops++,
+    };
   }
 }
 
@@ -87,6 +101,7 @@ const factory = vi.fn(() => {
   const positions = new Map<string, { x: number; y: number }>();
   type Handler = (evt: { target: { data: (k: string) => unknown; renderedPosition: () => { x: number; y: number } } }) => void;
   const handlers = new Map<string, Handler[]>();
+  const view = { pan: { x: 0, y: 0 }, zoom: 1 };
   const all = (group?: string) =>
     new Coll(
       [...store.values()].filter((e) => !group || e.def.group === group).map((e) => e.el),
@@ -95,10 +110,11 @@ const factory = vi.fn(() => {
   const cy: FakeCy & Record<string, unknown> = {
     added: [],
     destroy: vi.fn(),
-    resize: vi.fn(),
+    resize: vi.fn(() => void fake.events.push("resize")),
     fit: vi.fn(),
-    zoom: vi.fn(),
-    pan: vi.fn(),
+    // Getter form (no argument) reports the viewport; the setter form is only recorded.
+    zoom: vi.fn((z?: number) => (z === undefined ? view.zoom : undefined)),
+    pan: vi.fn((p?: { x: number; y: number }) => (p === undefined ? view.pan : undefined)),
     add(defs: FakeDef[]) {
       for (const def of defs) {
         const id = String(def.data["id"]);
@@ -127,6 +143,7 @@ const factory = vi.fn(() => {
       for (const event of events.split(" ")) handlers.set(event, [...(handlers.get(event) ?? []), fn]);
     },
     setPosition: (id, pos) => void positions.set(id, pos),
+    setViewport: (v) => void Object.assign(view, v),
     emit(event, id) {
       const def = id ? store.get(id)?.def : undefined;
       for (const fn of handlers.get(event) ?? []) {

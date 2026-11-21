@@ -18,10 +18,10 @@ vi.mock("../../../hooks/useNeighborhood", () => ({
   useExpansions: () => ({ results: [], pending: 0, failed: 0 }),
 }));
 
-const graphProps: { model: ConnectionModel; updateMode?: string }[] = [];
+const graphProps: { model: ConnectionModel; updateMode?: string; layoutKey?: string }[] = [];
 vi.mock("../ConnectionGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../ConnectionGraph")>()),
-  ConnectionGraph: (props: { model: ConnectionModel; updateMode?: string }) => {
+  ConnectionGraph: (props: { model: ConnectionModel; updateMode?: string; layoutKey?: string }) => {
     graphProps.push(props);
     return <div data-testid="connection-graph" />;
   },
@@ -66,6 +66,17 @@ describe("ExplorePanel", () => {
     hookMock.mockReturnValue(result({ subgraph: fixtureSubgraph(12) }));
     rerender(<ExplorePanel seeds={["a"]} />);
     expect(screen.getByTestId("explore-count")).toHaveTextContent("Showing all 14 nodes");
+  });
+
+  it("keys the remembered arrangement by the seeds, so another pair never restores it", () => {
+    hookMock.mockReturnValue(result({ subgraph: fixtureSubgraph(5) }));
+    const { rerender } = render(<ExplorePanel seeds={["a", "b"]} />);
+    const first = graphProps.at(-1)?.layoutKey;
+    expect(first).toBeTruthy();
+    rerender(<ExplorePanel seeds={["b", "a"]} />);
+    expect(graphProps.at(-1)?.layoutKey).toBe(first); // same pair, any order
+    rerender(<ExplorePanel seeds={["a", "c"]} />);
+    expect(graphProps.at(-1)?.layoutKey).not.toBe(first);
   });
 
   it("shows a loading state", () => {

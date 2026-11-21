@@ -108,8 +108,9 @@ describe("ConnectionGraph (Connect no-regression, FR-026)", () => {
     render(<ConnectionGraph model={buildConnectionModel(fixtureConnection())} tableId="t" summary="s" />);
     await waitFor(() => expect(h.layoutCalls).toHaveLength(1));
     const cy = h.instances[0] as FakeCy;
+    const resizesBefore = cy.resize.mock.calls.length;
     trigger();
-    expect(cy.resize).toHaveBeenCalledTimes(1);
+    expect(cy.resize).toHaveBeenCalledTimes(resizesBefore + 1);
     expect(h.layoutCalls).toHaveLength(1);
   });
 });

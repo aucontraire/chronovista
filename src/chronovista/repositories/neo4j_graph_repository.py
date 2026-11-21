@@ -713,17 +713,23 @@ class Neo4jGraphRepository:
             label=first["b_type"] or "",
             is_bridge=False,
         )
+        # Both entities are IN_CATEGORY the shared node: A→c and B→c. The chain linearizes as
+        # A→c→B, so the second leg is traversed c→B — the reverse of the stored B→c edge. Its
+        # ``forward`` must therefore be False, exactly as the convergent shared_referents case
+        # flags [True, False]; otherwise the renderer draws the b-leg arrow backwards (c→B).
         steps = [
             PathStep(
                 edge_type="IN_CATEGORY",
                 kind=ConnectionKind.SHARED_CATEGORY,
                 to_node=category_node,
                 specificity=best_term,
+                forward=True,
             ),
             PathStep(
                 edge_type="IN_CATEGORY",
                 kind=ConnectionKind.SHARED_CATEGORY,
                 to_node=b_node,
+                forward=False,
             ),
         ]
         return ConnectionChain(

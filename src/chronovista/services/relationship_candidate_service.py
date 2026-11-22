@@ -518,9 +518,36 @@ async def generate_relationship_candidates(*, dry_run: bool = False) -> dict[str
             mention_rows=mention_rows, entity_rows=entity_rows, run_id=run.id
         )
         written = await repo.upsert_many(session, candidates=candidates)
+        # Feature 116: maintain the Option-C invariant — every parent carries a per-signal
+        # child. Migration A backfilled `title_description` children for parents existing then;
+        # the generator MUST keep minting them, or newly-generated parents are childless and
+        # vanish under the child-join read (T032) — on the queue the verdicts live on.
+        pair_ids = await repo.ids_for_pairs(
+            session, pairs=[(c.entity_a_id, c.entity_b_id) for c in candidates]
+        )
+        td_children = [
+            RelationshipCandidateSignalCreate(
+                candidate_id=pair_ids[(c.entity_a_id, c.entity_b_id)],
+                signal=CandidateSignal.TITLE_DESCRIPTION,
+                support=c.shared_video_count,
+                lift=c.lift,
+                min_gap_seconds=None,
+                entity_a_video_count=c.entity_a_video_count,
+                entity_b_video_count=c.entity_b_video_count,
+                signal_universe=c.channel_video_universe,
+                both_typed_eligible=c.both_typed_eligible,
+                kb_corroboration_count=c.kb_corroboration_count,
+                kb_corroboration_detail=c.kb_corroboration_detail,
+                provenance=c.provenance,
+            )
+            for c in candidates
+            if (c.entity_a_id, c.entity_b_id) in pair_ids
+        ]
+        children_written = await repo.upsert_signals(session, signals=td_children)
         # Empty-run guard: delete-if-absent on an empty/degraded read (no mentions,
         # or zero qualifying candidates) would wipe every unverdicted row. Only
-        # reconcile after a genuinely non-empty generation.
+        # reconcile after a genuinely non-empty generation. (Deleting a stale parent
+        # cascades to its children via the FK ON DELETE CASCADE.)
         removed = 0
         if mention_rows and candidates:
             removed = await repo.delete_stale(session, run_started_at=run_started_at)
@@ -535,6 +562,7 @@ async def generate_relationship_candidates(*, dry_run: bool = False) -> dict[str
         )
         summary = {
             "written": written,
+            "children": children_written,
             "removed": removed,
             "channel_video_universe": universe,
             "corpus_size": len(entity_rows),

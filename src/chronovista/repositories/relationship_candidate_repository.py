@@ -510,6 +510,28 @@ class RelationshipCandidateRepository(
                 out[(row[0], row[1])] = row[2]
         return out
 
+    async def count_childless_parents(self, session: AsyncSession) -> int:
+        """Parents with NO per-signal child — an Option-C invariant violation (Feature 116).
+
+        Every parent must carry >=1 ``relationship_candidate_signals`` row: the migration
+        backfilled them and every generator maintains them. This is the consistency check that
+        makes the child-join read (T032) SAFE rather than hopeful — a non-zero count means some
+        parent would be invisible under the INNER JOIN (absent, not mis-ranked), on the queue
+        the verdicts live on. Usable as a CLI check. Uses a LEFT JOIN ... IS NULL anti-join
+        (not a correlated subquery).
+        """
+        result = await session.execute(
+            select(func.count())
+            .select_from(RelationshipCandidateDB)
+            .outerjoin(
+                RelationshipCandidateSignalDB,
+                RelationshipCandidateSignalDB.candidate_id
+                == RelationshipCandidateDB.id,
+            )
+            .where(RelationshipCandidateSignalDB.id.is_(None))
+        )
+        return result.scalar() or 0
+
     async def fetch_entity_property_rows(
         self, session: AsyncSession
     ) -> list[tuple[uuid.UUID, dict[str, Any], dict[str, Any]]]:

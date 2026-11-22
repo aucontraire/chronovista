@@ -21,11 +21,16 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import chronovista.config.database as db_mod
+from chronovista.db.models import EntityMention as EntityMentionDB
 from chronovista.db.models import EntityPairProximityRollup as RollupDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import RelationshipCandidate as RelationshipCandidateDB
 from chronovista.db.models import RelationshipCandidateSignal as SignalDB
-from chronovista.models.relationship_candidate import RelationshipCandidateCreate
+from chronovista.models.relationship_candidate import (
+    CandidateSignal,
+    RelationshipCandidateCreate,
+    RelationshipCandidateSignalCreate,
+)
 from chronovista.repositories.relationship_candidate_repository import (
     RelationshipCandidateRepository,
 )
@@ -330,3 +335,107 @@ class TestTranscriptGenerateSafety:
             .all()
         )
         assert len(children) == 1
+
+
+class TestOrphanGuard:
+    """Feature 116 / D2 (cdwa 2026-11-22). The Option-C invariant — every parent carries a
+    per-signal child — is ENFORCED, not hoped: `count_childless_parents` is the consistency
+    check that makes the child-join read (T032) safe. Mutation-verified against the t/d
+    generator's child write (D1)."""
+
+    async def test_count_childless_parents_detects_and_clears(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo = RelationshipCandidateRepository()
+        await _clear(db_session)
+        a = await _entity(db_session, "Orphan A")
+        b = await _entity(db_session, "Orphan B")
+        lo, hi = sorted([a, b])
+        await repo.upsert_many(
+            db_session,
+            candidates=[
+                RelationshipCandidateCreate(
+                    entity_a_id=lo,
+                    entity_b_id=hi,
+                    channel="title_description",
+                    shared_video_count=9,
+                    lift=42.0,
+                    entity_a_video_count=10,
+                    entity_b_video_count=12,
+                    channel_video_universe=40000,
+                )
+            ],
+        )
+        assert (
+            await repo.count_childless_parents(db_session) == 1
+        )  # childless -> detected
+        pair_ids = await repo.ids_for_pairs(db_session, pairs=[(lo, hi)])
+        await repo.upsert_signals(
+            db_session,
+            signals=[
+                RelationshipCandidateSignalCreate(
+                    candidate_id=pair_ids[(lo, hi)],
+                    signal=CandidateSignal.TITLE_DESCRIPTION,
+                    support=9,
+                    lift=42.0,
+                    entity_a_video_count=10,
+                    entity_b_video_count=12,
+                    signal_universe=40000,
+                )
+            ],
+        )
+        assert (
+            await repo.count_childless_parents(db_session) == 0
+        )  # child attached -> cleared
+
+    async def test_td_generator_leaves_no_childless_parent(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """D1 mutation-verified: the t/d generator writes a title_description child per parent.
+        Remove that write and this fails (count_childless_parents > 0)."""
+        repo = RelationshipCandidateRepository()
+        await db_session.execute(delete(EntityMentionDB))
+        await db_session.execute(delete(RelationshipCandidateDB))
+        await db_session.flush()
+        a = await _entity(db_session, "Gtd A")
+        b = await _entity(db_session, "Gtd B")
+        filler = await _entity(db_session, "Gtd Filler")
+        # a and b co-occur in 5 videos (support 5); 20 filler videos push N to 25, so
+        # lift = 5*25/(5*5) = 5 clears the floor and one candidate is produced.
+        for i in range(5):
+            db_session.add(
+                EntityMentionDB(
+                    id=uuid.uuid4(),
+                    entity_id=a,
+                    video_id=f"v{i}",
+                    mention_text="x",
+                    mention_source="title",
+                )
+            )
+            db_session.add(
+                EntityMentionDB(
+                    id=uuid.uuid4(),
+                    entity_id=b,
+                    video_id=f"v{i}",
+                    mention_text="x",
+                    mention_source="title",
+                )
+            )
+        for i in range(5, 25):
+            db_session.add(
+                EntityMentionDB(
+                    id=uuid.uuid4(),
+                    entity_id=filler,
+                    video_id=f"v{i}",
+                    mention_text="x",
+                    mention_source="title",
+                )
+            )
+        await db_session.flush()
+        _patch_session(monkeypatch, db_session)
+
+        summary = await svc.generate_relationship_candidates()
+
+        assert summary["written"] == 1  # the (a, b) pair
+        assert summary["children"] == 1  # D1: the td child was written
+        assert await repo.count_childless_parents(db_session) == 0

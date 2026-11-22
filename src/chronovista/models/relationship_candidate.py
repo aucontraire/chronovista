@@ -222,6 +222,35 @@ class RelationshipCandidateSignalBase(BaseModel):
         return self
 
 
+class RankedCandidate(BaseModel):
+    """A per-signal view of a candidate for the ranked read funnel (Feature 116, T027).
+
+    ``list_ranked(signal=...)`` returns these. Pair identity and verdict come from the PARENT,
+    but every per-signal metric — ``lift``, ``shared_video_count`` (the child's ``support``),
+    ``channel`` (the child's ``signal``), eligibility, corroboration, and the denominator ``N`` —
+    is read from the queried signal's CHILD, never the parent's vestigial columns. This is what
+    makes a dual-signal pair report the RIGHT numbers on each channel's head (the parent carries
+    only one channel's values), and it lets Migration B drop the parent's per-signal columns
+    without touching any reader. The attribute surface mirrors the parent fields the API already
+    reads, so consumers are unchanged.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: uuid.UUID
+    entity_a_id: uuid.UUID
+    entity_b_id: uuid.UUID
+    channel: str  # the queried signal (child.signal)
+    shared_video_count: int  # child.support
+    lift: float | None  # child.lift (None for transcript)
+    both_typed_eligible: bool
+    kb_corroboration_count: int
+    kb_corroboration_detail: dict[str, Any]
+    channel_video_universe: int  # child.signal_universe
+    review_status: str | None
+    reviewed_at: datetime | None
+
+
 class RelationshipCandidateSignalCreate(RelationshipCandidateSignalBase):
     """What the generator upserts for one (pair, signal)."""
 

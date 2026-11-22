@@ -33,6 +33,7 @@ from chronovista.db.models import (
 )
 from chronovista.models.relationship_candidate import (
     CandidateSignal,
+    RankedCandidate,
     RelationshipCandidateCreate,
     RelationshipCandidateSignalCreate,
     RelationshipCandidateUpdate,
@@ -239,14 +240,33 @@ class RelationshipCandidateRepository(
     ) -> int:
         """Bulk insert/refresh per-signal evidence children on ``(candidate_id, signal)``.
 
-        ``INSERT ... ON CONFLICT (candidate_id, signal) DO UPDATE`` refreshes a signal's
-        evidence in place. Unlike :meth:`upsert_many` there is **no** ``review_status`` guard:
-        the verdict lives on the parent (protected there), so refreshing a child's evidence can
-        never touch a verdict. Returns the number of distinct ``(pair, signal)`` rows upserted.
-        Deduped by key and chunked under the bind-parameter ceiling, like the parent upsert.
+        ``INSERT ... ON CONFLICT (candidate_id, signal) DO UPDATE`` refreshes a signal's evidence
+        in place, but the UPDATE is **guarded by the parent's verdict** (T027): it applies only
+        when the parent is unreviewed. Since ``list_ranked`` now reads a reviewed row's displayed
+        metrics FROM the child (Feature 116), an unguarded refresh would silently change a
+        reviewed row's lift/support — breaking the same freeze ``upsert_many`` enforces on the
+        parent. The guard is on the UPDATE only, so a NEW child still INSERTs onto a reviewed
+        parent (the T026b dual-signal calibration attach is preserved); only overwriting an
+        existing reviewed child's metrics is blocked. Returns the number of distinct
+        ``(pair, signal)`` rows submitted (an INSERT, or an UPDATE that the guard may skip for a
+        reviewed parent). Deduped by key and chunked under the bind-parameter ceiling.
         """
         if not signals:
             return 0
+
+        # The UPDATE-on-conflict guard: refresh the child only when its parent has no verdict.
+        # A NON-correlated IN over the unreviewed parents' ids, keyed by the conflicting child's
+        # candidate_id. An EXISTS here does NOT correlate — an INSERT has no enclosing SELECT, so
+        # SQLAlchemy would put `relationship_candidate_signals` in the subquery's own FROM and the
+        # predicate would read "does ANY reviewed parent have ANY child", a GLOBAL freeze (cdwa
+        # validator 2026-11-22). The IN form references the target child row by name and is per-row.
+        # The INSERT path is unaffected, so calibration children still attach to reviewed parents
+        # (T026b).
+        parent_not_reviewed = RelationshipCandidateSignalDB.candidate_id.in_(
+            select(RelationshipCandidateDB.id).where(
+                RelationshipCandidateDB.review_status.is_(None)
+            )
+        )
 
         # Dedupe by (candidate_id, signal): a repeated key in one statement would raise
         # "ON CONFLICT DO UPDATE command cannot affect row a second time".
@@ -268,6 +288,7 @@ class RelationshipCandidateRepository(
             stmt = insert_stmt.on_conflict_do_update(
                 index_elements=["candidate_id", "signal"],
                 set_=refresh_set,
+                where=parent_not_reviewed,
             )
             await session.execute(stmt)
         await session.flush()
@@ -287,7 +308,7 @@ class RelationshipCandidateRepository(
         skip: int = 0,
         limit: int = 50,
         head_only: bool = True,
-    ) -> tuple[list[RelationshipCandidateDB], int, int]:
+    ) -> tuple[list[RankedCandidate], int, int]:
         """Return a page of head candidates + (scoped total, pre-scoping total).
 
         Ordering is PER-SIGNAL on the child (Feature 116, ``_head_order_by``): title/description
@@ -338,7 +359,9 @@ class RelationshipCandidateRepository(
             child.support >= max(min_support, 5),
         ]
         if eligible_only:
-            active_filters.append(RelationshipCandidateDB.both_typed_eligible.is_(True))
+            # Per-signal: the child's eligibility, not the parent's vestigial column (T027), so a
+            # dual-signal pair is filtered by the queried signal's own eligibility.
+            active_filters.append(child.both_typed_eligible.is_(True))
         # Review filter subsets WITHIN the head, exactly like eligible_only — it never promotes a
         # below-head row into view, so the head-membership contract (§23) is preserved.
         if review == "reviewed":
@@ -390,7 +413,11 @@ class RelationshipCandidateRepository(
             total = total_before_scoping
 
         stmt = (
-            select(RelationshipCandidateDB)
+            # Select BOTH the parent (pair identity + verdict) and the queried signal's child
+            # (every per-signal metric). The view reads per-signal fields from the child, so a
+            # dual-signal pair reports the RIGHT numbers on each channel and Migration B can drop
+            # the parent's per-signal columns without touching any reader (T027).
+            select(RelationshipCandidateDB, child)
             .join(child, child.candidate_id == RelationshipCandidateDB.id)
             .where(*row_where)
             .order_by(*_display_order_by(sort_by, sort_dir, signal))
@@ -402,7 +429,24 @@ class RelationshipCandidateRepository(
             .execution_options(populate_existing=True)
         )
         result = await session.execute(stmt)
-        return list(result.scalars().all()), total, total_before_scoping
+        rows = [
+            RankedCandidate(
+                id=parent.id,
+                entity_a_id=parent.entity_a_id,
+                entity_b_id=parent.entity_b_id,
+                channel=signal_row.signal,  # the queried signal
+                shared_video_count=signal_row.support,
+                lift=signal_row.lift,
+                both_typed_eligible=signal_row.both_typed_eligible,
+                kb_corroboration_count=signal_row.kb_corroboration_count,
+                kb_corroboration_detail=signal_row.kb_corroboration_detail or {},
+                channel_video_universe=signal_row.signal_universe,
+                review_status=parent.review_status,
+                reviewed_at=parent.reviewed_at,
+            )
+            for parent, signal_row in result.all()
+        ]
+        return rows, total, total_before_scoping
 
     async def delete_stale(
         self, session: AsyncSession, *, run_started_at: datetime

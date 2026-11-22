@@ -276,6 +276,132 @@ class TestUpsert:
         assert rows[0].review_status == "related"
         assert rows[0].lift == 50.0  # metrics unchanged on a verdicted row
 
+    async def test_upsert_signals_freezes_a_reviewed_parents_child(
+        self, db_session: AsyncSession
+    ) -> None:
+        """T027 freeze guard (mutation-verified). ``list_ranked`` reads a reviewed row's displayed
+        metrics FROM the child (Feature 116), so ``upsert_signals`` must refresh a child ONLY when
+        its parent is unreviewed. Both halves:
+
+        - UPDATE is frozen: re-upserting an EXISTING reviewed child leaves its metrics unchanged.
+          Delete ``where=parent_not_reviewed`` in ``upsert_signals`` and this half fails (lift ->
+          777).
+        - INSERT is NOT gated: a NEW signal still attaches to a reviewed parent, so the T026b
+          dual-signal calibration label is preserved.
+        """
+        repo = RelationshipCandidateRepository()
+        e1 = await _make_entity(db_session, "Frz A")
+        e2 = await _make_entity(db_session, "Frz B")
+        lo, hi = sorted([e1.id, e2.id])
+        await _seed(
+            db_session, candidates=[_cand(lo, hi)]
+        )  # parent + td child (lift 50, s 9)
+        await db_session.execute(
+            update(RelationshipCandidateDB)
+            .where(RelationshipCandidateDB.entity_a_id == lo)
+            .values(review_status="related", review_taxonomy_version="v1")
+        )
+        await db_session.flush()
+        cid = (await repo.ids_for_pairs(db_session, pairs=[(lo, hi)]))[(lo, hi)]
+
+        # UPDATE half: refreshing the existing td child with new metrics is BLOCKED (frozen).
+        await repo.upsert_signals(
+            db_session,
+            signals=[
+                RelationshipCandidateSignalCreate(
+                    candidate_id=cid,
+                    signal=CandidateSignal.TITLE_DESCRIPTION,
+                    support=99,
+                    lift=777.0,
+                    entity_a_video_count=10,
+                    entity_b_video_count=12,
+                    signal_universe=40000,
+                )
+            ],
+        )
+        td_rows, _, _ = await repo.list_ranked(db_session)
+        assert td_rows[0].lift == 50.0 and td_rows[0].shared_video_count == 7  # frozen
+
+        # INSERT half: a NEW signal (transcript) still attaches to the reviewed parent.
+        await repo.upsert_signals(
+            db_session,
+            signals=[
+                RelationshipCandidateSignalCreate(
+                    candidate_id=cid,
+                    signal=CandidateSignal.TRANSCRIPT,
+                    support=7,
+                    lift=None,
+                    min_gap_seconds=2.0,
+                    entity_a_video_count=10,
+                    entity_b_video_count=12,
+                    signal_universe=40000,
+                )
+            ],
+        )
+        tr_rows, tr_total, _ = await repo.list_ranked(
+            db_session, signal=CandidateSignal.TRANSCRIPT
+        )
+        assert (
+            tr_total == 1 and tr_rows[0].shared_video_count == 7
+        )  # calibration attached
+
+    async def test_upsert_signals_freeze_is_per_row_not_global(
+        self, db_session: AsyncSession
+    ) -> None:
+        """T027 freeze guard is PER-ROW, not global (cdwa validator 2026-11-22). A correlated
+        EXISTS does not correlate from inside ON CONFLICT (an INSERT has no enclosing SELECT), so
+        the guard uses a non-correlated IN over unreviewed parents' ids. This is the DISCRIMINATING
+        fixture a single-reviewed-pair test cannot provide: ONE reviewed pair + ONE unreviewed pair
+        refreshed in the SAME call. The unreviewed child MUST refresh; the reviewed child MUST stay
+        frozen. The earlier (buggy) global EXISTS froze BOTH once any reviewed pair had a child, so
+        it fails this test."""
+        repo = RelationshipCandidateRepository()
+        r1 = await _make_entity(db_session, "PerRow Rev A")
+        r2 = await _make_entity(db_session, "PerRow Rev B")
+        u1 = await _make_entity(db_session, "PerRow Unrev A")
+        u2 = await _make_entity(db_session, "PerRow Unrev B")
+        rlo, rhi = sorted([r1.id, r2.id])
+        ulo, uhi = sorted([u1.id, u2.id])
+        # Both start as td children (lift 50, support 7); one pair is then reviewed.
+        await _seed(db_session, candidates=[_cand(rlo, rhi), _cand(ulo, uhi)])
+        await db_session.execute(
+            update(RelationshipCandidateDB)
+            .where(RelationshipCandidateDB.entity_a_id == rlo)
+            .values(review_status="related", review_taxonomy_version="v1")
+        )
+        await db_session.flush()
+        ids = await repo.ids_for_pairs(db_session, pairs=[(rlo, rhi), (ulo, uhi)])
+
+        # Refresh BOTH td children with new metrics in ONE call.
+        await repo.upsert_signals(
+            db_session,
+            signals=[
+                RelationshipCandidateSignalCreate(
+                    candidate_id=ids[(rlo, rhi)],
+                    signal=CandidateSignal.TITLE_DESCRIPTION,
+                    support=99,
+                    lift=777.0,
+                    entity_a_video_count=10,
+                    entity_b_video_count=12,
+                    signal_universe=40000,
+                ),
+                RelationshipCandidateSignalCreate(
+                    candidate_id=ids[(ulo, uhi)],
+                    signal=CandidateSignal.TITLE_DESCRIPTION,
+                    support=99,
+                    lift=777.0,
+                    entity_a_video_count=10,
+                    entity_b_video_count=12,
+                    signal_universe=40000,
+                ),
+            ],
+        )
+
+        rows, _, _ = await repo.list_ranked(db_session, head_only=False)
+        by_pair = {(r.entity_a_id, r.entity_b_id): r for r in rows}
+        assert by_pair[(ulo, uhi)].lift == 777.0  # unreviewed child refreshed
+        assert by_pair[(rlo, rhi)].lift == 50.0  # reviewed child frozen (per-row)
+
 
 class TestListRanked:
     async def test_orders_by_lift_desc(self, db_session: AsyncSession) -> None:
@@ -335,8 +461,13 @@ class TestListRanked:
         )
         all_rows, all_total, _ = await repo.list_ranked(db_session)
         assert all_total == 2
-        # Mark the top-ranked row reviewed (no repo writer exists; set it directly).
-        all_rows[0].review_status = "associated_with"
+        # Mark the top-ranked row reviewed. list_ranked returns a read-only view (Feature 116
+        # T027), so set the verdict with an explicit UPDATE targeting the row's id.
+        await db_session.execute(
+            update(RelationshipCandidateDB)
+            .where(RelationshipCandidateDB.id == all_rows[0].id)
+            .values(review_status="associated_with")
+        )
         await db_session.flush()
 
         rev, rev_total, _ = await repo.list_ranked(db_session, review="reviewed")
@@ -395,7 +526,11 @@ class TestListRanked:
         # Review the below-head row (read the full set via head_only=False to reach it).
         all_rows, _, _ = await repo.list_ranked(db_session, head_only=False)
         low = next(r for r in all_rows if r.lift == 10.0)
-        low.review_status = "associated_with"
+        await db_session.execute(
+            update(RelationshipCandidateDB)
+            .where(RelationshipCandidateDB.id == low.id)
+            .values(review_status="associated_with")
+        )
         await db_session.flush()
 
         # review=reviewed must NOT surface it — it is outside the head.
@@ -420,8 +555,17 @@ class TestListRanked:
             ],
         )
         rows, _, _ = await repo.list_ranked(db_session)
-        rows[0].review_status = "covers"
-        rows[1].review_status = "coincidence"
+        # Read-only view (T027): assign verdicts via explicit UPDATEs by row id.
+        await db_session.execute(
+            update(RelationshipCandidateDB)
+            .where(RelationshipCandidateDB.id == rows[0].id)
+            .values(review_status="covers")
+        )
+        await db_session.execute(
+            update(RelationshipCandidateDB)
+            .where(RelationshipCandidateDB.id == rows[1].id)
+            .values(review_status="coincidence")
+        )
         await db_session.flush()
 
         covers, covers_total, _ = await repo.list_ranked(

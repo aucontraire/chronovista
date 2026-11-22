@@ -64,9 +64,10 @@ def generate(
     place (preserving row identity) and removes pairs that no longer qualify.
 
     transcript: pairs that co-occur in video transcripts, ranked by SUPPORT (shared
-    videos), not lift. A run is additive and net-new only: it writes new candidates
-    and never modifies or removes existing ones. Pairs already present as candidates
-    are skipped ("deferred") for a later dual-signal merge.
+    videos), not lift. A run is additive: net-new pairs become transcript parents, and
+    a pair already present as a candidate is MERGED as a dual signal — a transcript
+    child is attached to the existing parent, which is never modified (so reviewed rows
+    pick up transcript evidence with no risk to the verdict). Nothing is removed.
     """
     if channel is CandidateChannel.TRANSCRIPT:
         transcript_summary = asyncio.run(
@@ -92,8 +93,12 @@ def _print_transcript_summary(summary: dict[str, int], dry_run: bool) -> None:
     console.print(f"  new candidates written:      {summary['written']}")
     console.print(f"  evidence rows (children):    {summary['children']}")
     console.print(
-        f"  deferred (already present):  {summary['deferred']}"
-        "  [dim]skipped for the later dual-signal merge[/dim]"
+        f"  merged (existing parents):   {summary['merged']}"
+        "  [dim]transcript child added; parent untouched[/dim]"
+    )
+    console.print(
+        f"  dropped (not novel):         {summary['dropped']}"
+        "  [dim]net-new pairs the novelty filter rejected[/dim]"
     )
     console.print(f"  channel video universe (N):  {summary['channel_video_universe']}")
     console.print(f"  corpus size (entities):      {summary.get('corpus_size', 0)}")

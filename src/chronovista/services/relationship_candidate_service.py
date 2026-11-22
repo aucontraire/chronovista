@@ -389,7 +389,7 @@ def compute_transcript_candidates(
     transcript_universe: int,
     existing_pairs: set[tuple[uuid.UUID, uuid.UUID]],
     run_id: uuid.UUID,
-) -> tuple[list[_TranscriptCandidate], int]:
+) -> tuple[list[_TranscriptCandidate], list[_TranscriptCandidate], int]:
     """Pure core: transcript-channel candidates from the proximity rollup (Feature 116).
 
     Reuses the shared novelty filter (:func:`_build_novelty_index`). Unlike the
@@ -398,33 +398,40 @@ def compute_transcript_candidates(
     cross-signal calibration stays definable (cdwa 2026-11-21). close30 is NOT used here; it
     is display-time evidence (FR-022a).
 
-    Emits ONLY net-new pairs. A pair already present as a parent is counted in the returned
-    ``deferred`` total and skipped — merging a signal onto an existing parent is the
-    dual-signal step, which needs a verdict-preserving guard; an unconditional upsert here
-    would null an unreviewed title/description parent's lift and relabel its channel.
+    Splits the rollup into two outputs (dual-signal merge, T026b):
 
-    Parameters mirror the title/description path, with the proximity rollup as the pair source
-    and transcript-scoped denominator counts. Returns ``(candidates, deferred)``.
+    - ``net_new`` — a pair with NO existing parent that passes the novelty filter: the caller
+      upserts a transcript parent AND attaches its transcript child.
+    - ``existing_children`` — a pair ALREADY present as a parent (any channel, any review state)
+      that co-occurs in transcripts: the caller attaches a transcript child to the EXISTING
+      parent and MUST NOT touch the parent (its verdict/metrics/channel stand). Novelty is NOT
+      re-checked — the pair is already a candidate, so its presence is the ticket; re-filtering
+      on drifted KB properties is a reconciliation concern, not this merge's job.
+
+    The novelty filter therefore gates only net-new pairs; a net-new pair it rejects is counted
+    in the returned ``dropped`` total (observable, not silently swallowed). Both outputs carry
+    the full transcript-signal payload (support, transcript-scoped denominators, hub-capped
+    corroboration, provenance); for ``existing_children`` only the pair identity and those child
+    fields are used, never the payload's ``channel``. Returns ``(net_new, existing_children,
+    dropped)``.
     """
     idx = _build_novelty_index(entity_rows)
-    out: list[_TranscriptCandidate] = []
-    deferred = 0
+    net_new: list[_TranscriptCandidate] = []
+    existing_children: list[_TranscriptCandidate] = []
+    dropped = 0
     for a, b, shared_videos, min_gap in rollup_rows:
         if shared_videos < SUPPORT_MIN:
             continue
-        if (a, b) in existing_pairs:
-            deferred += (
-                1  # net-new only; the dual-signal merge is a separate, guarded step
-            )
-            continue
-        if not idx.is_novel(a, b):
+        is_existing = (a, b) in existing_pairs
+        if not is_existing and not idx.is_novel(a, b):
+            dropped += 1  # net-new pair rejected by the novelty filter (observable)
             continue
         detail = _corroboration_detail(
             idx.properties_by_entity.get(a, {}),
             idx.properties_by_entity.get(b, {}),
             idx.corroboration_capped,
         )
-        parent = RelationshipCandidateCreate(
+        payload = RelationshipCandidateCreate(
             entity_a_id=a,
             entity_b_id=b,
             channel=TRANSCRIPT_CHANNEL,
@@ -444,8 +451,9 @@ def compute_transcript_candidates(
                 "generated_run_id": str(run_id),
             },
         )
-        out.append(_TranscriptCandidate(parent=parent, min_gap_seconds=min_gap))
-    return out, deferred
+        tc = _TranscriptCandidate(parent=payload, min_gap_seconds=min_gap)
+        (existing_children if is_existing else net_new).append(tc)
+    return net_new, existing_children, dropped
 
 
 def _capped_referents(
@@ -578,17 +586,21 @@ async def generate_relationship_candidates(*, dry_run: bool = False) -> dict[str
 
 async def generate_transcript_candidates(*, dry_run: bool = False) -> dict[str, int]:
     """Run a TRANSCRIPT-channel generation (Feature 116): compute, then upsert net-new
-    parents and their per-signal children; record the run.
+    parents and attach a transcript child to BOTH net-new and existing parents; record the run.
 
-    **Additive by design.** It emits ONLY net-new pairs (the anti-join in
-    :func:`compute_transcript_candidates`), so it never updates an existing parent and needs
-    no delete-if-absent reconciliation — ``delete_stale`` is not channel-scoped and would wipe
-    unreviewed title/description rows. Reconciling stale transcript candidates is deferred to
-    the dual-signal step. ``dry_run`` rolls back (writes nothing).
+    **Additive, and verdict-preserving by construction (T026b).** Net-new pairs become
+    transcript parents. A pair already present as a parent (any channel, any review state) that
+    co-occurs in transcripts is merged as a DUAL signal: a transcript child is attached to the
+    existing parent via ``upsert_signals`` (child table only), and the parent is NEVER upserted
+    here — so its verdict, metrics and channel stand. This is why reviewed rows pick up transcript
+    evidence (free calibration labels) with no risk to the verdict. No delete-if-absent
+    reconciliation — ``delete_stale`` is not channel-scoped and would wipe unreviewed
+    title/description rows; reconciling stale transcript candidates is deferred. ``dry_run``
+    rolls back (writes nothing).
     """
     cand_repo = RelationshipCandidateRepository()
     prox_repo = EntityPairProximityRepository()
-    summary: dict[str, int] = {"written": 0, "children": 0, "deferred": 0}
+    summary: dict[str, int] = {"written": 0, "children": 0, "merged": 0, "dropped": 0}
 
     async with db_manager.session() as session:
         run = await cand_repo.start_run(
@@ -604,7 +616,7 @@ async def generate_transcript_candidates(*, dry_run: bool = False) -> dict[str, 
         entity_rows = await cand_repo.fetch_entity_property_rows(session)
         counts, universe = await cand_repo.transcript_entity_video_counts(session)
         existing = await cand_repo.existing_pair_keys(session)
-        candidates, deferred = compute_transcript_candidates(
+        net_new, existing_children, dropped = compute_transcript_candidates(
             rollup_rows=rollup_rows,
             entity_rows=entity_rows,
             transcript_video_counts=counts,
@@ -613,20 +625,25 @@ async def generate_transcript_candidates(*, dry_run: bool = False) -> dict[str, 
             run_id=run.id,
         )
 
-        parents = [tc.parent for tc in candidates]
+        # Net-new pairs become transcript parents. Existing parents are NEVER upserted here —
+        # the dual-signal merge attaches their transcript child through upsert_signals (child
+        # table only) below, so the parent row (verdict/metrics/channel) is untouched (T026b).
+        parents = [tc.parent for tc in net_new]
         written = await cand_repo.upsert_many(session, candidates=parents)
 
-        # Link each net-new parent to its transcript child (upsert_many returns a count,
-        # not ids). Every pair was just inserted, so each resolves.
+        # Attach a transcript child to BOTH populations: net-new parents (just inserted) and
+        # existing parents (already present). ids_for_pairs resolves each; upsert_signals is
+        # ON CONFLICT (candidate_id, signal), so a re-run updates the child idempotently.
+        merge_src = net_new + existing_children
         pair_ids = await cand_repo.ids_for_pairs(
             session,
-            pairs=[(tc.parent.entity_a_id, tc.parent.entity_b_id) for tc in candidates],
+            pairs=[(tc.parent.entity_a_id, tc.parent.entity_b_id) for tc in merge_src],
         )
         children: list[RelationshipCandidateSignalCreate] = []
-        for tc in candidates:
+        for tc in merge_src:
             cid = pair_ids.get((tc.parent.entity_a_id, tc.parent.entity_b_id))
             if cid is None:
-                continue  # defensive; a parent just upserted should always resolve
+                continue  # defensive; every pair here is, or was just made, a parent
             children.append(
                 RelationshipCandidateSignalCreate(
                     candidate_id=cid,
@@ -655,9 +672,12 @@ async def generate_transcript_candidates(*, dry_run: bool = False) -> dict[str, 
             candidates_removed=0,  # additive run — nothing is deleted
         )
         summary = {
-            "written": written,
-            "children": children_written,
-            "deferred": deferred,
+            "written": written,  # net-new transcript parents
+            "children": children_written,  # transcript children (net-new + merged)
+            "merged": len(
+                existing_children
+            ),  # existing parents given a transcript child
+            "dropped": dropped,  # net-new pairs rejected by the novelty filter
             "channel_video_universe": universe,
             "corpus_size": len(entity_rows),
         }

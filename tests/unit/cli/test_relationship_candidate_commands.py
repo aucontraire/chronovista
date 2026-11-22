@@ -57,7 +57,8 @@ def _capture_transcript(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         return {
             "written": 17,
             "children": 23,
-            "deferred": 9,
+            "merged": 9,
+            "dropped": 4,
             "channel_video_universe": 777,
             "corpus_size": 60,
         }
@@ -81,7 +82,8 @@ def test_transcript_channel_dispatches_and_renders_fields(
     assert _capture_transcript["transcript_dry_run"] is False
     assert "title_called" not in _capture_transcript
     assert "Generation complete" in result.stdout
-    assert "deferred" in result.stdout and "9" in result.stdout
+    assert "merged" in result.stdout and "9" in result.stdout
+    assert "dropped" in result.stdout and "4" in result.stdout
     assert "evidence rows" in result.stdout and "23" in result.stdout
     assert "17" in result.stdout
 

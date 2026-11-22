@@ -1,11 +1,14 @@
 """Integration tests for the transcript-channel generator (Feature 116).
 
-The critical guard (cdwa review 2026-11-21): a transcript run must NOT corrupt an existing
-UNREVIEWED title/description parent. Nullable parent lift removed the accidental NOT-NULL guard
-at the upsert site, so the net is rebuilt deliberately as the anti-join (net-new only). Disable
-the anti-join in ``compute_transcript_candidates`` and the mutation guard below fails. Uses the
-``db_manager.session`` patch pattern so the whole orchestration runs against the test session.
-Name-free placeholders only (Constitution VI).
+The critical guard (cdwa review 2026-11-21, extended for the T026b dual-signal merge
+2026-11-22): a transcript run must NEVER modify an existing title/description parent — reviewed
+or not. Net-new pairs become transcript parents; an existing parent that co-occurs in
+transcripts is merged as a DUAL signal — a transcript child attached via ``upsert_signals``
+(child table only), with the parent row untouched. The merge is verdict-preserving BY
+CONSTRUCTION because only net-new parents are upserted: add the existing parents to the
+``upsert_many`` set and the mutation guards below fail (the existing parent's lift is nulled and
+its channel relabelled). Uses the ``db_manager.session`` patch pattern so the whole
+orchestration runs against the test session. Name-free placeholders only (Constitution VI).
 """
 
 from __future__ import annotations
@@ -107,7 +110,7 @@ class TestTranscriptGenerate:
 
         assert summary["written"] == 1
         assert summary["children"] == 1
-        assert summary["deferred"] == 0
+        assert summary["merged"] == 0 and summary["dropped"] == 0
         parent = (
             await db_session.execute(
                 select(RelationshipCandidateDB)
@@ -128,18 +131,19 @@ class TestTranscriptGenerate:
         assert child.lift is None
         assert child.min_gap_seconds == 3.0
 
-    async def test_transcript_run_does_not_corrupt_unreviewed_td_parent(
+    async def test_transcript_merge_leaves_unreviewed_td_parent_row_untouched(
         self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """MUTATION GUARD (cdwa #3). Disable the anti-join in
-        ``compute_transcript_candidates`` and this fails: the unreviewed title/description
-        parent's lift is nulled and its channel relabelled by the upsert."""
+        """MUTATION GUARD (cdwa #3, T026b). The dual-signal merge attaches a transcript child to
+        an existing UNREVIEWED title/description parent WITHOUT upserting the parent. Add the
+        existing parents to the ``upsert_many`` set and this fails: the parent's lift is nulled
+        (42.0 -> None) and its channel relabelled to ``transcript``."""
         repo = RelationshipCandidateRepository()
         await _clear(db_session)
         a = await _entity(db_session, "Dup A")
         b = await _entity(db_session, "Dup B")
         lo, hi = (a, b) if a < b else (b, a)
-        # An UNREVIEWED title/description parent — the population the guard removed exposed.
+        # An UNREVIEWED title/description parent that also co-occurs in transcripts.
         await repo.upsert_many(
             db_session,
             candidates=[
@@ -162,8 +166,8 @@ class TestTranscriptGenerate:
 
         summary = await svc.generate_transcript_candidates()
 
-        assert summary["deferred"] == 1  # anti-joined, not emitted
-        assert summary["written"] == 0
+        assert summary["written"] == 0  # no net-new parent
+        assert summary["merged"] == 1  # the existing parent gained a transcript child
         parent = (
             await db_session.execute(
                 select(RelationshipCandidateDB)
@@ -171,10 +175,10 @@ class TestTranscriptGenerate:
                 .execution_options(populate_existing=True)
             )
         ).scalar_one()
-        # UNCHANGED: a transcript run must not corrupt an unreviewed title/description parent.
+        # UNCHANGED parent row: the merge must not upsert the parent.
         assert parent.lift == 42.0
         assert parent.channel == "title_description"
-        # ...and no transcript child was attached to it either.
+        # ...but a transcript child IS now attached (the dual signal).
         children: list[Any] = (
             (
                 await db_session.execute(
@@ -184,7 +188,10 @@ class TestTranscriptGenerate:
             .scalars()
             .all()
         )
-        assert children == []
+        assert len(children) == 1
+        assert children[0].signal == "transcript"
+        assert children[0].support == 7
+        assert children[0].lift is None
 
 
 class TestTranscriptGenerateSafety:
@@ -192,11 +199,14 @@ class TestTranscriptGenerateSafety:
     head-query decision: reviewed rows untouched (SC-003), title/description head membership
     unchanged (SC-004), and idempotency (SC-007)."""
 
-    async def test_transcript_run_leaves_a_reviewed_td_parent_untouched(
+    async def test_transcript_merge_preserves_a_reviewed_td_verdict(
         self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """SC-003: a transcript run must not alter a REVIEWED title/description parent —
-        verdict, metrics, and channel all stand (the pair is anti-joined)."""
+        """SC-003 + T026b: a transcript run attaches a transcript child to a REVIEWED
+        title/description parent (a free calibration label — the human already judged the pair)
+        but must NOT alter its verdict, metrics, or channel. The parent is never upserted, so the
+        verdict is preserved by construction; break that (upsert the existing parent) and the
+        verdict/lift/channel assertions fail."""
         repo = RelationshipCandidateRepository()
         await _clear(db_session)
         a = await _entity(db_session, "Rev A")
@@ -230,7 +240,8 @@ class TestTranscriptGenerateSafety:
 
         summary = await svc.generate_transcript_candidates()
 
-        assert summary["deferred"] == 1
+        assert summary["merged"] == 1  # reviewed parent gained a transcript child
+        assert summary["written"] == 0
         parent = (
             await db_session.execute(
                 select(RelationshipCandidateDB)
@@ -250,7 +261,10 @@ class TestTranscriptGenerateSafety:
             .scalars()
             .all()
         )
-        assert children == []  # dual-signal evidence deferred, not merged here
+        assert (
+            len(children) == 1
+        )  # the calibration label (transcript evidence) is attached
+        assert children[0].signal == "transcript"
 
     async def test_transcript_run_leaves_td_head_membership_unchanged(
         self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
@@ -276,8 +290,26 @@ class TestTranscriptGenerateSafety:
                 )
             ],
         )
+        # The td parent needs its td child to be visible in the child-join head (D3a/T032);
+        # without it the before/after comparison below would be a vacuous [] == [].
+        td_ids = await repo.ids_for_pairs(db_session, pairs=[(tlo, thi)])
+        await repo.upsert_signals(
+            db_session,
+            signals=[
+                RelationshipCandidateSignalCreate(
+                    candidate_id=td_ids[(tlo, thi)],
+                    signal=CandidateSignal.TITLE_DESCRIPTION,
+                    support=9,
+                    lift=42.0,
+                    entity_a_video_count=10,
+                    entity_b_video_count=12,
+                    signal_universe=40000,
+                )
+            ],
+        )
         before, before_total, _ = await repo.list_ranked(db_session)
         before_ids = [r.id for r in before]
+        assert before_total == 1  # non-vacuous: the td parent is in the head
         # A NET-NEW transcript pair (different entities).
         tra = await _entity(db_session, "TR A")
         trb = await _entity(db_session, "TR B")
@@ -297,7 +329,9 @@ class TestTranscriptGenerateSafety:
         self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """SC-007: re-running a transcript generation yields the same DB state. The second run
-        anti-joins run 1's pairs (now existing) — it writes nothing and defers them all.
+        finds run 1's pair already present and MERGES it — it creates no new parent and
+        re-upserts the same transcript child in place (ON CONFLICT), so the parent and child
+        counts are unchanged.
         """
         await _clear(db_session)
         a = await _entity(db_session, "Idem A")
@@ -307,11 +341,13 @@ class TestTranscriptGenerateSafety:
         _patch_session(monkeypatch, db_session)
 
         first = await svc.generate_transcript_candidates()
-        assert first["written"] == 1 and first["deferred"] == 0
+        assert first["written"] == 1 and first["merged"] == 0
 
         second = await svc.generate_transcript_candidates()
-        assert second["written"] == 0  # the pair now exists -> anti-joined
-        assert second["deferred"] == 1
+        assert second["written"] == 0  # the pair now exists -> merged, not re-created
+        assert (
+            second["merged"] == 1
+        )  # its transcript child is re-upserted (ON CONFLICT)
 
         parents = (
             (

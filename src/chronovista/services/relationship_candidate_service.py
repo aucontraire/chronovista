@@ -26,7 +26,7 @@ import itertools
 import uuid
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from chronovista.config.database import db_manager
 from chronovista.models.relationship_candidate import RelationshipCandidateCreate
@@ -190,58 +190,49 @@ def _coheld_pairs(
     return pairs
 
 
-def compute_candidates(
-    *,
-    mention_rows: list[tuple[uuid.UUID, str]],
-    entity_rows: list[tuple[uuid.UUID, dict[str, Any], dict[str, Any]]],
-    run_id: uuid.UUID,
-) -> tuple[list[RelationshipCandidateCreate], int]:
-    """Pure core: compute novel-relationship candidates from loaded rows.
+class _NoveltyIndex(NamedTuple):
+    """The channel-agnostic novelty filter, built once per generation from entity props.
 
-    Parameters
-    ----------
-    mention_rows
-        ``(entity_id, video_id)`` for every title/description mention.
-    entity_rows
-        ``(entity_id, external_ids, properties)`` for every library entity.
-    run_id
-        The generation-run id, recorded in each candidate's provenance.
-
-    Returns
-    -------
-    (candidates, channel_video_universe)
-        The qualifying novel pairs (canonically ordered, ranked later by lift) and
-        ``N`` = the number of videos with >=1 channel mention.
+    Novelty is a fact about the *pair's typed ties*, not the channel it co-occurs on, so
+    both the title/description and transcript channels share this index (Feature 116). It
+    holds the four novelty arms, the typed-eligible set, and the hub-capped corroboration
+    referents — everything a per-pair decision needs that is NOT channel co-occurrence.
     """
+
+    properties_by_entity: dict[uuid.UUID, dict[str, Any]]
+    entity_of_qid: dict[str, uuid.UUID]
+    direct_edges: set[tuple[uuid.UUID, uuid.UUID]]
+    shared_tie: set[tuple[uuid.UUID, uuid.UUID]]
+    shared_attr: set[tuple[uuid.UUID, uuid.UUID]]
+    coheld: set[tuple[uuid.UUID, uuid.UUID]]
+    eligible: set[uuid.UUID]
+    corroboration_capped: dict[str, set[str]]
+
+    def is_novel(self, a: uuid.UUID, b: uuid.UUID) -> bool:
+        """True if the canonically-ordered pair survives all four novelty arms."""
+        key = (a, b)
+        return not (
+            key in self.direct_edges
+            or key in self.shared_tie
+            or key in self.shared_attr
+            or key in self.coheld
+        )
+
+
+def _build_novelty_index(
+    entity_rows: list[tuple[uuid.UUID, dict[str, Any], dict[str, Any]]],
+) -> _NoveltyIndex:
+    """Build the shared novelty filter from ``(entity_id, external_ids, properties)`` rows."""
     properties_by_entity: dict[uuid.UUID, dict[str, Any]] = {
         eid: (props or {}) for eid, _ext, props in entity_rows
     }
-    qid_of: dict[uuid.UUID, str] = {}
     entity_of_qid: dict[str, uuid.UUID] = {}
     for eid, ext, _props in entity_rows:
         wd = ext.get("wikidata") if isinstance(ext, dict) else None
         qid = wd.get("id") if isinstance(wd, dict) else None
         if isinstance(qid, str) and qid:
-            qid_of[eid] = qid
             entity_of_qid[qid] = eid
 
-    # Co-occurrence over the channel.
-    videos_to_entities: dict[str, set[uuid.UUID]] = defaultdict(set)
-    for eid, video_id in mention_rows:
-        videos_to_entities[video_id].add(eid)
-    channel_video_universe = len(videos_to_entities)
-    entity_video_count: Counter[uuid.UUID] = Counter()
-    for entities in videos_to_entities.values():
-        for eid in entities:
-            entity_video_count[eid] += 1
-    shared: Counter[tuple[uuid.UUID, uuid.UUID]] = Counter()
-    for entities in videos_to_entities.values():
-        if len(entities) < 2:
-            continue
-        for a, b in itertools.combinations(sorted(entities), 2):
-            shared[(a, b)] += 1
-
-    # Novelty-filter sets.
     direct_edges: set[tuple[uuid.UUID, uuid.UUID]] = set()
     for eid, props in properties_by_entity.items():
         for field in _RELATION_FIELDS:
@@ -267,18 +258,65 @@ def compute_candidates(
         if any(_qids(props, f) for f in TIE_FIELDS + ATTR_FIELDS):
             eligible.add(eid)
 
+    return _NoveltyIndex(
+        properties_by_entity=properties_by_entity,
+        entity_of_qid=entity_of_qid,
+        direct_edges=direct_edges,
+        shared_tie=shared_tie,
+        shared_attr=shared_attr,
+        coheld=coheld,
+        eligible=eligible,
+        corroboration_capped=corroboration_capped,
+    )
+
+
+def compute_candidates(
+    *,
+    mention_rows: list[tuple[uuid.UUID, str]],
+    entity_rows: list[tuple[uuid.UUID, dict[str, Any], dict[str, Any]]],
+    run_id: uuid.UUID,
+) -> tuple[list[RelationshipCandidateCreate], int]:
+    """Pure core: compute novel-relationship candidates from loaded rows.
+
+    Parameters
+    ----------
+    mention_rows
+        ``(entity_id, video_id)`` for every title/description mention.
+    entity_rows
+        ``(entity_id, external_ids, properties)`` for every library entity.
+    run_id
+        The generation-run id, recorded in each candidate's provenance.
+
+    Returns
+    -------
+    (candidates, channel_video_universe)
+        The qualifying novel pairs (canonically ordered, ranked later by lift) and
+        ``N`` = the number of videos with >=1 channel mention.
+    """
+    idx = _build_novelty_index(entity_rows)
+
+    # Co-occurrence over the channel.
+    videos_to_entities: dict[str, set[uuid.UUID]] = defaultdict(set)
+    for eid, video_id in mention_rows:
+        videos_to_entities[video_id].add(eid)
+    channel_video_universe = len(videos_to_entities)
+    entity_video_count: Counter[uuid.UUID] = Counter()
+    for entities in videos_to_entities.values():
+        for eid in entities:
+            entity_video_count[eid] += 1
+    shared: Counter[tuple[uuid.UUID, uuid.UUID]] = Counter()
+    for entities in videos_to_entities.values():
+        if len(entities) < 2:
+            continue
+        for a, b in itertools.combinations(sorted(entities), 2):
+            shared[(a, b)] += 1
+
     candidates: list[RelationshipCandidateCreate] = []
     for (a, b), support in shared.items():
         if support < SUPPORT_MIN:
             continue
-        key = (a, b)
-        if (
-            key in direct_edges
-            or key in shared_tie
-            or key in shared_attr
-            or key in coheld
-        ):
-            continue  # not novel
+        if not idx.is_novel(a, b):
+            continue
         count_a = entity_video_count[a]
         count_b = entity_video_count[b]
         expected = (
@@ -291,9 +329,9 @@ def compute_candidates(
             continue
 
         detail = _corroboration_detail(
-            properties_by_entity.get(a, {}),
-            properties_by_entity.get(b, {}),
-            corroboration_capped,
+            idx.properties_by_entity.get(a, {}),
+            idx.properties_by_entity.get(b, {}),
+            idx.corroboration_capped,
         )
         candidates.append(
             RelationshipCandidateCreate(
@@ -305,7 +343,7 @@ def compute_candidates(
                 entity_a_video_count=count_a,
                 entity_b_video_count=count_b,
                 channel_video_universe=channel_video_universe,
-                both_typed_eligible=(a in eligible and b in eligible),
+                both_typed_eligible=(a in idx.eligible and b in idx.eligible),
                 kb_corroboration_count=len(detail),
                 kb_corroboration_detail={"fields": detail},
                 provenance={

@@ -428,6 +428,59 @@ class RelationshipCandidateRepository(
         )
         return [(row[0], row[1]) for row in result.all()]
 
+    async def existing_pair_keys(
+        self, session: AsyncSession
+    ) -> set[tuple[uuid.UUID, uuid.UUID]]:
+        """Every ``(entity_a_id, entity_b_id)`` already present as a candidate parent.
+
+        The transcript generator anti-joins against this so it emits ONLY net-new pairs
+        (Feature 116). A transcript pair that already exists as a parent is deferred to the
+        dual-signal merge (its own step, with a verdict-preserving guard) — it is NEVER
+        upserted here: ``upsert_many`` refreshes ``channel`` and ``lift``
+        (``_REFRESHABLE_FIELDS``) and its guard only spares reviewed rows, so an upsert onto
+        an unreviewed title/description parent would null its lift and relabel its channel.
+        """
+        result = await session.execute(
+            select(
+                RelationshipCandidateDB.entity_a_id,
+                RelationshipCandidateDB.entity_b_id,
+            )
+        )
+        return {(row[0], row[1]) for row in result.all()}
+
+    async def transcript_entity_video_counts(
+        self, session: AsyncSession
+    ) -> tuple[dict[uuid.UUID, int], int]:
+        """Per-entity transcript video counts and the transcript universe ``N``.
+
+        ``(counts, N)`` where ``counts[entity_id]`` is the number of DISTINCT videos the
+        entity is mentioned in on the transcript channel, and ``N`` is the number of DISTINCT
+        videos with >=1 transcript mention. These are the transcript-scoped denominator
+        provenance for a transcript candidate (FR-010): they MUST be transcript-scoped (never
+        copied from title/description) and are only capturable at generation time, since the
+        universe grows monotonically and cannot be reconstructed for an old row. Computed as
+        an aggregate (not raw rows) because the transcript channel is large.
+        """
+        count_rows = (
+            await session.execute(
+                select(
+                    EntityMentionDB.entity_id,
+                    func.count(func.distinct(EntityMentionDB.video_id)),
+                )
+                .where(EntityMentionDB.mention_source == "transcript")
+                .group_by(EntityMentionDB.entity_id)
+            )
+        ).all()
+        counts = {row[0]: int(row[1]) for row in count_rows}
+        universe = (
+            await session.execute(
+                select(func.count(func.distinct(EntityMentionDB.video_id))).where(
+                    EntityMentionDB.mention_source == "transcript"
+                )
+            )
+        ).scalar() or 0
+        return counts, int(universe)
+
     async def fetch_entity_property_rows(
         self, session: AsyncSession
     ) -> list[tuple[uuid.UUID, dict[str, Any], dict[str, Any]]]:

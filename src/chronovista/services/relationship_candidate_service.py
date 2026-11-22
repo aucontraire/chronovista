@@ -42,6 +42,12 @@ GENERATOR_VERSION = "109.0"
 CHANNEL = "title_description"
 CHANNEL_SOURCES: tuple[str, ...] = ("title", "description")
 
+# Feature 116: the transcript channel. A transcript candidate has NO lift — it ranks by
+# SUPPORT (shared-video count, the same unit the title/description channel's support holds, so
+# cross-signal calibration is definable; cdwa review 2026-11-21). close30 is display-time
+# evidence (FR-022a), never the ranking key.
+TRANSCRIPT_CHANNEL = "transcript"
+
 # Novelty-filter field sets. The direct-edge arm uses the full RELATIONS set
 # (single source — never enumerate). Co-membership uses the 5 measured tie fields;
 # the attribute arm uses these three (includes headquarters, the org analogue of
@@ -356,6 +362,83 @@ def compute_candidates(
             )
         )
     return candidates, channel_video_universe
+
+
+class _TranscriptCandidate(NamedTuple):
+    """A net-new transcript candidate: the parent to upsert plus the one child-only datum
+    (``min_gap_seconds``) the caller needs to build the per-signal child once the parent id
+    is known. Everything else the child needs (support, counts, eligibility, corroboration)
+    equals the parent's, so it is not duplicated here."""
+
+    parent: RelationshipCandidateCreate
+    min_gap_seconds: float
+
+
+def compute_transcript_candidates(
+    *,
+    rollup_rows: list[tuple[uuid.UUID, uuid.UUID, int, float]],
+    entity_rows: list[tuple[uuid.UUID, dict[str, Any], dict[str, Any]]],
+    transcript_video_counts: dict[uuid.UUID, int],
+    transcript_universe: int,
+    existing_pairs: set[tuple[uuid.UUID, uuid.UUID]],
+    run_id: uuid.UUID,
+) -> tuple[list[_TranscriptCandidate], int]:
+    """Pure core: transcript-channel candidates from the proximity rollup (Feature 116).
+
+    Reuses the shared novelty filter (:func:`_build_novelty_index`). Unlike the
+    title/description channel there is NO lift: a transcript pair ranks by SUPPORT
+    (``shared_videos``, FR-019) — the same unit the other channel's support holds, so
+    cross-signal calibration stays definable (cdwa 2026-11-21). close30 is NOT used here; it
+    is display-time evidence (FR-022a).
+
+    Emits ONLY net-new pairs. A pair already present as a parent is counted in the returned
+    ``deferred`` total and skipped — merging a signal onto an existing parent is the
+    dual-signal step, which needs a verdict-preserving guard; an unconditional upsert here
+    would null an unreviewed title/description parent's lift and relabel its channel.
+
+    Parameters mirror the title/description path, with the proximity rollup as the pair source
+    and transcript-scoped denominator counts. Returns ``(candidates, deferred)``.
+    """
+    idx = _build_novelty_index(entity_rows)
+    out: list[_TranscriptCandidate] = []
+    deferred = 0
+    for a, b, shared_videos, min_gap in rollup_rows:
+        if shared_videos < SUPPORT_MIN:
+            continue
+        if (a, b) in existing_pairs:
+            deferred += (
+                1  # net-new only; the dual-signal merge is a separate, guarded step
+            )
+            continue
+        if not idx.is_novel(a, b):
+            continue
+        detail = _corroboration_detail(
+            idx.properties_by_entity.get(a, {}),
+            idx.properties_by_entity.get(b, {}),
+            idx.corroboration_capped,
+        )
+        parent = RelationshipCandidateCreate(
+            entity_a_id=a,
+            entity_b_id=b,
+            channel=TRANSCRIPT_CHANNEL,
+            shared_video_count=shared_videos,
+            lift=None,  # transcript ranks by support, not lift
+            entity_a_video_count=transcript_video_counts.get(a, 0),
+            entity_b_video_count=transcript_video_counts.get(b, 0),
+            channel_video_universe=transcript_universe,
+            both_typed_eligible=(a in idx.eligible and b in idx.eligible),
+            kb_corroboration_count=len(detail),
+            kb_corroboration_detail={"fields": detail},
+            provenance={
+                "channel": TRANSCRIPT_CHANNEL,
+                "N": transcript_universe,
+                "corpus_size": len(entity_rows),
+                "generator_version": GENERATOR_VERSION,
+                "generated_run_id": str(run_id),
+            },
+        )
+        out.append(_TranscriptCandidate(parent=parent, min_gap_seconds=min_gap))
+    return out, deferred
 
 
 def _capped_referents(

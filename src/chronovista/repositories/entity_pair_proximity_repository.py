@@ -380,6 +380,28 @@ class EntityPairProximityRepository(
         await session.flush()
         return result.rowcount or 0
 
+    async def read_rollup(
+        self, session: AsyncSession, *, min_shared_videos: int = 5
+    ) -> list[tuple[uuid.UUID, uuid.UUID, int, float]]:
+        """Rollup pairs qualifying for transcript-candidate generation (Feature 116).
+
+        Returns ``(entity_a_id, entity_b_id, shared_videos, min_gap_seconds)`` for every
+        pair whose transcript shared-video count clears ``min_shared_videos`` (the FR-019
+        support bound). ``shared_videos`` is the support quantity — the SAME unit the
+        title/description channel uses, so cross-signal calibration (FR-011) is definable.
+        ``close_co_mentions_*`` are NOT returned: they are display-time evidence (FR-022a),
+        joined from the rollup at render, never the ranking key.
+        """
+        result = await session.execute(
+            select(
+                EntityPairProximityRollupDB.entity_a_id,
+                EntityPairProximityRollupDB.entity_b_id,
+                EntityPairProximityRollupDB.shared_videos,
+                EntityPairProximityRollupDB.min_gap_seconds,
+            ).where(EntityPairProximityRollupDB.shared_videos >= min_shared_videos)
+        )
+        return [(r[0], r[1], r[2], r[3]) for r in result.all()]
+
     async def pairs_in_scope(
         self,
         session: AsyncSession,

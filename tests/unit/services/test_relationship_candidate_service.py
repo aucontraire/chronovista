@@ -62,7 +62,7 @@ class TestNoveltyFilter:
         )
         assert len(candidates) == 1
         assert {candidates[0].entity_a_id, candidates[0].entity_b_id} == {a[0], b[0]}
-        assert candidates[0].lift >= svc.LIFT_MIN
+        assert candidates[0].lift is not None and candidates[0].lift >= svc.LIFT_MIN
 
     def test_direct_edge_excludes_pair(self) -> None:
         a = _entity("Q1", founder=["Q2"])  # a.founder -> b's QID
@@ -190,3 +190,80 @@ class TestCorroborationAndEligibility:
         # ...but the shared hub country must not register as corroboration.
         assert "country" not in candidates[0].kb_corroboration_detail["fields"]
         assert candidates[0].kb_corroboration_count == 0
+
+
+def _ordered(a: uuid.UUID, b: uuid.UUID) -> tuple[uuid.UUID, uuid.UUID]:
+    return (a, b) if a < b else (b, a)
+
+
+class TestComputeTranscriptCandidates:
+    """Feature 116: the transcript channel's pure compute (no DB).
+
+    It reuses the SAME novelty filter as title/description (novelty is channel-agnostic),
+    but ranks by SUPPORT (shared_videos), carries no lift, and emits only net-new pairs.
+    """
+
+    def test_net_new_novel_pair_becomes_a_transcript_candidate(self) -> None:
+        ea, eb = _entity("Q1"), _entity("Q2")  # no typed ties -> novel
+        a, b = _ordered(ea[0], eb[0])
+        cands, deferred = svc.compute_transcript_candidates(
+            rollup_rows=[(a, b, 7, 3.0)],
+            entity_rows=[ea, eb],
+            transcript_video_counts={a: 10, b: 12},
+            transcript_universe=40000,
+            existing_pairs=set(),
+            run_id=uuid.uuid4(),
+        )
+        assert deferred == 0
+        assert len(cands) == 1
+        tc = cands[0]
+        assert tc.parent.channel == "transcript"
+        assert tc.parent.lift is None
+        assert (
+            tc.parent.shared_video_count == 7
+        )  # support == shared_videos (not close30)
+        assert tc.parent.entity_a_video_count == 10  # transcript-scoped denominator
+        assert tc.parent.channel_video_universe == 40000
+        assert tc.min_gap_seconds == 3.0
+
+    def test_below_support_floor_excluded(self) -> None:
+        ea, eb = _entity("Q1"), _entity("Q2")
+        a, b = _ordered(ea[0], eb[0])
+        cands, deferred = svc.compute_transcript_candidates(
+            rollup_rows=[(a, b, 4, 3.0)],  # shared_videos < SUPPORT_MIN
+            entity_rows=[ea, eb],
+            transcript_video_counts={},
+            transcript_universe=100,
+            existing_pairs=set(),
+            run_id=uuid.uuid4(),
+        )
+        assert cands == [] and deferred == 0
+
+    def test_existing_pair_is_deferred_not_emitted(self) -> None:
+        ea, eb = _entity("Q1"), _entity("Q2")
+        a, b = _ordered(ea[0], eb[0])
+        cands, deferred = svc.compute_transcript_candidates(
+            rollup_rows=[(a, b, 7, 3.0)],
+            entity_rows=[ea, eb],
+            transcript_video_counts={a: 10, b: 12},
+            transcript_universe=100,
+            existing_pairs={(a, b)},  # already a parent -> dual-signal merge, not here
+            run_id=uuid.uuid4(),
+        )
+        assert cands == []
+        assert deferred == 1  # observable, not silently swallowed
+
+    def test_non_novel_pair_excluded_via_shared_tie(self) -> None:
+        # Two entities sharing an employer -> shared_tie arm -> not novel (filter reused).
+        ea = _entity("Q1", employer=["Q100"])
+        eb = _entity("Q2", employer=["Q100"])
+        a, b = _ordered(ea[0], eb[0])
+        cands, deferred = svc.compute_transcript_candidates(
+            rollup_rows=[(a, b, 7, 3.0)],
+            entity_rows=[ea, eb],
+            transcript_video_counts={a: 10, b: 12},
+            transcript_universe=100,
+            existing_pairs=set(),
+            run_id=uuid.uuid4(),
+        )
+        assert cands == [] and deferred == 0

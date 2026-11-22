@@ -104,17 +104,19 @@ def test_corroboration_field_set_and_exclusion_mechanism() -> None:
 
 
 def test_head_ordering_ends_in_regen_stable_id() -> None:
-    # SC-003a / §22 CONTRACT GUARD: the head ordering MUST end in the regen-stable `id`
-    # tiebreak, or the boundary flickers when lift AND corroboration tie. A DB-order test
-    # cannot catch a dropped tiebreak (verified during adversarial validation: Postgres
-    # returned id order by chance), so the ordering is a single named tuple and this guard
-    # asserts its shape structurally — it fails if the terminal id key is dropped.
-    order = repo_mod._HEAD_ORDER_BY
-    assert len(order) == 4  # lift, corroboration, shared_video_count, id
-    assert order[-1] is RelationshipCandidateDB.id  # terminal regen-stable tiebreak
-    # corroboration is the secondary key (immediately after lift).
-    assert "kb_corroboration_count" in str(order[1])
-    assert "lift" in str(order[0])
+    # SC-003a / §22 CONTRACT GUARD: the PER-SIGNAL head ordering MUST end in the regen-stable
+    # `id` tiebreak for BOTH channels, or the boundary flickers on ties. A DB-order test cannot
+    # catch a dropped tiebreak (verified during adversarial validation: Postgres returned id
+    # order by chance), so the ordering is built by a single function and this guard asserts its
+    # shape structurally per signal (Feature 116: per-signal, child-based).
+    from chronovista.models.relationship_candidate import CandidateSignal
+
+    for sig in (CandidateSignal.TITLE_DESCRIPTION, CandidateSignal.TRANSCRIPT):
+        order = repo_mod._head_order_by(sig)
+        assert order[-1] is RelationshipCandidateDB.id  # terminal regen-stable tiebreak
+    # title/description leads with lift; transcript leads with support (no lift).
+    assert "lift" in str(repo_mod._head_order_by(CandidateSignal.TITLE_DESCRIPTION)[0])
+    assert "support" in str(repo_mod._head_order_by(CandidateSignal.TRANSCRIPT)[0])
 
 
 def test_inbound_holder_arm_field_set_is_pinned() -> None:

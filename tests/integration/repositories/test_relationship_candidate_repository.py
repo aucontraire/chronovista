@@ -74,80 +74,158 @@ def _cand(a: uuid.UUID, b: uuid.UUID, **over: object) -> RelationshipCandidateCr
     return RelationshipCandidateCreate(**base)  # type: ignore[arg-type]
 
 
-class TestPerChannelHeadMembership:
-    """Feature 116 / T022a — head membership is scoped per channel.
+async def _seed(
+    session: AsyncSession, *, candidates: list[RelationshipCandidateCreate]
+) -> int:
+    """Upsert parents AND a title_description child per parent — ``list_ranked`` reads through the
+    child (Feature 116), so a read test must seed both, mirroring what the migration and the t/d
+    generator do. Drop-in for ``_seed(session, candidates=...)``; returns the parent
+    upsert count. Uses its own repo instance so it can replace bare upsert_many call sites.
+    """
+    _r = RelationshipCandidateRepository()
+    written = await _r.upsert_many(session, candidates=candidates)
+    pair_ids = await _r.ids_for_pairs(
+        session, pairs=[(c.entity_a_id, c.entity_b_id) for c in candidates]
+    )
+    await _r.upsert_signals(
+        session,
+        signals=[
+            RelationshipCandidateSignalCreate(
+                candidate_id=pair_ids[(c.entity_a_id, c.entity_b_id)],
+                signal=CandidateSignal.TITLE_DESCRIPTION,
+                support=c.shared_video_count,
+                lift=c.lift,
+                entity_a_video_count=c.entity_a_video_count,
+                entity_b_video_count=c.entity_b_video_count,
+                signal_universe=c.channel_video_universe,
+                both_typed_eligible=c.both_typed_eligible,
+                kb_corroboration_count=c.kb_corroboration_count,
+                kb_corroboration_detail=c.kb_corroboration_detail,
+                provenance=c.provenance,
+            )
+            for c in candidates
+            if (c.entity_a_id, c.entity_b_id) in pair_ids
+        ],
+    )
+    return written
 
-    The table is unique on the pair (no channel), and a transcript row's native rank
-    is support, not lift; once the ``lift >= 5`` CHECK is relaxed to admit the channel
-    its ``lift`` is NULL and would sort NULLS-FIRST into a single GLOBAL head, evicting
-    the title/description queue (the surface the reviewed verdicts live on) under the
-    LIMIT — a silent failure whose symptom is absence. This asserts the MECHANISM, not a
-    title/description-only view (which could not fail): a transcript intruder is physically
-    present, and a high ``lift`` (satisfying the current CHECK) stands in for "a row that
-    would top a global head". Deleting ``channel == signal`` from the head subquery or the
-    active filters makes this test fail (mutation-verified guard, Constitution v1.3.0).
+
+async def _add_signal_child(
+    session: AsyncSession,
+    candidate_id: uuid.UUID,
+    signal: CandidateSignal,
+    *,
+    support: int,
+    lift: float | None,
+    min_gap_seconds: float | None = None,
+) -> None:
+    """Attach one per-signal child to an existing parent (for child-join head tests)."""
+    _r = RelationshipCandidateRepository()
+    await _r.upsert_signals(
+        session,
+        signals=[
+            RelationshipCandidateSignalCreate(
+                candidate_id=candidate_id,
+                signal=signal,
+                support=support,
+                lift=lift,
+                min_gap_seconds=min_gap_seconds,
+                entity_a_video_count=10,
+                entity_b_video_count=12,
+                signal_universe=40000,
+            )
+        ],
+    )
+
+
+class TestPerChannelHeadMembership:
+    """Feature 116 / T032 (cdwa-reviewed 2026-11-22) — per-signal head membership via the CHILD
+    join. A dual-signal pair appears in BOTH heads; a transcript-only pair never appears in the
+    title/description head; and the head is never silently SHORT (``total == HEAD_CUTOFF`` with no
+    user filter). The slot-accounting assertion is what catches the active-filter bug: if the
+    outer filter scoped on ``parent.channel`` instead of the child, the dual-signal pair would
+    take a head slot then be filtered out, leaving ``total < HEAD_CUTOFF`` — a "pair appears in
+    both heads" check would still pass, because presence survives that bug.
     """
 
-    async def test_transcript_rows_do_not_evict_title_description_head(
+    async def test_per_signal_heads_and_slot_accounting(
         self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         repo = RelationshipCandidateRepository()
-        # Small head so the cut is real — the intruder would land IN a 2-row global head.
         monkeypatch.setattr(repo_mod, "HEAD_CUTOFF", 2)
-        # The shared integration DB is not guaranteed empty under concurrent load (the drop_all
-        # fixture can race), so take control of the population before asserting absolute counts
-        # (integration-DB-shared-state lesson — a constant must be backed by a cleared table).
         await db_session.execute(delete(RelationshipCandidateDB))
+        e = [await _make_entity(db_session, f"PH-{i}") for i in range(8)]
 
-        e = [await _make_entity(db_session, f"PH-{i}") for i in range(6)]
-        # Three title/description pairs with distinct lifts; the top two are the head.
-        await repo.upsert_many(
-            db_session,
-            candidates=[
-                _cand(e[0].id, e[1].id, lift=500.0),
-                _cand(e[2].id, e[3].id, lift=80.0),
-                _cand(e[0].id, e[2].id, lift=10.0),  # below the 2-row head
-            ],
+        # Two title/description-only pairs + one DUAL-signal pair (td child via _seed, then a
+        # transcript child added). All three get a td child; `c` falls below the 2-row td head.
+        a = _cand(e[0].id, e[1].id, lift=500.0)
+        c = _cand(e[4].id, e[5].id, lift=80.0)
+        dual = _cand(e[2].id, e[3].id, lift=300.0)
+        await _seed(db_session, candidates=[a, c, dual])
+        ids = await repo.ids_for_pairs(
+            db_session, pairs=[(x.entity_a_id, x.entity_b_id) for x in (a, c, dual)]
         )
-        before, before_total, before_bts = await repo.list_ranked(db_session)
-        before_ids = [r.id for r in before]
-        assert before_total == 2  # top two by lift
-        assert before_bts == 3  # the whole title/description population
-        assert [r.lift for r in before] == [500.0, 80.0]
-
-        # A transcript-channel intruder whose lift (>= the CHECK floor) is huge enough to top
-        # a GLOBAL head — the exact row that would evict title/description if the head were not
-        # channel-scoped. Distinct pair, since the table is unique on the pair.
+        await _add_signal_child(
+            db_session,
+            ids[(dual.entity_a_id, dual.entity_b_id)],
+            CandidateSignal.TRANSCRIPT,
+            support=70,
+            lift=None,
+            min_gap_seconds=2.0,
+        )
+        # A transcript-ONLY pair: a parent with a transcript child and NO td child.
+        tlo, thi = _ordered(e[6].id, e[7].id)
         await repo.upsert_many(
             db_session,
             candidates=[
-                _cand(
-                    e[4].id,
-                    e[5].id,
+                RelationshipCandidateCreate(
+                    entity_a_id=tlo,
+                    entity_b_id=thi,
                     channel="transcript",
-                    lift=99999.0,
-                    shared_video_count=70,
-                    provenance={"channel": "transcript"},
+                    shared_video_count=90,
+                    lift=None,
+                    entity_a_video_count=10,
+                    entity_b_video_count=12,
+                    channel_video_universe=40000,
                 )
             ],
         )
+        tonly_id = (await repo.ids_for_pairs(db_session, pairs=[(tlo, thi)]))[
+            (tlo, thi)
+        ]
+        await _add_signal_child(
+            db_session,
+            tonly_id,
+            CandidateSignal.TRANSCRIPT,
+            support=90,
+            lift=None,
+            min_gap_seconds=1.0,
+        )
 
-        after, after_total, after_bts = await repo.list_ranked(db_session)
-        assert after_total == 2
+        # title/description head: pairs with a td child, ranked by child lift (500, 300, 80);
+        # HEAD_CUTOFF=2 -> [a, dual]. Slot accounting: total == HEAD_CUTOFF, not short.
+        td_rows, td_total, _ = await repo.list_ranked(db_session)
+        assert td_total == 2
+        td_ids = {r.id for r in td_rows}
+        assert ids[(a.entity_a_id, a.entity_b_id)] in td_ids
         assert (
-            after_bts == 3
-        )  # transcript row is NOT in the title/description population
-        assert [
-            r.id for r in after
-        ] == before_ids  # byte-identical membership AND order
-        assert all(r.channel == "title_description" for r in after)
+            ids[(dual.entity_a_id, dual.entity_b_id)] in td_ids
+        )  # dual pair in td head
+        assert tonly_id not in td_ids  # transcript-only pair absent from td head
 
-        # The intruder is reachable only on its own channel — isolation both ways.
-        trans, trans_total, _ = await repo.list_ranked(
+        # transcript head: pairs with a transcript child, ranked by child support (90, 70);
+        # HEAD_CUTOFF=2 -> [tonly, dual]. total == HEAD_CUTOFF proves the dual pair is NOT
+        # filtered out by a stale parent.channel predicate (the cdwa bug).
+        tr_rows, tr_total, _ = await repo.list_ranked(
             db_session, signal=CandidateSignal.TRANSCRIPT
         )
-        assert trans_total == 1
-        assert [r.channel for r in trans] == ["transcript"]
+        assert tr_total == 2
+        tr_ids = {r.id for r in tr_rows}
+        assert tonly_id in tr_ids
+        assert (
+            ids[(dual.entity_a_id, dual.entity_b_id)] in tr_ids
+        )  # dual pair in BOTH heads
+        assert ids[(a.entity_a_id, a.entity_b_id)] not in tr_ids  # td-only absent here
 
 
 class TestUpsert:
@@ -158,7 +236,7 @@ class TestUpsert:
         e1 = await _make_entity(db_session, "Placeholder A")
         e2 = await _make_entity(db_session, "Placeholder B")
 
-        n = await repo.upsert_many(db_session, candidates=[_cand(e1.id, e2.id)])
+        n = await _seed(db_session, candidates=[_cand(e1.id, e2.id)])
         assert n == 1
         rows, total, _ = await repo.list_ranked(db_session)
         assert total == 1
@@ -166,7 +244,7 @@ class TestUpsert:
         assert rows[0].lift == 50.0
 
         # Re-emit the SAME pair with new metrics -> update in place, same id.
-        await repo.upsert_many(
+        await _seed(
             db_session,
             candidates=[_cand(e1.id, e2.id, lift=99.0, shared_video_count=9)],
         )
@@ -182,7 +260,7 @@ class TestUpsert:
         repo = RelationshipCandidateRepository()
         e1 = await _make_entity(db_session, "Placeholder C")
         e2 = await _make_entity(db_session, "Placeholder D")
-        await repo.upsert_many(db_session, candidates=[_cand(e1.id, e2.id)])
+        await _seed(db_session, candidates=[_cand(e1.id, e2.id)])
 
         # Simulate a future verdict written directly (MVP has no verdict UI).
         await db_session.execute(
@@ -193,7 +271,7 @@ class TestUpsert:
         await db_session.flush()
 
         # A re-run must NOT overwrite the verdict (WHERE review_status IS NULL).
-        await repo.upsert_many(db_session, candidates=[_cand(e1.id, e2.id, lift=77.0)])
+        await _seed(db_session, candidates=[_cand(e1.id, e2.id, lift=77.0)])
         rows, _, _ = await repo.list_ranked(db_session)
         assert rows[0].review_status == "related"
         assert rows[0].lift == 50.0  # metrics unchanged on a verdicted row
@@ -205,7 +283,7 @@ class TestListRanked:
         e1 = await _make_entity(db_session, "P1")
         e2 = await _make_entity(db_session, "P2")
         e3 = await _make_entity(db_session, "P3")
-        await repo.upsert_many(
+        await _seed(
             db_session,
             candidates=[
                 _cand(e1.id, e2.id, lift=10.0),
@@ -228,7 +306,7 @@ class TestListRanked:
         e1 = await _make_entity(db_session, "Q1")
         e2 = await _make_entity(db_session, "Q2")
         e3 = await _make_entity(db_session, "Q3")
-        await repo.upsert_many(
+        await _seed(
             db_session,
             candidates=[
                 _cand(e1.id, e2.id, both_typed_eligible=True, shared_video_count=5),
@@ -248,7 +326,7 @@ class TestListRanked:
         e1 = await _make_entity(db_session, "RV1")
         e2 = await _make_entity(db_session, "RV2")
         e3 = await _make_entity(db_session, "RV3")
-        await repo.upsert_many(
+        await _seed(
             db_session,
             candidates=[
                 _cand(e1.id, e2.id, lift=100.0),
@@ -275,7 +353,7 @@ class TestListRanked:
         e1 = await _make_entity(db_session, "SV1")
         e2 = await _make_entity(db_session, "SV2")
         e3 = await _make_entity(db_session, "SV3")
-        await repo.upsert_many(
+        await _seed(
             db_session,
             candidates=[
                 _cand(e1.id, e2.id, lift=100.0, shared_video_count=5),
@@ -306,7 +384,7 @@ class TestListRanked:
         e2 = await _make_entity(db_session, "HS2")
         e3 = await _make_entity(db_session, "HS3")
         e4 = await _make_entity(db_session, "HS4")
-        await repo.upsert_many(
+        await _seed(
             db_session,
             candidates=[
                 _cand(e1.id, e2.id, lift=300.0),
@@ -334,7 +412,7 @@ class TestListRanked:
         e1 = await _make_entity(db_session, "VC1")
         e2 = await _make_entity(db_session, "VC2")
         e3 = await _make_entity(db_session, "VC3")
-        await repo.upsert_many(
+        await _seed(
             db_session,
             candidates=[
                 _cand(e1.id, e2.id, lift=100.0),
@@ -369,7 +447,7 @@ class TestDeleteStale:
         e2 = await _make_entity(db_session, "R2")
         e3 = await _make_entity(db_session, "R3")
         # Two pairs written "last run".
-        await repo.upsert_many(
+        await _seed(
             db_session,
             candidates=[_cand(e1.id, e2.id), _cand(e1.id, e3.id, lift=60.0)],
         )
@@ -384,7 +462,7 @@ class TestDeleteStale:
 
         # New run re-emits ONLY the first pair.
         run_started = datetime.datetime.now(datetime.UTC)
-        await repo.upsert_many(db_session, candidates=[_cand(e1.id, e2.id, lift=70.0)])
+        await _seed(db_session, candidates=[_cand(e1.id, e2.id, lift=70.0)])
         removed = await repo.delete_stale(db_session, run_started_at=run_started)
 
         assert removed == 0  # the stale pair was verdicted -> kept
@@ -397,7 +475,7 @@ class TestDeleteStale:
         repo = RelationshipCandidateRepository()
         e1 = await _make_entity(db_session, "S1")
         e2 = await _make_entity(db_session, "S2")
-        await repo.upsert_many(db_session, candidates=[_cand(e1.id, e2.id)])
+        await _seed(db_session, candidates=[_cand(e1.id, e2.id)])
         # A later run that re-emits nothing -> the pair is stale and unverdicted.
         later = datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=1)
         removed = await repo.delete_stale(db_session, run_started_at=later)
@@ -408,8 +486,7 @@ class TestDeleteStale:
 
 class TestUpsertRobustness:
     async def test_empty_upsert_returns_zero(self, db_session: AsyncSession) -> None:
-        repo = RelationshipCandidateRepository()
-        assert await repo.upsert_many(db_session, candidates=[]) == 0
+        assert await _seed(db_session, candidates=[]) == 0
 
     async def test_chunks_many_pairs(
         self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
@@ -422,7 +499,7 @@ class TestUpsertRobustness:
         e1 = await _make_entity(db_session, "Chunk 1")
         e2 = await _make_entity(db_session, "Chunk 2")
         e3 = await _make_entity(db_session, "Chunk 3")
-        n = await repo.upsert_many(
+        n = await _seed(
             db_session,
             candidates=[
                 _cand(e1.id, e2.id),
@@ -442,7 +519,7 @@ class TestUpsertRobustness:
         repo = RelationshipCandidateRepository()
         e1 = await _make_entity(db_session, "Dup 1")
         e2 = await _make_entity(db_session, "Dup 2")
-        n = await repo.upsert_many(
+        n = await _seed(
             db_session,
             candidates=[_cand(e1.id, e2.id, lift=10.0), _cand(e1.id, e2.id, lift=88.0)],
         )
@@ -460,7 +537,7 @@ class TestNoSupportFloor:
         repo = RelationshipCandidateRepository()
         e1 = await _make_entity(db_session, "Floor 1")
         e2 = await _make_entity(db_session, "Floor 2")
-        await repo.upsert_many(
+        await _seed(
             db_session,
             candidates=[_cand(e1.id, e2.id, shared_video_count=5, lift=350.0)],
         )
@@ -541,7 +618,7 @@ class TestHeadScope:
             )
             for i in range(5)
         ]
-        await repo.upsert_many(db_session, candidates=cands)
+        await _seed(db_session, candidates=cands)
 
         # A large limit cannot bypass the cap (FR-004): the cap is enforced in the repo.
         rows, total, total_before = await repo.list_ranked(db_session, limit=100)
@@ -567,7 +644,7 @@ class TestHeadScope:
             )
             for i in range(5)
         ]
-        await repo.upsert_many(db_session, candidates=cands)
+        await _seed(db_session, candidates=cands)
 
         # The deliberate override reaches the retained tail (FR-003); the API never does.
         rows, total, total_before = await repo.list_ranked(
@@ -586,7 +663,7 @@ class TestHeadScope:
         hub = await _make_entity(db_session, "CorrHub")
         p_low = await _make_entity(db_session, "CorrLow")
         p_high = await _make_entity(db_session, "CorrHigh")
-        await repo.upsert_many(
+        await _seed(
             db_session,
             candidates=[
                 _cand(
@@ -623,7 +700,7 @@ class TestHeadScope:
         repo = RelationshipCandidateRepository()
         hub = await _make_entity(db_session, "SqlHub")
         partner = await _make_entity(db_session, "SqlPartner")
-        await repo.upsert_many(db_session, candidates=[_cand(hub.id, partner.id)])
+        await _seed(db_session, candidates=[_cand(hub.id, partner.id)])
 
         captured: list[str] = []
         sync_conn = (await db_session.connection()).sync_connection
@@ -684,7 +761,7 @@ class TestHeadScope:
             )
             for i in range(2)
         ]
-        await repo.upsert_many(db_session, candidates=head + tail)
+        await _seed(db_session, candidates=head + tail)
 
         rows, total, total_before = await repo.list_ranked(db_session, min_support=10)
         # Head = top-3 (the support-5 rows); none survive support>=10 WITHIN the head.
@@ -728,7 +805,7 @@ class TestUpsertSignals:
         await db_session.execute(delete(RelationshipCandidateDB))
         e1 = await _make_entity(db_session, "Sig A")
         e2 = await _make_entity(db_session, "Sig B")
-        await repo.upsert_many(db_session, candidates=[_cand(e1.id, e2.id)])
+        await _seed(db_session, candidates=[_cand(e1.id, e2.id)])
         rows, _, _ = await repo.list_ranked(db_session)
         parent_id = rows[0].id
 

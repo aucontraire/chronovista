@@ -89,16 +89,29 @@ HEAD_CUTOFF = 500
 # filter.
 _DEFAULT_CHANNEL = CandidateSignal.TITLE_DESCRIPTION
 
-# The head ordering (FR-002). The terminal `id` is a regen-stable tiebreak (the upsert preserves
-# a pair's id); it MUST remain last, or the head boundary flickers when lift AND corroboration
-# tie (§22). A single source so the contract guard can assert the terminal key structurally —
-# a DB-order assertion cannot (Postgres may return tied rows in id order by chance).
-_HEAD_ORDER_BY = (
-    RelationshipCandidateDB.lift.desc(),
-    RelationshipCandidateDB.kb_corroboration_count.desc(),
-    RelationshipCandidateDB.shared_video_count.desc(),
-    RelationshipCandidateDB.id,
-)
+
+# The PER-SIGNAL head ordering (FR-002; Feature 116, cdwa-reviewed 2026-11-22). Scoped to the
+# CHILD (`relationship_candidate_signals`), because the parent's per-signal columns are retired:
+# title/description ranks by child `lift`, transcript by child `support` (close30 is evidence,
+# never the ranking key — the gate decision; and the transcript ordering key is ASSUMED, not
+# measured, see FR-009a(e)). The terminal parent `id` is the regen-stable tiebreak; it MUST
+# remain last for BOTH signals, or the head boundary flickers on ties (§22) — the contract guard
+# asserts that structurally for each signal.
+def _head_order_by(signal: CandidateSignal) -> tuple[Any, ...]:
+    child = RelationshipCandidateSignalDB
+    if signal is CandidateSignal.TRANSCRIPT:
+        return (
+            child.support.desc(),
+            child.kb_corroboration_count.desc(),
+            RelationshipCandidateDB.id,
+        )
+    return (
+        child.lift.desc().nulls_last(),
+        child.kb_corroboration_count.desc(),
+        child.support.desc(),
+        RelationshipCandidateDB.id,
+    )
+
 
 # Valid list_ranked review/sort values — the API router validates against these same sets.
 ReviewFilter = Literal["all", "reviewed", "unreviewed"]
@@ -112,28 +125,31 @@ VerdictCategory = Literal[
     "associated_with", "co_cast", "covers", "coincidence", "artifact"
 ]
 
-# Display-sort columns (review view). The sort reorders the SHOWN page WITHIN the lift-defined head
-# — it never changes head membership, which stays `_HEAD_ORDER_BY`. "rank" is the default lift
-# ranking (and ignores sort_dir); a terminal `id` keeps every sort deterministic.
+# Per-signal display-sort columns (Feature 116): lift/support/corroboration live on the CHILD;
+# reviewed_at is pair-level on the parent. The sort reorders the SHOWN page within the head.
 _SORT_COLUMNS = {
-    "lift": RelationshipCandidateDB.lift,
-    "shared_video_count": RelationshipCandidateDB.shared_video_count,
-    "kb_corroboration_count": RelationshipCandidateDB.kb_corroboration_count,
+    "lift": RelationshipCandidateSignalDB.lift,
+    "shared_video_count": RelationshipCandidateSignalDB.support,
+    "kb_corroboration_count": RelationshipCandidateSignalDB.kb_corroboration_count,
     "reviewed_at": RelationshipCandidateDB.reviewed_at,
 }
 
 
-def _display_order_by(sort_by: SortBy, sort_dir: SortDir) -> tuple[Any, ...]:
+def _display_order_by(
+    sort_by: SortBy, sort_dir: SortDir, signal: CandidateSignal
+) -> tuple[Any, ...]:
     # tuple[Any, ...]: SQLAlchemy order_by elements are heterogeneous clause types
-    # (InstrumentedAttribute / UnaryExpression) with no single precise annotation — the same
-    # shape `_HEAD_ORDER_BY` already is.
+    # (InstrumentedAttribute / UnaryExpression) with no single precise annotation.
     col = _SORT_COLUMNS.get(sort_by)
-    if col is None:  # "rank" -> the default lift ranking (sort_dir has no effect here)
-        return _HEAD_ORDER_BY
-    ordered = col.desc() if sort_dir == "desc" else col.asc()
     if (
-        sort_by == "reviewed_at"
-    ):  # nullable: unreviewed rows sort last in either direction
+        col is None
+    ):  # "rank" -> the per-signal head ordering (sort_dir has no effect here)
+        return _head_order_by(signal)
+    ordered = col.desc() if sort_dir == "desc" else col.asc()
+    if sort_by in (
+        "reviewed_at",
+        "lift",
+    ):  # nullable (child lift is NULL for transcript; unreviewed rows have no reviewed_at)
         ordered = ordered.nulls_last()
     return (ordered, RelationshipCandidateDB.id)
 
@@ -274,16 +290,17 @@ class RelationshipCandidateRepository(
     ) -> tuple[list[RelationshipCandidateDB], int, int]:
         """Return a page of head candidates + (scoped total, pre-scoping total).
 
-        Ordering is ``lift DESC, kb_corroboration_count DESC, shared_video_count DESC, id``.
-        The terminal ``id`` is a regen-stable tiebreak (the upsert preserves a pair's id), so
-        the head boundary is deterministic even when lift AND corroboration tie (Feature 108,
-        §22) — do NOT drop it.
+        Ordering is PER-SIGNAL on the child (Feature 116, ``_head_order_by``): title/description
+        by ``child.lift DESC`` (NULLS LAST), transcript by ``child.support DESC``, each ending in
+        the regen-stable ``parent.id`` tiebreak (the upsert preserves a pair's id), so the head
+        boundary is deterministic even on ties (Feature 108, §22) — do NOT drop the terminal id.
 
-        ``head_only`` (default True) scopes the result to the queue's HEAD: the per-channel
-        (``signal``) top-``HEAD_CUTOFF`` of the qualifying floor (``shared_video_count >= 5``) by
-        the ranking. Head membership is scoped to ``signal`` (Feature 116) so a second channel
-        cannot evict this one's head; ``signal`` defaults to ``title_description`` (the shipped
-        channel), and callers that omit it see unchanged behaviour.
+        ``head_only`` (default True) scopes the result to the queue's HEAD: the per-SIGNAL
+        (``signal``) top-``HEAD_CUTOFF`` of the qualifying floor (the CHILD of ``signal`` with
+        ``child.support >= 5``) by that signal's ranking. Membership is defined by the child join
+        (a pair is "in" a channel iff it has a child of that signal, Feature 116), NOT by
+        ``parent.channel``; a dual-signal pair appears in both channels' heads. ``signal`` defaults
+        to ``title_description``; callers that omit it see the title/description queue.
         Head membership is independent of the user filters — ``min_support``, ``eligible_only`` and
         ``review`` ({all, reviewed, unreviewed}) subset WITHIN the head, they never promote a
         below-head row into it (Feature 108 §23 /
@@ -307,13 +324,18 @@ class RelationshipCandidateRepository(
         """
         # Active filters: the floor (>= 5) merged with any user narrowing. Used for the
         # pre-scoping count and (within the head) for the shown rows.
-        active_filters = [
-            # Per-channel scoping (Feature 116): head membership AND the "N of M" counts are
-            # within one signal, so a second channel can never cannibalise this one's head slots.
-            # No-op while only `title_description` rows exist; the guard that keeps SC-004 true
-            # once transcript rows land.
-            RelationshipCandidateDB.channel == signal,
-            RelationshipCandidateDB.shared_video_count >= max(min_support, 5),
+        # Per-signal scoping lives on the CHILD (Feature 116, cdwa 2026-11-22): a pair is "in" a
+        # channel iff it has a child of that signal. `parent.channel` is NO LONGER the scoping
+        # mechanism (vestigial; dropped in Migration B). CRITICAL: the outer row filter AND both
+        # counts scope by the SAME child predicate as the head — else a dual-signal pair takes a
+        # head slot via the join then is filtered out, silently shrinking the head below
+        # HEAD_CUTOFF (the same LIMIT-budget trap as the eviction bug).
+        child = RelationshipCandidateSignalDB
+        active_filters: list[Any] = [
+            child.signal == signal,
+            # min_support floors on the CHILD's support — the SAME column the head floors on, or
+            # §23 (filters only subset within the head) breaks for a dual-signal pair.
+            child.support >= max(min_support, 5),
         ]
         if eligible_only:
             active_filters.append(RelationshipCandidateDB.both_typed_eligible.is_(True))
@@ -328,28 +350,27 @@ class RelationshipCandidateRepository(
         ):  # verdict-CATEGORY dimension; ANDs with the review-state filter, within the head
             active_filters.append(RelationshipCandidateDB.review_status.in_(verdicts))
 
-        # total_before_scoping = the full population matching the active filters — the "M" in
-        # "N of M", about the SAME population as `total`, never the unfiltered global count.
+        # total_before_scoping = the full per-signal population matching the active filters — the
+        # "M" in "N of M", about the SAME population as `total`.
         total_before_scoping = (
             await session.execute(
                 select(func.count())
                 .select_from(RelationshipCandidateDB)
+                .join(child, child.candidate_id == RelationshipCandidateDB.id)
                 .where(*active_filters)
             )
         ).scalar() or 0
 
         if head_only:
-            # Head membership is the per-channel (`signal`) top-HEAD_CUTOFF of the floor
-            # population, by the ranking — NOT of the filtered population, so a narrow
-            # min_support cannot drag below-head rows into view (§23). Filters then apply
-            # inside the head.
+            # Head membership = the per-signal top-HEAD_CUTOFF of the floor population (the CHILD of
+            # `signal`, support >= 5), by the per-signal ranking — NOT of the filtered population,
+            # so a narrow min_support cannot drag below-head rows into view (§23). UNIQUE
+            # (candidate_id, signal) ⇒ ≤1 join row per parent, so the LIMIT is not dup-inflated.
             head_ids = (
                 select(RelationshipCandidateDB.id)
-                .where(
-                    RelationshipCandidateDB.channel == signal,
-                    RelationshipCandidateDB.shared_video_count >= 5,
-                )
-                .order_by(*_HEAD_ORDER_BY)
+                .join(child, child.candidate_id == RelationshipCandidateDB.id)
+                .where(child.signal == signal, child.support >= 5)
+                .order_by(*_head_order_by(signal))
                 .limit(HEAD_CUTOFF)
             )
             row_where: list[Any] = [
@@ -360,6 +381,7 @@ class RelationshipCandidateRepository(
                 await session.execute(
                     select(func.count())
                     .select_from(RelationshipCandidateDB)
+                    .join(child, child.candidate_id == RelationshipCandidateDB.id)
                     .where(*row_where)
                 )
             ).scalar() or 0
@@ -369,8 +391,9 @@ class RelationshipCandidateRepository(
 
         stmt = (
             select(RelationshipCandidateDB)
+            .join(child, child.candidate_id == RelationshipCandidateDB.id)
             .where(*row_where)
-            .order_by(*_display_order_by(sort_by, sort_dir))
+            .order_by(*_display_order_by(sort_by, sort_dir, signal))
             .offset(skip)
             .limit(limit)
             # A bulk Core upsert does not sync cached ORM instances; force the read

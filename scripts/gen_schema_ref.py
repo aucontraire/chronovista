@@ -85,9 +85,22 @@ GROUPS: list[tuple[str, str, list[str]]] = [
             "candidate_suggestions",
             "candidate_generation_runs",
             "relationship_candidates",
+            "relationship_candidate_signals",
             "relationship_candidate_generation_runs",
             "channel_principals",
             "channel_ownership_assertions",
+        ],
+    ),
+    (
+        "Transcript Proximity",
+        "Instance-level record of two entities mentioned close in time within one "
+        "transcript language, with a per-pair rollup and a (video, language) "
+        "dirty-scope queue that keeps it fresh as mentions change.",
+        [
+            "entity_pair_proximity",
+            "entity_pair_proximity_rollup",
+            "proximity_dirty_scopes",
+            "proximity_generation_runs",
         ],
     ),
     (

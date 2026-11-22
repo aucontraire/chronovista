@@ -19,6 +19,9 @@ from sqlalchemy import delete, update
 import chronovista.repositories.relationship_candidate_repository as rc_repo
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import RelationshipCandidate as RelationshipCandidateDB
+from chronovista.db.models import (
+    RelationshipCandidateSignal as RelationshipCandidateSignalDB,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -69,11 +72,32 @@ async def _seed(
         )
         session.add_all([e1, e2, e3])
         await session.flush()
+        cands = [
+            _cand(e1.id, e2.id, lift=10.0, eligible=False),
+            _cand(e1.id, e3.id, lift=500.0, eligible=True),
+            _cand(e2.id, e3.id, lift=80.0, eligible=True),
+        ]
+        session.add_all(cands)
+        await session.flush()  # assign candidate ids
+        # Feature 116: list_ranked reads through the child, so every parent needs a
+        # title_description child (mirrors the migration + the t/d generator).
         session.add_all(
             [
-                _cand(e1.id, e2.id, lift=10.0, eligible=False),
-                _cand(e1.id, e3.id, lift=500.0, eligible=True),
-                _cand(e2.id, e3.id, lift=80.0, eligible=True),
+                RelationshipCandidateSignalDB(
+                    id=uuid.uuid4(),
+                    candidate_id=c.id,
+                    signal="title_description",
+                    support=c.shared_video_count,
+                    lift=c.lift,
+                    entity_a_video_count=c.entity_a_video_count,
+                    entity_b_video_count=c.entity_b_video_count,
+                    signal_universe=c.channel_video_universe,
+                    both_typed_eligible=c.both_typed_eligible,
+                    kb_corroboration_count=c.kb_corroboration_count,
+                    kb_corroboration_detail=c.kb_corroboration_detail,
+                    provenance=c.provenance,
+                )
+                for c in cands
             ]
         )
         await session.commit()
@@ -229,10 +253,29 @@ class TestHeadScope:
             partners = [_entity(f"HS {tag} p{i}") for i in range(5)]
             session.add_all([hub, *partners])
             await session.flush()
+            cands = [
+                _cand(hub.id, p.id, lift=float(100 - i)) for i, p in enumerate(partners)
+            ]
+            session.add_all(cands)
+            await session.flush()
+            # Feature 116: every parent needs a title_description child (list_ranked reads it).
             session.add_all(
                 [
-                    _cand(hub.id, p.id, lift=float(100 - i))
-                    for i, p in enumerate(partners)
+                    RelationshipCandidateSignalDB(
+                        id=uuid.uuid4(),
+                        candidate_id=c.id,
+                        signal="title_description",
+                        support=c.shared_video_count,
+                        lift=c.lift,
+                        entity_a_video_count=c.entity_a_video_count,
+                        entity_b_video_count=c.entity_b_video_count,
+                        signal_universe=c.channel_video_universe,
+                        both_typed_eligible=c.both_typed_eligible,
+                        kb_corroboration_count=c.kb_corroboration_count,
+                        kb_corroboration_detail=c.kb_corroboration_detail,
+                        provenance=c.provenance,
+                    )
+                    for c in cands
                 ]
             )
             await session.commit()

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Transcript proximity co-occurrence primitive** (backend infrastructure). A new first-class,
+  language-scoped store of how *close in time* two entities are discussed within a transcript:
+  instance-level rows (a segment pair + their gap in seconds), a per-pair rollup (close-co-mention
+  counts within 15/30/60s, the minimum gap, and shared-video breadth), and a `(video, language)`
+  dirty-scope queue that keeps the aggregate fresh as mentions change — entity scans, batch
+  corrections, alias edits, transcript downloads, and "Not about this?" exclusions each enqueue a
+  scoped recompute. Built and maintained via `chronovista proximity rebuild` / `drain`.
+  Language-scoping is a mutation-verified invariant: a video's parallel-language transcripts can
+  never fabricate a near-zero gap. This is the substrate for a forthcoming transcript-based
+  relationship-candidate channel (and the semantic relation-extraction work); it changes no
+  user-facing queue yet.
 - **Connection-graph focus / filter controls (Explore mode).** The Explore graph gains controls to
   tame busy neighborhoods: toggle nodes by **entity type** from the colour legend (the two
   endpoints are always kept), toggle edges by **relationship type** from a list beside the table

@@ -165,6 +165,9 @@ from chronovista.repositories.entity_mention_repository import EntityMentionRepo
 from chronovista.repositories.entity_operation_log_repository import (
     EntityOperationLogRepository,
 )
+from chronovista.repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
 from chronovista.repositories.entity_video_exclusion_repository import (
     EntityVideoExclusionRepository,
 )
@@ -2595,6 +2598,12 @@ async def exclude_entity_video(
                 performed_by=ACTOR_USER_LOCAL,
             ),
         )
+        # Feature 116 (T013): the proximity join subtracts F091 exclusions, and the
+        # exclusion is keyed (entity, video) with NO language column, so a new
+        # exclusion invalidates EVERY language of the video.
+        await EntityPairProximityRepository().mark_dirty_all_languages(
+            session, video_id=body.video_id, reason="exclusion"
+        )
     await session.commit()
 
     exclusion = await exclusion_repo.get(session, parsed_entity_id, body.video_id)
@@ -2652,6 +2661,11 @@ async def restore_entity_video(
                 rollback_data=AssociationExclusionRollback(video_id=video_id),
                 performed_by=ACTOR_USER_LOCAL,
             ),
+        )
+        # Feature 116 (T013): removing the exclusion re-admits the (entity, video)
+        # pair to the proximity join across every language of the video.
+        await EntityPairProximityRepository().mark_dirty_all_languages(
+            session, video_id=video_id, reason="exclusion"
         )
     await session.commit()
     return Response(status_code=204)

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -44,7 +45,16 @@ class RelationshipCandidateBase(BaseModel):
     shared_video_count: int = Field(
         ..., ge=5, description="Videos where both entities co-occur on the channel (s)"
     )
-    lift: float = Field(..., ge=5.0, description="s*N/(A*B) — the ranking key")
+    lift: float | None = Field(
+        default=None,
+        ge=5.0,
+        description=(
+            "s*N/(A*B) — the title/description ranking key. None for a transcript-only "
+            "parent (which ranks by support); for a dual-signal pair it holds the "
+            "title/description lift. The lift↔signal coupling is enforced per-signal on "
+            "the child (RelationshipCandidateSignal), not here."
+        ),
+    )
     entity_a_video_count: int = Field(
         ..., ge=0, description="A — entity_a's channel video count (provenance)"
     )
@@ -119,3 +129,135 @@ class RelationshipCandidateRead(RelationshipCandidateBase):
     last_generated_at: datetime
     created_at: datetime
     updated_at: datetime
+
+
+class CandidateSignal(str, Enum):
+    """The co-occurrence channel a candidate's evidence came from (Feature 116).
+
+    One pair can carry evidence from more than one signal; each signal's evidence is a
+    separate child row (``relationship_candidate_signals``), so a third signal is additive —
+    no migration. The values are the channel strings stored on
+    ``relationship_candidates.channel`` and matched by the per-channel read funnel
+    (``RelationshipCandidateRepository.list_ranked(signal=...)``).
+    """
+
+    TITLE_DESCRIPTION = "title_description"
+    TRANSCRIPT = "transcript"
+
+
+class RelationshipCandidateSignalBase(BaseModel):
+    """One signal's evidence for a candidate pair (Option-C child, Feature 116).
+
+    Per-signal because the two channels are not the same shape. The title/description signal
+    ranks by ``lift``; the transcript signal ranks by ``support`` (close co-mention count) and
+    carries no lift (``lift`` is NULL for transcript). ``support`` is the signal's native
+    magnitude — a shared-video count for title/description, a 30s close-co-mention count for
+    transcript. This model enforces the *structural* invariant (which fields each signal
+    carries); the numeric qualifying floors (title/desc support ≥ 5 ∧ lift ≥ 5; the tuned
+    transcript bar, FR-022) are DB CHECK constraints, not model validation, because the
+    transcript floor is still being calibrated.
+    """
+
+    candidate_id: uuid.UUID = Field(
+        ..., description="FK to the parent relationship_candidates row"
+    )
+    signal: CandidateSignal = Field(
+        ..., description="Which channel this evidence came from"
+    )
+    support: int = Field(
+        ...,
+        ge=1,
+        description="Native magnitude: shared videos (title/desc) or close-30s count (transcript)",
+    )
+    lift: float | None = Field(
+        default=None,
+        ge=5.0,
+        description="title/description lift; NULL for transcript (it ranks by proximity, not lift)",
+    )
+    min_gap_seconds: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Transcript only — the closest co-mention gap in seconds; NULL otherwise",
+    )
+    entity_a_video_count: int = Field(
+        ..., ge=0, description="A — provenance for this signal's denominator"
+    )
+    entity_b_video_count: int = Field(
+        ..., ge=0, description="B — provenance for this signal's denominator"
+    )
+    signal_universe: int = Field(
+        ...,
+        ge=0,
+        description="N — videos with >=1 mention on this signal at generation time",
+    )
+    both_typed_eligible: bool = Field(
+        default=False,
+        description="Both entities carry >=1 tie/attribute property (measured-precision population)",
+    )
+    kb_corroboration_count: int = Field(
+        default=0,
+        ge=0,
+        description="Count of shared captured properties (excl. P5008/P1343)",
+    )
+    kb_corroboration_detail: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Contributing shared property keys, for display",
+    )
+    provenance: dict[str, Any] = Field(
+        default_factory=dict,
+        description="channel, N, generator_version, run id, outer window",
+    )
+
+    @model_validator(mode="after")
+    def _lift_matches_signal(self) -> RelationshipCandidateSignalBase:
+        """Encode the definitional per-signal shape: title/description has a lift, transcript
+        does not (it ranks by proximity). Catches a generator that mixes the two channels'
+        evidence — the structural analogue of the parent's canonical-order check."""
+        if self.signal is CandidateSignal.TITLE_DESCRIPTION and self.lift is None:
+            raise ValueError("a title_description signal must carry a lift (>= 5)")
+        if self.signal is CandidateSignal.TRANSCRIPT and self.lift is not None:
+            raise ValueError(
+                "a transcript signal must not carry a lift (it ranks by proximity)"
+            )
+        return self
+
+
+class RankedCandidate(BaseModel):
+    """A per-signal view of a candidate for the ranked read funnel (Feature 116, T027).
+
+    ``list_ranked(signal=...)`` returns these. Pair identity and verdict come from the PARENT,
+    but every per-signal metric — ``lift``, ``shared_video_count`` (the child's ``support``),
+    ``channel`` (the child's ``signal``), eligibility, corroboration, and the denominator ``N`` —
+    is read from the queried signal's CHILD, never the parent's vestigial columns. This is what
+    makes a dual-signal pair report the RIGHT numbers on each channel's head (the parent carries
+    only one channel's values), and it lets Migration B drop the parent's per-signal columns
+    without touching any reader. The attribute surface mirrors the parent fields the API already
+    reads, so consumers are unchanged.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: uuid.UUID
+    entity_a_id: uuid.UUID
+    entity_b_id: uuid.UUID
+    channel: str  # the queried signal (child.signal)
+    shared_video_count: int  # child.support
+    lift: float | None  # child.lift (None for transcript)
+    both_typed_eligible: bool
+    kb_corroboration_count: int
+    kb_corroboration_detail: dict[str, Any]
+    channel_video_universe: int  # child.signal_universe
+    review_status: str | None
+    reviewed_at: datetime | None
+
+
+class RelationshipCandidateSignalCreate(RelationshipCandidateSignalBase):
+    """What the generator upserts for one (pair, signal)."""
+
+
+class RelationshipCandidateSignalRead(RelationshipCandidateSignalBase):
+    """A persisted signal-evidence row."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID

@@ -3370,9 +3370,19 @@ class TestApplyToSegmentsEntityMentionCreation:
         nested_cm = AsyncMock()
         mock_session.begin_nested = MagicMock(return_value=nested_cm)
 
-        with patch(
-            "chronovista.services.batch_correction_service.EntityMentionRepository"
-        ) as MockMentionRepo:
+        # Feature 116 (T011): the real proximity repo would consume a scripted
+        # session.execute() result; spy on it instead.
+        mark_dirty = AsyncMock()
+        with (
+            patch(
+                "chronovista.services.batch_correction_service.EntityMentionRepository"
+            ) as MockMentionRepo,
+            patch(
+                "chronovista.services.batch_correction_service."
+                "EntityPairProximityRepository",
+                return_value=MagicMock(mark_dirty=mark_dirty),
+            ),
+        ):
             mock_repo_instance = AsyncMock()
             MockMentionRepo.return_value = mock_repo_instance
 
@@ -3386,6 +3396,12 @@ class TestApplyToSegmentsEntityMentionCreation:
             )
 
             assert result.total_applied == 1
+            mark_dirty.assert_awaited_once_with(
+                mock_session,
+                video_id="vid1_test_x",
+                language_code=seg.language_code,
+                reason="correction",
+            )
             # Verify bulk_create_with_conflict_skip was called
             mock_repo_instance.bulk_create_with_conflict_skip.assert_called_once()
             mentions = mock_repo_instance.bulk_create_with_conflict_skip.call_args[0][1]
@@ -3453,9 +3469,19 @@ class TestApplyToSegmentsEntityMentionCreation:
         nested_cm = AsyncMock()
         mock_session.begin_nested = MagicMock(return_value=nested_cm)
 
-        with patch(
-            "chronovista.services.batch_correction_service.EntityMentionRepository"
-        ) as MockMentionRepo:
+        # Feature 116 (T011): the real proximity repo would consume a scripted
+        # session.execute() result; spy on it instead.
+        mark_dirty = AsyncMock()
+        with (
+            patch(
+                "chronovista.services.batch_correction_service.EntityMentionRepository"
+            ) as MockMentionRepo,
+            patch(
+                "chronovista.services.batch_correction_service."
+                "EntityPairProximityRepository",
+                return_value=MagicMock(mark_dirty=mark_dirty),
+            ),
+        ):
             mock_repo_instance = AsyncMock()
             MockMentionRepo.return_value = mock_repo_instance
 
@@ -3473,6 +3499,15 @@ class TestApplyToSegmentsEntityMentionCreation:
             assert result.total_applied == 1
             # Mention should be suppressed due to exclusion pattern overlap
             mock_repo_instance.bulk_create_with_conflict_skip.assert_not_called()
+            # The correction itself was applied, so the scope is still invalidated
+            # (conservative: the hook keys off the applied correction, not whether
+            # the mention survived exclusion filtering).
+            mark_dirty.assert_awaited_once_with(
+                mock_session,
+                video_id="vid1_test_x",
+                language_code=seg.language_code,
+                reason="correction",
+            )
 
 
 class TestApplyToSegmentsEntityCounterUpdate:
@@ -3499,9 +3534,19 @@ class TestApplyToSegmentsEntityCounterUpdate:
         nested_cm = AsyncMock()
         mock_session.begin_nested = MagicMock(return_value=nested_cm)
 
-        with patch(
-            "chronovista.services.batch_correction_service.EntityMentionRepository"
-        ) as MockMentionRepo:
+        # Feature 116 (T011): the real proximity repo would consume a scripted
+        # session.execute() result; spy on it instead.
+        mark_dirty = AsyncMock()
+        with (
+            patch(
+                "chronovista.services.batch_correction_service.EntityMentionRepository"
+            ) as MockMentionRepo,
+            patch(
+                "chronovista.services.batch_correction_service."
+                "EntityPairProximityRepository",
+                return_value=MagicMock(mark_dirty=mark_dirty),
+            ),
+        ):
             mock_repo_instance = AsyncMock()
             MockMentionRepo.return_value = mock_repo_instance
 
@@ -3515,6 +3560,12 @@ class TestApplyToSegmentsEntityCounterUpdate:
             )
 
             assert result.total_applied == 1
+            mark_dirty.assert_awaited_once_with(
+                mock_session,
+                video_id="vid1_test_x",
+                language_code=seg.language_code,
+                reason="correction",
+            )
             # update_entity_counters and update_alias_counters should have been called
             mock_repo_instance.update_entity_counters.assert_called_once_with(
                 mock_session, [entity.id]

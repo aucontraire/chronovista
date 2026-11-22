@@ -62,7 +62,7 @@ class TestNoveltyFilter:
         )
         assert len(candidates) == 1
         assert {candidates[0].entity_a_id, candidates[0].entity_b_id} == {a[0], b[0]}
-        assert candidates[0].lift >= svc.LIFT_MIN
+        assert candidates[0].lift is not None and candidates[0].lift >= svc.LIFT_MIN
 
     def test_direct_edge_excludes_pair(self) -> None:
         a = _entity("Q1", founder=["Q2"])  # a.founder -> b's QID
@@ -190,3 +190,108 @@ class TestCorroborationAndEligibility:
         # ...but the shared hub country must not register as corroboration.
         assert "country" not in candidates[0].kb_corroboration_detail["fields"]
         assert candidates[0].kb_corroboration_count == 0
+
+
+def _ordered(a: uuid.UUID, b: uuid.UUID) -> tuple[uuid.UUID, uuid.UUID]:
+    return (a, b) if a < b else (b, a)
+
+
+class TestComputeTranscriptCandidates:
+    """Feature 116: the transcript channel's pure compute (no DB).
+
+    It reuses the SAME novelty filter as title/description (novelty is channel-agnostic),
+    but ranks by SUPPORT (shared_videos), carries no lift, and splits the rollup into net-new
+    pairs (become parents) and existing-parent children (the dual-signal merge, T026b).
+    """
+
+    def test_net_new_novel_pair_becomes_a_transcript_candidate(self) -> None:
+        ea, eb = _entity("Q1"), _entity("Q2")  # no typed ties -> novel
+        a, b = _ordered(ea[0], eb[0])
+        net_new, existing_children, dropped = svc.compute_transcript_candidates(
+            rollup_rows=[(a, b, 7, 3.0)],
+            entity_rows=[ea, eb],
+            transcript_video_counts={a: 10, b: 12},
+            transcript_universe=40000,
+            existing_pairs=set(),
+            run_id=uuid.uuid4(),
+        )
+        assert dropped == 0 and existing_children == []
+        assert len(net_new) == 1
+        tc = net_new[0]
+        assert tc.parent.channel == "transcript"
+        assert tc.parent.lift is None
+        assert (
+            tc.parent.shared_video_count == 7
+        )  # support == shared_videos (not close30)
+        assert tc.parent.entity_a_video_count == 10  # transcript-scoped denominator
+        assert tc.parent.channel_video_universe == 40000
+        assert tc.min_gap_seconds == 3.0
+
+    def test_below_support_floor_excluded(self) -> None:
+        ea, eb = _entity("Q1"), _entity("Q2")
+        a, b = _ordered(ea[0], eb[0])
+        net_new, existing_children, dropped = svc.compute_transcript_candidates(
+            rollup_rows=[(a, b, 4, 3.0)],  # shared_videos < SUPPORT_MIN
+            entity_rows=[ea, eb],
+            transcript_video_counts={},
+            transcript_universe=100,
+            existing_pairs=set(),
+            run_id=uuid.uuid4(),
+        )
+        assert net_new == [] and existing_children == [] and dropped == 0
+
+    def test_existing_pair_becomes_an_existing_child(self) -> None:
+        # T026b: a pair already present as a parent is NOT net-new; it yields an existing-child
+        # payload (the caller attaches a transcript child to the existing parent, untouched).
+        # Novelty is NOT re-checked — presence is the ticket — so it surfaces regardless.
+        ea, eb = _entity("Q1"), _entity("Q2")
+        a, b = _ordered(ea[0], eb[0])
+        net_new, existing_children, dropped = svc.compute_transcript_candidates(
+            rollup_rows=[(a, b, 7, 3.0)],
+            entity_rows=[ea, eb],
+            transcript_video_counts={a: 10, b: 12},
+            transcript_universe=100,
+            existing_pairs={(a, b)},  # already a parent -> dual-signal merge
+            run_id=uuid.uuid4(),
+        )
+        assert net_new == [] and dropped == 0
+        assert len(existing_children) == 1
+        tc = existing_children[0]
+        assert tc.parent.shared_video_count == 7  # transcript support for the child
+        assert (
+            tc.parent.channel == "transcript"
+        )  # payload carries it; parent not upserted
+        assert tc.min_gap_seconds == 3.0
+
+    def test_existing_non_novel_pair_still_merges(self) -> None:
+        # T026b: an existing parent that would FAIL the novelty filter (shared employer) still
+        # merges — novelty gates only net-new pairs, never the merge onto an existing parent.
+        ea = _entity("Q1", employer=["Q100"])
+        eb = _entity("Q2", employer=["Q100"])
+        a, b = _ordered(ea[0], eb[0])
+        net_new, existing_children, dropped = svc.compute_transcript_candidates(
+            rollup_rows=[(a, b, 7, 3.0)],
+            entity_rows=[ea, eb],
+            transcript_video_counts={a: 10, b: 12},
+            transcript_universe=100,
+            existing_pairs={(a, b)},
+            run_id=uuid.uuid4(),
+        )
+        assert net_new == [] and dropped == 0
+        assert len(existing_children) == 1  # merged despite failing novelty
+
+    def test_non_novel_net_new_pair_is_dropped(self) -> None:
+        # Two entities sharing an employer -> shared_tie arm -> not novel (filter reused). A
+        # net-new (not-yet-a-parent) non-novel pair is dropped and COUNTED (observable).
+        ea = _entity("Q1", employer=["Q100"])
+        eb = _entity("Q2", employer=["Q100"])
+        a, b = _ordered(ea[0], eb[0])
+        net_new, existing_children, dropped = svc.compute_transcript_candidates(
+            rollup_rows=[(a, b, 7, 3.0)],
+            entity_rows=[ea, eb],
+            transcript_video_counts={a: 10, b: 12},
+            transcript_universe=100,
+            existing_pairs=set(),
+            run_id=uuid.uuid4(),
+        )
+        assert net_new == [] and existing_children == [] and dropped == 1

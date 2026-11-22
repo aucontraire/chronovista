@@ -40,8 +40,10 @@ def _cross_match(anchor_id: int) -> SimpleNamespace:
     combined = "the guest is Alpha Bravado speaks"
     return SimpleNamespace(
         pair=SimpleNamespace(
-            segment_a=SimpleNamespace(id=anchor_id, video_id=VID),
-            segment_b=SimpleNamespace(id=anchor_id + 1, video_id=VID),
+            segment_a=SimpleNamespace(id=anchor_id, video_id=VID, language_code="en"),
+            segment_b=SimpleNamespace(
+                id=anchor_id + 1, video_id=VID, language_code="en"
+            ),
             combined_text=combined,
         ),
         match_start=combined.index("Alpha"),
@@ -91,11 +93,23 @@ async def _run(
     *,
     segment_ids: list[int],
     entity_id: Any,
+    mark_dirty: AsyncMock | None = None,
 ) -> Any:
     session = svc._session  # type: ignore[attr-defined]
-    with patch(
-        "chronovista.services.batch_correction_service.EntityMentionRepository"
-    ) as repo_cls:
+    # Feature 116 (T011): apply_to_segments marks applied scopes dirty through a
+    # real EntityPairProximityRepository; stand in a spy so the mocked session's
+    # scripted execute() results are not consumed by the invalidation write.
+    prox = MagicMock(mark_dirty=mark_dirty if mark_dirty is not None else AsyncMock())
+    with (
+        patch(
+            "chronovista.services.batch_correction_service.EntityMentionRepository"
+        ) as repo_cls,
+        patch(
+            "chronovista.services.batch_correction_service."
+            "EntityPairProximityRepository",
+            return_value=prox,
+        ),
+    ):
         repo_cls.return_value = MagicMock(
             update_entity_counters=AsyncMock(),
             update_alias_counters=AsyncMock(),
@@ -121,9 +135,17 @@ class TestCrossSegmentRouting:
             entity=entity,
             cross_found=[_cross_match(100)],
         )
-        await _run(svc, segment_ids=[100], entity_id=entity.id)
+        mark_dirty = AsyncMock()
+        await _run(svc, segment_ids=[100], entity_id=entity.id, mark_dirty=mark_dirty)
 
         apply_mock.assert_awaited_once()
+        # The applied span's (video, language) scope is invalidated for proximity.
+        mark_dirty.assert_awaited_once_with(
+            svc._session,  # type: ignore[attr-defined]
+            video_id=VID,
+            language_code="en",
+            reason="correction",
+        )
         _args, kwargs = apply_mock.await_args
         assert kwargs["entity"] is entity
         assert kwargs["replacement"] == "Alfa Bravo"
@@ -157,8 +179,16 @@ class TestCrossSegmentRouting:
             entity=entity,
             cross_found=[],
         )
-        await _run(svc, segment_ids=[100], entity_id=entity.id)
+        mark_dirty = AsyncMock()
+        await _run(svc, segment_ids=[100], entity_id=entity.id, mark_dirty=mark_dirty)
 
         apply_mock.assert_not_awaited()
+        # The single-segment correction still invalidates its scope exactly once.
+        mark_dirty.assert_awaited_once_with(
+            svc._session,  # type: ignore[attr-defined]
+            video_id=VID,
+            language_code="en",
+            reason="correction",
+        )
         # The single-segment match still had its per-segment mention created.
         svc._create_entity_mentions_for_segment.assert_awaited_once()  # type: ignore[attr-defined]

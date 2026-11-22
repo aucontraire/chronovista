@@ -42,6 +42,9 @@ from chronovista.repositories.entity_asr_error_repository import (
 from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
 )
+from chronovista.repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
 from chronovista.services.cross_segment_discovery import (
     _STOPWORDS,
 )
@@ -750,6 +753,9 @@ class EntityMentionScanService:
         self._session_factory = session_factory
         self._mention_repo = EntityMentionRepository()
         self._asr_error_repo = EntityAsrErrorRepository()
+        # Feature 116: producer hook — every durable transcript-mention change marks
+        # its (video, language) scope dirty so proximity can be recomputed (T010).
+        self._proximity_repo = EntityPairProximityRepository()
 
     # ------------------------------------------------------------------
     # Public API
@@ -987,6 +993,7 @@ class EntityMentionScanService:
                     batch_touched: set[uuid.UUID] = {
                         m.entity_id for m in batch_mentions
                     }
+                    delete_affected: list[uuid.UUID] = []
                     if full_rescan:
                         delete_affected = await self._mention_repo.entities_with_transcript_mentions_in_segments(
                             session,
@@ -1015,6 +1022,28 @@ class EntityMentionScanService:
                         )
                         await self._mention_repo.update_alias_counters(
                             session, list(batch_touched)
+                        )
+
+                    # Feature 116 (T010): mark the (video, language) scopes this batch
+                    # changed dirty, committed with the batch so invalidation is as
+                    # durable as the mention write. Inserts come from the new mentions;
+                    # pure removals (a --full delete that re-inserts nothing for a
+                    # scope) are covered by the scanned segments when a delete occurred.
+                    batch_scopes: set[tuple[str, str]] = {
+                        (m.video_id, m.language_code)
+                        for m in batch_mentions
+                        if m.language_code is not None
+                    }
+                    if full_rescan and delete_affected:
+                        batch_scopes.update(
+                            (r.video_id, r.language_code) for r in batch_rows
+                        )
+                    for scope_video_id, scope_language in batch_scopes:
+                        await self._proximity_repo.mark_dirty(
+                            session,
+                            video_id=scope_video_id,
+                            language_code=scope_language,
+                            reason="scan",
                         )
 
                     # Commit this batch's work as one durable unit (#291).
@@ -1430,6 +1459,7 @@ class EntityMentionScanService:
 
             seg_ids = [s.id for s in segs]
             touched: set[uuid.UUID] = {m.entity_id for m in mentions}
+            delete_affected: list[uuid.UUID] = []
             if full_rescan:
                 # An entity whose spanning mention this delete removes must be
                 # recomputed even if nothing new was detected for it — otherwise a
@@ -1460,6 +1490,12 @@ class EntityMentionScanService:
             if touched:
                 await self._mention_repo.update_entity_counters(session, list(touched))
                 await self._mention_repo.update_alias_counters(session, list(touched))
+            # Feature 116 (T010): a spanning-mention add/remove changes proximity too,
+            # so mark this transcript's (video, language) dirty when it mutated.
+            if mentions or delete_affected or suppression_targets:
+                await self._proximity_repo.mark_dirty(
+                    session, video_id=video_id, language_code=lang, reason="scan"
+                )
             await session.commit()
 
     async def audit_unregistered_mentions(

@@ -34,6 +34,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from ..db.models import EntityMention as EntityMentionDB
 from ..db.models import TranscriptSegment as TranscriptSegmentDB
 from ..models.enums import SCAN_DETECTION_METHODS
+from ..repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
 from ..utils.text import normalize_segment_text
 from .entity_mention_scan_service import EntityMentionScanService
 
@@ -116,6 +119,10 @@ class TranscriptWhitespaceBackfillService:
         # normalization (wired by the CLI to BatchCorrectionService.rebuild_text
         # for videos that have corrections); skipped when not provided.
         self._rebuild_text = rebuild_text
+        # Feature 116 (T012): normalizing a video's segment text shifts mention
+        # offsets and triggers a re-scan, so the video's languages are marked dirty
+        # for a proximity recompute.
+        self._proximity_repo = EntityPairProximityRepository()
 
     async def _candidate_video_ids(
         self, session: AsyncSession, *, video_id: str | None, limit: int | None
@@ -248,6 +255,12 @@ class TranscriptWhitespaceBackfillService:
                     .where(TranscriptSegmentDB.id == seg_id)
                     .values(text=normalized)
                 )
+            # Feature 116 (T012): mark every language of this video dirty — the
+            # re-scan below regenerates its transcript mentions. Committed with the
+            # normalization so the invalidation is as durable as the text change.
+            await self._proximity_repo.mark_dirty_all_languages(
+                session, video_id=video_id, reason="whitespace"
+            )
             await session.commit()
 
         if offset_shifting:

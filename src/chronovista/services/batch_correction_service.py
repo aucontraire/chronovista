@@ -55,6 +55,9 @@ from chronovista.models.enums import CorrectionType, DetectionMethod
 from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
 )
+from chronovista.repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
@@ -680,6 +683,9 @@ class BatchCorrectionService:
         total_failed = 0
         failed_segment_ids: list[int] = []
         affected_video_ids: set[str] = set()
+        # Feature 116 (T011): (video, language) scopes where a correction created an
+        # entity mention, marked dirty so proximity can be recomputed for them.
+        affected_scopes: set[tuple[str, str]] = set()
         matched_form_counts: dict[str, int] = {}
         # Feature 081: segments the pattern matched on their own (excluded from
         # cross-segment pairing so a span never double-counts text already
@@ -778,6 +784,7 @@ class BatchCorrectionService:
                         replacement=replacement,
                         correction_id=correction_record.id,
                     )
+                    affected_scopes.add((segment.video_id, segment.language_code))
             except ValueError:
                 total_skipped += 1
             except Exception:
@@ -868,6 +875,13 @@ class BatchCorrectionService:
                         # for spans that actually applied (the commit succeeded).
                         for m in cross_matches:
                             affected_video_ids.add(m.pair.segment_a.video_id)
+                            if entity is not None:
+                                affected_scopes.add(
+                                    (
+                                        m.pair.segment_a.video_id,
+                                        m.pair.segment_a.language_code,
+                                    )
+                                )
                             combined = m.pair.combined_text
                             matched_text = combined[m.match_start : m.match_end]
                             matched_form_counts[matched_text] = (
@@ -890,6 +904,17 @@ class BatchCorrectionService:
             await mention_repo.update_entity_counters(session, [entity.id])
             await mention_repo.update_alias_counters(session, [entity.id])
             await session.flush()
+
+            # Feature 116 (T011): mark the corrected (video, language) scopes dirty so
+            # the new user_correction mentions are picked up by a proximity recompute.
+            proximity_repo = EntityPairProximityRepository()
+            for scope_video_id, scope_language in affected_scopes:
+                await proximity_repo.mark_dirty(
+                    session,
+                    video_id=scope_video_id,
+                    language_code=scope_language,
+                    reason="correction",
+                )
 
         # Step 6: Auto-rebuild
         rebuild_triggered = False

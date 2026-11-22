@@ -31,7 +31,14 @@ class RelationshipCandidateItem(BaseModel):
     entity_a: EntitySummary
     entity_b: EntitySummary
     shared_video_count: int
-    lift: float
+    lift: float | None = Field(
+        default=None,
+        description=(
+            "Title/description lift; null for a transcript candidate (which ranks by "
+            "support, not lift). Backward-compatible: title/description rows still carry "
+            "a float (Feature 116)."
+        ),
+    )
     both_typed_eligible: bool
     kb_corroboration_count: int
     kb_corroboration_detail: list[str] = Field(

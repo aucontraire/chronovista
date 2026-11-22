@@ -26,10 +26,17 @@ import itertools
 import uuid
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from chronovista.config.database import db_manager
-from chronovista.models.relationship_candidate import RelationshipCandidateCreate
+from chronovista.models.relationship_candidate import (
+    CandidateSignal,
+    RelationshipCandidateCreate,
+    RelationshipCandidateSignalCreate,
+)
+from chronovista.repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
 from chronovista.repositories.relationship_candidate_repository import (
     RelationshipCandidateRepository,
 )
@@ -41,6 +48,12 @@ GENERATOR_VERSION = "109.0"
 
 CHANNEL = "title_description"
 CHANNEL_SOURCES: tuple[str, ...] = ("title", "description")
+
+# Feature 116: the transcript channel. A transcript candidate has NO lift — it ranks by
+# SUPPORT (shared-video count, the same unit the title/description channel's support holds, so
+# cross-signal calibration is definable; cdwa review 2026-11-21). close30 is display-time
+# evidence (FR-022a), never the ranking key.
+TRANSCRIPT_CHANNEL = "transcript"
 
 # Novelty-filter field sets. The direct-edge arm uses the full RELATIONS set
 # (single source — never enumerate). Co-membership uses the 5 measured tie fields;
@@ -190,58 +203,49 @@ def _coheld_pairs(
     return pairs
 
 
-def compute_candidates(
-    *,
-    mention_rows: list[tuple[uuid.UUID, str]],
-    entity_rows: list[tuple[uuid.UUID, dict[str, Any], dict[str, Any]]],
-    run_id: uuid.UUID,
-) -> tuple[list[RelationshipCandidateCreate], int]:
-    """Pure core: compute novel-relationship candidates from loaded rows.
+class _NoveltyIndex(NamedTuple):
+    """The channel-agnostic novelty filter, built once per generation from entity props.
 
-    Parameters
-    ----------
-    mention_rows
-        ``(entity_id, video_id)`` for every title/description mention.
-    entity_rows
-        ``(entity_id, external_ids, properties)`` for every library entity.
-    run_id
-        The generation-run id, recorded in each candidate's provenance.
-
-    Returns
-    -------
-    (candidates, channel_video_universe)
-        The qualifying novel pairs (canonically ordered, ranked later by lift) and
-        ``N`` = the number of videos with >=1 channel mention.
+    Novelty is a fact about the *pair's typed ties*, not the channel it co-occurs on, so
+    both the title/description and transcript channels share this index (Feature 116). It
+    holds the four novelty arms, the typed-eligible set, and the hub-capped corroboration
+    referents — everything a per-pair decision needs that is NOT channel co-occurrence.
     """
+
+    properties_by_entity: dict[uuid.UUID, dict[str, Any]]
+    entity_of_qid: dict[str, uuid.UUID]
+    direct_edges: set[tuple[uuid.UUID, uuid.UUID]]
+    shared_tie: set[tuple[uuid.UUID, uuid.UUID]]
+    shared_attr: set[tuple[uuid.UUID, uuid.UUID]]
+    coheld: set[tuple[uuid.UUID, uuid.UUID]]
+    eligible: set[uuid.UUID]
+    corroboration_capped: dict[str, set[str]]
+
+    def is_novel(self, a: uuid.UUID, b: uuid.UUID) -> bool:
+        """True if the canonically-ordered pair survives all four novelty arms."""
+        key = (a, b)
+        return not (
+            key in self.direct_edges
+            or key in self.shared_tie
+            or key in self.shared_attr
+            or key in self.coheld
+        )
+
+
+def _build_novelty_index(
+    entity_rows: list[tuple[uuid.UUID, dict[str, Any], dict[str, Any]]],
+) -> _NoveltyIndex:
+    """Build the shared novelty filter from ``(entity_id, external_ids, properties)`` rows."""
     properties_by_entity: dict[uuid.UUID, dict[str, Any]] = {
         eid: (props or {}) for eid, _ext, props in entity_rows
     }
-    qid_of: dict[uuid.UUID, str] = {}
     entity_of_qid: dict[str, uuid.UUID] = {}
     for eid, ext, _props in entity_rows:
         wd = ext.get("wikidata") if isinstance(ext, dict) else None
         qid = wd.get("id") if isinstance(wd, dict) else None
         if isinstance(qid, str) and qid:
-            qid_of[eid] = qid
             entity_of_qid[qid] = eid
 
-    # Co-occurrence over the channel.
-    videos_to_entities: dict[str, set[uuid.UUID]] = defaultdict(set)
-    for eid, video_id in mention_rows:
-        videos_to_entities[video_id].add(eid)
-    channel_video_universe = len(videos_to_entities)
-    entity_video_count: Counter[uuid.UUID] = Counter()
-    for entities in videos_to_entities.values():
-        for eid in entities:
-            entity_video_count[eid] += 1
-    shared: Counter[tuple[uuid.UUID, uuid.UUID]] = Counter()
-    for entities in videos_to_entities.values():
-        if len(entities) < 2:
-            continue
-        for a, b in itertools.combinations(sorted(entities), 2):
-            shared[(a, b)] += 1
-
-    # Novelty-filter sets.
     direct_edges: set[tuple[uuid.UUID, uuid.UUID]] = set()
     for eid, props in properties_by_entity.items():
         for field in _RELATION_FIELDS:
@@ -267,18 +271,65 @@ def compute_candidates(
         if any(_qids(props, f) for f in TIE_FIELDS + ATTR_FIELDS):
             eligible.add(eid)
 
+    return _NoveltyIndex(
+        properties_by_entity=properties_by_entity,
+        entity_of_qid=entity_of_qid,
+        direct_edges=direct_edges,
+        shared_tie=shared_tie,
+        shared_attr=shared_attr,
+        coheld=coheld,
+        eligible=eligible,
+        corroboration_capped=corroboration_capped,
+    )
+
+
+def compute_candidates(
+    *,
+    mention_rows: list[tuple[uuid.UUID, str]],
+    entity_rows: list[tuple[uuid.UUID, dict[str, Any], dict[str, Any]]],
+    run_id: uuid.UUID,
+) -> tuple[list[RelationshipCandidateCreate], int]:
+    """Pure core: compute novel-relationship candidates from loaded rows.
+
+    Parameters
+    ----------
+    mention_rows
+        ``(entity_id, video_id)`` for every title/description mention.
+    entity_rows
+        ``(entity_id, external_ids, properties)`` for every library entity.
+    run_id
+        The generation-run id, recorded in each candidate's provenance.
+
+    Returns
+    -------
+    (candidates, channel_video_universe)
+        The qualifying novel pairs (canonically ordered, ranked later by lift) and
+        ``N`` = the number of videos with >=1 channel mention.
+    """
+    idx = _build_novelty_index(entity_rows)
+
+    # Co-occurrence over the channel.
+    videos_to_entities: dict[str, set[uuid.UUID]] = defaultdict(set)
+    for eid, video_id in mention_rows:
+        videos_to_entities[video_id].add(eid)
+    channel_video_universe = len(videos_to_entities)
+    entity_video_count: Counter[uuid.UUID] = Counter()
+    for entities in videos_to_entities.values():
+        for eid in entities:
+            entity_video_count[eid] += 1
+    shared: Counter[tuple[uuid.UUID, uuid.UUID]] = Counter()
+    for entities in videos_to_entities.values():
+        if len(entities) < 2:
+            continue
+        for a, b in itertools.combinations(sorted(entities), 2):
+            shared[(a, b)] += 1
+
     candidates: list[RelationshipCandidateCreate] = []
     for (a, b), support in shared.items():
         if support < SUPPORT_MIN:
             continue
-        key = (a, b)
-        if (
-            key in direct_edges
-            or key in shared_tie
-            or key in shared_attr
-            or key in coheld
-        ):
-            continue  # not novel
+        if not idx.is_novel(a, b):
+            continue
         count_a = entity_video_count[a]
         count_b = entity_video_count[b]
         expected = (
@@ -291,9 +342,9 @@ def compute_candidates(
             continue
 
         detail = _corroboration_detail(
-            properties_by_entity.get(a, {}),
-            properties_by_entity.get(b, {}),
-            corroboration_capped,
+            idx.properties_by_entity.get(a, {}),
+            idx.properties_by_entity.get(b, {}),
+            idx.corroboration_capped,
         )
         candidates.append(
             RelationshipCandidateCreate(
@@ -305,7 +356,7 @@ def compute_candidates(
                 entity_a_video_count=count_a,
                 entity_b_video_count=count_b,
                 channel_video_universe=channel_video_universe,
-                both_typed_eligible=(a in eligible and b in eligible),
+                both_typed_eligible=(a in idx.eligible and b in idx.eligible),
                 kb_corroboration_count=len(detail),
                 kb_corroboration_detail={"fields": detail},
                 provenance={
@@ -318,6 +369,91 @@ def compute_candidates(
             )
         )
     return candidates, channel_video_universe
+
+
+class _TranscriptCandidate(NamedTuple):
+    """A net-new transcript candidate: the parent to upsert plus the one child-only datum
+    (``min_gap_seconds``) the caller needs to build the per-signal child once the parent id
+    is known. Everything else the child needs (support, counts, eligibility, corroboration)
+    equals the parent's, so it is not duplicated here."""
+
+    parent: RelationshipCandidateCreate
+    min_gap_seconds: float
+
+
+def compute_transcript_candidates(
+    *,
+    rollup_rows: list[tuple[uuid.UUID, uuid.UUID, int, float]],
+    entity_rows: list[tuple[uuid.UUID, dict[str, Any], dict[str, Any]]],
+    transcript_video_counts: dict[uuid.UUID, int],
+    transcript_universe: int,
+    existing_pairs: set[tuple[uuid.UUID, uuid.UUID]],
+    run_id: uuid.UUID,
+) -> tuple[list[_TranscriptCandidate], list[_TranscriptCandidate], int]:
+    """Pure core: transcript-channel candidates from the proximity rollup (Feature 116).
+
+    Reuses the shared novelty filter (:func:`_build_novelty_index`). Unlike the
+    title/description channel there is NO lift: a transcript pair ranks by SUPPORT
+    (``shared_videos``, FR-019) — the same unit the other channel's support holds, so
+    cross-signal calibration stays definable (cdwa 2026-11-21). close30 is NOT used here; it
+    is display-time evidence (FR-022a).
+
+    Splits the rollup into two outputs (dual-signal merge, T026b):
+
+    - ``net_new`` — a pair with NO existing parent that passes the novelty filter: the caller
+      upserts a transcript parent AND attaches its transcript child.
+    - ``existing_children`` — a pair ALREADY present as a parent (any channel, any review state)
+      that co-occurs in transcripts: the caller attaches a transcript child to the EXISTING
+      parent and MUST NOT touch the parent (its verdict/metrics/channel stand). Novelty is NOT
+      re-checked — the pair is already a candidate, so its presence is the ticket; re-filtering
+      on drifted KB properties is a reconciliation concern, not this merge's job.
+
+    The novelty filter therefore gates only net-new pairs; a net-new pair it rejects is counted
+    in the returned ``dropped`` total (observable, not silently swallowed). Both outputs carry
+    the full transcript-signal payload (support, transcript-scoped denominators, hub-capped
+    corroboration, provenance); for ``existing_children`` only the pair identity and those child
+    fields are used, never the payload's ``channel``. Returns ``(net_new, existing_children,
+    dropped)``.
+    """
+    idx = _build_novelty_index(entity_rows)
+    net_new: list[_TranscriptCandidate] = []
+    existing_children: list[_TranscriptCandidate] = []
+    dropped = 0
+    for a, b, shared_videos, min_gap in rollup_rows:
+        if shared_videos < SUPPORT_MIN:
+            continue
+        is_existing = (a, b) in existing_pairs
+        if not is_existing and not idx.is_novel(a, b):
+            dropped += 1  # net-new pair rejected by the novelty filter (observable)
+            continue
+        detail = _corroboration_detail(
+            idx.properties_by_entity.get(a, {}),
+            idx.properties_by_entity.get(b, {}),
+            idx.corroboration_capped,
+        )
+        payload = RelationshipCandidateCreate(
+            entity_a_id=a,
+            entity_b_id=b,
+            channel=TRANSCRIPT_CHANNEL,
+            shared_video_count=shared_videos,
+            lift=None,  # transcript ranks by support, not lift
+            entity_a_video_count=transcript_video_counts.get(a, 0),
+            entity_b_video_count=transcript_video_counts.get(b, 0),
+            channel_video_universe=transcript_universe,
+            both_typed_eligible=(a in idx.eligible and b in idx.eligible),
+            kb_corroboration_count=len(detail),
+            kb_corroboration_detail={"fields": detail},
+            provenance={
+                "channel": TRANSCRIPT_CHANNEL,
+                "N": transcript_universe,
+                "corpus_size": len(entity_rows),
+                "generator_version": GENERATOR_VERSION,
+                "generated_run_id": str(run_id),
+            },
+        )
+        tc = _TranscriptCandidate(parent=payload, min_gap_seconds=min_gap)
+        (existing_children if is_existing else net_new).append(tc)
+    return net_new, existing_children, dropped
 
 
 def _capped_referents(
@@ -390,9 +526,36 @@ async def generate_relationship_candidates(*, dry_run: bool = False) -> dict[str
             mention_rows=mention_rows, entity_rows=entity_rows, run_id=run.id
         )
         written = await repo.upsert_many(session, candidates=candidates)
+        # Feature 116: maintain the Option-C invariant — every parent carries a per-signal
+        # child. Migration A backfilled `title_description` children for parents existing then;
+        # the generator MUST keep minting them, or newly-generated parents are childless and
+        # vanish under the child-join read (T032) — on the queue the verdicts live on.
+        pair_ids = await repo.ids_for_pairs(
+            session, pairs=[(c.entity_a_id, c.entity_b_id) for c in candidates]
+        )
+        td_children = [
+            RelationshipCandidateSignalCreate(
+                candidate_id=pair_ids[(c.entity_a_id, c.entity_b_id)],
+                signal=CandidateSignal.TITLE_DESCRIPTION,
+                support=c.shared_video_count,
+                lift=c.lift,
+                min_gap_seconds=None,
+                entity_a_video_count=c.entity_a_video_count,
+                entity_b_video_count=c.entity_b_video_count,
+                signal_universe=c.channel_video_universe,
+                both_typed_eligible=c.both_typed_eligible,
+                kb_corroboration_count=c.kb_corroboration_count,
+                kb_corroboration_detail=c.kb_corroboration_detail,
+                provenance=c.provenance,
+            )
+            for c in candidates
+            if (c.entity_a_id, c.entity_b_id) in pair_ids
+        ]
+        children_written = await repo.upsert_signals(session, signals=td_children)
         # Empty-run guard: delete-if-absent on an empty/degraded read (no mentions,
         # or zero qualifying candidates) would wipe every unverdicted row. Only
-        # reconcile after a genuinely non-empty generation.
+        # reconcile after a genuinely non-empty generation. (Deleting a stale parent
+        # cascades to its children via the FK ON DELETE CASCADE.)
         removed = 0
         if mention_rows and candidates:
             removed = await repo.delete_stale(session, run_started_at=run_started_at)
@@ -407,6 +570,7 @@ async def generate_relationship_candidates(*, dry_run: bool = False) -> dict[str
         )
         summary = {
             "written": written,
+            "children": children_written,
             "removed": removed,
             "channel_video_universe": universe,
             "corpus_size": len(entity_rows),
@@ -414,6 +578,109 @@ async def generate_relationship_candidates(*, dry_run: bool = False) -> dict[str
         # dry_run rolls back EVERYTHING — the run row included — so a trial leaves no
         # trace and no lingering 'running' lock. (On a real exception the session's
         # rollback does the same, so a failed run never leaves a stuck lock.)
+        if dry_run:
+            await session.rollback()
+
+    return summary
+
+
+async def generate_transcript_candidates(*, dry_run: bool = False) -> dict[str, int]:
+    """Run a TRANSCRIPT-channel generation (Feature 116): compute, then upsert net-new
+    parents and attach a transcript child to BOTH net-new and existing parents; record the run.
+
+    **Additive, and verdict-preserving by construction (T026b).** Net-new pairs become
+    transcript parents. A pair already present as a parent (any channel, any review state) that
+    co-occurs in transcripts is merged as a DUAL signal: a transcript child is attached to the
+    existing parent via ``upsert_signals`` (child table only), and the parent is NEVER upserted
+    here — so its verdict, metrics and channel stand. This is why reviewed rows pick up transcript
+    evidence (free calibration labels) with no risk to the verdict. No delete-if-absent
+    reconciliation — ``delete_stale`` is not channel-scoped and would wipe unreviewed
+    title/description rows; reconciling stale transcript candidates is deferred. ``dry_run``
+    rolls back (writes nothing).
+    """
+    cand_repo = RelationshipCandidateRepository()
+    prox_repo = EntityPairProximityRepository()
+    summary: dict[str, int] = {"written": 0, "children": 0, "merged": 0, "dropped": 0}
+
+    async with db_manager.session() as session:
+        run = await cand_repo.start_run(
+            session, channel=TRANSCRIPT_CHANNEL, generator_version=GENERATOR_VERSION
+        )
+        if run is None:
+            raise RuntimeError(
+                "a relationship-candidate generation is already running for this channel"
+            )
+        rollup_rows = await prox_repo.read_rollup(
+            session, min_shared_videos=SUPPORT_MIN
+        )
+        entity_rows = await cand_repo.fetch_entity_property_rows(session)
+        counts, universe = await cand_repo.transcript_entity_video_counts(session)
+        existing = await cand_repo.existing_pair_keys(session)
+        net_new, existing_children, dropped = compute_transcript_candidates(
+            rollup_rows=rollup_rows,
+            entity_rows=entity_rows,
+            transcript_video_counts=counts,
+            transcript_universe=universe,
+            existing_pairs=existing,
+            run_id=run.id,
+        )
+
+        # Net-new pairs become transcript parents. Existing parents are NEVER upserted here —
+        # the dual-signal merge attaches their transcript child through upsert_signals (child
+        # table only) below, so the parent row (verdict/metrics/channel) is untouched (T026b).
+        parents = [tc.parent for tc in net_new]
+        written = await cand_repo.upsert_many(session, candidates=parents)
+
+        # Attach a transcript child to BOTH populations: net-new parents (just inserted) and
+        # existing parents (already present). ids_for_pairs resolves each; upsert_signals is
+        # ON CONFLICT (candidate_id, signal), so a re-run updates the child idempotently.
+        merge_src = net_new + existing_children
+        pair_ids = await cand_repo.ids_for_pairs(
+            session,
+            pairs=[(tc.parent.entity_a_id, tc.parent.entity_b_id) for tc in merge_src],
+        )
+        children: list[RelationshipCandidateSignalCreate] = []
+        for tc in merge_src:
+            cid = pair_ids.get((tc.parent.entity_a_id, tc.parent.entity_b_id))
+            if cid is None:
+                continue  # defensive; every pair here is, or was just made, a parent
+            children.append(
+                RelationshipCandidateSignalCreate(
+                    candidate_id=cid,
+                    signal=CandidateSignal.TRANSCRIPT,
+                    support=tc.parent.shared_video_count,
+                    lift=None,
+                    min_gap_seconds=tc.min_gap_seconds,
+                    entity_a_video_count=tc.parent.entity_a_video_count,
+                    entity_b_video_count=tc.parent.entity_b_video_count,
+                    signal_universe=tc.parent.channel_video_universe,
+                    both_typed_eligible=tc.parent.both_typed_eligible,
+                    kb_corroboration_count=tc.parent.kb_corroboration_count,
+                    kb_corroboration_detail=tc.parent.kb_corroboration_detail,
+                    provenance=tc.parent.provenance,
+                )
+            )
+        children_written = await cand_repo.upsert_signals(session, signals=children)
+
+        await cand_repo.finish_run(
+            session,
+            run_id=run.id,
+            status="completed",
+            channel_video_universe=universe,
+            corpus_size=len(entity_rows),
+            candidates_written=written,
+            candidates_removed=0,  # additive run — nothing is deleted
+        )
+        summary = {
+            "written": written,  # net-new transcript parents
+            "children": children_written,  # transcript children (net-new + merged)
+            "merged": len(
+                existing_children
+            ),  # existing parents given a transcript child
+            "dropped": dropped,  # net-new pairs rejected by the novelty filter
+            "channel_video_universe": universe,
+            "corpus_size": len(entity_rows),
+        }
         if dry_run:
             await session.rollback()
 

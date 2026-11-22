@@ -1588,7 +1588,8 @@ class RelationshipCandidate(Base):
 
     # Metrics (A, B, N kept so lift can be audited)
     shared_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    lift: Mapped[float] = mapped_column(Float, nullable=False)
+    lift: Mapped[float | None] = mapped_column(Float, nullable=True)
+    combined_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     entity_a_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
     entity_b_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
     channel_video_universe: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -1640,10 +1641,58 @@ class RelationshipCandidate(Base):
             "entity_a_id < entity_b_id", name="chk_relationship_canonical_order"
         ),
         CheckConstraint("shared_video_count >= 5", name="chk_relationship_shared_min"),
-        CheckConstraint("lift >= 5", name="chk_relationship_lift_min"),
         Index("idx_relationship_candidates_lift", text("lift DESC")),
         Index("idx_relationship_candidates_entity_a", "entity_a_id"),
         Index("idx_relationship_candidates_entity_b", "entity_b_id"),
+    )
+
+
+class RelationshipCandidateSignal(Base):
+    """Per-signal evidence for a candidate pair (Option-C child, Feature 116).
+
+    ``signal`` is a varchar (app-side ``CandidateSignal``), like the parent's
+    ``channel``, so adding a signal needs no ``ALTER TYPE``. The CHECK is structural
+    only; the tuned transcript support bar is a generator knob, not a schema rule.
+    """
+
+    __tablename__ = "relationship_candidate_signals"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    candidate_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("relationship_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    signal: Mapped[str] = mapped_column(String(30), nullable=False)
+    support: Mapped[int] = mapped_column(Integer, nullable=False)
+    lift: Mapped[float | None] = mapped_column(Float, nullable=True)
+    min_gap_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    entity_a_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_b_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    signal_universe: Mapped[int] = mapped_column(Integer, nullable=False)
+    both_typed_eligible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_text("false")
+    )
+    kb_corroboration_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    kb_corroboration_detail: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sql_text("'{}'::jsonb")
+    )
+    provenance: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sql_text("'{}'::jsonb")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "signal", name="uq_candidate_signal"),
+        CheckConstraint(
+            "(signal = 'title_description' AND lift IS NOT NULL AND lift >= 5 "
+            "AND support >= 5) OR (signal = 'transcript' AND lift IS NULL "
+            "AND support >= 1)",
+            name="chk_candidate_signal_shape",
+        ),
     )
 
 
@@ -1692,6 +1741,172 @@ class RelationshipCandidateGenerationRun(Base):
         Index(
             "uq_relationship_generation_runs_active",
             "channel",
+            unique=True,
+            postgresql_where=text("status = 'running'"),
+        ),
+    )
+
+
+class EntityPairProximity(Base):
+    """One close co-mention of two library entities within a shared transcript language.
+
+    Instance grain: a row per ``(pair, video, segment_a, segment_b)`` whose start
+    times are within the outer window. The 15/30/60s tiers are read-time predicates
+    on ``gap_seconds``. Both segments share ``language_code`` (enforced by the
+    computor's self-join, not by a table constraint).
+    """
+
+    __tablename__ = "entity_pair_proximity"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    entity_a_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    entity_b_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    video_id: Mapped[str] = mapped_column(
+        String(20),
+        ForeignKey("videos.video_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    language_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    segment_a_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("transcript_segments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    segment_b_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("transcript_segments.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    gap_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    computed_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "entity_a_id",
+            "entity_b_id",
+            "video_id",
+            "segment_a_id",
+            "segment_b_id",
+            name="uq_entity_pair_proximity_instance",
+        ),
+        CheckConstraint(
+            "entity_a_id <> entity_b_id", name="chk_entity_pair_proximity_no_self_pair"
+        ),
+        CheckConstraint(
+            "entity_a_id < entity_b_id",
+            name="chk_entity_pair_proximity_canonical_order",
+        ),
+        CheckConstraint(
+            "gap_seconds >= 0", name="chk_entity_pair_proximity_gap_non_negative"
+        ),
+        Index("idx_entity_pair_proximity_pair", "entity_a_id", "entity_b_id"),
+        Index("idx_entity_pair_proximity_scope", "video_id", "language_code"),
+        Index("idx_entity_pair_proximity_segment_a", "segment_a_id"),
+        Index("idx_entity_pair_proximity_segment_b", "segment_b_id"),
+    )
+
+
+class EntityPairProximityRollup(Base):
+    """Per-pair aggregate of ``entity_pair_proximity`` (maintained summary table)."""
+
+    __tablename__ = "entity_pair_proximity_rollup"
+
+    entity_a_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    entity_b_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("named_entities.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    close_co_mentions_15: Mapped[int] = mapped_column(Integer, nullable=False)
+    close_co_mentions_30: Mapped[int] = mapped_column(Integer, nullable=False)
+    close_co_mentions_60: Mapped[int] = mapped_column(Integer, nullable=False)
+    min_gap_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    shared_videos: Mapped[int] = mapped_column(Integer, nullable=False)
+    computed_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "entity_a_id < entity_b_id",
+            name="chk_entity_pair_proximity_rollup_canonical_order",
+        ),
+        Index(
+            "idx_entity_pair_proximity_rollup_close30",
+            text("close_co_mentions_30 DESC"),
+        ),
+    )
+
+
+class ProximityDirtyScope(Base):
+    """Invalidation queue row at ``(video_id, language_code)`` grain."""
+
+    __tablename__ = "proximity_dirty_scopes"
+
+    video_id: Mapped[str] = mapped_column(
+        String(20),
+        ForeignKey("videos.video_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    language_code: Mapped[str] = mapped_column(String(10), primary_key=True)
+    marked_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+
+class ProximityGenerationRun(Base):
+    """Provenance row for one proximity (re)build or dirty-scope drain."""
+
+    __tablename__ = "proximity_generation_runs"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="running", server_default="running"
+    )
+    scopes_processed: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    instances_written: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    pairs_rolled_up: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    generator_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    started_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed')",
+            name="chk_proximity_generation_run_status_valid",
+        ),
+        Index(
+            "uq_proximity_generation_runs_active",
+            "status",
             unique=True,
             postgresql_where=text("status = 'running'"),
         ),

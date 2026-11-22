@@ -184,6 +184,7 @@ nav:
       - Resumable entity scan: architecture/entity-scan-resumability.md
       - Seed-and-grow discovery: architecture/seed-and-grow.md
       - Novel-relationship discovery: architecture/relationship-discovery.md
+      - Transcript proximity: architecture/transcript-proximity.md
       - Channel cast: architecture/channel-cast.md
       - Entity creation core: architecture/entity-creation-core.md
       - Wikimedia fetch core: architecture/wikimedia-fetch-core.md

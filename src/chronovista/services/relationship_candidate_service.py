@@ -29,7 +29,14 @@ from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
 from chronovista.config.database import db_manager
-from chronovista.models.relationship_candidate import RelationshipCandidateCreate
+from chronovista.models.relationship_candidate import (
+    CandidateSignal,
+    RelationshipCandidateCreate,
+    RelationshipCandidateSignalCreate,
+)
+from chronovista.repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
 from chronovista.repositories.relationship_candidate_repository import (
     RelationshipCandidateRepository,
 )
@@ -535,6 +542,97 @@ async def generate_relationship_candidates(*, dry_run: bool = False) -> dict[str
         # dry_run rolls back EVERYTHING — the run row included — so a trial leaves no
         # trace and no lingering 'running' lock. (On a real exception the session's
         # rollback does the same, so a failed run never leaves a stuck lock.)
+        if dry_run:
+            await session.rollback()
+
+    return summary
+
+
+async def generate_transcript_candidates(*, dry_run: bool = False) -> dict[str, int]:
+    """Run a TRANSCRIPT-channel generation (Feature 116): compute, then upsert net-new
+    parents and their per-signal children; record the run.
+
+    **Additive by design.** It emits ONLY net-new pairs (the anti-join in
+    :func:`compute_transcript_candidates`), so it never updates an existing parent and needs
+    no delete-if-absent reconciliation — ``delete_stale`` is not channel-scoped and would wipe
+    unreviewed title/description rows. Reconciling stale transcript candidates is deferred to
+    the dual-signal step. ``dry_run`` rolls back (writes nothing).
+    """
+    cand_repo = RelationshipCandidateRepository()
+    prox_repo = EntityPairProximityRepository()
+    summary: dict[str, int] = {"written": 0, "children": 0, "deferred": 0}
+
+    async with db_manager.session() as session:
+        run = await cand_repo.start_run(
+            session, channel=TRANSCRIPT_CHANNEL, generator_version=GENERATOR_VERSION
+        )
+        if run is None:
+            raise RuntimeError(
+                "a relationship-candidate generation is already running for this channel"
+            )
+        rollup_rows = await prox_repo.read_rollup(
+            session, min_shared_videos=SUPPORT_MIN
+        )
+        entity_rows = await cand_repo.fetch_entity_property_rows(session)
+        counts, universe = await cand_repo.transcript_entity_video_counts(session)
+        existing = await cand_repo.existing_pair_keys(session)
+        candidates, deferred = compute_transcript_candidates(
+            rollup_rows=rollup_rows,
+            entity_rows=entity_rows,
+            transcript_video_counts=counts,
+            transcript_universe=universe,
+            existing_pairs=existing,
+            run_id=run.id,
+        )
+
+        parents = [tc.parent for tc in candidates]
+        written = await cand_repo.upsert_many(session, candidates=parents)
+
+        # Link each net-new parent to its transcript child (upsert_many returns a count,
+        # not ids). Every pair was just inserted, so each resolves.
+        pair_ids = await cand_repo.ids_for_pairs(
+            session,
+            pairs=[(tc.parent.entity_a_id, tc.parent.entity_b_id) for tc in candidates],
+        )
+        children: list[RelationshipCandidateSignalCreate] = []
+        for tc in candidates:
+            cid = pair_ids.get((tc.parent.entity_a_id, tc.parent.entity_b_id))
+            if cid is None:
+                continue  # defensive; a parent just upserted should always resolve
+            children.append(
+                RelationshipCandidateSignalCreate(
+                    candidate_id=cid,
+                    signal=CandidateSignal.TRANSCRIPT,
+                    support=tc.parent.shared_video_count,
+                    lift=None,
+                    min_gap_seconds=tc.min_gap_seconds,
+                    entity_a_video_count=tc.parent.entity_a_video_count,
+                    entity_b_video_count=tc.parent.entity_b_video_count,
+                    signal_universe=tc.parent.channel_video_universe,
+                    both_typed_eligible=tc.parent.both_typed_eligible,
+                    kb_corroboration_count=tc.parent.kb_corroboration_count,
+                    kb_corroboration_detail=tc.parent.kb_corroboration_detail,
+                    provenance=tc.parent.provenance,
+                )
+            )
+        children_written = await cand_repo.upsert_signals(session, signals=children)
+
+        await cand_repo.finish_run(
+            session,
+            run_id=run.id,
+            status="completed",
+            channel_video_universe=universe,
+            corpus_size=len(entity_rows),
+            candidates_written=written,
+            candidates_removed=0,  # additive run — nothing is deleted
+        )
+        summary = {
+            "written": written,
+            "children": children_written,
+            "deferred": deferred,
+            "channel_video_universe": universe,
+            "corpus_size": len(entity_rows),
+        }
         if dry_run:
             await session.rollback()
 

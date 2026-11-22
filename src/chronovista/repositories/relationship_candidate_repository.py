@@ -17,7 +17,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -480,6 +480,35 @@ class RelationshipCandidateRepository(
             )
         ).scalar() or 0
         return counts, int(universe)
+
+    async def ids_for_pairs(
+        self,
+        session: AsyncSession,
+        *,
+        pairs: list[tuple[uuid.UUID, uuid.UUID]],
+    ) -> dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID]:
+        """Map each canonical ``(entity_a_id, entity_b_id)`` to its parent id.
+
+        Used by the transcript generator to link freshly-upserted parents to their
+        per-signal children (``upsert_many`` returns a count, not ids). Chunked under the
+        bind-parameter ceiling; a pair with no parent is simply absent from the result.
+        """
+        out: dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID] = {}
+        pair_cols = tuple_(
+            RelationshipCandidateDB.entity_a_id, RelationshipCandidateDB.entity_b_id
+        )
+        for start in range(0, len(pairs), _UPSERT_CHUNK_SIZE):
+            chunk = pairs[start : start + _UPSERT_CHUNK_SIZE]
+            rows = await session.execute(
+                select(
+                    RelationshipCandidateDB.entity_a_id,
+                    RelationshipCandidateDB.entity_b_id,
+                    RelationshipCandidateDB.id,
+                ).where(pair_cols.in_(chunk))
+            )
+            for row in rows.all():
+                out[(row[0], row[1])] = row[2]
+        return out
 
     async def fetch_entity_property_rows(
         self, session: AsyncSession

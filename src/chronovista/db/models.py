@@ -1588,7 +1588,8 @@ class RelationshipCandidate(Base):
 
     # Metrics (A, B, N kept so lift can be audited)
     shared_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    lift: Mapped[float] = mapped_column(Float, nullable=False)
+    lift: Mapped[float | None] = mapped_column(Float, nullable=True)
+    combined_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     entity_a_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
     entity_b_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
     channel_video_universe: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -1640,10 +1641,58 @@ class RelationshipCandidate(Base):
             "entity_a_id < entity_b_id", name="chk_relationship_canonical_order"
         ),
         CheckConstraint("shared_video_count >= 5", name="chk_relationship_shared_min"),
-        CheckConstraint("lift >= 5", name="chk_relationship_lift_min"),
         Index("idx_relationship_candidates_lift", text("lift DESC")),
         Index("idx_relationship_candidates_entity_a", "entity_a_id"),
         Index("idx_relationship_candidates_entity_b", "entity_b_id"),
+    )
+
+
+class RelationshipCandidateSignal(Base):
+    """Per-signal evidence for a candidate pair (Option-C child, Feature 116).
+
+    ``signal`` is a varchar (app-side ``CandidateSignal``), like the parent's
+    ``channel``, so adding a signal needs no ``ALTER TYPE``. The CHECK is structural
+    only; the tuned transcript support bar is a generator knob, not a schema rule.
+    """
+
+    __tablename__ = "relationship_candidate_signals"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid7
+    )
+    candidate_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("relationship_candidates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    signal: Mapped[str] = mapped_column(String(30), nullable=False)
+    support: Mapped[int] = mapped_column(Integer, nullable=False)
+    lift: Mapped[float | None] = mapped_column(Float, nullable=True)
+    min_gap_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    entity_a_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_b_video_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    signal_universe: Mapped[int] = mapped_column(Integer, nullable=False)
+    both_typed_eligible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_text("false")
+    )
+    kb_corroboration_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    kb_corroboration_detail: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sql_text("'{}'::jsonb")
+    )
+    provenance: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=sql_text("'{}'::jsonb")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "signal", name="uq_candidate_signal"),
+        CheckConstraint(
+            "(signal = 'title_description' AND lift IS NOT NULL AND lift >= 5 "
+            "AND support >= 5) OR (signal = 'transcript' AND lift IS NULL "
+            "AND support >= 1)",
+            name="chk_candidate_signal_shape",
+        ),
     )
 
 

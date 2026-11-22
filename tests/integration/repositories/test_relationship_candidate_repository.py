@@ -23,7 +23,10 @@ from chronovista.db.models import RelationshipCandidate as RelationshipCandidate
 from chronovista.db.models import (
     RelationshipCandidateGenerationRun as RelationshipCandidateGenerationRunDB,
 )
-from chronovista.models.relationship_candidate import RelationshipCandidateCreate
+from chronovista.models.relationship_candidate import (
+    CandidateSignal,
+    RelationshipCandidateCreate,
+)
 from chronovista.repositories.relationship_candidate_repository import (
     RelationshipCandidateRepository,
 )
@@ -65,6 +68,82 @@ def _cand(a: uuid.UUID, b: uuid.UUID, **over: object) -> RelationshipCandidateCr
     }
     base.update(over)
     return RelationshipCandidateCreate(**base)  # type: ignore[arg-type]
+
+
+class TestPerChannelHeadMembership:
+    """Feature 116 / T022a — head membership is scoped per channel.
+
+    The table is unique on the pair (no channel), and a transcript row's native rank
+    is support, not lift; once the ``lift >= 5`` CHECK is relaxed to admit the channel
+    its ``lift`` is NULL and would sort NULLS-FIRST into a single GLOBAL head, evicting
+    the title/description queue (the surface the reviewed verdicts live on) under the
+    LIMIT — a silent failure whose symptom is absence. This asserts the MECHANISM, not a
+    title/description-only view (which could not fail): a transcript intruder is physically
+    present, and a high ``lift`` (satisfying the current CHECK) stands in for "a row that
+    would top a global head". Deleting ``channel == signal`` from the head subquery or the
+    active filters makes this test fail (mutation-verified guard, Constitution v1.3.0).
+    """
+
+    async def test_transcript_rows_do_not_evict_title_description_head(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = RelationshipCandidateRepository()
+        # Small head so the cut is real — the intruder would land IN a 2-row global head.
+        monkeypatch.setattr(repo_mod, "HEAD_CUTOFF", 2)
+        # The shared integration DB is not guaranteed empty under concurrent load (the drop_all
+        # fixture can race), so take control of the population before asserting absolute counts
+        # (integration-DB-shared-state lesson — a constant must be backed by a cleared table).
+        await db_session.execute(delete(RelationshipCandidateDB))
+
+        e = [await _make_entity(db_session, f"PH-{i}") for i in range(6)]
+        # Three title/description pairs with distinct lifts; the top two are the head.
+        await repo.upsert_many(
+            db_session,
+            candidates=[
+                _cand(e[0].id, e[1].id, lift=500.0),
+                _cand(e[2].id, e[3].id, lift=80.0),
+                _cand(e[0].id, e[2].id, lift=10.0),  # below the 2-row head
+            ],
+        )
+        before, before_total, before_bts = await repo.list_ranked(db_session)
+        before_ids = [r.id for r in before]
+        assert before_total == 2  # top two by lift
+        assert before_bts == 3  # the whole title/description population
+        assert [r.lift for r in before] == [500.0, 80.0]
+
+        # A transcript-channel intruder whose lift (>= the CHECK floor) is huge enough to top
+        # a GLOBAL head — the exact row that would evict title/description if the head were not
+        # channel-scoped. Distinct pair, since the table is unique on the pair.
+        await repo.upsert_many(
+            db_session,
+            candidates=[
+                _cand(
+                    e[4].id,
+                    e[5].id,
+                    channel="transcript",
+                    lift=99999.0,
+                    shared_video_count=70,
+                    provenance={"channel": "transcript"},
+                )
+            ],
+        )
+
+        after, after_total, after_bts = await repo.list_ranked(db_session)
+        assert after_total == 2
+        assert (
+            after_bts == 3
+        )  # transcript row is NOT in the title/description population
+        assert [
+            r.id for r in after
+        ] == before_ids  # byte-identical membership AND order
+        assert all(r.channel == "title_description" for r in after)
+
+        # The intruder is reachable only on its own channel — isolation both ways.
+        trans, trans_total, _ = await repo.list_ranked(
+            db_session, signal=CandidateSignal.TRANSCRIPT
+        )
+        assert trans_total == 1
+        assert [r.channel for r in trans] == ["transcript"]
 
 
 class TestUpsert:

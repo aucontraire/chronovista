@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**41 tables.** For the reasoning behind the design, see
+**42 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -810,7 +810,8 @@ Undirected pair of library entities that co-occur strongly with no typed tie.
 | `entity_b_id` | UUID | no |  | FK → `named_entities.id` |
 | `channel` | VARCHAR(30) | no |  |  |
 | `shared_video_count` | INTEGER | no |  |  |
-| `lift` | FLOAT | no |  |  |
+| `lift` | FLOAT | yes |  |  |
+| `combined_score` | FLOAT | yes |  |  |
 | `entity_a_video_count` | INTEGER | no |  |  |
 | `entity_b_video_count` | INTEGER | no |  |  |
 | `channel_video_universe` | INTEGER | no |  |  |
@@ -831,7 +832,6 @@ Undirected pair of library entities that co-occur strongly with no typed tie.
 
 - UNIQUE on `entity_a_id`, `entity_b_id` (`uq_relationship_pair`)
 - CHECK `chk_relationship_canonical_order`: `entity_a_id < entity_b_id`
-- CHECK `chk_relationship_lift_min`: `lift >= 5`
 - CHECK `chk_relationship_no_self_pair`: `entity_a_id <> entity_b_id`
 - CHECK `chk_relationship_shared_min`: `shared_video_count >= 5`
 
@@ -840,6 +840,31 @@ Undirected pair of library entities that co-occur strongly with no typed tie.
 - INDEX `idx_relationship_candidates_entity_a` on `entity_a_id`
 - INDEX `idx_relationship_candidates_entity_b` on `entity_b_id`
 - INDEX `idx_relationship_candidates_lift` on 
+
+### `relationship_candidate_signals`
+
+Per-signal evidence for a candidate pair (Option-C child, Feature 116).
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `candidate_id` | UUID | no |  | FK → `relationship_candidates.id` |
+| `signal` | VARCHAR(30) | no |  |  |
+| `support` | INTEGER | no |  |  |
+| `lift` | FLOAT | yes |  |  |
+| `min_gap_seconds` | FLOAT | yes |  |  |
+| `entity_a_video_count` | INTEGER | no |  |  |
+| `entity_b_video_count` | INTEGER | no |  |  |
+| `signal_universe` | INTEGER | no |  |  |
+| `both_typed_eligible` | BOOLEAN | no | `false` |  |
+| `kb_corroboration_count` | INTEGER | no | `0` |  |
+| `kb_corroboration_detail` | JSONB | no | `'{}'::jsonb` |  |
+| `provenance` | JSONB | no | `'{}'::jsonb` |  |
+
+**Constraints:**
+
+- UNIQUE on `candidate_id`, `signal` (`uq_candidate_signal`)
+- CHECK `chk_candidate_signal_shape`: `(signal = 'title_description' AND lift IS NOT NULL AND lift >= 5 AND support >= 5) OR (signal = 'transcript' AND lift IS NULL AND support >= 1)`
 
 ### `relationship_candidate_generation_runs`
 

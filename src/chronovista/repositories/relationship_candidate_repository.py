@@ -29,6 +29,7 @@ from chronovista.db.models import (
     RelationshipCandidateGenerationRun as RelationshipCandidateGenerationRunDB,
 )
 from chronovista.models.relationship_candidate import (
+    CandidateSignal,
     RelationshipCandidateCreate,
     RelationshipCandidateUpdate,
 )
@@ -53,6 +54,20 @@ _REFRESHABLE_FIELDS = (
 # boundary; §22). Enforced as a hard cap in list_ranked (the shared read funnel) so no consumer
 # can page past it; the tail is retained in storage and reachable only via head_only=False.
 HEAD_CUTOFF = 500
+
+# Feature 116: head membership is PER CHANNEL, not a single global top-HEAD_CUTOFF pool. The
+# table's unique key is the pair (no channel), so a NULL-`lift` transcript row (once the
+# `lift >= 5` CHECK is relaxed to admit the transcript channel) would otherwise sort NULLS-FIRST
+# into the ONE global head and the LIMIT would EVICT the whole title/description queue — the
+# surface the reviewed verdicts live on (silent: the symptom is absence). Scoping the head by
+# channel keeps each signal in its own top-HEAD_CUTOFF and keeps NULL `lift` out of the
+# title/description sort entirely. `HEAD_CUTOFF` is borrowed from the title/description
+# support-falloff; the transcript channel's own falloff is unmeasured (deferred follow-up).
+# Channel selector for the per-channel head (Feature 116). Single source of truth is the
+# CandidateSignal enum (models layer); a mistyped channel is a type error, not a silently-empty
+# queue. CandidateSignal is a str-Enum, so it binds as its string value in the `channel == signal`
+# filter.
+_DEFAULT_CHANNEL = CandidateSignal.TITLE_DESCRIPTION
 
 # The head ordering (FR-002). The terminal `id` is a regen-stable tiebreak (the upsert preserves
 # a pair's id); it MUST remain last, or the head boundary flickers when lift AND corroboration
@@ -186,6 +201,7 @@ class RelationshipCandidateRepository(
         *,
         eligible_only: bool = False,
         min_support: int = 5,
+        signal: CandidateSignal = _DEFAULT_CHANNEL,
         review: ReviewFilter = "all",
         verdicts: tuple[VerdictCategory, ...] = (),
         sort_by: SortBy = "rank",
@@ -201,8 +217,11 @@ class RelationshipCandidateRepository(
         the head boundary is deterministic even when lift AND corroboration tie (Feature 108,
         §22) — do NOT drop it.
 
-        ``head_only`` (default True) scopes the result to the queue's HEAD: the GLOBAL
-        top-``HEAD_CUTOFF`` of the qualifying floor (``shared_video_count >= 5``) by the ranking.
+        ``head_only`` (default True) scopes the result to the queue's HEAD: the per-channel
+        (``signal``) top-``HEAD_CUTOFF`` of the qualifying floor (``shared_video_count >= 5``) by
+        the ranking. Head membership is scoped to ``signal`` (Feature 116) so a second channel
+        cannot evict this one's head; ``signal`` defaults to ``title_description`` (the shipped
+        channel), and callers that omit it see unchanged behaviour.
         Head membership is independent of the user filters — ``min_support``, ``eligible_only`` and
         ``review`` ({all, reviewed, unreviewed}) subset WITHIN the head, they never promote a
         below-head row into it (Feature 108 §23 /
@@ -218,13 +237,21 @@ class RelationshipCandidateRepository(
         Returns ``(rows, total, total_before_scoping)``, both over the SAME active-filter
         population so the "N of M" provenance is coherent: ``total`` is how many rows match the
         filters AND are in the head (what a reviewer pages through); ``total_before_scoping`` is
-        how many match the filters across the whole queue (FR-006). With no filter these are
-        ``HEAD_CUTOFF`` and the full qualifying count.
+        how many match the filters across the whole ``signal`` channel (FR-006). With no filter
+        these are ``HEAD_CUTOFF`` and the full qualifying count for that channel.
+
+        ``signal`` selects the channel (default ``title_description``); head membership and both
+        counts are scoped to it, so one channel never evicts another's head (Feature 116).
         """
         # Active filters: the floor (>= 5) merged with any user narrowing. Used for the
         # pre-scoping count and (within the head) for the shown rows.
         active_filters = [
-            RelationshipCandidateDB.shared_video_count >= max(min_support, 5)
+            # Per-channel scoping (Feature 116): head membership AND the "N of M" counts are
+            # within one signal, so a second channel can never cannibalise this one's head slots.
+            # No-op while only `title_description` rows exist; the guard that keeps SC-004 true
+            # once transcript rows land.
+            RelationshipCandidateDB.channel == signal,
+            RelationshipCandidateDB.shared_video_count >= max(min_support, 5),
         ]
         if eligible_only:
             active_filters.append(RelationshipCandidateDB.both_typed_eligible.is_(True))
@@ -250,12 +277,16 @@ class RelationshipCandidateRepository(
         ).scalar() or 0
 
         if head_only:
-            # Head membership is the global top-HEAD_CUTOFF of the floor population, by the
-            # ranking — NOT of the filtered population, so a narrow min_support cannot drag
-            # below-head rows into view (§23). Filters then apply inside the head.
+            # Head membership is the per-channel (`signal`) top-HEAD_CUTOFF of the floor
+            # population, by the ranking — NOT of the filtered population, so a narrow
+            # min_support cannot drag below-head rows into view (§23). Filters then apply
+            # inside the head.
             head_ids = (
                 select(RelationshipCandidateDB.id)
-                .where(RelationshipCandidateDB.shared_video_count >= 5)
+                .where(
+                    RelationshipCandidateDB.channel == signal,
+                    RelationshipCandidateDB.shared_video_count >= 5,
+                )
                 .order_by(*_HEAD_ORDER_BY)
                 .limit(HEAD_CUTOFF)
             )

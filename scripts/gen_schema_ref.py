@@ -85,6 +85,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
             "candidate_suggestions",
             "candidate_generation_runs",
             "relationship_candidates",
+            "relationship_candidate_signals",
             "relationship_candidate_generation_runs",
             "channel_principals",
             "channel_ownership_assertions",

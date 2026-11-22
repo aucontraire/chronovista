@@ -45,7 +45,16 @@ class RelationshipCandidateBase(BaseModel):
     shared_video_count: int = Field(
         ..., ge=5, description="Videos where both entities co-occur on the channel (s)"
     )
-    lift: float = Field(..., ge=5.0, description="s*N/(A*B) — the ranking key")
+    lift: float | None = Field(
+        default=None,
+        ge=5.0,
+        description=(
+            "s*N/(A*B) — the title/description ranking key. None for a transcript-only "
+            "parent (which ranks by support); for a dual-signal pair it holds the "
+            "title/description lift. The lift↔signal coupling is enforced per-signal on "
+            "the child (RelationshipCandidateSignal), not here."
+        ),
+    )
     entity_a_video_count: int = Field(
         ..., ge=0, description="A — entity_a's channel video count (provenance)"
     )

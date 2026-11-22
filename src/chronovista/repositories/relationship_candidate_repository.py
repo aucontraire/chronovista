@@ -28,9 +28,13 @@ from chronovista.db.models import RelationshipCandidate as RelationshipCandidate
 from chronovista.db.models import (
     RelationshipCandidateGenerationRun as RelationshipCandidateGenerationRunDB,
 )
+from chronovista.db.models import (
+    RelationshipCandidateSignal as RelationshipCandidateSignalDB,
+)
 from chronovista.models.relationship_candidate import (
     CandidateSignal,
     RelationshipCandidateCreate,
+    RelationshipCandidateSignalCreate,
     RelationshipCandidateUpdate,
 )
 from chronovista.repositories.base import BaseSQLAlchemyRepository
@@ -44,6 +48,22 @@ _REFRESHABLE_FIELDS = (
     "entity_a_video_count",
     "entity_b_video_count",
     "channel_video_universe",
+    "both_typed_eligible",
+    "kb_corroboration_count",
+    "kb_corroboration_detail",
+    "provenance",
+)
+
+# Child (per-signal) evidence refreshed in place on a re-run. The key (candidate_id, signal)
+# and the server-defaulted id are excluded; there is no verdict column on the child (verdicts
+# live on the parent), so the child refresh carries no "WHERE review_status IS NULL" guard.
+_SIGNAL_REFRESHABLE_FIELDS = (
+    "support",
+    "lift",
+    "min_gap_seconds",
+    "entity_a_video_count",
+    "entity_b_video_count",
+    "signal_universe",
     "both_typed_eligible",
     "kb_corroboration_count",
     "kb_corroboration_detail",
@@ -190,6 +210,48 @@ class RelationshipCandidateRepository(
                 index_elements=["entity_a_id", "entity_b_id"],
                 set_=refresh_set,
                 where=RelationshipCandidateDB.review_status.is_(None),
+            )
+            await session.execute(stmt)
+        await session.flush()
+        return len(deduped)
+
+    async def upsert_signals(
+        self,
+        session: AsyncSession,
+        *,
+        signals: list[RelationshipCandidateSignalCreate],
+    ) -> int:
+        """Bulk insert/refresh per-signal evidence children on ``(candidate_id, signal)``.
+
+        ``INSERT ... ON CONFLICT (candidate_id, signal) DO UPDATE`` refreshes a signal's
+        evidence in place. Unlike :meth:`upsert_many` there is **no** ``review_status`` guard:
+        the verdict lives on the parent (protected there), so refreshing a child's evidence can
+        never touch a verdict. Returns the number of distinct ``(pair, signal)`` rows upserted.
+        Deduped by key and chunked under the bind-parameter ceiling, like the parent upsert.
+        """
+        if not signals:
+            return 0
+
+        # Dedupe by (candidate_id, signal): a repeated key in one statement would raise
+        # "ON CONFLICT DO UPDATE command cannot affect row a second time".
+        by_key: dict[
+            tuple[uuid.UUID, CandidateSignal], RelationshipCandidateSignalCreate
+        ] = {(s.candidate_id, s.signal): s for s in signals}
+        deduped = list(by_key.values())
+
+        for start in range(0, len(deduped), _UPSERT_CHUNK_SIZE):
+            chunk = deduped[start : start + _UPSERT_CHUNK_SIZE]
+            # Bind `signal` as its string value (the column is varchar); the id column is
+            # left to the server-side uuid7 default (Create carries no id).
+            values = [{**s.model_dump(), "signal": s.signal.value} for s in chunk]
+            insert_stmt = pg_insert(RelationshipCandidateSignalDB).values(values)
+            refresh_set: dict[str, Any] = {
+                field: insert_stmt.excluded[field]
+                for field in _SIGNAL_REFRESHABLE_FIELDS
+            }
+            stmt = insert_stmt.on_conflict_do_update(
+                index_elements=["candidate_id", "signal"],
+                set_=refresh_set,
             )
             await session.execute(stmt)
         await session.flush()

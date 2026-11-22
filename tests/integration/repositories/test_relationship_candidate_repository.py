@@ -14,7 +14,7 @@ import datetime
 import uuid
 
 import pytest
-from sqlalchemy import delete, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import chronovista.repositories.relationship_candidate_repository as repo_mod
@@ -23,9 +23,13 @@ from chronovista.db.models import RelationshipCandidate as RelationshipCandidate
 from chronovista.db.models import (
     RelationshipCandidateGenerationRun as RelationshipCandidateGenerationRunDB,
 )
+from chronovista.db.models import (
+    RelationshipCandidateSignal as RelationshipCandidateSignalDB,
+)
 from chronovista.models.relationship_candidate import (
     CandidateSignal,
     RelationshipCandidateCreate,
+    RelationshipCandidateSignalCreate,
 )
 from chronovista.repositories.relationship_candidate_repository import (
     RelationshipCandidateRepository,
@@ -692,3 +696,89 @@ class TestHeadScope:
             db_session, min_support=10, head_only=False
         )
         assert len(tail_rows) == 2
+
+
+def _signal_create(
+    candidate_id: uuid.UUID, signal: CandidateSignal, **over: object
+) -> RelationshipCandidateSignalCreate:
+    td = signal is CandidateSignal.TITLE_DESCRIPTION
+    base: dict[str, object] = {
+        "candidate_id": candidate_id,
+        "signal": signal,
+        "support": 7 if td else 12,
+        "lift": 50.0 if td else None,
+        "min_gap_seconds": None if td else 3.0,
+        "entity_a_video_count": 10,
+        "entity_b_video_count": 12,
+        "signal_universe": 40000,
+        "both_typed_eligible": True,
+    }
+    base.update(over)
+    return RelationshipCandidateSignalCreate(**base)  # type: ignore[arg-type]
+
+
+class TestUpsertSignals:
+    """Feature 116 / T026 foundation: the per-signal evidence child write path."""
+
+    async def test_inserts_both_signals_then_refreshes_in_place(
+        self, db_session: AsyncSession
+    ) -> None:
+        repo = RelationshipCandidateRepository()
+        # Clear first: shared integration DB; the FK ON DELETE CASCADE drops children too.
+        await db_session.execute(delete(RelationshipCandidateDB))
+        e1 = await _make_entity(db_session, "Sig A")
+        e2 = await _make_entity(db_session, "Sig B")
+        await repo.upsert_many(db_session, candidates=[_cand(e1.id, e2.id)])
+        rows, _, _ = await repo.list_ranked(db_session)
+        parent_id = rows[0].id
+
+        # Dual-signal: ONE pair carries a title_description child AND a transcript child.
+        n = await repo.upsert_signals(
+            db_session,
+            signals=[
+                _signal_create(parent_id, CandidateSignal.TITLE_DESCRIPTION),
+                _signal_create(parent_id, CandidateSignal.TRANSCRIPT),
+            ],
+        )
+        assert n == 2
+
+        children = (
+            (
+                await db_session.execute(
+                    select(RelationshipCandidateSignalDB)
+                    .where(RelationshipCandidateSignalDB.candidate_id == parent_id)
+                    .execution_options(populate_existing=True)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_signal = {c.signal: c for c in children}
+        # str-Enum bound as its string value in the INSERT.
+        assert set(by_signal) == {"title_description", "transcript"}
+        assert by_signal["title_description"].lift == 50.0
+        assert by_signal["transcript"].lift is None
+        assert by_signal["transcript"].min_gap_seconds == 3.0
+
+        # Re-emit ONLY the transcript child with new support -> refresh in place, no duplicate,
+        # and the title_description child is untouched (no verdict guard needed on the child).
+        n2 = await repo.upsert_signals(
+            db_session,
+            signals=[_signal_create(parent_id, CandidateSignal.TRANSCRIPT, support=99)],
+        )
+        assert n2 == 1
+        children2 = (
+            (
+                await db_session.execute(
+                    select(RelationshipCandidateSignalDB)
+                    .where(RelationshipCandidateSignalDB.candidate_id == parent_id)
+                    .execution_options(populate_existing=True)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(children2) == 2  # still two rows, not three
+        by_signal2 = {c.signal: c for c in children2}
+        assert by_signal2["transcript"].support == 99  # refreshed
+        assert by_signal2["title_description"].support == 7  # untouched

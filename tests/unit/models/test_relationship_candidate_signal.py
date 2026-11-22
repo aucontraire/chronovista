@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from chronovista.models.relationship_candidate import (
     CandidateSignal,
+    RelationshipCandidateCreate,
     RelationshipCandidateSignalCreate,
 )
 
@@ -70,3 +71,26 @@ class TestLiftMatchesSignal:
             RelationshipCandidateSignalCreate(
                 **_kwargs(signal=CandidateSignal.TRANSCRIPT, lift=50.0)
             )
+
+
+class TestParentLiftNullable:
+    """Feature 116: a transcript-only parent carries no lift (it ranks by support).
+
+    The parent has no channel->lift coupling (that holds only per-signal, on the child):
+    a dual-signal parent keeps its title/description lift regardless of dominant channel.
+    """
+
+    def test_parent_accepts_null_lift(self) -> None:
+        a, b = sorted([uuid.uuid4(), uuid.uuid4()])
+        row = RelationshipCandidateCreate(
+            entity_a_id=a,
+            entity_b_id=b,
+            channel="transcript",
+            shared_video_count=7,
+            lift=None,
+            entity_a_video_count=10,
+            entity_b_video_count=12,
+            channel_video_universe=40000,
+        )
+        assert row.lift is None
+        assert row.channel == "transcript"

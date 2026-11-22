@@ -27,6 +27,7 @@ from ..models.video_transcript import (
 from ..models.youtube_types import VideoId
 from ..utils.text import normalize_segment_text
 from .base import BaseSQLAlchemyRepository
+from .entity_pair_proximity_repository import EntityPairProximityRepository
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,10 @@ class VideoTranscriptRepository(
     def __init__(self) -> None:
         """Initialize repository with VideoTranscript model."""
         super().__init__(VideoTranscriptDB)
+        # Feature 116 (T012): a transcript (re)download rewrites a video's segments,
+        # the heaviest mover of transcript mentions, so its (video, language) scope is
+        # marked dirty for a proximity recompute.
+        self._proximity_repo = EntityPairProximityRepository()
 
     async def get(
         self, session: AsyncSession, id: tuple[str, str]
@@ -886,6 +891,16 @@ class VideoTranscriptRepository(
                 language_code,
             )
             return 0
+
+        # Feature 116 (T012): every path past here deletes and/or recreates this
+        # (video, language)'s segments, so mark the scope dirty for a proximity
+        # recompute (dedupes against any other marker for the same scope).
+        await self._proximity_repo.mark_dirty(
+            session,
+            video_id=video_id,
+            language_code=language_code,
+            reason="transcript_download",
+        )
 
         if not snippets:
             logger.debug(

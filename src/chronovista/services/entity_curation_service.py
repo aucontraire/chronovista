@@ -42,6 +42,9 @@ from chronovista.repositories.entity_mention_repository import EntityMentionRepo
 from chronovista.repositories.entity_operation_log_repository import (
     EntityOperationLogRepository,
 )
+from chronovista.repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
 from chronovista.repositories.entity_video_exclusion_repository import (
     EntityVideoExclusionRepository,
 )
@@ -111,6 +114,7 @@ class EntityCurationService:
         entity_alias_repo: EntityAliasRepository | None = None,
         entity_mention_repo: EntityMentionRepository | None = None,
         entity_video_exclusion_repo: EntityVideoExclusionRepository | None = None,
+        proximity_repo: EntityPairProximityRepository | None = None,
     ) -> None:
         """
         Initialize the service with its repositories.
@@ -135,6 +139,10 @@ class EntityCurationService:
         self._entity_mention_repo = entity_mention_repo
         # Only the association exclude/restore undo path (Feature 091) needs this.
         self._exclusion_repo = entity_video_exclusion_repo
+        # Feature 116 (T012): alias delete/undo changes a video's mention set, so its
+        # (video, language) scopes are marked dirty for a proximity recompute. Cheap
+        # to default-construct, so the hook always has one.
+        self._proximity_repo = proximity_repo or EntityPairProximityRepository()
 
     async def update_entity(
         self,
@@ -465,6 +473,31 @@ class EntityCurationService:
         )
         return entity, current_qid
 
+    async def _mark_mention_scopes_dirty(
+        self,
+        session: AsyncSession,
+        mentions: list[MentionSnapshot],
+        *,
+        reason: str,
+    ) -> None:
+        """Mark the distinct ``(video, language)`` scopes of ``mentions`` dirty (T012).
+
+        Only transcript mentions carry a language; manual mentions (``language_code``
+        NULL) have no proximity grain and are skipped.
+        """
+        scopes = {
+            (m.video_id, m.language_code)
+            for m in mentions
+            if m.language_code is not None
+        }
+        for video_id, language_code in scopes:
+            await self._proximity_repo.mark_dirty(
+                session,
+                video_id=video_id,
+                language_code=language_code,
+                reason=reason,
+            )
+
     async def delete_alias(
         self,
         session: AsyncSession,
@@ -503,6 +536,12 @@ class EntityCurationService:
         )
         await self._entity_alias_repo.delete(session, id=alias.id)
         await self._entity_mention_repo.update_entity_counters(session, [entity.id])
+        # Feature 116 (T012): the removed mentions' (video, language) scopes need a
+        # proximity recompute — taken from the captured rollback rows (the precise
+        # affected set, timing-safe now the mentions are deleted).
+        await self._mark_mention_scopes_dirty(
+            session, rollback.removed_mentions, reason="alias_delete"
+        )
         op = await self._operation_log_repo.create(
             session,
             obj_in=EntityOperationLogCreate(
@@ -576,6 +615,11 @@ class EntityCurationService:
             session, rollback.removed_mentions
         )
         await self._entity_mention_repo.update_entity_counters(session, [entity.id])
+        # Feature 116 (T012): restoring the mentions re-populates their (video,
+        # language) scopes, which must be recomputed for proximity.
+        await self._mark_mention_scopes_dirty(
+            session, rollback.removed_mentions, reason="alias_undo"
+        )
         await self._operation_log_repo.mark_rolled_back(session, log_entry.id)
         logger.info(
             "Alias deletion undone: op=%s entity=%s restored=%d skipped=%d actor=%s",

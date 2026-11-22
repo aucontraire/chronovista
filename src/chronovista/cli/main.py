@@ -24,6 +24,7 @@ from chronovista.cli.commands.takeout import takeout_app
 from chronovista.cli.correction_commands import correction_app
 from chronovista.cli.entity_commands import entity_app
 from chronovista.cli.language_commands import language_app
+from chronovista.cli.proximity_commands import proximity_app
 from chronovista.cli.sync_commands import sync_app
 from chronovista.cli.tag_commands import tag_app
 from chronovista.cli.topic_commands import topic_app
@@ -73,6 +74,11 @@ app.add_typer(
     help="🌐 Manage language preferences for transcripts",
 )
 app.add_typer(playlist_app, name="playlist", help="📋 Playlist management commands")
+app.add_typer(
+    proximity_app,
+    name="proximity",
+    help="🧲 Transcript proximity primitive (rebuild / drain)",
+)
 app.add_typer(
     recover_app, name="recover", help="🔄 Recover metadata for deleted videos"
 )

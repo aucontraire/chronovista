@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**37 tables.** For the reasoning behind the design, see
+**41 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -921,6 +921,101 @@ A user-asserted "entity E operates channel C" link — the DECIDED-space complem
 **Indexes:**
 
 - INDEX `idx_channel_ownership_assertions_channel` on `channel_id`
+
+## Transcript Proximity
+
+Instance-level record of two entities mentioned close in time within one transcript language, with a per-pair rollup and a (video, language) dirty-scope queue that keeps it fresh as mentions change.
+
+### `entity_pair_proximity`
+
+One close co-mention of two library entities within a shared transcript language.
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `entity_a_id` | UUID | no |  | FK → `named_entities.id` |
+| `entity_b_id` | UUID | no |  | FK → `named_entities.id` |
+| `video_id` | VARCHAR(20) | no |  | FK → `videos.video_id` |
+| `language_code` | VARCHAR(10) | no |  |  |
+| `segment_a_id` | INTEGER | no |  | FK → `transcript_segments.id` |
+| `segment_b_id` | INTEGER | no |  | FK → `transcript_segments.id` |
+| `gap_seconds` | FLOAT | no |  |  |
+| `computed_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Constraints:**
+
+- UNIQUE on `entity_a_id`, `entity_b_id`, `video_id`, `segment_a_id`, `segment_b_id` (`uq_entity_pair_proximity_instance`)
+- CHECK `chk_entity_pair_proximity_canonical_order`: `entity_a_id < entity_b_id`
+- CHECK `chk_entity_pair_proximity_gap_non_negative`: `gap_seconds >= 0`
+- CHECK `chk_entity_pair_proximity_no_self_pair`: `entity_a_id <> entity_b_id`
+
+**Indexes:**
+
+- INDEX `idx_entity_pair_proximity_pair` on `entity_a_id`, `entity_b_id`
+- INDEX `idx_entity_pair_proximity_scope` on `video_id`, `language_code`
+- INDEX `idx_entity_pair_proximity_segment_a` on `segment_a_id`
+- INDEX `idx_entity_pair_proximity_segment_b` on `segment_b_id`
+
+### `entity_pair_proximity_rollup`
+
+Per-pair aggregate of ``entity_pair_proximity`` (maintained summary table).
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `entity_a_id` | UUID | no |  | **PK**, FK → `named_entities.id` |
+| `entity_b_id` | UUID | no |  | **PK**, FK → `named_entities.id` |
+| `close_co_mentions_15` | INTEGER | no |  |  |
+| `close_co_mentions_30` | INTEGER | no |  |  |
+| `close_co_mentions_60` | INTEGER | no |  |  |
+| `min_gap_seconds` | FLOAT | no |  |  |
+| `shared_videos` | INTEGER | no |  |  |
+| `computed_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+
+**Composite primary key:** `entity_a_id`, `entity_b_id`
+
+**Constraints:**
+
+- CHECK `chk_entity_pair_proximity_rollup_canonical_order`: `entity_a_id < entity_b_id`
+
+**Indexes:**
+
+- INDEX `idx_entity_pair_proximity_rollup_close30` on 
+
+### `proximity_dirty_scopes`
+
+Invalidation queue row at ``(video_id, language_code)`` grain.
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `video_id` | VARCHAR(20) | no |  | **PK**, FK → `videos.video_id` |
+| `language_code` | VARCHAR(10) | no |  | **PK** |
+| `marked_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `reason` | VARCHAR(30) | yes |  |  |
+
+**Composite primary key:** `video_id`, `language_code`
+
+### `proximity_generation_runs`
+
+Provenance row for one proximity (re)build or dirty-scope drain.
+
+| Column | Type | Null | Default | Notes |
+|--------|------|------|---------|-------|
+| `id` | UUID | no |  | **PK** |
+| `status` | VARCHAR(20) | no | `running` |  |
+| `scopes_processed` | INTEGER | no | `0` |  |
+| `instances_written` | INTEGER | no | `0` |  |
+| `pairs_rolled_up` | INTEGER | no | `0` |  |
+| `generator_version` | VARCHAR(50) | no |  |  |
+| `started_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `completed_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+
+**Constraints:**
+
+- CHECK `chk_proximity_generation_run_status_valid`: `status IN ('running', 'completed', 'failed')`
+
+**Indexes:**
+
+- UNIQUE INDEX `uq_proximity_generation_runs_active` on `status`
 
 ## Recovery Provenance
 

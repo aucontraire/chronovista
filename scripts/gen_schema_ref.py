@@ -91,6 +91,18 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         ],
     ),
     (
+        "Transcript Proximity",
+        "Instance-level record of two entities mentioned close in time within one "
+        "transcript language, with a per-pair rollup and a (video, language) "
+        "dirty-scope queue that keeps it fresh as mentions change.",
+        [
+            "entity_pair_proximity",
+            "entity_pair_proximity_rollup",
+            "proximity_dirty_scopes",
+            "proximity_generation_runs",
+        ],
+    ),
+    (
         "Recovery Provenance",
         "Append-only record of which archive sources contributed metadata to a "
         "deleted video or channel, so one recovery pass cannot erase another's "

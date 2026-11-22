@@ -1972,6 +1972,11 @@ class TestSegmentCreationInCreateOrUpdate:
             "snippets": [],
             "source": "youtube_transcript_api",
         }
+        # Feature 116 (T012): the empty path still deletes the existing segments,
+        # so it must invalidate proximity; spy on it so the session's execute()
+        # count below still reflects only the delete.
+        mark_dirty = AsyncMock()
+        repository._proximity_repo = MagicMock(mark_dirty=mark_dirty)
 
         count = await repository._create_segments_from_raw_data(
             mock_session,
@@ -1985,6 +1990,14 @@ class TestSegmentCreationInCreateOrUpdate:
 
         # Should still call execute to delete any existing segments
         mock_session.execute.assert_called_once()
+
+        # The delete changes this scope's segments, so it is marked dirty
+        mark_dirty.assert_awaited_once_with(
+            mock_session,
+            video_id="dQw4w9WgXcQ",
+            language_code="en",
+            reason="transcript_download",
+        )
 
         # Should not add any segments
         mock_session.add.assert_not_called()

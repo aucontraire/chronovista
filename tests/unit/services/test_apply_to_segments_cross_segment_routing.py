@@ -96,10 +96,14 @@ async def _run(
     mark_dirty: AsyncMock | None = None,
 ) -> Any:
     session = svc._session  # type: ignore[attr-defined]
-    # Feature 116 (T011): apply_to_segments marks applied scopes dirty through a
+    # Feature 116 (T011): apply_to_segments marks applied scopes stale through a
     # real EntityPairProximityRepository; stand in a spy so the mocked session's
     # scripted execute() results are not consumed by the invalidation write.
-    prox = MagicMock(mark_dirty=mark_dirty if mark_dirty is not None else AsyncMock())
+    prox = MagicMock(
+        invalidate_proximity_scopes=(
+            mark_dirty if mark_dirty is not None else AsyncMock()
+        )
+    )
     with (
         patch(
             "chronovista.services.batch_correction_service.EntityMentionRepository"

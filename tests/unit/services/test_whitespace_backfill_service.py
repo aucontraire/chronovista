@@ -30,6 +30,11 @@ class _Result:
     def all(self) -> list[Any]:
         return self._rows
 
+    @property
+    def rowcount(self) -> int:
+        """Mirror SQLAlchemy's ``CursorResult.rowcount`` (rows affected)."""
+        return len(self._rows)
+
     def scalars(self) -> _Result:
         return self
 

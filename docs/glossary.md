@@ -45,6 +45,12 @@ Project-specific terminology used throughout chronovista documentation and code.
 **Auto-generated Transcript**
 :   Transcripts created by YouTube's speech recognition. Available for most videos but may contain errors.
 
+**Transcript Proximity**
+:   A record that two entities are mentioned close together in one transcript: the video, the language, both passages, and the gap in seconds (up to 120 s). It surfaces evidence for a person to review; it does not decide that the entities are related. See [Transcript proximity](architecture/transcript-proximity.md).
+
+**Proximity Scope**
+:   One video's transcript in one language: the unit proximity is computed in. A scope is **current** when computed from its latest transcript and mentions, **stale** when they changed since, and **not computed** before its first computation. A current scope with zero records is a real answer, distinct from not computed.
+
 ## Recovery Concepts
 
 **Wayback Machine**

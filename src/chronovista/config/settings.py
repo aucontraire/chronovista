@@ -114,6 +114,13 @@ class Settings(BaseSettings):
     retry_attempts: int = Field(default=3)
     retry_backoff: int = Field(default=2)
 
+    # Transcript proximity worker (Feature 117): recomputes stale proximity scopes
+    # inside the API process so proximity follows library changes automatically.
+    proximity_worker_enabled: bool = Field(default=True)
+    proximity_worker_interval_s: float = Field(default=2.0, gt=0)
+    proximity_worker_batch: int = Field(default=50, ge=1)
+    proximity_worker_reconcile_every: int = Field(default=30, ge=1)
+
     # Development
     pytest_timeout: int = Field(default=30)
     coverage_threshold: int = Field(default=90)

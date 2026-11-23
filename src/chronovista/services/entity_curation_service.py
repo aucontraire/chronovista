@@ -139,9 +139,10 @@ class EntityCurationService:
         self._entity_mention_repo = entity_mention_repo
         # Only the association exclude/restore undo path (Feature 091) needs this.
         self._exclusion_repo = entity_video_exclusion_repo
-        # Feature 116 (T012): alias delete/undo changes a video's mention set, so its
-        # (video, language) scopes are marked dirty for a proximity recompute. Cheap
-        # to default-construct, so the hook always has one.
+        # Feature 117: alias delete/undo changes the entity's visible names, so every
+        # scope the entity appears in is invalidated (entity-wide, including scopes of
+        # kept correction mentions that stop qualifying); also rename and exclusion undo.
+        # Cheap to default-construct, so the hook always has one.
         self._proximity_repo = proximity_repo or EntityPairProximityRepository()
 
     async def update_entity(
@@ -302,6 +303,12 @@ class EntityCurationService:
             db_obj=entity,
             obj_in=NamedEntityUpdate.model_validate(update_fields),
         )
+        if name_changed:
+            # The canonical name is a visible name: renaming changes which of the
+            # entity's positioned mentions qualify (Feature 117, FR-011).
+            await self._proximity_repo.invalidate_proximity_scopes(
+                session, entity_id=entity.id, reason="name"
+            )
 
         log_create = EntityOperationLogCreate(
             entity_id=entity_id,
@@ -473,31 +480,6 @@ class EntityCurationService:
         )
         return entity, current_qid
 
-    async def _mark_mention_scopes_dirty(
-        self,
-        session: AsyncSession,
-        mentions: list[MentionSnapshot],
-        *,
-        reason: str,
-    ) -> None:
-        """Mark the distinct ``(video, language)`` scopes of ``mentions`` dirty (T012).
-
-        Only transcript mentions carry a language; manual mentions (``language_code``
-        NULL) have no proximity grain and are skipped.
-        """
-        scopes = {
-            (m.video_id, m.language_code)
-            for m in mentions
-            if m.language_code is not None
-        }
-        for video_id, language_code in scopes:
-            await self._proximity_repo.mark_dirty(
-                session,
-                video_id=video_id,
-                language_code=language_code,
-                reason=reason,
-            )
-
     async def delete_alias(
         self,
         session: AsyncSession,
@@ -531,17 +513,18 @@ class EntityCurationService:
             alias=AliasSnapshot.model_validate(alias),
             removed_mentions=[MentionSnapshot.model_validate(r) for r in rows],
         )
+        # Feature 117: the alias is a visible name, so EVERY positioned mention of
+        # the entity whose text it matched stops qualifying, including the kept
+        # correction-derived ones, not just the deleted mentions. Entity-wide, and
+        # before the deletes (lock order); stored-record scopes stay reachable.
+        await self._proximity_repo.invalidate_proximity_scopes(
+            session, entity_id=entity.id, reason="alias_delete"
+        )
         removed = await self._entity_mention_repo.delete_mentions_by_ids(
             session, [r.id for r in rows]
         )
         await self._entity_alias_repo.delete(session, id=alias.id)
         await self._entity_mention_repo.update_entity_counters(session, [entity.id])
-        # Feature 116 (T012): the removed mentions' (video, language) scopes need a
-        # proximity recompute — taken from the captured rollback rows (the precise
-        # affected set, timing-safe now the mentions are deleted).
-        await self._mark_mention_scopes_dirty(
-            session, rollback.removed_mentions, reason="alias_delete"
-        )
         op = await self._operation_log_repo.create(
             session,
             obj_in=EntityOperationLogCreate(
@@ -615,10 +598,10 @@ class EntityCurationService:
             session, rollback.removed_mentions
         )
         await self._entity_mention_repo.update_entity_counters(session, [entity.id])
-        # Feature 116 (T012): restoring the mentions re-populates their (video,
-        # language) scopes, which must be recomputed for proximity.
-        await self._mark_mention_scopes_dirty(
-            session, rollback.removed_mentions, reason="alias_undo"
+        # Feature 117: the restored alias is a visible name again, so every positioned
+        # mention of the entity whose text it matches (restored or kept) qualifies.
+        await self._proximity_repo.invalidate_proximity_scopes(
+            session, entity_id=entity.id, reason="alias_undo"
         )
         await self._operation_log_repo.mark_rolled_back(session, log_entry.id)
         logger.info(
@@ -656,6 +639,11 @@ class EntityCurationService:
                 entity_id=log_entry.entity_id,
             )
         rollback = AssociationExclusionRollback.model_validate(log_entry.rollback_data)
+        # Either branch changes an F091 exclusion, which removes or restores the
+        # entity's records in that video, in every language (Feature 117, FR-011).
+        await self._proximity_repo.invalidate_proximity_scopes(
+            session, video_id=rollback.video_id, reason="exclusion"
+        )
         if log_entry.operation_type == "association_exclude":
             await self._exclusion_repo.remove(
                 session, log_entry.entity_id, rollback.video_id
@@ -806,6 +794,11 @@ class EntityCurationService:
                 session,
                 db_obj=entity,
                 obj_in=NamedEntityUpdate.model_validate(update_fields),
+            )
+        if "canonical_name" in rollback.changed_fields:
+            # Restoring the old name changes the entity's visible names (FR-011).
+            await self._proximity_repo.invalidate_proximity_scopes(
+                session, entity_id=entity.id, reason="name"
             )
 
         await self._operation_log_repo.mark_rolled_back(session, operation_id)

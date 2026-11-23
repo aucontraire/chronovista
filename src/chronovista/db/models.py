@@ -1812,52 +1812,25 @@ class EntityPairProximity(Base):
             "gap_seconds >= 0", name="chk_entity_pair_proximity_gap_non_negative"
         ),
         Index("idx_entity_pair_proximity_pair", "entity_a_id", "entity_b_id"),
+        Index("idx_entity_pair_proximity_entity_b", "entity_b_id"),
         Index("idx_entity_pair_proximity_scope", "video_id", "language_code"),
         Index("idx_entity_pair_proximity_segment_a", "segment_a_id"),
         Index("idx_entity_pair_proximity_segment_b", "segment_b_id"),
     )
 
 
-class EntityPairProximityRollup(Base):
-    """Per-pair aggregate of ``entity_pair_proximity`` (maintained summary table)."""
+class ProximityScopeState(Base):
+    """Freshness state of one ``(video_id, language_code)`` proximity scope.
 
-    __tablename__ = "entity_pair_proximity_rollup"
+    Rows persist. ``revision`` is bumped by every invalidation; a scope is
+    *current* when its published records were computed from its latest revision
+    under the current measurement-rule version (both comparisons null-safe), and
+    *stale* or *not computed* otherwise. Failure bookkeeping (``attempts``,
+    ``failed_rule_version``, ``next_attempt_at``, ``last_error``) drives delayed
+    retries without ever blocking a scope permanently.
+    """
 
-    entity_a_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("named_entities.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    entity_b_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True),
-        ForeignKey("named_entities.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    close_co_mentions_15: Mapped[int] = mapped_column(Integer, nullable=False)
-    close_co_mentions_30: Mapped[int] = mapped_column(Integer, nullable=False)
-    close_co_mentions_60: Mapped[int] = mapped_column(Integer, nullable=False)
-    min_gap_seconds: Mapped[float] = mapped_column(Float, nullable=False)
-    shared_videos: Mapped[int] = mapped_column(Integer, nullable=False)
-    computed_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-
-    __table_args__ = (
-        CheckConstraint(
-            "entity_a_id < entity_b_id",
-            name="chk_entity_pair_proximity_rollup_canonical_order",
-        ),
-        Index(
-            "idx_entity_pair_proximity_rollup_close30",
-            text("close_co_mentions_30 DESC"),
-        ),
-    )
-
-
-class ProximityDirtyScope(Base):
-    """Invalidation queue row at ``(video_id, language_code)`` grain."""
-
-    __tablename__ = "proximity_dirty_scopes"
+    __tablename__ = "proximity_scope_states"
 
     video_id: Mapped[str] = mapped_column(
         String(20),
@@ -1865,14 +1838,48 @@ class ProximityDirtyScope(Base):
         primary_key=True,
     )
     language_code: Mapped[str] = mapped_column(String(10), primary_key=True)
-    marked_at: Mapped[datetime.datetime] = mapped_column(
+    revision: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=1, server_default=sql_text("1")
+    )
+    computed_revision: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    computed_rule_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    computed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    invalidated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    failed_rule_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    next_attempt_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "revision >= 1", name="chk_proximity_scope_state_revision_positive"
+        ),
+        CheckConstraint(
+            "computed_revision IS NULL OR computed_revision <= revision",
+            name="chk_proximity_scope_state_computed_le_revision",
+        ),
+        CheckConstraint(
+            "(computed_revision IS NULL) = (computed_rule_version IS NULL)",
+            name="chk_proximity_scope_state_computed_pair",
+        ),
+    )
 
 
 class ProximityGenerationRun(Base):
-    """Provenance row for one proximity (re)build or dirty-scope drain."""
+    """Provenance row for one proximity rebuild (reporting only).
+
+    Rebuild *ownership* is a session-level advisory lock, not this row; a row left
+    ``running`` by a process that died is marked ``abandoned`` by the next rebuild.
+    """
 
     __tablename__ = "proximity_generation_runs"
 
@@ -1901,7 +1908,7 @@ class ProximityGenerationRun(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('running', 'completed', 'failed')",
+            "status IN ('running', 'completed', 'incomplete', 'failed', 'abandoned')",
             name="chk_proximity_generation_run_status_valid",
         ),
         Index(

@@ -14,6 +14,7 @@ from chronovista.api.routers.responses import HEALTH_ERRORS
 from chronovista.api.schemas.responses import ApiResponse
 from chronovista.auth import youtube_oauth
 from chronovista.config.database import db_manager
+from chronovista.services import proximity_service
 
 
 class HealthChecks(BaseModel):
@@ -23,6 +24,15 @@ class HealthChecks(BaseModel):
 
     database_latency_ms: int | None = None
     token_expiry_hours: float | None = None
+
+
+class ProximityWorkerHealth(BaseModel):
+    """State of the in-process transcript proximity worker (Feature 117)."""
+
+    model_config = ConfigDict(strict=True)
+
+    state: str  # "running", "stopped", "crashed", "disabled"
+    last_cycle_at: datetime | None = None
 
 
 class HealthStatus(BaseModel):
@@ -36,6 +46,7 @@ class HealthStatus(BaseModel):
     authenticated: bool  # OAuth tokens valid
     timestamp: datetime
     checks: HealthChecks | None = None
+    proximity_worker: ProximityWorkerHealth | None = None
 
 
 class HealthResponse(ApiResponse[HealthStatus]):
@@ -89,6 +100,10 @@ async def health_check() -> HealthResponse:
         timestamp=datetime.now(UTC),
         checks=HealthChecks(
             database_latency_ms=db_latency_ms,
+        ),
+        proximity_worker=ProximityWorkerHealth(
+            state=proximity_service.worker_status.state.value,
+            last_cycle_at=proximity_service.worker_status.last_cycle_at,
         ),
     )
 

@@ -37,6 +37,9 @@ from chronovista.models.enums import (
 from chronovista.models.tag_operation_log import TagOperationLogCreate
 from chronovista.repositories.canonical_tag_repository import CanonicalTagRepository
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
+from chronovista.repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.repositories.tag_alias_repository import TagAliasRepository
 from chronovista.repositories.tag_operation_log_repository import (
@@ -1417,6 +1420,11 @@ class TagManagementService:
                     )
                     ea_db = await self._entity_alias_repo.create(
                         session, obj_in=ea_create
+                    )
+                    # Feature 117: an EXISTING entity gains a visible name, which
+                    # can make its stored mentions qualify as proximity evidence.
+                    await EntityPairProximityRepository().invalidate_proximity_scopes(
+                        session, entity_id=entity_id_for_aliases, reason="alias"
                     )
                     created_entity_alias_ids.append(ea_db.id)
 

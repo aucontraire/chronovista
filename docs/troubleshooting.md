@@ -132,6 +132,33 @@ chronovista auth status
 chronovista sync topics  # Fast, single API call
 ```
 
+### Transcript proximity isn't updating
+
+Proximity is kept current by a worker inside the API process, so it only
+updates while the API is running.
+
+```bash
+# Is the worker running? Look for "proximity_worker"
+curl http://localhost:8765/api/v1/health
+
+# How far behind is it, and is anything failing?
+chronovista proximity status
+```
+
+- `state: "disabled"`: `PROXIMITY_WORKER_ENABLED` is `false`; enable it, or run
+  `chronovista proximity drain` yourself.
+- `state: "running"` but `last_cycle_at` is old: every cycle is failing (for
+  example, the database is unreachable). The worker keeps retrying with growing
+  waits; the API log says why.
+- `state: "crashed"`: the worker stopped on an unexpected error. The API log
+  says why; restarting the API restarts it.
+- **Failing scopes** in `status` are retried automatically with growing waits (up
+  to an hour). Fix the cause shown as their last error, then run
+  `chronovista proximity retry-failed`.
+- **"Another rebuild is running"**: only one `rebuild` runs at a time. `status`
+  shows the database session holding the lock, which is released as soon as that
+  session ends.
+
 ## Frontend
 
 ### Frontend shows "Network Error" or blank page

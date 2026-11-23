@@ -4,7 +4,7 @@ Every table in the PostgreSQL schema, generated from the SQLAlchemy models
 at build time — the same metadata Alembic autogenerates migrations from, so
 this page cannot drift from the shipped database.
 
-**42 tables.** For the reasoning behind the design, see
+**41 tables.** For the reasoning behind the design, see
 [Data Model](../architecture/data-model.md).
 
 ## Core Content
@@ -949,7 +949,7 @@ A user-asserted "entity E operates channel C" link — the DECIDED-space complem
 
 ## Transcript Proximity
 
-Instance-level record of two entities mentioned close in time within one transcript language, with a per-pair rollup and a (video, language) dirty-scope queue that keeps it fresh as mentions change.
+Instance-level record of two entities mentioned close in time within one transcript language, a per-(video, language) freshness state that is invalidated by every mention change and recomputed automatically, and the rebuild run log. Per-pair summaries are derived on read from the records.
 
 ### `entity_pair_proximity`
 
@@ -976,52 +976,42 @@ One close co-mention of two library entities within a shared transcript language
 
 **Indexes:**
 
+- INDEX `idx_entity_pair_proximity_entity_b` on `entity_b_id`
 - INDEX `idx_entity_pair_proximity_pair` on `entity_a_id`, `entity_b_id`
 - INDEX `idx_entity_pair_proximity_scope` on `video_id`, `language_code`
 - INDEX `idx_entity_pair_proximity_segment_a` on `segment_a_id`
 - INDEX `idx_entity_pair_proximity_segment_b` on `segment_b_id`
 
-### `entity_pair_proximity_rollup`
+### `proximity_scope_states`
 
-Per-pair aggregate of ``entity_pair_proximity`` (maintained summary table).
-
-| Column | Type | Null | Default | Notes |
-|--------|------|------|---------|-------|
-| `entity_a_id` | UUID | no |  | **PK**, FK → `named_entities.id` |
-| `entity_b_id` | UUID | no |  | **PK**, FK → `named_entities.id` |
-| `close_co_mentions_15` | INTEGER | no |  |  |
-| `close_co_mentions_30` | INTEGER | no |  |  |
-| `close_co_mentions_60` | INTEGER | no |  |  |
-| `min_gap_seconds` | FLOAT | no |  |  |
-| `shared_videos` | INTEGER | no |  |  |
-| `computed_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
-
-**Composite primary key:** `entity_a_id`, `entity_b_id`
-
-**Constraints:**
-
-- CHECK `chk_entity_pair_proximity_rollup_canonical_order`: `entity_a_id < entity_b_id`
-
-**Indexes:**
-
-- INDEX `idx_entity_pair_proximity_rollup_close30` on 
-
-### `proximity_dirty_scopes`
-
-Invalidation queue row at ``(video_id, language_code)`` grain.
+Freshness state of one ``(video_id, language_code)`` proximity scope.
 
 | Column | Type | Null | Default | Notes |
 |--------|------|------|---------|-------|
 | `video_id` | VARCHAR(20) | no |  | **PK**, FK → `videos.video_id` |
 | `language_code` | VARCHAR(10) | no |  | **PK** |
-| `marked_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
+| `revision` | BIGINT | no | `1` |  |
+| `computed_revision` | BIGINT | yes |  |  |
+| `computed_rule_version` | VARCHAR(50) | yes |  |  |
+| `computed_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `invalidated_at` | TIMESTAMP WITH TIME ZONE | no | `now()` |  |
 | `reason` | VARCHAR(30) | yes |  |  |
+| `attempts` | INTEGER | no | `0` |  |
+| `failed_rule_version` | VARCHAR(50) | yes |  |  |
+| `next_attempt_at` | TIMESTAMP WITH TIME ZONE | yes |  |  |
+| `last_error` | VARCHAR(500) | yes |  |  |
 
 **Composite primary key:** `video_id`, `language_code`
 
+**Constraints:**
+
+- CHECK `chk_proximity_scope_state_computed_le_revision`: `computed_revision IS NULL OR computed_revision <= revision`
+- CHECK `chk_proximity_scope_state_computed_pair`: `(computed_revision IS NULL) = (computed_rule_version IS NULL)`
+- CHECK `chk_proximity_scope_state_revision_positive`: `revision >= 1`
+
 ### `proximity_generation_runs`
 
-Provenance row for one proximity (re)build or dirty-scope drain.
+Provenance row for one proximity rebuild (reporting only).
 
 | Column | Type | Null | Default | Notes |
 |--------|------|------|---------|-------|
@@ -1036,7 +1026,7 @@ Provenance row for one proximity (re)build or dirty-scope drain.
 
 **Constraints:**
 
-- CHECK `chk_proximity_generation_run_status_valid`: `status IN ('running', 'completed', 'failed')`
+- CHECK `chk_proximity_generation_run_status_valid`: `status IN ('running', 'completed', 'incomplete', 'failed', 'abandoned')`
 
 **Indexes:**
 

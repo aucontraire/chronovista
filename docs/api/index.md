@@ -30,7 +30,7 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Health check (no auth) |
+| `/health` | GET | Health check (no auth). Includes `proximity_worker`: the [transcript proximity](../architecture/transcript-proximity.md) worker's `state` (`running`, `stopped`, `crashed`, `disabled`) and `last_cycle_at` |
 | `/videos` | GET | List videos |
 | `/videos/{id}` | GET | Get video details |
 | `/videos/{id}/transcript` | GET | Get transcript |

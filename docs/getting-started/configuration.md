@@ -166,6 +166,10 @@ environment variables tune behavior (defaults shown):
 | `CONCURRENT_REQUESTS` | Max concurrent API requests | (see `settings.py`) |
 | `RETRY_ATTEMPTS` | Retry attempts for transient failures | `3` |
 | `CDX_CACHE_TTL_HOURS` | Wayback CDX cache lifetime | (see `settings.py`) |
+| `PROXIMITY_WORKER_ENABLED` | Run the background worker that keeps [transcript proximity](../architecture/transcript-proximity.md) current inside the API process | `true` |
+| `PROXIMITY_WORKER_INTERVAL_S` | Seconds the worker waits between checks when nothing is stale | `2.0` |
+| `PROXIMITY_WORKER_BATCH` | Scopes the worker recomputes per cycle | `50` |
+| `PROXIMITY_WORKER_RECONCILE_EVERY` | Every this many cycles, the worker also adds scope rows for new transcripts | `30` |
 
 See `src/chronovista/config/settings.py` for the authoritative list and default
 values.

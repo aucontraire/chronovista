@@ -13,7 +13,6 @@ orchestration runs against the test session. Name-free placeholders only (Consti
 
 from __future__ import annotations
 
-import datetime
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -25,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import chronovista.config.database as db_mod
 from chronovista.db.models import EntityMention as EntityMentionDB
-from chronovista.db.models import EntityPairProximityRollup as RollupDB
+from chronovista.db.models import EntityPairProximity as EntityPairProximityDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import RelationshipCandidate as RelationshipCandidateDB
 from chronovista.db.models import RelationshipCandidateSignal as SignalDB
@@ -38,6 +37,7 @@ from chronovista.repositories.relationship_candidate_repository import (
     RelationshipCandidateRepository,
 )
 from chronovista.services import relationship_candidate_service as svc
+from tests.factories.proximity_seed import seed_segment, seed_video
 
 pytestmark = pytest.mark.asyncio
 
@@ -64,26 +64,35 @@ async def _rollup(
     shared: int,
     min_gap: float = 3.0,
 ) -> None:
-    session.add(
-        RollupDB(
-            entity_a_id=lo,
-            entity_b_id=hi,
-            close_co_mentions_15=4,
-            close_co_mentions_30=4,
-            close_co_mentions_60=4,
-            min_gap_seconds=min_gap,
-            shared_videos=shared,
-            computed_at=datetime.datetime.now(datetime.UTC),
+    """Seed co-mention records so the DERIVED ``read_rollup`` reports ``(shared, min_gap)``.
+
+    Since Feature 117 the queue's input is derived on read from the records, so this
+    writes ``shared`` distinct videos, each with one record at ``min_gap`` seconds.
+    """
+    for n in range(shared):
+        video_id = f"tc{uuid.uuid4().hex[:12]}{n:02d}"
+        await seed_video(session, video_id)
+        seg_a = await seed_segment(session, video_id, "en", 10.0, 0)
+        seg_b = await seed_segment(session, video_id, "en", 10.0 + min_gap, 1)
+        session.add(
+            EntityPairProximityDB(
+                entity_a_id=lo,
+                entity_b_id=hi,
+                video_id=video_id,
+                language_code="en",
+                segment_a_id=seg_a,
+                segment_b_id=seg_b,
+                gap_seconds=min_gap,
+            )
         )
-    )
     await session.flush()
 
 
 async def _clear(session: AsyncSession) -> None:
     # Shared integration DB: control the populations the generator reads (candidates cascade
-    # to their children; rollup rows are the transcript pair source).
+    # to their children; co-mention records are the transcript pair source).
     await session.execute(delete(RelationshipCandidateDB))
-    await session.execute(delete(RollupDB))
+    await session.execute(delete(EntityPairProximityDB))
     await session.flush()
 
 
@@ -130,6 +139,35 @@ class TestTranscriptGenerate:
         assert child.support == 7
         assert child.lift is None
         assert child.min_gap_seconds == 3.0
+
+    async def test_queue_keeps_its_own_support_floor_over_ungated_records(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Feature 117 removed the gate from MEASUREMENT, not from the queue (FR-008).
+
+        One-video and four-video pairs now have records, but only the pair at the
+        queue's ``SUPPORT_MIN`` becomes a candidate, so ungating the primitive cannot
+        flood the deferred queue.
+        """
+        await _clear(db_session)
+        pairs = []
+        for shared in (1, svc.SUPPORT_MIN - 1, svc.SUPPORT_MIN):
+            a = await _entity(db_session, f"Floor {shared} A {uuid.uuid4().hex[:6]}")
+            b = await _entity(db_session, f"Floor {shared} B {uuid.uuid4().hex[:6]}")
+            lo, hi = (a, b) if a < b else (b, a)
+            await _rollup(db_session, lo, hi, shared=shared)
+            pairs.append((shared, lo))
+        _patch_session(monkeypatch, db_session)
+
+        summary = await svc.generate_transcript_candidates()
+
+        assert summary["written"] == 1
+        parents = (
+            (await db_session.execute(select(RelationshipCandidateDB.entity_a_id)))
+            .scalars()
+            .all()
+        )
+        assert parents == [lo for shared, lo in pairs if shared == svc.SUPPORT_MIN]
 
     async def test_transcript_merge_leaves_unreviewed_td_parent_row_untouched(
         self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch

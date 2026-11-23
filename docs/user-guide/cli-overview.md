@@ -22,7 +22,8 @@ chronovista [OPTIONS] COMMAND [ARGS]...
 
 chronovista organizes its commands into these groups: `auth`, `sync`, `topics`,
 `categories`, `tags`, `playlist`, `enrich`, `takeout`, `languages`, `transcript`,
-`recover`, `entities`, `corrections`, `identity`, `seed`, `cache`, and `api`.
+`recover`, `entities`, `corrections`, `identity`, `seed`, `cache`, `proximity`,
+and `api`.
 
 The complete, always-current list of every command, argument, and option is
 generated from the Typer application — see the
@@ -336,6 +337,56 @@ saves OR'd together, highest rewatch count), runs in a single transaction, and
 verifies integrity totals before and after — aborting and rolling back if anything
 would be lost. It writes a JSON pre-image of every row it changes under
 `data/backups/` first, and it is idempotent, so re-running it is safe.
+
+### Transcript Proximity
+
+Proximity records where two entities are mentioned close together in a
+transcript (see [Transcript proximity](../architecture/transcript-proximity.md)).
+The API keeps it current by itself: a background worker recomputes whatever a
+change made stale, typically within seconds when nothing else is pending. You need these commands only for a
+first full build without the API, for catching up while the API is stopped, and
+for checking on it.
+
+```bash
+# How current is it? Counts by state, failing scopes, the oldest stale scope,
+# and whether a rebuild is running
+chronovista proximity status
+
+# Preview what one video's transcripts would produce; writes nothing
+chronovista proximity rebuild --dry-run --video-id <video_id>
+
+# Bring every scope current (resumable: re-run it after an interruption)
+chronovista proximity rebuild
+
+# Only the scopes one entity appears in
+chronovista proximity rebuild --entity-id <entity_uuid>
+
+# Recompute everything, for example after the proximity rules change
+chronovista proximity rebuild --force
+
+# Do what the API's worker does, while the API is not running (it also creates
+# state rows for transcripts that have none yet)
+chronovista proximity drain
+
+# Retry scopes that keep failing now, instead of waiting out their backoff
+chronovista proximity retry-failed
+```
+
+A **scope** is one video's transcript in one language. It is *current* when
+computed from its latest transcript and mentions, and *stale* when they have
+changed since. Only one `rebuild` runs at a time.
+
+`rebuild` and `drain` use their own exit codes, so scripts can tell "done" from
+"not done yet":
+
+| Code | Meaning |
+|------|---------|
+| 0 | Every requested scope is current |
+| 1 | An error, or another `rebuild` is already running |
+| 75 | Work remains: some scopes are failing, waiting to retry, or busy elsewhere. The output says which, and what to do |
+
+`2` still means *invalid arguments* for these commands, as everywhere else, so a
+script can safely re-run while the exit code is `75`.
 
 ## Exit Codes
 

@@ -47,7 +47,7 @@ class VideoTranscriptRepository(
         super().__init__(VideoTranscriptDB)
         # Feature 116 (T012): a transcript (re)download rewrites a video's segments,
         # the heaviest mover of transcript mentions, so its (video, language) scope is
-        # marked dirty for a proximity recompute.
+        # marked stale for a proximity recompute.
         self._proximity_repo = EntityPairProximityRepository()
 
     async def get(
@@ -893,9 +893,9 @@ class VideoTranscriptRepository(
             return 0
 
         # Feature 116 (T012): every path past here deletes and/or recreates this
-        # (video, language)'s segments, so mark the scope dirty for a proximity
+        # (video, language)'s segments, so mark the scope stale for a proximity
         # recompute (dedupes against any other marker for the same scope).
-        await self._proximity_repo.mark_dirty(
+        await self._proximity_repo.invalidate_proximity_scopes(
             session,
             video_id=video_id,
             language_code=language_code,

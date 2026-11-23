@@ -684,7 +684,7 @@ class BatchCorrectionService:
         failed_segment_ids: list[int] = []
         affected_video_ids: set[str] = set()
         # Feature 116 (T011): (video, language) scopes where a correction created an
-        # entity mention, marked dirty so proximity can be recomputed for them.
+        # entity mention, marked stale so proximity can be recomputed for them.
         affected_scopes: set[tuple[str, str]] = set()
         matched_form_counts: dict[str, int] = {}
         # Feature 081: segments the pattern matched on their own (excluded from
@@ -905,11 +905,11 @@ class BatchCorrectionService:
             await mention_repo.update_alias_counters(session, [entity.id])
             await session.flush()
 
-            # Feature 116 (T011): mark the corrected (video, language) scopes dirty so
+            # Feature 116 (T011): mark the corrected (video, language) scopes stale so
             # the new user_correction mentions are picked up by a proximity recompute.
             proximity_repo = EntityPairProximityRepository()
-            for scope_video_id, scope_language in affected_scopes:
-                await proximity_repo.mark_dirty(
+            for scope_video_id, scope_language in sorted(affected_scopes):
+                await proximity_repo.invalidate_proximity_scopes(
                     session,
                     video_id=scope_video_id,
                     language_code=scope_language,
@@ -1805,6 +1805,20 @@ class BatchCorrectionService:
                         session, correction_ids_for_cascade
                     )
                 )
+                # Feature 117: the deleted mentions may be proximity evidence;
+                # invalidate their scopes BEFORE the delete (lock order).
+                for (
+                    scope_video_id,
+                    scope_language,
+                ) in await mention_repo.positioned_scopes_by_correction_ids(
+                    session, correction_ids_for_cascade
+                ):
+                    await EntityPairProximityRepository().invalidate_proximity_scopes(
+                        session,
+                        video_id=scope_video_id,
+                        language_code=scope_language,
+                        reason="correction",
+                    )
                 mentions_deleted_batch = await mention_repo.delete_by_correction_ids(
                     session, correction_ids_for_cascade
                 )
@@ -2027,6 +2041,19 @@ class BatchCorrectionService:
             affected_entity_ids = await mention_repo.get_entity_ids_by_correction_ids(
                 session, correction_ids_to_cascade
             )
+            # Feature 117: invalidate the deleted mentions' scopes BEFORE the delete.
+            for (
+                scope_video_id,
+                scope_language,
+            ) in await mention_repo.positioned_scopes_by_correction_ids(
+                session, correction_ids_to_cascade
+            ):
+                await EntityPairProximityRepository().invalidate_proximity_scopes(
+                    session,
+                    video_id=scope_video_id,
+                    language_code=scope_language,
+                    reason="correction",
+                )
             mentions_deleted = await mention_repo.delete_by_correction_ids(
                 session, correction_ids_to_cascade
             )
@@ -2764,6 +2791,7 @@ class BatchCorrectionService:
             try:
                 chunk_applied = 0
                 chunk_skipped = 0
+                chunk_scopes: set[tuple[str, str]] = set()
 
                 for csm in chunk:
                     pair = csm.pair
@@ -2876,9 +2904,22 @@ class BatchCorrectionService:
                         chunk_applied += (1 if a_applied else 0) + (
                             1 if b_applied else 0
                         )
+                        if entity is not None:
+                            chunk_scopes.add((seg_a.video_id, seg_a.language_code))
                     else:
                         chunk_skipped += 2
 
+                # Feature 117 (FR-010): this chunk's entity mentions commit HERE, so
+                # their proximity scopes must be invalidated in the same commit. The
+                # caller's later invalidation would come after this commit, and a
+                # failure in between would leave the mentions in "current" scopes.
+                for scope_video_id, scope_language in sorted(chunk_scopes):
+                    await EntityPairProximityRepository().invalidate_proximity_scopes(
+                        session,
+                        video_id=scope_video_id,
+                        language_code=scope_language,
+                        reason="correction",
+                    )
                 await session.commit()
                 total_applied += chunk_applied
                 total_skipped += chunk_skipped

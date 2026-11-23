@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.129.0] - 2026-11-22
+
+Transcript proximity is redirected from the candidate queue to discovery: it now measures every close
+co-mention, counts exactly the mentions the evidence panel shows, and keeps itself current
+automatically. This is the first slice of transcript association discovery; the evidence panel and
+graph slices that display it come next. The one screen it already reaches is the relationship-candidate
+queue: its transcript channel now reads records built with the stricter shared rule, so after
+upgrading, run `chronovista candidates generate` only once `chronovista proximity status` shows every
+scope current, or the queue reads a mix of old and new records.
+
+### Changed
+
+- **Proximity measures every pair, with no eligibility threshold.** A pair close together in a
+  single video is now recorded; previously only pairs sharing at least five videos were measured,
+  which left most rarely discussed entities with no proximity at all. The candidate queue keeps its
+  own five-video threshold, so it is not flooded.
+- **Proximity and the evidence panel count the same mentions.** Both use one shared rule: a
+  positioned transcript mention, not a manual assertion, whose text is one of the entity's visible
+  names (or a recovered speech-recognition error), minus manual exclusions. Each end of a pair is
+  checked separately. A guard test fails if either surface stops using the shared rule.
+- **Proximity is computed per `(video, language)` scope, and recomputed automatically.** Every change
+  that affects which mentions count (scans, entity-tagging corrections and their reverts, transcript
+  downloads, whitespace normalization, exclusions and their undo, alias and name changes) marks the
+  affected scopes stale in the same transaction. A background worker in the API process recomputes
+  them, typically within seconds when nothing else is pending (a large backlog, such as the first
+  deploy's full build, takes longer, and nothing is recomputed while the API is stopped). Each scope's records and its
+  "current" state change together, so a reader never sees a half-updated scope.
+- **`chronovista proximity rebuild`** is now resumable and crash-safe. It works in small batches,
+  re-running continues where it stopped, and only one runs at a time. It supports `--force`,
+  `--video-id`, `--entity-id`, and a non-writing `--dry-run`. `rebuild` and `drain` exit `0` when
+  everything requested is current, `1` on an error or when another rebuild is running, and `75` when
+  work remains (`2` stays Click's usage-error code); their output says why and what to do.
+- **Behavior changes to existing `proximity` commands** (shipped unreleased in 0.128.0):
+  plain `rebuild` now skips scopes that are already current (the old full recompute is
+  `rebuild --force`); an unscoped `rebuild --dry-run` now samples 20 scopes instead of covering the
+  corpus; `rebuild` and `drain` output is reworded and can now exit `75`; `drain` no longer records a
+  run row, now creates missing scope rows first (as the worker does), and its `--limit` defaults to
+  10,000 scopes (re-run to continue).
+
+### Added
+
+- **`chronovista proximity status`** shows how many scopes are current, stale, or never computed, the
+  failing scopes with their last error, the oldest stale scope, and whether a rebuild is running.
+- **`chronovista proximity retry-failed`** makes failing scopes retry now. Failures are otherwise
+  retried automatically, waiting 30 s, then 60 s, and so on up to an hour, and never hold up other
+  scopes.
+- **Pair summaries (internal read methods, not yet exposed on any route or command)**: per pair, the
+  distinct videos with a co-mention within 15, 30, 60, and 120 seconds, the segment-pair counts
+  (labeled as mention density, not separate discussions), the closest gap, and a `complete` flag that
+  is true only when every scope that could affect the pair is current. Also the scope states, and the
+  traceable records for a pair within a window. The evidence panel and graph slices will consume them.
+- **`/health` reports the proximity worker** in a new, optional `proximity_worker` object (`state`,
+  `last_cycle_at`). Existing fields are unchanged.
+- Four settings: `PROXIMITY_WORKER_ENABLED`, `PROXIMITY_WORKER_INTERVAL_S`,
+  `PROXIMITY_WORKER_BATCH`, and `PROXIMITY_WORKER_RECONCILE_EVERY`.
+
+### Removed
+
+- The stored per-pair proximity rollup table. Its numbers are now derived when read, so they can never
+  drift from the records.
+
+### Migration
+
+- One migration renames the dirty-scope queue to `proximity_scope_states` (which keeps a row per
+  scope, with its revision, rules version, and retry bookkeeping), drops the rollup table, adds an
+  index on `entity_pair_proximity.entity_b_id`, and widens the run statuses with `incomplete` and
+  `abandoned`. It applies automatically when the container restarts. Its downgrade is tested.
+
+## [0.128.0] - 2026-11-22
+
 ### Added
 
 - **Transcript proximity co-occurrence primitive** (backend infrastructure). A new first-class,

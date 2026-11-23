@@ -1,10 +1,11 @@
 """FastAPI application for chronovista API."""
 
+import asyncio
 import logging
 import os
 import time
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -48,6 +49,9 @@ from chronovista.api.routers import (
     videos,
     wikipedia_categories,
 )
+from chronovista.config.settings import settings as app_settings
+from chronovista.models.entity_pair_proximity import ProximityWorkerState
+from chronovista.services import proximity_service
 
 # Ensure application-level logs (chronovista.*) reach stdout/stderr.
 # Without this, only uvicorn's access logs appear in Docker.
@@ -69,6 +73,50 @@ SENSITIVE_PATHS: frozenset[str] = frozenset(
 )
 
 
+_PROXIMITY_WORKER_STOP_TIMEOUT_S = 10.0
+
+
+def _on_proximity_worker_done(task: asyncio.Task[None]) -> None:
+    """Mark the worker crashed (and log why) if it ended with an error."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        proximity_service.worker_status.state = ProximityWorkerState.CRASHED
+        logger.error("proximity worker terminated unexpectedly", exc_info=exc)
+
+
+def _start_proximity_worker(app: FastAPI) -> asyncio.Task[None] | None:
+    """Start the Feature 117 proximity worker unless it is disabled in settings."""
+    if not app_settings.proximity_worker_enabled:
+        proximity_service.worker_status.state = ProximityWorkerState.DISABLED
+        return None
+    stop = asyncio.Event()
+    task = asyncio.create_task(
+        proximity_service.run_proximity_worker(
+            stop,
+            interval_s=app_settings.proximity_worker_interval_s,
+            batch=app_settings.proximity_worker_batch,
+            reconcile_every=app_settings.proximity_worker_reconcile_every,
+        ),
+        name="proximity-worker",
+    )
+    task.add_done_callback(_on_proximity_worker_done)
+    app.state.proximity_worker_stop = stop
+    return task
+
+
+async def _stop_proximity_worker(app: FastAPI, task: asyncio.Task[None]) -> None:
+    """Ask the worker to stop; cancel it if it does not finish in time."""
+    app.state.proximity_worker_stop.set()
+    try:
+        await asyncio.wait_for(asyncio.shield(task), _PROXIMITY_WORKER_STOP_TIMEOUT_S)
+    except TimeoutError:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
@@ -78,7 +126,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         task_manager=onboarding._task_manager,
         onboarding_service=onboarding._get_onboarding_service(),
     )
+    worker = _start_proximity_worker(app)
     yield
+    if worker is not None:
+        await _stop_proximity_worker(app, worker)
     # Shutdown
 
 

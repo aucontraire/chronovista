@@ -4,6 +4,7 @@ Pytest configuration and fixtures for chronovista tests.
 
 from __future__ import annotations
 
+import os
 import re
 import sys
 from collections.abc import Generator
@@ -18,6 +19,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(
     0, str(Path(__file__).parent.parent)
 )  # Add project root to path for tests imports
+# Feature 117: never start the background proximity worker in a test process (a
+# lifespan-running client would otherwise write to the shared test database).
+os.environ["PROXIMITY_WORKER_ENABLED"] = "false"  # forced: not overridable
 from chronovista.config.settings import Settings
 from chronovista.container import container
 

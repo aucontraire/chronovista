@@ -1975,6 +1975,10 @@ async def create_entity_alias(
         occurrence_count=0,
     )
     db_alias = await alias_repo.create(session, obj_in=alias_create)
+    # Feature 117: a new alias is a new visible name for the entity's mentions.
+    await EntityPairProximityRepository().invalidate_proximity_scopes(
+        session, entity_id=parsed_entity_id, reason="alias"
+    )
     await session.commit()
     await session.refresh(db_alias)
 
@@ -2083,6 +2087,10 @@ async def update_entity_alias(
                 )
         alias.alias_name = body.alias_name
         alias.alias_name_normalized = normalized
+        # Feature 117: a renamed alias changes the entity's visible names.
+        await EntityPairProximityRepository().invalidate_proximity_scopes(
+            session, entity_id=alias.entity_id, reason="alias"
+        )
 
     if body.alias_type is not None:
         alias.alias_type = EntityAliasType(body.alias_type)
@@ -2601,7 +2609,7 @@ async def exclude_entity_video(
         # Feature 116 (T013): the proximity join subtracts F091 exclusions, and the
         # exclusion is keyed (entity, video) with NO language column, so a new
         # exclusion invalidates EVERY language of the video.
-        await EntityPairProximityRepository().mark_dirty_all_languages(
+        await EntityPairProximityRepository().invalidate_proximity_scopes(
             session, video_id=body.video_id, reason="exclusion"
         )
     await session.commit()
@@ -2664,7 +2672,7 @@ async def restore_entity_video(
         )
         # Feature 116 (T013): removing the exclusion re-admits the (entity, video)
         # pair to the proximity join across every language of the video.
-        await EntityPairProximityRepository().mark_dirty_all_languages(
+        await EntityPairProximityRepository().invalidate_proximity_scopes(
             session, video_id=video_id, reason="exclusion"
         )
     await session.commit()

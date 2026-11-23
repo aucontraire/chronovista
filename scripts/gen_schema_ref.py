@@ -94,12 +94,12 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     (
         "Transcript Proximity",
         "Instance-level record of two entities mentioned close in time within one "
-        "transcript language, with a per-pair rollup and a (video, language) "
-        "dirty-scope queue that keeps it fresh as mentions change.",
+        "transcript language, a per-(video, language) freshness state that is "
+        "invalidated by every mention change and recomputed automatically, and the "
+        "rebuild run log. Per-pair summaries are derived on read from the records.",
         [
             "entity_pair_proximity",
-            "entity_pair_proximity_rollup",
-            "proximity_dirty_scopes",
+            "proximity_scope_states",
             "proximity_generation_runs",
         ],
     ),

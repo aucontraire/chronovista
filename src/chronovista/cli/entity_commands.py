@@ -50,6 +50,9 @@ from chronovista.models.named_entity import NamedEntityCreate
 from chronovista.models.wikipedia_image import FallbackOutcome
 from chronovista.repositories.entity_alias_repository import EntityAliasRepository
 from chronovista.repositories.entity_mention_repository import EntityMentionRepository
+from chronovista.repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
 from chronovista.repositories.named_entity_repository import NamedEntityRepository
 from chronovista.services import wikidata_properties as wp
 from chronovista.services.entity_creation import (
@@ -415,6 +418,11 @@ def add_alias(
                 await alias_repo.create(session, obj_in=alias_create)
                 added += 1
 
+            if added:
+                # Feature 117: new aliases are new visible names for its mentions.
+                await EntityPairProximityRepository().invalidate_proximity_scopes(
+                    session, entity_id=entity.id, reason="alias"
+                )
             await session.commit()
 
             details = (
@@ -585,6 +593,11 @@ def remove_alias(
             removed_name = found.alias_name
             occurrences = found.occurrence_count
             await alias_repo.delete(session, id=found.id)
+            # Feature 117: the mentions remain, but their text is no longer a
+            # visible name, so they stop qualifying as proximity evidence.
+            await EntityPairProximityRepository().invalidate_proximity_scopes(
+                session, entity_id=found.entity_id, reason="alias_delete"
+            )
             await session.commit()
 
             note = (
@@ -709,6 +722,10 @@ def edit_alias(
                 changes.append(f"name → {new_name}")
                 found.alias_name = new_name
                 found.alias_name_normalized = normalized
+                # Feature 117: a renamed alias changes the entity's visible names.
+                await EntityPairProximityRepository().invalidate_proximity_scopes(
+                    session, entity_id=found.entity_id, reason="alias"
+                )
             if new_type is not None:
                 # 'asr_error' is already rejected upstream by `allowed_types`
                 # (it lists only the five name types), so the free-form type

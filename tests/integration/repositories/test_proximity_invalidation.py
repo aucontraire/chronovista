@@ -1,11 +1,14 @@
-"""Dirty-scope round-trip for the proximity freshness queue (Feature 116, T017).
+"""The single proximity invalidation operation (Feature 117, FR-010/FR-011).
 
-Crosses the real seam: ``mark_dirty`` writes ``proximity_dirty_scopes``, then
-``drain_dirty_scopes`` recomputes through the real computor and clears the row.
-Assertions are on persisted instance / queue rows, never on a mock's return.
+``invalidate_proximity_scopes`` is the ONE way producers mark ``(video, language)``
+scopes stale. These tests cross the real database: revision and failure-reset
+semantics, the three scope-selection modes (one scope, every language of a video,
+every scope an entity touches, including scopes reachable only through stored
+records), argument validation, and the durability property that it writes inside
+the caller's transaction without committing.
 
-Each test first asserts the stale state is still visible BEFORE the drain, so a
-passing "after" assertion cannot be satisfied by the seed alone.
+The incremental-equals-full equivalence test (SC-003) lands here with Feature 117
+T027, once scope processing exists.
 """
 
 from __future__ import annotations
@@ -13,228 +16,183 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from sqlalchemy import delete, func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from chronovista.db.models import EntityMention as EntityMentionDB
 from chronovista.db.models import EntityPairProximity as EntityPairProximityDB
-from chronovista.db.models import ProximityDirtyScope as ProximityDirtyScopeDB
+from chronovista.db.models import ProximityScopeState as ProximityScopeStateDB
 from chronovista.repositories.entity_pair_proximity_repository import (
     EntityPairProximityRepository,
 )
-from chronovista.services.proximity_service import (
-    SUPPORT_MIN,
-    drain_dirty_scopes,
-    rebuild_proximity,
-)
 from tests.factories.proximity_seed import (
     canonical,
-    route_proximity_service_to,
     seed_entity,
     seed_mention,
+    seed_scope_state,
     seed_segment,
     seed_video,
 )
 
 pytestmark = pytest.mark.asyncio
 
-_LANG = "en"
+
+def _vid(tag: str) -> str:
+    return f"inv117{tag}{uuid.uuid4().hex[:8]}"
 
 
-def _videos(prefix: str, count: int) -> list[str]:
-    return [f"{prefix}{n:02d}" for n in range(count)]
-
-
-async def _pair_instances(
-    session: AsyncSession,
-    pair: tuple[uuid.UUID, uuid.UUID],
-    video_id: str | None = None,
-) -> int:
-    stmt = (
-        select(func.count())
-        .select_from(EntityPairProximityDB)
-        .where(
-            EntityPairProximityDB.entity_a_id == pair[0],
-            EntityPairProximityDB.entity_b_id == pair[1],
-        )
+async def _states(
+    session: AsyncSession, video_id: str
+) -> dict[str, ProximityScopeStateDB]:
+    rows = await session.execute(
+        select(ProximityScopeStateDB)
+        .where(ProximityScopeStateDB.video_id == video_id)
+        .execution_options(populate_existing=True)
     )
-    if video_id is not None:
-        stmt = stmt.where(EntityPairProximityDB.video_id == video_id)
-    return int((await session.execute(stmt)).scalar_one())
+    return {row.language_code: row for row in rows.scalars().all()}
 
 
-async def _dirty_count(session: AsyncSession, video_id: str) -> int:
-    return int(
-        (
-            await session.execute(
-                select(func.count())
-                .select_from(ProximityDirtyScopeDB)
-                .where(ProximityDirtyScopeDB.video_id == video_id)
-            )
-        ).scalar_one()
-    )
-
-
-async def _seed_corpus(
-    session: AsyncSession,
-    videos: list[str],
-    entities: list[tuple[uuid.UUID, float]],
-    skip: set[tuple[uuid.UUID, str]] | None = None,
-) -> None:
-    """Every video gets one segment + mention per (entity, start_time)."""
-    skip = skip or set()
-    for video_id in videos:
-        await seed_video(session, video_id, (_LANG,))
-        for sequence, (entity_id, start) in enumerate(entities):
-            if (entity_id, video_id) in skip:
-                continue
-            segment = await seed_segment(session, video_id, _LANG, start, sequence)
-            await seed_mention(
-                session,
-                entity_id=entity_id,
-                video_id=video_id,
-                language_code=_LANG,
-                segment_id=segment,
-            )
-
-
-class TestAdditiveCorrectionShape:
-    async def test_new_close_pair_appears_after_dirty_drain(
-        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+class TestRevisionSemantics:
+    async def test_first_invalidation_inserts_revision_one(
+        self, db_session: AsyncSession
     ) -> None:
-        """A correction adds a mention that forms a NEW close pair.
+        video_id = _vid("a")
+        await seed_video(db_session, video_id)
 
-        C is mentioned far from A in the first SUPPORT_MIN-1 videos (counts
-        toward support, yields no instance: gap > window), so (A, C) is one
-        shared video short of scope. Adding C next to A in the last video
-        tips support to SUPPORT_MIN AND creates the close instance.
-        """
-        a = await seed_entity(db_session)
-        b = await seed_entity(db_session)
-        c = await seed_entity(db_session)
-        videos = _videos("inv116add", SUPPORT_MIN)
-        target = videos[-1]
-        await _seed_corpus(
-            db_session,
-            videos,
-            [(a, 10.0), (b, 20.0), (c, 500.0)],
-            skip={(c, target)},
+        touched = await EntityPairProximityRepository().invalidate_proximity_scopes(
+            db_session, video_id=video_id, language_code="en", reason="scan"
         )
-        await db_session.commit()
-        route_proximity_service_to(monkeypatch, db_session)
-        await rebuild_proximity(video_ids=videos)
 
-        ab, ac = canonical(a, b), canonical(a, c)
-        assert await _pair_instances(db_session, ab) == SUPPORT_MIN
-        assert await _pair_instances(db_session, ac) == 0, "precondition"
+        assert touched == 1
+        state = (await _states(db_session, video_id))["en"]
+        assert state.revision == 1
+        assert state.computed_revision is None  # not computed yet
+        assert state.reason == "scan"
 
-        # The correction: C now appears 5s from A in the target video.
-        segment = await seed_segment(db_session, target, _LANG, 15.0, 9)
+    async def test_reinvalidation_bumps_revision_and_resets_failures(
+        self, db_session: AsyncSession
+    ) -> None:
+        video_id = _vid("b")
+        await seed_video(db_session, video_id)
+        await seed_scope_state(
+            db_session,
+            video_id=video_id,
+            language_code="en",
+            state="failing",
+            attempts=4,
+        )
+
+        await EntityPairProximityRepository().invalidate_proximity_scopes(
+            db_session, video_id=video_id, language_code="en", reason="correction"
+        )
+
+        state = (await _states(db_session, video_id))["en"]
+        assert state.revision == 3  # seeded at 2, bumped once
+        assert state.attempts == 0
+        assert state.failed_rule_version is None
+        assert state.next_attempt_at is None
+        assert state.last_error is None
+        assert state.reason == "correction"
+
+
+class TestScopeSelection:
+    async def test_video_alone_covers_every_transcript_language(
+        self, db_session: AsyncSession
+    ) -> None:
+        video_id = _vid("c")
+        await seed_video(db_session, video_id, ("en", "fr", "es"))
+
+        touched = await EntityPairProximityRepository().invalidate_proximity_scopes(
+            db_session, video_id=video_id, reason="exclusion"
+        )
+
+        assert touched == 3
+        assert set(await _states(db_session, video_id)) == {"en", "fr", "es"}
+
+    async def test_entity_covers_mention_scopes_and_record_only_scopes(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Entity mode is mentions UNION stored records (research R8).
+
+        ``mentioned`` holds a positioned mention of the entity. ``evidence_only``
+        holds no mention any more, only a stale record that references the entity
+        (as after its last mention was removed). Both must be invalidated, and a
+        video the entity never touched must not be.
+        """
+        entity = await seed_entity(db_session)
+        partner = await seed_entity(db_session)
+        mentioned, evidence_only, untouched = _vid("m"), _vid("r"), _vid("u")
+        for video_id in (mentioned, evidence_only, untouched):
+            await seed_video(db_session, video_id)
+        segment = await seed_segment(db_session, mentioned, "en", 10.0, 0)
         await seed_mention(
             db_session,
-            entity_id=c,
-            video_id=target,
-            language_code=_LANG,
+            entity_id=entity,
+            video_id=mentioned,
+            language_code="en",
             segment_id=segment,
         )
-        await EntityPairProximityRepository().mark_dirty(
-            db_session, video_id=target, language_code=_LANG, reason="correction"
-        )
-        await db_session.commit()
-
-        assert await _dirty_count(db_session, target) == 1
-        assert (
-            await _pair_instances(db_session, ac) == 0
-        ), "recompute happened before the drain - test proves nothing"
-
-        summary = await drain_dirty_scopes()
-
-        assert await _dirty_count(db_session, target) == 0, "dirty row not cleared"
-        assert await _pair_instances(db_session, ac, target) == 1
-        assert await _pair_instances(db_session, canonical(b, c), target) == 1
-        assert await _pair_instances(db_session, ab) == SUPPORT_MIN
-        assert summary["scopes_drained"] == 1
-        # target video recomputed: AB + AC + BC, one instance each.
-        assert summary["instances_written"] == 3
-
-
-class TestAddAndRemoveScanShape:
-    async def _seed_pair_corpus(
-        self, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-    ) -> tuple[uuid.UUID, uuid.UUID, list[str]]:
-        a = await seed_entity(session)
-        b = await seed_entity(session)
-        # One spare video so removing A from one still leaves SUPPORT_MIN.
-        videos = _videos("inv116scn", SUPPORT_MIN + 1)
-        await _seed_corpus(session, videos, [(a, 10.0), (b, 20.0)])
-        await session.commit()
-        route_proximity_service_to(monkeypatch, session)
-        await rebuild_proximity(video_ids=videos)
-        assert await _pair_instances(session, canonical(a, b)) == SUPPORT_MIN + 1
-        return a, b, videos
-
-    async def test_removed_mention_drops_stale_instance(
-        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        a, b, videos = await self._seed_pair_corpus(db_session, monkeypatch)
-        target = videos[-1]
-        pair = canonical(a, b)
-
-        await db_session.execute(
-            delete(EntityMentionDB).where(
-                EntityMentionDB.entity_id == a, EntityMentionDB.video_id == target
+        seg_a = await seed_segment(db_session, evidence_only, "en", 10.0, 0)
+        seg_b = await seed_segment(db_session, evidence_only, "en", 12.0, 1)
+        a, b = canonical(entity, partner)
+        db_session.add(
+            EntityPairProximityDB(
+                entity_a_id=a,
+                entity_b_id=b,
+                video_id=evidence_only,
+                language_code="en",
+                segment_a_id=seg_a,
+                segment_b_id=seg_b,
+                gap_seconds=2.0,
             )
         )
-        await EntityPairProximityRepository().mark_dirty(
-            db_session, video_id=target, language_code=_LANG, reason="scan"
+        await db_session.flush()
+
+        touched = await EntityPairProximityRepository().invalidate_proximity_scopes(
+            db_session, entity_id=entity, reason="alias"
         )
-        await db_session.commit()
 
-        assert (
-            await _pair_instances(db_session, pair, target) == 1
-        ), "stale instance should persist until the drain"
+        assert touched == 2
+        assert "en" in await _states(db_session, mentioned)
+        assert "en" in await _states(db_session, evidence_only)
+        assert await _states(db_session, untouched) == {}
 
-        summary = await drain_dirty_scopes()
 
-        assert await _pair_instances(db_session, pair, target) == 0
-        assert (
-            await _pair_instances(db_session, pair) == SUPPORT_MIN
-        ), "untouched videos must not be recomputed away"
-        assert await _dirty_count(db_session, target) == 0
-        assert summary == {"scopes_drained": 1, "instances_written": 0}
-
-    async def test_relocated_mention_replaces_instance_with_nothing(
-        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+class TestArguments:
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {},
+            {"video_id": "v", "entity_id": uuid.uuid4()},
+            {"language_code": "en", "entity_id": uuid.uuid4()},
+        ],
+    )
+    async def test_rejects_ambiguous_or_missing_selectors(
+        self, db_session: AsyncSession, kwargs: dict[str, object]
     ) -> None:
-        """Scan removes A's close mention and adds one far away (add + remove).
+        with pytest.raises(ValueError):
+            await EntityPairProximityRepository().invalidate_proximity_scopes(
+                db_session, reason="scan", **kwargs  # type: ignore[arg-type]
+            )
 
-        Delete-then-reinsert semantics: the old close instance goes, and the
-        new far mention (gap > window) contributes no replacement.
+
+class TestDurability:
+    async def test_writes_in_the_callers_transaction_without_committing(
+        self, db_session: AsyncSession
+    ) -> None:
+        """FR-010: the invalidation shares the caller's fate.
+
+        It is visible inside the caller's transaction, and a rollback of that
+        transaction (a producer whose change fails) discards it too, so an
+        invalidation can never outlive a change that did not commit.
         """
-        a, b, videos = await self._seed_pair_corpus(db_session, monkeypatch)
-        target = videos[-1]
-        pair = canonical(a, b)
-
-        await db_session.execute(
-            delete(EntityMentionDB).where(
-                EntityMentionDB.entity_id == a, EntityMentionDB.video_id == target
-            )
-        )
-        far = await seed_segment(db_session, target, _LANG, 900.0, 9)
-        await seed_mention(
-            db_session,
-            entity_id=a,
-            video_id=target,
-            language_code=_LANG,
-            segment_id=far,
-        )
-        await EntityPairProximityRepository().mark_dirty(
-            db_session, video_id=target, language_code=_LANG, reason="scan"
-        )
+        video_id = _vid("d")
+        await seed_video(db_session, video_id)
         await db_session.commit()
 
-        summary = await drain_dirty_scopes()
+        await EntityPairProximityRepository().invalidate_proximity_scopes(
+            db_session, video_id=video_id, language_code="en", reason="scan"
+        )
+        assert "en" in await _states(db_session, video_id)
 
-        assert await _pair_instances(db_session, pair, target) == 0
-        assert await _pair_instances(db_session, pair) == SUPPORT_MIN
-        assert summary == {"scopes_drained": 1, "instances_written": 0}
+        await db_session.rollback()
+        assert await _states(db_session, video_id) == {}

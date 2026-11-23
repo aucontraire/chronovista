@@ -3380,7 +3380,7 @@ class TestApplyToSegmentsEntityMentionCreation:
             patch(
                 "chronovista.services.batch_correction_service."
                 "EntityPairProximityRepository",
-                return_value=MagicMock(mark_dirty=mark_dirty),
+                return_value=MagicMock(invalidate_proximity_scopes=mark_dirty),
             ),
         ):
             mock_repo_instance = AsyncMock()
@@ -3479,7 +3479,7 @@ class TestApplyToSegmentsEntityMentionCreation:
             patch(
                 "chronovista.services.batch_correction_service."
                 "EntityPairProximityRepository",
-                return_value=MagicMock(mark_dirty=mark_dirty),
+                return_value=MagicMock(invalidate_proximity_scopes=mark_dirty),
             ),
         ):
             mock_repo_instance = AsyncMock()
@@ -3544,7 +3544,7 @@ class TestApplyToSegmentsEntityCounterUpdate:
             patch(
                 "chronovista.services.batch_correction_service."
                 "EntityPairProximityRepository",
-                return_value=MagicMock(mark_dirty=mark_dirty),
+                return_value=MagicMock(invalidate_proximity_scopes=mark_dirty),
             ),
         ):
             mock_repo_instance = AsyncMock()

@@ -1976,7 +1976,7 @@ class TestSegmentCreationInCreateOrUpdate:
         # so it must invalidate proximity; spy on it so the session's execute()
         # count below still reflects only the delete.
         mark_dirty = AsyncMock()
-        repository._proximity_repo = MagicMock(mark_dirty=mark_dirty)
+        repository._proximity_repo = MagicMock(invalidate_proximity_scopes=mark_dirty)
 
         count = await repository._create_segments_from_raw_data(
             mock_session,
@@ -1991,7 +1991,7 @@ class TestSegmentCreationInCreateOrUpdate:
         # Should still call execute to delete any existing segments
         mock_session.execute.assert_called_once()
 
-        # The delete changes this scope's segments, so it is marked dirty
+        # The delete changes this scope's segments, so it is marked stale
         mark_dirty.assert_awaited_once_with(
             mock_session,
             video_id="dQw4w9WgXcQ",

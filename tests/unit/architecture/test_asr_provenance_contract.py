@@ -138,6 +138,10 @@ def test_alias_linkable_methods_are_rule_match_only() -> None:
 # qualifies transcript mentions via the shared predicate (admits asr_match, excludes manual) so the
 # evidence panel and the CO_OCCURS_* counts share one mention definition (FR-014).
 _EXPECTED_QUALIFICATION_CALL_SITES = 8
+# Feature 117: the evidence panel reaches the shared predicate through
+# ``positioned_transcript_mention_qualifies`` (the rule it shares with proximity), so
+# it is counted there rather than as a direct call. The surface count is unchanged.
+_EXPECTED_POSITIONED_SURFACES_IN_MODULE = 1
 
 
 def test_all_association_surfaces_use_the_shared_qualification() -> None:
@@ -153,7 +157,16 @@ def test_all_association_surfaces_use_the_shared_qualification() -> None:
     that the new/removed site admits ``asr_match`` via the shared predicate.
     """
     source = Path(_mention_repo_module.__file__).read_text(encoding="utf-8")
-    call_sites = source.count("_mention_qualifies_as_association(visible_names)")
+    direct = source.count("_mention_qualifies_as_association(visible_names)")
+    # Calls of the positioned rule in THIS module (its definition is excluded).
+    positioned = source.count(
+        "positioned_transcript_mention_qualifies("
+    ) - source.count("def positioned_transcript_mention_qualifies(")
+    assert positioned == _EXPECTED_POSITIONED_SURFACES_IN_MODULE
+    # The positioned rule must itself delegate to the shared predicate, or the
+    # surfaces counted through it would not admit asr_match.
+    assert "_mention_qualifies_as_association(visible_names, mention)" in source
+    call_sites = direct + positioned
     assert call_sites == _EXPECTED_QUALIFICATION_CALL_SITES, (
         f"expected {_EXPECTED_QUALIFICATION_CALL_SITES} association surfaces to call "
         f"the shared qualification helper, found {call_sites}. If you added or "

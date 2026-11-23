@@ -1,4 +1,4 @@
-"""Seeding helpers for Feature 116 (transcript proximity) integration tests.
+"""Seeding helpers for Features 116/117 (transcript proximity) integration tests.
 
 Everything is synthetic: entities come from ``NamedEntityDBFactory`` (sequence
 names) and video ids are generated, so no library data appears in a fixture.
@@ -17,13 +17,17 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from chronovista.db.models import EntityMention as EntityMentionDB
+from chronovista.db.models import EntityPairProximity as EntityPairProximityDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
+from chronovista.db.models import ProximityScopeState as ProximityScopeStateDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
+from chronovista.services.proximity_service import MEASUREMENT_RULE_VERSION
 from tests.factories.named_entity_orm_factory import create_named_entity_db
 
 
@@ -37,6 +41,47 @@ class _SessionScope:
     async def session(self, echo: bool | None = None) -> AsyncIterator[AsyncSession]:
         yield self._session
         await self._session.flush()
+
+    def get_engine(self) -> AsyncEngine:
+        """The session's engine, for code that needs its own connection (locks)."""
+        bind = self._session.bind
+        assert isinstance(bind, AsyncEngine)
+        return bind
+
+
+class _EngineScope:
+    """Stand-in for ``db_manager`` over a real engine: a NEW session per call that
+    commits on success and rolls back on error (``db_manager.session`` semantics).
+
+    Unlike :class:`_SessionScope`, concurrent callers get separate connections, so
+    row locks and transactions behave as they do in production.
+    """
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self._engine = engine
+        self._factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    def get_engine(self) -> AsyncEngine:
+        return self._engine
+
+    @asynccontextmanager
+    async def session(self, echo: bool | None = None) -> AsyncIterator[AsyncSession]:
+        async with self._factory() as session:
+            try:
+                yield session
+                await session.commit()
+            except BaseException:
+                await session.rollback()
+                raise
+
+
+def route_proximity_service_to_engine(
+    monkeypatch: pytest.MonkeyPatch, engine: AsyncEngine
+) -> None:
+    """Make ``proximity_service`` open real, separate sessions on ``engine``."""
+    monkeypatch.setattr(
+        "chronovista.services.proximity_service.db_manager", _EngineScope(engine)
+    )
 
 
 def route_proximity_service_to(
@@ -128,8 +173,23 @@ async def seed_mention(
     language_code: str,
     segment_id: int,
     end_segment_id: int | None = None,
+    mention_text: str | None = None,
+    detection_method: str = "rule_match",
 ) -> None:
-    """Persist one transcript-source mention anchored at ``segment_id``."""
+    """Persist one transcript-source mention anchored at ``segment_id``.
+
+    ``mention_text`` defaults to the entity's canonical (placeholder) name, so the
+    mention satisfies the shared visible-name qualification rule (Feature 117). Pass
+    a non-name text to seed a mention that should NOT qualify.
+    """
+    if mention_text is None:
+        mention_text = (
+            await session.execute(
+                select(NamedEntityDB.canonical_name).where(
+                    NamedEntityDB.id == entity_id
+                )
+            )
+        ).scalar_one()
     session.add(
         EntityMentionDB(
             entity_id=entity_id,
@@ -137,8 +197,8 @@ async def seed_mention(
             end_segment_id=end_segment_id,
             video_id=video_id,
             language_code=language_code,
-            mention_text="placeholder",
-            detection_method="rule_match",
+            mention_text=mention_text,
+            detection_method=detection_method,
             mention_source="transcript",
         )
     )
@@ -160,14 +220,16 @@ async def seed_pair_in_videos(
     b_time: float,
     language_code: str = "en",
     a_end_time: float | None = None,
-) -> None:
+) -> list[tuple[int, int]]:
     """Co-mention two entities in every video of ``video_ids``.
 
     Creates each video (single transcript language), one segment per mention at
     the given start times, and the transcript mentions. When ``a_end_time`` is
     given, A's mention is cross-segment: ``segment_id`` is the start segment
-    (``a_time``) and ``end_segment_id`` the segment at ``a_end_time``.
+    (``a_time``) and ``end_segment_id`` the segment at ``a_end_time``. Returns the
+    ``(segment_a_id, segment_b_id)`` start segments, one pair per video, in order.
     """
+    segments: list[tuple[int, int]] = []
     for video_id in video_ids:
         await seed_video(session, video_id, (language_code,))
         seg_a = await seed_segment(session, video_id, language_code, a_time, 0)
@@ -192,3 +254,62 @@ async def seed_pair_in_videos(
             language_code=language_code,
             segment_id=seg_b,
         )
+        segments.append((seg_a, seg_b))
+    return segments
+
+
+async def seed_scope_state(
+    session: AsyncSession,
+    *,
+    video_id: str,
+    language_code: str,
+    state: str,
+    rule_version: str = MEASUREMENT_RULE_VERSION,
+    attempts: int = 0,
+) -> None:
+    """Persist one ``proximity_scope_states`` row in a given state.
+
+    ``state`` is ``"not_computed"`` (no published result), ``"current"`` (published
+    from the latest revision under ``rule_version``), ``"stale"`` (published from an
+    older revision), or ``"failing"`` (not computed, ``attempts`` failures under
+    ``rule_version``; pass ``attempts`` >= 3 for the flagged case).
+    """
+    row = ProximityScopeStateDB(
+        video_id=video_id, language_code=language_code, revision=2, attempts=attempts
+    )
+    if state == "current":
+        row.computed_revision, row.computed_rule_version = 2, rule_version
+        row.computed_at = datetime.now(UTC)
+    elif state == "stale":
+        row.computed_revision, row.computed_rule_version = 1, rule_version
+        row.computed_at = datetime.now(UTC)
+    elif state == "failing":
+        row.failed_rule_version = rule_version
+        row.last_error = "seeded failure"
+    elif state != "not_computed":
+        raise ValueError(f"unknown scope state {state!r}")
+    session.add(row)
+    await session.flush()
+
+
+LogicalRecord = tuple[uuid.UUID, uuid.UUID, str, str, int, int, float]
+
+
+async def logical_records(session: AsyncSession) -> set[LogicalRecord]:
+    """All co-mention records by logical key (excludes generated ``id``/``computed_at``).
+
+    The gap is rounded to microseconds so float round-trips compare equal. Used to
+    assert incremental maintenance equals a full rebuild (SC-003).
+    """
+    rows = await session.execute(
+        select(
+            EntityPairProximityDB.entity_a_id,
+            EntityPairProximityDB.entity_b_id,
+            EntityPairProximityDB.video_id,
+            EntityPairProximityDB.language_code,
+            EntityPairProximityDB.segment_a_id,
+            EntityPairProximityDB.segment_b_id,
+            EntityPairProximityDB.gap_seconds,
+        )
+    )
+    return {(r[0], r[1], r[2], r[3], r[4], r[5], round(r[6], 6)) for r in rows.all()}

@@ -754,7 +754,7 @@ class EntityMentionScanService:
         self._mention_repo = EntityMentionRepository()
         self._asr_error_repo = EntityAsrErrorRepository()
         # Feature 116: producer hook — every durable transcript-mention change marks
-        # its (video, language) scope dirty so proximity can be recomputed (T010).
+        # its (video, language) scope stale so proximity can be recomputed (T010).
         self._proximity_repo = EntityPairProximityRepository()
 
     # ------------------------------------------------------------------
@@ -1025,7 +1025,7 @@ class EntityMentionScanService:
                         )
 
                     # Feature 116 (T010): mark the (video, language) scopes this batch
-                    # changed dirty, committed with the batch so invalidation is as
+                    # changed stale, committed with the batch so invalidation is as
                     # durable as the mention write. Inserts come from the new mentions;
                     # pure removals (a --full delete that re-inserts nothing for a
                     # scope) are covered by the scanned segments when a delete occurred.
@@ -1038,8 +1038,8 @@ class EntityMentionScanService:
                         batch_scopes.update(
                             (r.video_id, r.language_code) for r in batch_rows
                         )
-                    for scope_video_id, scope_language in batch_scopes:
-                        await self._proximity_repo.mark_dirty(
+                    for scope_video_id, scope_language in sorted(batch_scopes):
+                        await self._proximity_repo.invalidate_proximity_scopes(
                             session,
                             video_id=scope_video_id,
                             language_code=scope_language,
@@ -1491,9 +1491,9 @@ class EntityMentionScanService:
                 await self._mention_repo.update_entity_counters(session, list(touched))
                 await self._mention_repo.update_alias_counters(session, list(touched))
             # Feature 116 (T010): a spanning-mention add/remove changes proximity too,
-            # so mark this transcript's (video, language) dirty when it mutated.
+            # so mark this transcript's (video, language) stale when it mutated.
             if mentions or delete_affected or suppression_targets:
-                await self._proximity_repo.mark_dirty(
+                await self._proximity_repo.invalidate_proximity_scopes(
                     session, video_id=video_id, language_code=lang, reason="scan"
                 )
             await session.commit()

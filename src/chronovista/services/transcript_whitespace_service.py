@@ -120,7 +120,7 @@ class TranscriptWhitespaceBackfillService:
         # for videos that have corrections); skipped when not provided.
         self._rebuild_text = rebuild_text
         # Feature 116 (T012): normalizing a video's segment text shifts mention
-        # offsets and triggers a re-scan, so the video's languages are marked dirty
+        # offsets and triggers a re-scan, so the video's languages are marked stale
         # for a proximity recompute.
         self._proximity_repo = EntityPairProximityRepository()
 
@@ -255,10 +255,10 @@ class TranscriptWhitespaceBackfillService:
                     .where(TranscriptSegmentDB.id == seg_id)
                     .values(text=normalized)
                 )
-            # Feature 116 (T012): mark every language of this video dirty — the
+            # Feature 116 (T012): mark every language of this video stale — the
             # re-scan below regenerates its transcript mentions. Committed with the
             # normalization so the invalidation is as durable as the text change.
-            await self._proximity_repo.mark_dirty_all_languages(
+            await self._proximity_repo.invalidate_proximity_scopes(
                 session, video_id=video_id, reason="whitespace"
             )
             await session.commit()

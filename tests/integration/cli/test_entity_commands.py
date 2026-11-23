@@ -19,12 +19,13 @@ Pattern mirrors tests/integration/cli/test_tag_management_commands.py.
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from typer.testing import CliRunner
 
@@ -951,7 +952,22 @@ class TestBackfillDescriptionsCommand:
 class TestAddAliasCommand:
     """Integration tests for `chronovista entities add-alias`."""
 
-    def test_add_alias_exit_code_zero(self) -> None:
+    @pytest.fixture(autouse=True)
+    def proximity_repo(self) -> Iterator[MagicMock]:
+        """Feature 117: adding aliases invalidates the entity's proximity scopes.
+
+        The session mock returns a fixed list of results, so the extra statement is
+        patched out here, the same way the alias repository is.
+        """
+        with patch(
+            "chronovista.cli.entity_commands.EntityPairProximityRepository"
+        ) as repo_cls:
+            repo_cls.return_value.invalidate_proximity_scopes = AsyncMock(
+                return_value=1
+            )
+            yield repo_cls.return_value
+
+    def test_add_alias_exit_code_zero(self, proximity_repo: MagicMock) -> None:
         """Adding an alias to an existing entity returns exit code 0."""
         mock_entity = _make_mock_entity()
 
@@ -986,6 +1002,11 @@ class TestAddAliasCommand:
         assert result.exit_code == 0, f"Output: {result.output}"
         assert "Alias" in result.output
         assert "Added" in result.output
+        proximity_repo.invalidate_proximity_scopes.assert_awaited_once()
+        assert (
+            proximity_repo.invalidate_proximity_scopes.await_args.kwargs["entity_id"]
+            == mock_entity.id
+        )
 
     def test_add_alias_output_shows_entity_name_and_count(self) -> None:
         """Output contains entity name and alias added count."""

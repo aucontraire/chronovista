@@ -133,7 +133,9 @@ def _folded(col: ColumnExpressionArgument[str]) -> ColumnElement[str]:
     return func.lower(func.unaccent(col))
 
 
-def _visible_names_subquery(entity_ids: list[uuid.UUID] | None) -> Subquery:
+def _visible_names_subquery(
+    entity_ids: list[uuid.UUID] | Select[tuple[uuid.UUID]] | None,
+) -> Subquery:
     """The folded "visible names" (canonical name + non-ASR aliases) for the
     visible-name mention rule (#89).
 
@@ -145,7 +147,9 @@ def _visible_names_subquery(entity_ids: list[uuid.UUID] | None) -> Subquery:
     counting raw ``entity_mentions`` instead of visible-name-matched ones).
 
     ``entity_ids=None`` covers ALL entities (the video-set-anchored co-occurrence
-    shape); a list bounds it. Exposes ``entity_id`` and ``name_lower``; a
+    shape); a list, or a non-correlated SELECT of entity ids, bounds it. Bound it
+    whenever possible: Postgres cannot push a join condition into a ``UNION``, so an
+    unbounded set is folded and hashed in full on every execution. Exposes ``entity_id`` and ``name_lower``; a
     single-entity caller may ignore the ``entity_id`` column.
     """
     canonical = select(
@@ -162,7 +166,9 @@ def _visible_names_subquery(entity_ids: list[uuid.UUID] | None) -> Subquery:
     return union(canonical, alias).subquery()
 
 
-def _mention_qualifies_as_association(visible_names: Subquery) -> ColumnElement[bool]:
+def _mention_qualifies_as_association(
+    visible_names: Subquery, mention: type[EntityMentionDB] = EntityMentionDB
+) -> ColumnElement[bool]:
     """Predicate: a mention row counts as a real entity->video association.
 
     The ONE committed qualification rule, shared by every association surface so a
@@ -180,11 +186,45 @@ def _mention_qualifies_as_association(visible_names: Subquery) -> ColumnElement[
     its entity's canonical name, with the stored ``mention_text`` available as
     detail. Callers LEFT OUTER JOIN ``visible_names`` (on entity_id + folded text)
     so the name arm can be evaluated; name-exempt rows pass via the method arm even
-    with no join match.
+    with no join match. ``mention`` is the (possibly aliased) mention entity the
+    predicate is evaluated for; a self-join passes each alias in turn.
     """
     return or_(
-        _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
-        EntityMentionDB.detection_method.in_(NAME_EXEMPT_DETECTION_METHODS),
+        _folded(mention.mention_text) == visible_names.c.name_lower,
+        mention.detection_method.in_(NAME_EXEMPT_DETECTION_METHODS),
+    )
+
+
+def positioned_transcript_mention_qualifies(
+    mention: type[EntityMentionDB], visible_names: Subquery
+) -> ColumnElement[bool]:
+    """Predicate: a mention counts as positioned transcript evidence for a pair.
+
+    The ONE rule shared by the evidence panel (:meth:`EntityMentionRepository.co_occurrence_evidence`)
+    and the proximity record computation (``entity_pair_proximity_repository._instance_select``),
+    so the passages a reviewer opens and the co-mentions proximity counts are drawn from the same
+    mentions (Feature 117, FR-001..FR-003). A mention qualifies when it is:
+
+    - transcript-sourced and anchored to a segment (positioned), and
+    - not a ``manual`` assertion (manual is name-exempt for association, but has no position), and
+    - real by the association rule (:func:`_mention_qualifies_as_association`): its folded text is
+      one of the entity's visible names, or its detection method is name-exempt (``asr_match``).
+
+    The caller owns the rest of the join: ``visible_names`` must be LEFT OUTER JOINed **for this
+    alias** (``entity_id = mention.entity_id`` and the folded text equal), the segment join must
+    match on id AND language, and manual (entity, video) exclusions are the caller's anti-join.
+    A self-join applies this once per endpoint, with its own visible-names join each.
+
+    Window semantics (contract C3) are not part of qualification: two qualifying mentions
+    co-occur within a window ``w`` when they are in the same video and language and
+    ``abs(start(A) - start(B)) <= w``, start-anchored (a cross-segment mention is positioned by its
+    start segment), inclusive.
+    """
+    return and_(
+        mention.mention_source == "transcript",
+        mention.segment_id.is_not(None),
+        mention.detection_method != "manual",
+        _mention_qualifies_as_association(visible_names, mention),
     )
 
 
@@ -872,6 +912,31 @@ class EntityMentionRepository(
         )
         result = await session.execute(stmt)
         return int(result.rowcount)
+
+    async def positioned_scopes_by_correction_ids(
+        self,
+        session: AsyncSession,
+        correction_ids: list[uuid.UUID],
+    ) -> list[tuple[str, str]]:
+        """Distinct ``(video_id, language_code)`` scopes of correction-linked mentions.
+
+        Only positioned transcript mentions carry a proximity scope. Returned sorted,
+        the lock order producers must invalidate in (Feature 117).
+        """
+        if not correction_ids:
+            return []
+        result = await session.execute(
+            select(EntityMentionDB.video_id, EntityMentionDB.language_code)
+            .where(
+                EntityMentionDB.correction_id.in_(correction_ids),
+                EntityMentionDB.mention_source == MentionSource.TRANSCRIPT.value,
+                EntityMentionDB.segment_id.is_not(None),
+                EntityMentionDB.language_code.is_not(None),
+            )
+            .distinct()
+            .order_by(EntityMentionDB.video_id, EntityMentionDB.language_code)
+        )
+        return [(row[0], row[1]) for row in result.all()]
 
     async def get_entity_ids_by_correction_ids(
         self,
@@ -2828,11 +2893,10 @@ class EntityMentionRepository(
                 )
                 .where(
                     EntityMentionDB.entity_id.in_([entity_a, entity_b]),
-                    EntityMentionDB.mention_source == "transcript",
-                    EntityMentionDB.detection_method != "manual",
                     EntityMentionDB.video_id.in_(co_videos),
-                    EntityMentionDB.segment_id.isnot(None),
-                    _mention_qualifies_as_association(visible_names),
+                    positioned_transcript_mention_qualifies(
+                        EntityMentionDB, visible_names
+                    ),
                 )
                 .distinct()
             )

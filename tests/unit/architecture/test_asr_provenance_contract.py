@@ -134,7 +134,7 @@ def test_alias_linkable_methods_are_rule_match_only() -> None:
 # v0.122.0 counter bug was. Its behaviour is pinned by
 # test_delete_removes_auto_keeps_manual_and_correction + the asr recovery gating
 # test, not by this count.
-# 8th site added by Feature 118: EntityMentionRepository._pair_qualifying_mentions, the one
+# 8th site added by Feature 118: EntityMentionRepository.pair_qualifying_mentions, the one
 # qualifying-mention CTE behind the passage panel (interval ends, highlights, farther-apart
 # list). It reaches the shared predicate through ``positioned_transcript_mention_qualifies``.
 # (Feature 114's co_occurrence_evidence was also a site until its endpoint was retired, #422.)

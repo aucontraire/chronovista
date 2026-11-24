@@ -821,7 +821,7 @@ async def pair_passages(
         entity_hi=hi,
         moments=[_moment_key(p) for video_id in page for p in by_video[video_id]],
     )
-    titles = await _mention_repo._video_titles(session, page)
+    titles = await _mention_repo.video_titles(session, page)
     page_closest = [
         min(p.comentions, key=_closest_first) for v in page for p in by_video[v]
     ]
@@ -886,7 +886,7 @@ async def pair_passages(
             entity_b,
         )
     }
-    failed_titles = await _mention_repo._video_titles(
+    failed_titles = await _mention_repo.video_titles(
         session, sorted({video_id for video_id, _ in failed})
     )
 
@@ -901,7 +901,7 @@ async def pair_passages(
             triples = await _mention_repo.association_triples(
                 session, [entity_a, entity_b]
             )
-            basis = _mention_repo._non_transcript_basis(triples, entity_a, entity_b)
+            basis = _mention_repo.non_transcript_basis(triples, entity_a, entity_b)
     elif pending:
         state = "not_computed"
     else:
@@ -1008,7 +1008,7 @@ async def farther_videos(
             nearest[video_id] = (gap, at, language_code)
     ordered = sorted(nearest, key=lambda v: (nearest[v][0], v))
     page = ordered[offset : offset + limit]
-    titles = await _mention_repo._video_titles(session, page)
+    titles = await _mention_repo.video_titles(session, page)
     return FartherVideos(
         items=[
             FartherVideo(

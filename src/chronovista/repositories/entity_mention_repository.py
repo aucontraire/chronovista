@@ -199,7 +199,7 @@ def positioned_transcript_mention_qualifies(
 ) -> ColumnElement[bool]:
     """Predicate: a mention counts as positioned transcript evidence for a pair.
 
-    The ONE rule shared by the evidence panel (:meth:`EntityMentionRepository._pair_qualifying_mentions`)
+    The ONE rule shared by the evidence panel (:meth:`EntityMentionRepository.pair_qualifying_mentions`)
     and the proximity record computation (``entity_pair_proximity_repository._instance_select``),
     so the passages a reviewer opens and the co-mentions proximity counts are drawn from the same
     mentions (Feature 117, FR-001..FR-003). A mention qualifies when it is:
@@ -2808,7 +2808,7 @@ class EntityMentionRepository(
         return triples
 
     @staticmethod
-    def _pair_qualifying_mentions(entity_ids: Sequence[uuid.UUID]) -> Select[Any]:
+    def pair_qualifying_mentions(entity_ids: Sequence[uuid.UUID]) -> Select[Any]:
         """The entities' qualifying positioned mentions: the passage panel's ONE source (Feature 118).
 
         Every reader of mentions behind the passage panel (a co-mention's interval end, the
@@ -2897,7 +2897,7 @@ class EntityMentionRepository(
 
         ``moments`` are ``(video_id, language_code, segment_lo_id, segment_hi_id)``: a passage's
         closest co-mention, in the canonical pair order. For each, returns the two mentions (from
-        :meth:`_pair_qualifying_mentions`, so a rejected mention is never highlighted; the lowest
+        :meth:`pair_qualifying_mentions`, so a rejected mention is never highlighted; the lowest
         offset when an entity has several qualifying mentions in a segment) and the segments to
         show: each mention's start and end segment, plus the segment after each mention's end as
         context (FR-003), so at most six per moment; empty-text segments are skipped.
@@ -2907,7 +2907,7 @@ class EntityMentionRepository(
         video_ids = sorted({m[0] for m in moments})
         segment_ids = sorted({m[2] for m in moments} | {m[3] for m in moments})
         qm = (
-            self._pair_qualifying_mentions([entity_lo, entity_hi])
+            self.pair_qualifying_mentions([entity_lo, entity_hi])
             .where(
                 EntityMentionDB.video_id.in_(video_ids),
                 EntityMentionDB.segment_id.in_(segment_ids),
@@ -3058,7 +3058,7 @@ class EntityMentionRepository(
         bind list that could grow with the library.
         """
         qualifying = (
-            self._pair_qualifying_mentions([entity_a, entity_b])
+            self.pair_qualifying_mentions([entity_a, entity_b])
             .where(
                 tuple_(EntityMentionDB.video_id, EntityMentionDB.language_code).in_(
                     co_positioned_scopes(entity_a, entity_b)
@@ -3080,7 +3080,7 @@ class EntityMentionRepository(
         ]
 
     @staticmethod
-    def _non_transcript_basis(
+    def non_transcript_basis(
         triples: list[tuple[uuid.UUID, str, str]],
         entity_a: uuid.UUID,
         entity_b: uuid.UUID,
@@ -3104,7 +3104,7 @@ class EntityMentionRepository(
         return None
 
     @staticmethod
-    async def _video_titles(
+    async def video_titles(
         session: AsyncSession, video_ids: list[str]
     ) -> dict[str, tuple[str | None, str | None]]:
         """(video_title, channel_title) for the page's videos, in one bounded query (≤ limit)."""

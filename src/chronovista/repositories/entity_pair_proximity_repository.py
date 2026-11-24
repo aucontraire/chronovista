@@ -909,7 +909,7 @@ class EntityPairProximityRepository(
         videos here are exactly the videos the measurement reports for this window (FR-008). The
         interval is ``[earlier start segment's start, later mention's end]``; a mention's end is its
         end segment's end when it spans segments. Ends come ONLY from
-        :meth:`EntityMentionRepository._pair_qualifying_mentions`, so a mention the shared rule
+        :meth:`EntityMentionRepository.pair_qualifying_mentions`, so a mention the shared rule
         rejects cannot stretch an interval; a record whose segment has no qualifying mention (the
         library changed since the scope was measured, and the scope is now pending) is left out.
 
@@ -951,7 +951,7 @@ class EntityPairProximityRepository(
             select(rec.segment_b_id).where(*in_window),
         )
         qualifying = (
-            EntityMentionRepository._pair_qualifying_mentions([lo, hi])
+            EntityMentionRepository.pair_qualifying_mentions([lo, hi])
             .where(EntityMentionDB.segment_id.in_(segments))
             .subquery("pair_qualifying_mentions")
         )

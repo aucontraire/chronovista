@@ -77,13 +77,9 @@ from chronovista.db.models import (
 )
 from chronovista.exceptions import APIValidationError, ConflictError, NotFoundError
 from chronovista.models.connection_evidence import (
-    ConnectionEvidence,
     DetectionMethod,
-    EvidenceItem,
-    EvidenceVariant,
     MentionRef,
     NonTranscriptBasis,
-    Passage,
     PassageSegment,
 )
 from chronovista.models.entity_association import (
@@ -203,7 +199,7 @@ def positioned_transcript_mention_qualifies(
 ) -> ColumnElement[bool]:
     """Predicate: a mention counts as positioned transcript evidence for a pair.
 
-    The ONE rule shared by the evidence panel (:meth:`EntityMentionRepository.co_occurrence_evidence`)
+    The ONE rule shared by the evidence panel (:meth:`EntityMentionRepository.pair_qualifying_mentions`)
     and the proximity record computation (``entity_pair_proximity_repository._instance_select``),
     so the passages a reviewer opens and the co-mentions proximity counts are drawn from the same
     mentions (Feature 117, FR-001..FR-003). A mention qualifies when it is:
@@ -247,31 +243,6 @@ class _EvMention(NamedTuple):
     start_time: float
 
 
-class _EvPair(NamedTuple):
-    """A minimum-separation (a-mention, b-mention) pair within one ``(video, language)``."""
-
-    video_id: str
-    language_code: str
-    ma: _EvMention
-    mb: _EvMention
-
-    @property
-    def separation(self) -> int:
-        return abs(self.ma.sequence_number - self.mb.sequence_number)
-
-    @property
-    def sort_key(self) -> tuple[int, str, str, int, int]:
-        """Total order (FR-016 / F3): separation, then a stable tie-break so pagination is
-        deterministic across requests."""
-        return (
-            self.separation,
-            self.video_id,
-            self.language_code,
-            self.ma.sequence_number,
-            self.mb.sequence_number,
-        )
-
-
 def co_positioned_scopes(
     entity_a: uuid.UUID, entity_b: uuid.UUID
 ) -> CompoundSelect[tuple[str, str]]:
@@ -296,8 +267,7 @@ def co_positioned_scopes(
 def _effective_segment_text(segment: type[TranscriptSegmentDB]) -> ColumnElement[str]:
     """A segment's display text: its correction when one exists and is non-empty, else the raw text.
 
-    Shared by the Feature 114 passage windows and the Feature 118 discussion passages, so both
-    panels show the same text for the same segment (research D4).
+    The text the evidence panel's discussion passages show (Feature 118, research D4).
     """
     return case(
         (
@@ -2837,201 +2807,8 @@ class EntityMentionRepository(
 
         return triples
 
-    # --- Transcript-evidence panel (Feature 114) ---------------------------------------------------
-    # Per-mention passage-window bounds (research D9, FR-008): a lead-in before and a tail after each
-    # mention, under a hard segment cap. Small by construction, so the cap rarely fires.
-    _EVIDENCE_LEAD = 2
-    _EVIDENCE_TAIL = 2
-    _EVIDENCE_SEGMENT_CAP = 40
-
-    async def co_occurrence_evidence(
-        self,
-        session: AsyncSession,
-        entity_a: uuid.UUID,
-        entity_b: uuid.UUID,
-        *,
-        limit: int = 12,
-        offset: int = 0,
-    ) -> ConnectionEvidence:
-        """Transcript passages where two entities co-occur (Feature 114, read-only).
-
-        Parameters
-        ----------
-        session : AsyncSession
-            The database session.
-        entity_a, entity_b : uuid.UUID
-            The pair to explain.
-        limit, offset : int
-            Pagination over the ordered per-video items.
-
-        Returns
-        -------
-        ConnectionEvidence
-            Page-bounded evidence items plus the raw-transcript and distinct-context counts. When the
-            pair has no transcript co-occurrence, ``items`` is empty and ``basis_when_empty`` names
-            the non-transcript source (FR-012).
-
-        Notes
-        -----
-        Three steps (research D1): (1) **gate** on ``association_triples`` for the exclusion-clean
-        transcript videos where BOTH entities co-occur; (2) **locate** the minimum-separation mention
-        pair per ``(video, language)``, qualifying mentions the SAME way the gate does (visible-name
-        or name-exempt, non-manual, transcript — FR-014) and pairing only WITHIN one language
-        (FR-017); (3) **group by video** (FR-009) — the representative variant is the video's
-        minimum-separation pair, the rest become its other-language variants (the expander) — order
-        videos closest-first, and **render** per-mention passages for the returned page only, via a
-        three-branch effective-text CASE (research D4).
-
-        There is deliberately **no cross-video collapse** (FR-016): an earlier surface-form dedup was
-        measured to drop 97-99% of the videos on dense pairs (the key's cardinality is far below the
-        video count), so density is handled by closest-first ordering + pagination, never by deleting
-        evidence. ``total_available`` is the count of distinct videos with an in-language co-mention
-        and ``raw_cooccurrence_count`` the ``(video, language)`` count; both derive from the one
-        ``per_transcript`` list. This is the "spoken together" population — narrower than the
-        ``/videos`` *any-source* intersection, and a gate video whose two entities appear only in
-        DIFFERENT languages has no single-language pair and is correctly excluded (FR-017). Pagination
-        is deterministic (total sort key) and SC-009 bounds passage rendering to the page.
-        """
-        triples = await self.association_triples(session, [entity_a, entity_b])
-        a_tx = {v for (e, v, s) in triples if e == entity_a and s == "transcript"}
-        b_tx = {v for (e, v, s) in triples if e == entity_b and s == "transcript"}
-        co_videos = sorted(a_tx & b_tx)  # sorted -> stable bind order (F3 determinism)
-        if not co_videos:
-            return ConnectionEvidence(
-                entity_a_id=entity_a,
-                entity_b_id=entity_b,
-                offset=offset,
-                basis_when_empty=self._non_transcript_basis(
-                    triples, entity_a, entity_b
-                ),
-            )
-
-        # (2) Locate. Qualify mentions exactly as the gate (_mention_assoc_stmt) does, so the panel
-        # and the co-occurrence edges can never disagree about which mention counts (FR-014): a
-        # non-manual transcript mention whose folded text matches a visible name, or a name-exempt
-        # method (asr_match). ``.distinct()`` collapses the visible-name join fan-out.
-        visible_names = _visible_names_subquery([entity_a, entity_b])
-        rows = (
-            await session.execute(
-                select(
-                    EntityMentionDB.entity_id,
-                    EntityMentionDB.video_id,
-                    EntityMentionDB.language_code,
-                    EntityMentionDB.segment_id,
-                    EntityMentionDB.end_segment_id,
-                    EntityMentionDB.mention_text,
-                    EntityMentionDB.match_start,
-                    EntityMentionDB.match_end,
-                    EntityMentionDB.detection_method,
-                    TranscriptSegmentDB.sequence_number,
-                    TranscriptSegmentDB.start_time,
-                )
-                .join(
-                    TranscriptSegmentDB,
-                    and_(
-                        TranscriptSegmentDB.id == EntityMentionDB.segment_id,
-                        TranscriptSegmentDB.language_code
-                        == EntityMentionDB.language_code,
-                    ),
-                )
-                .outerjoin(
-                    visible_names,
-                    and_(
-                        visible_names.c.entity_id == EntityMentionDB.entity_id,
-                        _folded(EntityMentionDB.mention_text)
-                        == visible_names.c.name_lower,
-                    ),
-                )
-                .where(
-                    EntityMentionDB.entity_id.in_([entity_a, entity_b]),
-                    EntityMentionDB.video_id.in_(co_videos),
-                    positioned_transcript_mention_qualifies(
-                        EntityMentionDB, visible_names
-                    ),
-                )
-                .distinct()
-            )
-        ).all()
-
-        mentions = [
-            _EvMention(
-                r.entity_id,
-                r.video_id,
-                r.language_code,
-                r.segment_id,
-                r.end_segment_id,
-                r.mention_text,
-                r.match_start,
-                r.match_end,
-                r.detection_method,
-                r.sequence_number,
-                float(r.start_time),
-            )
-            for r in rows
-        ]
-
-        # Group by (video, language); pair a-mentions with b-mentions ONLY within a group (FR-017).
-        groups: dict[tuple[str, str], tuple[list[_EvMention], list[_EvMention]]] = {}
-        for m in mentions:
-            a_list, b_list = groups.setdefault((m.video_id, m.language_code), ([], []))
-            (a_list if m.entity_id == entity_a else b_list).append(m)
-
-        # Minimum-separation pair per (video, language), deterministic tie-break (FR-015 / F3).
-        per_transcript: list[_EvPair] = []
-        for (vid, lang), (a_list, b_list) in groups.items():
-            if not a_list or not b_list:
-                continue
-            ma, mb = min(
-                ((x, y) for x in a_list for y in b_list),
-                # Total order (FR-015 / F3): separation, then segment + intra-segment offset of each
-                # mention, so two same-entity mentions in ONE segment can't tie and flip between the
-                # (unordered) DISTINCT rows of two requests.
-                key=lambda p: (
-                    abs(p[0].sequence_number - p[1].sequence_number),
-                    p[0].sequence_number,
-                    p[1].sequence_number,
-                    p[0].segment_id,
-                    p[1].segment_id,
-                    p[0].match_start if p[0].match_start is not None else -1,
-                    p[1].match_start if p[1].match_start is not None else -1,
-                ),
-            )
-            per_transcript.append(_EvPair(vid, lang, ma, mb))
-
-        raw_cooccurrence_count = len(per_transcript)
-        if raw_cooccurrence_count == 0:
-            return ConnectionEvidence(
-                entity_a_id=entity_a,
-                entity_b_id=entity_b,
-                offset=offset,
-                basis_when_empty=self._non_transcript_basis(
-                    triples, entity_a, entity_b
-                ),
-            )
-
-        # FR-009: one row per video (representative = min-separation variant, rest = other-language
-        # variants), closest-first, no cross-video collapse (FR-016). Pure — unit-tested in isolation.
-        videos = self._group_videos(per_transcript)
-
-        # (3) Render the returned page of VIDEOS only (bounded — SC-009). Each item renders its
-        # representative plus every other-language variant (few: a multilingual video has a handful).
-        page = videos[offset : offset + limit]
-        titles = await self._video_titles(session, [rep.video_id for rep, _ in page])
-        items = [
-            await self._render_evidence_item(session, rep, others, titles)
-            for rep, others in page
-        ]
-        return ConnectionEvidence(
-            entity_a_id=entity_a,
-            entity_b_id=entity_b,
-            items=items,
-            total_available=len(videos),
-            raw_cooccurrence_count=raw_cooccurrence_count,
-            offset=offset,
-        )
-
     @staticmethod
-    def _pair_qualifying_mentions(entity_ids: Sequence[uuid.UUID]) -> Select[Any]:
+    def pair_qualifying_mentions(entity_ids: Sequence[uuid.UUID]) -> Select[Any]:
         """The entities' qualifying positioned mentions: the passage panel's ONE source (Feature 118).
 
         Every reader of mentions behind the passage panel (a co-mention's interval end, the
@@ -3120,7 +2897,7 @@ class EntityMentionRepository(
 
         ``moments`` are ``(video_id, language_code, segment_lo_id, segment_hi_id)``: a passage's
         closest co-mention, in the canonical pair order. For each, returns the two mentions (from
-        :meth:`_pair_qualifying_mentions`, so a rejected mention is never highlighted; the lowest
+        :meth:`pair_qualifying_mentions`, so a rejected mention is never highlighted; the lowest
         offset when an entity has several qualifying mentions in a segment) and the segments to
         show: each mention's start and end segment, plus the segment after each mention's end as
         context (FR-003), so at most six per moment; empty-text segments are skipped.
@@ -3130,7 +2907,7 @@ class EntityMentionRepository(
         video_ids = sorted({m[0] for m in moments})
         segment_ids = sorted({m[2] for m in moments} | {m[3] for m in moments})
         qm = (
-            self._pair_qualifying_mentions([entity_lo, entity_hi])
+            self.pair_qualifying_mentions([entity_lo, entity_hi])
             .where(
                 EntityMentionDB.video_id.in_(video_ids),
                 EntityMentionDB.segment_id.in_(segment_ids),
@@ -3281,7 +3058,7 @@ class EntityMentionRepository(
         bind list that could grow with the library.
         """
         qualifying = (
-            self._pair_qualifying_mentions([entity_a, entity_b])
+            self.pair_qualifying_mentions([entity_a, entity_b])
             .where(
                 tuple_(EntityMentionDB.video_id, EntityMentionDB.language_code).in_(
                     co_positioned_scopes(entity_a, entity_b)
@@ -3303,7 +3080,7 @@ class EntityMentionRepository(
         ]
 
     @staticmethod
-    def _non_transcript_basis(
+    def non_transcript_basis(
         triples: list[tuple[uuid.UUID, str, str]],
         entity_a: uuid.UUID,
         entity_b: uuid.UUID,
@@ -3327,28 +3104,7 @@ class EntityMentionRepository(
         return None
 
     @staticmethod
-    def _group_videos(
-        per_transcript: list[_EvPair],
-    ) -> list[tuple[_EvPair, list[_EvPair]]]:
-        """Group ``(video, language)`` pairs by video (FR-009), no cross-video collapse (FR-016).
-
-        For each video the representative is its minimum-separation variant and the rest (closest-
-        first) are its other-language variants; videos are ordered closest-first by representative.
-        Every co-occurring video survives — a surface-form dedup across videos was measured to drop
-        97-99% of dense pairs, so density is an ordering/pagination concern, never a deletion one.
-        """
-        by_video: dict[str, list[_EvPair]] = {}
-        for pair in per_transcript:
-            by_video.setdefault(pair.video_id, []).append(pair)
-        videos: list[tuple[_EvPair, list[_EvPair]]] = []
-        for variants in by_video.values():
-            variants.sort(key=lambda p: p.sort_key)
-            videos.append((variants[0], variants[1:]))
-        videos.sort(key=lambda rv: rv[0].sort_key)
-        return videos
-
-    @staticmethod
-    async def _video_titles(
+    async def video_titles(
         session: AsyncSession, video_ids: list[str]
     ) -> dict[str, tuple[str | None, str | None]]:
         """(video_title, channel_title) for the page's videos, in one bounded query (≤ limit)."""
@@ -3366,102 +3122,6 @@ class EntityMentionRepository(
             )
         ).all()
         return {r.video_id: (r.title, r.channel_title) for r in rows}
-
-    async def _render_evidence_item(
-        self,
-        session: AsyncSession,
-        representative: _EvPair,
-        other_variants: list[_EvPair],
-        titles: dict[str, tuple[str | None, str | None]],
-    ) -> EvidenceItem:
-        """Build a video-grain item: representative variant + other-language variants + titles."""
-        video_title, channel_title = titles.get(representative.video_id, (None, None))
-        return EvidenceItem(
-            video_id=representative.video_id,
-            representative=await self._render_variant(session, representative),
-            other_language_variants=[
-                await self._render_variant(session, v) for v in other_variants
-            ],
-            video_title=video_title,
-            channel_title=channel_title,
-        )
-
-    async def _render_variant(
-        self, session: AsyncSession, pair: _EvPair
-    ) -> EvidenceVariant:
-        """Build one (video, language) variant with per-mention passages."""
-        return EvidenceVariant(
-            language_code=pair.language_code,
-            mention_a=self._mention_ref(pair.ma),
-            mention_b=self._mention_ref(pair.mb),
-            passages=await self._render_passages(session, pair),
-        )
-
-    async def _render_passages(
-        self, session: AsyncSession, pair: _EvPair
-    ) -> list[Passage]:
-        """One window when the mentions are close enough to share it, else one per mention (FR-015)."""
-        lead, tail = self._EVIDENCE_LEAD, self._EVIDENCE_TAIL
-        a_seq, b_seq = pair.ma.sequence_number, pair.mb.sequence_number
-        if pair.separation <= lead + tail:
-            windows = [(min(a_seq, b_seq) - lead, max(a_seq, b_seq) + tail)]
-        else:
-            windows = sorted(
-                [(a_seq - lead, a_seq + tail), (b_seq - lead, b_seq + tail)]
-            )
-        passages: list[Passage] = []
-        for lo, hi in windows:
-            if hi - lo > self._EVIDENCE_SEGMENT_CAP:
-                hi = lo + self._EVIDENCE_SEGMENT_CAP
-            passage = await self._fetch_passage(
-                session, pair.video_id, pair.language_code, lo, hi
-            )
-            if passage is not None:
-                passages.append(passage)
-        if (
-            not passages
-        ):  # defensive: the anchor segment always exists (FK), so unreachable
-            passages = [
-                Passage(
-                    text="…",
-                    start_time=pair.ma.start_time,
-                    segment_id=pair.ma.segment_id,
-                )
-            ]
-        return passages
-
-    async def _fetch_passage(
-        self,
-        session: AsyncSession,
-        video_id: str,
-        language_code: str,
-        lo: int,
-        hi: int,
-    ) -> Passage | None:
-        """Fetch one bounded passage window as prose, via the 3-branch effective-text CASE (D4)."""
-        effective = _effective_segment_text(TranscriptSegmentDB)
-        rows = (
-            await session.execute(
-                select(
-                    TranscriptSegmentDB.id,
-                    TranscriptSegmentDB.start_time,
-                    effective.label("effective_text"),
-                )
-                .where(
-                    TranscriptSegmentDB.video_id == video_id,
-                    TranscriptSegmentDB.language_code == language_code,
-                    TranscriptSegmentDB.sequence_number >= lo,
-                    TranscriptSegmentDB.sequence_number <= hi,
-                )
-                .order_by(TranscriptSegmentDB.sequence_number)
-            )
-        ).all()
-        text = " ".join(r.effective_text for r in rows if r.effective_text).strip()
-        if not text:
-            return None
-        return Passage(
-            text=text, start_time=float(rows[0].start_time), segment_id=rows[0].id
-        )
 
     @staticmethod
     def _mention_ref(m: _EvMention) -> MentionRef:

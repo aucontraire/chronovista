@@ -46,7 +46,6 @@ from chronovista.models.entity_pair_proximity import (
     ProximityWorkerStatus,
     ScopeFilter,
 )
-from chronovista.repositories.entity_mention_repository import EntityMentionRepository
 from chronovista.repositories.entity_pair_proximity_repository import (
     EntityPairProximityRepository,
 )
@@ -692,17 +691,22 @@ class TestPanelEquivalence:
                 )
 
         await _process(db_session, monkeypatch, list(plan))
-        evidence = await EntityMentionRepository().co_occurrence_evidence(
-            db_session, a, b, limit=50
+        response = await proximity_service.pair_passages(
+            db_session, entity_a=a, entity_b=b, window=120, limit=50, offset=0
         )
 
-        panel = {
-            item.video_id: {
-                item.representative.mention_a.segment_id,
-                item.representative.mention_b.segment_id,
-            }
-            for item in evidence.items
-        }
+        # The segments of the mentions each video's passage highlights: read through the
+        # panel's own qualifying-mention query, independently of the records' segment ids.
+        panel: dict[str, set[int]] = {}
+        for item in response.items:
+            for grouped in item.passages:
+                for variant in grouped.variants:
+                    panel.setdefault(item.video_id, set()).update(
+                        {
+                            variant.closest.mention_a.segment_id,
+                            variant.closest.mention_b.segment_id,
+                        }
+                    )
         proximity: dict[str, set[int]] = {}
         for record in await _instances_for(db_session, canonical(a, b)):
             proximity.setdefault(record.video_id, set()).update(

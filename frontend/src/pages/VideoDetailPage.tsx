@@ -756,6 +756,7 @@ export function VideoDetailPage() {
     videoId: videoId ?? "",
     segments: playerSegments,
     enabled: playerEnabled,
+    startSeconds: timestamp,
   });
 
   // Recovery store actions and session

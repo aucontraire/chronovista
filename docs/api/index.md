@@ -69,6 +69,8 @@ All endpoints except `/health` require authentication. The API shares OAuth toke
 | `/graph/health` | GET | Connection-graph serving state (`ServingHealth`) |
 | `/graph/entities` | POST | Which of the given entity ids are present in the graph |
 | `/graph/connect` | GET | How two entities connect (`a`, `b`, `max_hops`, `max_category_size`) |
+| `/graph/connect/passages` | GET | Discussion passages where two entities are mentioned within a window (`a`, `b`, `window`, `limit`, `offset`) |
+| `/graph/connect/passages/farther` | GET | Videos where both are spoken, but never within the window (`a`, `b`, `window`, `limit`, `offset`) |
 | `/graph/neighborhood` | GET | Explore the bounded neighbourhood subgraph around one or two entities (`seed`, `radius`, `limit`, `ceiling`, `edge_types`, `max_category_size`) |
 | `/corrections/batch/preview` | POST | Preview batch find-replace matches |
 | `/corrections/batch/apply` | POST | Apply batch corrections to selected segments |
@@ -144,7 +146,43 @@ Each edge carries its server-assigned trust **layer** (verified / category / co-
 stored direction; when the node cap binds, co-occurrence edges are dropped before verified ones. Like
 `/graph/connect`, this endpoint refuses a non-servable graph — see the error responses below.
 
-**`GET /graph/connect/evidence`** → `ConnectionEvidence` (Feature 114). The transcript passages
+**`GET /graph/connect/passages`** → `PairPassages` (Feature 118). The evidence panel's data: a pair's
+**discussion passages** for one window, built from the transcript proximity records, so the videos
+listed are exactly the videos the measurement reports. Postgres-backed; no 503. See
+[Discussion passages](../architecture/transcript-proximity.md#discussion-passages-what-the-evidence-panel-shows)
+for the rule.
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `a` | UUID | required | First entity id. |
+| `b` | UUID | required | Second entity id. Must differ from `a`. |
+| `window` | int | 30 | Seconds between the two mentions' starts: 15, 30, 60 or 120. |
+| `limit` | int 1–50 | 12 | Max videos per page. |
+| `offset` | int ≥ 0 | 0 | Pagination offset over the ordered videos. |
+
+`items` are videos, closest co-mention first (ties by video id), each with **every** grouped passage in
+time order. A grouped passage carries its `variants`, one per language passage; `variants[0]` leads,
+chosen by the caller's language preferences, else the closest. A variant has its time range,
+`co_mention_count`, its `closest` moment (both mentions, oriented to `a` and `b`, and up to six segments
+of corrected text with `is_context` marking the segment after a mention), its `other_moments` (times
+and gaps only) and `name_list`. Totals cover every video, never just the page, and are identical across
+pages and when `a` and `b` are swapped: `video_count` (the pagination total), `passage_count` (grouped
+passages), `channel_count` (a video with no channel counts once as unknown), `closest_gap_seconds`,
+and `farther_video_count` (not in the totals). State: `pending_scopes`, `failed_scopes` (video,
+language, titles) and `state`, which is one of `passages`, `not_computed`, `no_transcript` (with
+`basis_when_empty` when a tag, title or description links them) or `no_passage_in_window`.
+`passage_rule_version` names the rule. **422** for `a == b` or an unsupported `window` (standard
+validation body, naming the parameter), **404** for an unknown entity id. It never answers 409: without
+an established identity the variants are ordered closest first.
+
+**`GET /graph/connect/passages/farther`** → `FartherVideos` (Feature 118). The videos behind
+`farther_video_count`: both entities spoken in the same transcript language, never within the window.
+Same `a`, `b` and `window` as above; `limit` 1–100 (default 20), `offset`. Items are nearest first
+(`nearest_gap_seconds`, then video id), with the language and `nearest_start_time` of the closest moment;
+`total` equals the passages response's `farther_video_count` for the same pair and window.
+
+**`GET /graph/connect/evidence`** → `ConnectionEvidence` (Feature 114). **Superseded** by
+`/graph/connect/passages`, which the panel now uses; kept unchanged for compatibility. The transcript passages
 behind a pair's co-occurrence (the evidence panel). Unlike the three endpoints above, this one is
 **Postgres-backed** (it reads `entity_mentions` / `transcript_segments`), so there is no servability
 gate and no 503.

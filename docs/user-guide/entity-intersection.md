@@ -119,7 +119,7 @@ curl "http://localhost:8765/api/v1/entities/<id>/co-occurring"
 
 ## What this doesn't do yet
 
-**Temporal proximity** — "both entities discussed within 30 seconds of each other" — is not available as a filter here yet. The measurement itself now exists: chronovista records every close co-mention of two entities, with the passages and how far apart they are (see [Transcript proximity](../architecture/transcript-proximity.md)). It already feeds the relationship-candidate queue's transcript channel; the connection explorer and the evidence panel are where it will surface for browsing.
+**Temporal proximity** — "both entities discussed within 30 seconds of each other" — is not available as a filter here yet. The measurement itself now exists: chronovista records every close co-mention of two entities, with the passages and how far apart they are (see [Transcript proximity](../architecture/transcript-proximity.md)). To browse it, open the pair in the connection explorer: its evidence panel lists the discussion passages within 15, 30, 60 or 120 seconds (see [The evidence panel](connection-explorer.md#the-evidence-panel)). It also feeds the relationship-candidate queue's transcript channel.
 
 ## See also
 

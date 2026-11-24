@@ -217,30 +217,63 @@ how current it is.
 
 ### The evidence panel
 
-Below the graph and table, the panel shows the **transcript passages where the two entities are
-actually discussed together** — the evidence behind the co-occurrence edges. A count ("they share N
-videos") can't be checked by eye; a passage can, so this is where you catch a false match (a name
-collision, or a common word that is also an entity name).
+Below the graph and table, the panel shows **where the two entities are discussed together** in your
+transcripts: the stretches of speech where both come up within a few seconds of each other. A count
+("they share N videos") can't be checked by eye; a passage can. This is where you read what was said,
+and where you catch a false match (a name collision, or a common word that is also an entity name).
+The panel shows co-mention, never a relationship: you decide what a passage means.
 
-- There is **one row per video** — the grain at which you exclude a false mention — ordered
-  closest-first, so the tightest (most suspicious) co-mentions are at the top. A dense pair streams in
-  by **infinite scroll** rather than being collapsed, so no video is hidden from audit.
-- Each row shows the video's strongest co-mention: the passage(s) around the closest pair of mentions
-  — one window when the two are near each other, one per mention when they are far apart — with both
-  matched surface forms highlighted, how far apart they are, and a timestamped link into the video.
-- When the pair also co-occurs in the video's **other transcript languages**, an expander ("also in N
-  other transcripts") reveals them — so a surface form that differs by language (a different match,
-  with a different false-positive risk) stays visible instead of being hidden.
-- It is framed as **co-mention** ("where they're discussed together"), never as a factual
-  relationship — the passages are what speakers *said*, not asserted facts.
-- The header reports **"spoken together in N videos (M transcripts)"** — a video with transcripts in
-  several languages counts once as a video but several times as transcripts. This "spoken together"
-  count is narrower than the *any-source* intersection on the videos page, which also counts title,
-  description and tag matches.
-- When a pair co-occurs only via tags or title/description (no spoken passage), the panel says so and
-  names that basis instead of implying there is nothing there.
-- It reflects your **live** library, while the graph edges are a periodic snapshot — so just after
-  you exclude a false mention, the panel drops it before the edges do (until the next graph rebuild).
+**Choose how close is "close".** The **Mentioned within** selector offers 15, 30, 60 and 120
+seconds (30 by default), measured between the starts of the two mentions. Everything follows it: which
+videos are listed, how passages are merged, and every count. The choice is saved in the page address,
+so a refresh or a shared link reopens the panel with the same window.
+
+**Read the summary first.** For example: *"7 discussion passages across 4 videos, 3 channels; closest
+mentions 6 s apart."* A **discussion passage** is a stretch of one video where the two keep being
+mentioned within the window of each other. Two discussions ten minutes apart are two passages; rapid
+back-and-forth is one. A long, sustained conversation can be a single long passage: that is how the
+rule works, not a judgement that it was one topic. A video with transcripts in several languages counts
+**once**, and so does each discussion: translations never inflate a count.
+
+**Then read the passages.** Videos come closest-first. Under each video:
+
+- Each passage shows its time range, how many co-mentions it holds, its own closest gap ("closest 9s
+  apart"), and the text around its **closest** co-mention, with both names highlighted. The video's
+  header line gives the closest gap over all its passages, which is how videos are ordered.
+- The segment after each mention is shown dimmed, so a name split across two transcript lines reads
+  whole, and it is highlighted on both lines. A "…" marks transcript text left out between the shown
+  lines.
+- **Open at m:ss** opens the video with the player at that moment and the transcript scrolled there.
+- **Other moments in this passage** lists the passage's other co-mentions with both mentions' times,
+  for example "0:12 → 0:25 · 13s apart". The link jumps to the earlier one. Several rows can share a
+  start time when one mention pairs with several later ones; the second time tells them apart.
+- **Also in N other transcripts** shows the same discussion in the video's other languages. The
+  language shown first is your preferred one (set under Settings → Languages: fluent first, then
+  learning); without a preference, it is the language with the closest co-mention.
+- **Several names in one segment** marks a line that just lists names, such as credits or a panel
+  introduction. It still counts; the marker helps you skim past it.
+- A video with many passages shows the first three; **Show N more passages** reveals the rest in place.
+
+**Videos where both are spoken farther apart.** When both entities are spoken in a video but never
+within the window, that video is not a passage. The summary adds *"Plus N videos where both are spoken
+farther apart"*; open it to list them nearest-first with the closest moment. This is the place to
+audit a mention that sits far from the other entity. Widening the window moves the nearer ones into the
+passages.
+
+**When the numbers are not final.** Corrections, scans and new transcripts are measured in the
+background, usually within seconds:
+
+- **"Updating: N transcripts are being recomputed"**: the counts are shown but may change, and the
+  panel refreshes itself until the work is done.
+- **"N transcripts could not be computed; counts may be incomplete"**: open it to see which videos and
+  languages. See [Troubleshooting](../troubleshooting.md#the-evidence-panel-says-could-not-be-computed).
+
+**When there is no passage**, the panel says which case it is: *not computed yet* (it updates itself),
+*not spoken together in any transcript* (naming the tag, title or description link when there is one),
+or *no passage within* the chosen window (with the farther-apart videos, if any).
+
+The panel reflects your **live** library, while the graph edges are a periodic snapshot. Just after
+you exclude a false mention, the panel drops it before the edges do, until the next graph rebuild.
 
 To act on a false match you spot here, exclude it with the existing entity–video exclusion tooling;
 the next graph rebuild then drops it from the edges too.

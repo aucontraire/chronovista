@@ -67,6 +67,7 @@ from tests.factories.proximity_seed import (
     seed_pair_in_videos,
     seed_scope_state,
     seed_segment,
+    seed_timed_comentions,
     seed_video,
 )
 
@@ -2213,3 +2214,332 @@ class TestStatementBound:
             await bounded.dispose()
 
         assert outcome.status == "completed"
+
+
+# ----- Feature 118: the passage panel agrees with the measurement ------------------
+
+
+def _oracle_passage_count(
+    times_a: list[float], times_b: list[float], window: float
+) -> int:
+    """Passages of one video and language, re-derived from mention times alone.
+
+    Independent of the stored records: co-mentions are every (A, B) mention pair whose
+    starts are within the window (start-anchored, inclusive), each spanning its two
+    segments (seeded segments last 2 s); chaining follows FR-001.
+    """
+    intervals = sorted(
+        (min(ta, tb), max(ta, tb) + 2.0)
+        for ta in times_a
+        for tb in times_b
+        if abs(ta - tb) <= window
+    )
+    passages = 0
+    end: float | None = None
+    for start, stop in intervals:
+        if end is None or start > end + window:
+            passages += 1
+            end = stop
+        else:
+            end = max(end, stop)
+    return passages
+
+
+class TestPassageAgreement:
+    """SC-001 / FR-008: the panel shows exactly the videos the measurement reports.
+
+    Random seeded co-mention timings in several videos, measured through the real path;
+    for every window, the panel's videos (across all pages) equal the records' videos,
+    and its passage count equals a count re-derived from the mention times alone.
+    """
+
+    @pytest.mark.parametrize("seed", range(8))
+    async def test_panel_videos_and_passages_match_the_measurement(
+        self, db_session: AsyncSession, seed: int
+    ) -> None:
+        rng = random.Random(seed)
+        a, b = await seed_entity(db_session), await seed_entity(db_session)
+        plan: dict[str, list[tuple[float, float]]] = {}
+        for video_id in _videos(f"agr{seed}", 6):
+            moments = []
+            for _ in range(rng.randint(1, 5)):
+                ta = round(rng.uniform(0, 900), 1)
+                moments.append((ta, round(ta + rng.uniform(-150, 150), 1)))
+            plan[video_id] = [(ta, max(tb, 0.0)) for ta, tb in moments]
+            await seed_timed_comentions(
+                db_session,
+                entity_a=a,
+                entity_b=b,
+                video_id=video_id,
+                moments=plan[video_id],
+            )
+        lo, hi = canonical(a, b)
+        for window in (15, 30, 60, 120):
+            response = await proximity_service.pair_passages(
+                db_session, entity_a=a, entity_b=b, window=window, limit=50, offset=0
+            )
+            recorded = set(
+                (
+                    await db_session.execute(
+                        select(EntityPairProximityDB.video_id)
+                        .where(
+                            EntityPairProximityDB.entity_a_id == lo,
+                            EntityPairProximityDB.entity_b_id == hi,
+                            EntityPairProximityDB.gap_seconds <= window,
+                        )
+                        .distinct()
+                    )
+                ).scalars()
+            )
+            assert {v.video_id for v in response.items} == recorded
+            assert response.video_count == len(recorded)
+            expected = sum(
+                _oracle_passage_count(
+                    [ta for ta, _ in moments], [tb for _, tb in moments], window
+                )
+                for moments in plan.values()
+            )
+            assert response.passage_count == expected
+
+
+class TestScopeHealthMatchesCompleteness:
+    """The panel's freshness and the measurement's ``complete`` flag judge the same transcripts.
+
+    ``pair_scope_health`` (Feature 118) re-states ``pair_summaries``' contributing set by hand, so
+    this pins the equivalence: complete exactly when nothing is pending or failed.
+    """
+
+    async def test_a_scope_with_positioned_mentions_but_no_records_counts(
+        self, db_session: AsyncSession
+    ) -> None:
+        """The second half of the contributing set: both positioned, no record (rejected text)."""
+        a, b = await seed_entity(db_session), await seed_entity(db_session)
+        (video_id,) = _videos("hnorec", 1)
+        await seed_video(db_session, video_id)
+        segment = await seed_segment(db_session, video_id, "en", 10.0, 0)
+        await seed_mention(
+            db_session,
+            entity_id=a,
+            video_id=video_id,
+            language_code="en",
+            segment_id=segment,
+        )
+        await seed_mention(
+            db_session,
+            entity_id=b,
+            video_id=video_id,
+            language_code="en",
+            segment_id=segment,
+            mention_text=_NOT_A_NAME,
+        )
+        await seed_scope_state(
+            db_session, video_id=video_id, language_code="en", state="not_computed"
+        )
+        repo = EntityPairProximityRepository()
+        (summary,) = await repo.pair_summaries(
+            db_session, rule_version=MEASUREMENT_RULE_VERSION, pairs=[(a, b)]
+        )
+        pending, failed = await repo.pair_scope_health(
+            db_session,
+            entity_a=a,
+            entity_b=b,
+            rule_version=MEASUREMENT_RULE_VERSION,
+            failing_threshold=proximity_service.FAILING_ATTEMPTS,
+        )
+        assert summary.complete is False
+        assert (pending, failed) == (1, [])
+
+    @pytest.mark.parametrize("state", ["failing", "current"])
+    async def test_an_older_rule_version_is_pending_not_failed_or_current(
+        self, db_session: AsyncSession, state: str
+    ) -> None:
+        a, b = await seed_entity(db_session), await seed_entity(db_session)
+        (video_id,) = _videos(f"hold{state[:2]}", 1)
+        await seed_timed_comentions(
+            db_session,
+            entity_a=a,
+            entity_b=b,
+            video_id=video_id,
+            moments=[(10.0, 12.0)],
+        )
+        await db_session.execute(
+            delete(ProximityScopeStateDB).where(
+                ProximityScopeStateDB.video_id == video_id
+            )
+        )
+        await seed_scope_state(
+            db_session,
+            video_id=video_id,
+            language_code="en",
+            state=state,
+            attempts=3,
+            rule_version="0.0-older",
+        )
+        pending, failed = await EntityPairProximityRepository().pair_scope_health(
+            db_session,
+            entity_a=a,
+            entity_b=b,
+            rule_version=MEASUREMENT_RULE_VERSION,
+            failing_threshold=proximity_service.FAILING_ATTEMPTS,
+        )
+        assert (pending, failed) == (1, [])
+
+    @pytest.mark.parametrize(
+        "state, attempts",
+        [
+            ("current", 0),
+            ("stale", 0),
+            ("not_computed", 0),
+            ("failing", 3),
+            ("failing", 1),
+            (None, 0),
+        ],
+    )
+    async def test_complete_exactly_when_nothing_is_pending_or_failed(
+        self, db_session: AsyncSession, state: str | None, attempts: int
+    ) -> None:
+        a, b = await seed_entity(db_session), await seed_entity(db_session)
+        (video_id,) = _videos(f"h{(state or 'no')[:2]}{attempts}", 1)
+        await seed_timed_comentions(
+            db_session,
+            entity_a=a,
+            entity_b=b,
+            video_id=video_id,
+            moments=[(10.0, 12.0)],
+        )
+        await db_session.execute(
+            delete(ProximityScopeStateDB).where(
+                ProximityScopeStateDB.video_id == video_id
+            )
+        )
+        if state is not None:
+            await seed_scope_state(
+                db_session,
+                video_id=video_id,
+                language_code="en",
+                state=state,
+                attempts=attempts,
+            )
+        repo = EntityPairProximityRepository()
+        (summary,) = await repo.pair_summaries(
+            db_session, rule_version=MEASUREMENT_RULE_VERSION, pairs=[(a, b)]
+        )
+        pending, failed = await repo.pair_scope_health(
+            db_session,
+            entity_a=a,
+            entity_b=b,
+            rule_version=MEASUREMENT_RULE_VERSION,
+            failing_threshold=proximity_service.FAILING_ATTEMPTS,
+        )
+        assert summary.complete == (pending == 0 and failed == [])
+        assert (state == "failing" and attempts >= 3) == (failed == [(video_id, "en")])
+
+
+class TestPassagesFollowTheWorker:
+    """SC-004 seam: a real invalidation makes the panel report pending; the real recompute
+    clears it and the new passage counts (no hand-seeded state)."""
+
+    async def test_invalidate_then_recompute(self, db_session: AsyncSession) -> None:
+        a, b = await seed_entity(db_session), await seed_entity(db_session)
+        (video_id,) = _videos("wkr118", 1)
+        await seed_timed_comentions(
+            db_session,
+            entity_a=a,
+            entity_b=b,
+            video_id=video_id,
+            moments=[(10.0, 12.0)],
+        )
+        before = await proximity_service.pair_passages(
+            db_session, entity_a=a, entity_b=b, window=30, limit=12, offset=0
+        )
+        assert (before.passage_count, before.pending_scopes) == (1, 0)
+
+        # A producer adds a co-mention far from the first and invalidates in its transaction.
+        await seed_timed_comentions(
+            db_session,
+            entity_a=a,
+            entity_b=b,
+            video_id=video_id,
+            moments=[(500.0, 502.0)],
+            create_video=False,
+            measure=False,
+        )
+        repo = EntityPairProximityRepository()
+        await repo.invalidate_proximity_scopes(
+            db_session, reason="scan", video_id=video_id, language_code="en"
+        )
+        pending = await proximity_service.pair_passages(
+            db_session, entity_a=a, entity_b=b, window=30, limit=12, offset=0
+        )
+        assert pending.pending_scopes == 1 and pending.passage_count == 1
+
+        state = (
+            await db_session.execute(
+                select(ProximityScopeStateDB).where(
+                    ProximityScopeStateDB.video_id == video_id,
+                    ProximityScopeStateDB.language_code == "en",
+                )
+            )
+        ).scalar_one()
+        _, published = await recompute_scope(db_session, state)
+        assert published
+        after = await proximity_service.pair_passages(
+            db_session, entity_a=a, entity_b=b, window=30, limit=12, offset=0
+        )
+        assert (after.passage_count, after.pending_scopes) == (2, 0)
+
+
+class TestMultiLanguageAgreement:
+    """SC-001 with several transcript languages per video: the panel's videos equal the
+    records' videos, and a covered translation never adds a passage."""
+
+    @pytest.mark.parametrize("seed", range(4))
+    async def test_videos_match_and_translations_do_not_count(
+        self, db_session: AsyncSession, seed: int
+    ) -> None:
+        rng = random.Random(1000 + seed)
+        a, b = await seed_entity(db_session), await seed_entity(db_session)
+        for video_id in _videos(f"mla{seed}", 4):
+            await seed_video(db_session, video_id, ("en", "es"))
+            moments = []
+            for _ in range(rng.randint(1, 4)):
+                ta = round(rng.uniform(0, 900), 1)
+                moments.append((ta, round(ta + rng.uniform(1, 20), 1)))
+            for language_code, shift in (("en", 0.0), ("es", 0.5)):
+                await seed_timed_comentions(
+                    db_session,
+                    entity_a=a,
+                    entity_b=b,
+                    video_id=video_id,
+                    moments=[(ta + shift, tb + shift) for ta, tb in moments],
+                    language_code=language_code,
+                    create_video=False,
+                )
+        lo, hi = canonical(a, b)
+        for window in (15, 30, 60, 120):
+            response = await proximity_service.pair_passages(
+                db_session, entity_a=a, entity_b=b, window=window, limit=50, offset=0
+            )
+            recorded = set(
+                (
+                    await db_session.execute(
+                        select(EntityPairProximityDB.video_id)
+                        .where(
+                            EntityPairProximityDB.entity_a_id == lo,
+                            EntityPairProximityDB.entity_b_id == hi,
+                            EntityPairProximityDB.gap_seconds <= window,
+                        )
+                        .distinct()
+                    )
+                ).scalars()
+            )
+            assert {v.video_id for v in response.items} == recorded
+            # Each discussion exists in both languages, half a second apart: one group each.
+            per_language = sum(
+                len({v.language_code for g in item.passages for v in g.variants})
+                for item in response.items
+            )
+            assert per_language == 2 * len(response.items)
+            for item in response.items:
+                for group in item.passages:
+                    assert {v.language_code for v in group.variants} == {"en", "es"}

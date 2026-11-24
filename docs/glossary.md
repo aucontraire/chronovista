@@ -48,6 +48,18 @@ Project-specific terminology used throughout chronovista documentation and code.
 **Transcript Proximity**
 :   A record that two entities are mentioned close together in one transcript: the video, the language, both passages, and the gap in seconds (up to 120 s). It surfaces evidence for a person to review; it does not decide that the entities are related. See [Transcript proximity](architecture/transcript-proximity.md).
 
+**Discussion Passage**
+:   In the evidence panel, a stretch of one transcript language where two entities are mentioned within the chosen window of each other, merged by chaining: a co-mention joins the passage when it starts within the window of the passage's latest end. A sustained conversation can be one long passage; a passage is not a topic boundary. See [Discussion passages](architecture/transcript-proximity.md#discussion-passages-what-the-evidence-panel-shows).
+
+**Grouped Discussion Passage**
+:   Discussion passages from different transcript languages of one video whose time ranges overlap, grouped transitively. The unit the evidence panel counts, so a translation never adds to a count; each language's passage remains inspectable as a variant.
+
+**Proximity Window**
+:   How close is "close": 15, 30, 60 or 120 seconds between the starts of the two mentions (inclusive). The evidence panel's selector, kept in the page address.
+
+**Farther Apart (videos)**
+:   Videos where both entities are spoken in the same transcript language but never within the chosen window. Reported as a separate count and list in the evidence panel, never in its totals.
+
 **Proximity Scope**
 :   One video's transcript in one language: the unit proximity is computed in. A scope is **current** when computed from its latest transcript and mentions, **stale** when they changed since, and **not computed** before its first computation. A current scope with zero records is a real answer, distinct from not computed.
 

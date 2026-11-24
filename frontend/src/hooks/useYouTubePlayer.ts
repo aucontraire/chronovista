@@ -250,6 +250,13 @@ export interface UseYouTubePlayerOptions {
    * player normally, clearing any stale error state from the disabled phase.
    */
   enabled?: boolean;
+  /**
+   * Deep-link start time in seconds (`?t=`). When a non-negative number the
+   * player is created with `start: Math.floor(startSeconds)` so it opens at
+   * that moment; absent or null leaves `start` out. Read once at creation —
+   * clearing the URL param afterwards does not recreate the player.
+   */
+  startSeconds?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +291,7 @@ export function useYouTubePlayer({
   videoId,
   segments,
   enabled = true,
+  startSeconds = null,
 }: UseYouTubePlayerOptions): UseYouTubePlayerResult {
   // --------------------------------------------------------------------------
   // Refs (not state — player internals must not trigger re-renders)
@@ -322,6 +330,10 @@ export function useYouTubePlayer({
 
   // Keep segmentsRef in sync with the prop on every render (no effect needed).
   segmentsRef.current = segments;
+
+  /** Latest deep-link start; read at player creation so it is not an effect dependency. */
+  const startSecondsRef = useRef<number | null>(startSeconds);
+  startSecondsRef.current = startSeconds;
 
   // --------------------------------------------------------------------------
   // React state (values that drive the UI)
@@ -501,6 +513,9 @@ export function useYouTubePlayer({
           enablejsapi: 1,
           origin: window.location.origin,
           modestbranding: 1,
+          ...(startSecondsRef.current !== null && startSecondsRef.current >= 0
+            ? { start: Math.floor(startSecondsRef.current) }
+            : {}),
         },
         events: {
           onReady: handleReady,

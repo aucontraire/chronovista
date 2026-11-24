@@ -26,9 +26,9 @@ vi.mock("../../../hooks/useNeighborhood", () => ({
   useNeighborhood: (...args: unknown[]) => neighborhoodMock(...args),
   useExpansions: () => ({ results: [], pending: 0, failed: 0 }),
 }));
-vi.mock("../../../hooks/useConnectionEvidence", () => ({
+vi.mock("../../../hooks/usePairPassages", () => ({
   EVIDENCE_PAGE_SIZE: 12,
-  useConnectionEvidence: () => ({ items: [], first: undefined, isLoading: true, isError: false, error: null }),
+  usePairPassages: () => ({ items: [], first: undefined, isLoading: true, isError: false, error: null }),
 }));
 vi.mock("../../../hooks/useEntitySearch", () => ({
   useEntitySearch: () => ({ entities: [], isLoading: false, isFetched: false, isError: false, isBelowMinChars: true }),

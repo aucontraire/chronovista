@@ -18,6 +18,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "../api/config";
+import { PAIR_PASSAGES_KEY } from "./usePairPassages";
 import {
   fetchSupportedLanguages,
   type SupportedLanguage,
@@ -245,6 +246,8 @@ export function useLanguagePreferences(): UseLanguagePreferencesReturn {
     onSuccess: () => {
       // Invalidate so the GET query re-fetches with the server's canonical data
       queryClient.invalidateQueries({ queryKey: LANGUAGE_PREFERENCES_KEY });
+      // An open discussion-passages panel leads with the preferred language (Feature 118, FR-011a)
+      queryClient.invalidateQueries({ queryKey: [PAIR_PASSAGES_KEY] });
     },
   });
 

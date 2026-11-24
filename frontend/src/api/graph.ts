@@ -117,7 +117,7 @@ export async function fetchGraphPresence(
   return res.present;
 }
 
-// --- Transcript-evidence panel (Feature 114) --------------------------------
+// --- Transcript-evidence shared types (Feature 114) -------------------------
 // Mirrors `src/chronovista/models/connection_evidence.py`. Keep field names identical.
 
 /** Mirrors the backend `DetectionMethod` literal. */
@@ -141,77 +141,159 @@ export interface MentionRef {
   detection_method: DetectionMethod;
 }
 
-/** A bounded run of transcript segments rendered as prose. */
-export interface Passage {
-  text: string;
+// --- Discussion passages (Feature 118) --------------------------------------
+// Mirrors the Feature 118 models in `src/chronovista/models/connection_evidence.py`.
+// Keep field names identical.
+
+/** The four proximity windows, in seconds (spec FR-006). */
+export const PROXIMITY_WINDOWS = [15, 30, 60, 120] as const;
+export type ProximityWindow = (typeof PROXIMITY_WINDOWS)[number];
+export const DEFAULT_PROXIMITY_WINDOW: ProximityWindow = 30;
+
+/** One co-mention of a passage, by time only (a passage's "other moments"). */
+export interface CoMoment {
   start_time: number;
-  /** Lead segment id — the deep-link `seg` / scroll anchor. */
-  segment_id: number;
+  gap_seconds: number;
 }
 
-/** One (video, language) co-occurrence: the min-separation pair in a single transcript language. */
-export interface EvidenceVariant {
-  language_code: string;
+export interface PassageSegment {
+  segment_id: number;
+  /** Position in the transcript; `closest.segments` is sorted by it. Gaps mean omitted text. */
+  sequence_number: number;
+  start_time: number;
+  /** Effective (corrected-or-raw) text. */
+  text: string;
+  /** The segment after a mention: reading context, rendered dimmed. */
+  is_context: boolean;
+}
+
+/** A passage's closest co-mention, with its text. `mention_a`/`mention_b` follow the request's a/b. */
+export interface PassageMoment {
+  gap_seconds: number;
+  /** Deep-link `t`. */
+  start_time: number;
+  /** Deep-link `seg`. */
+  segment_id: number;
   mention_a: MentionRef;
   mention_b: MentionRef;
-  separation_segments: number;
-  /** One window when the mentions are close, else one per mention (never empty). */
-  passages: Passage[];
-  /** Server-computed (computed_field); never recompute on the client. */
-  separation_seconds: number;
+  segments: PassageSegment[];
 }
 
-/** One co-occurrence grained by VIDEO (the panel row + the audit/exclusion unit). */
-export interface EvidenceItem {
+/** Co-mentions in one video and language, merged by the chaining rule. */
+export interface LanguagePassage {
+  language_code: string;
+  start_time: number;
+  end_time: number;
+  co_mention_count: number;
+  closest_gap_seconds: number;
+  closest: PassageMoment;
+  other_moments: CoMoment[];
+  name_list: boolean;
+}
+
+/** Overlapping language passages of one video; `variants[0]` leads. Counts once. */
+export interface GroupedPassage {
+  start_time: number;
+  end_time: number;
+  closest_gap_seconds: number;
+  variants: LanguagePassage[];
+}
+
+export interface VideoPassages {
   video_id: string;
-  /** The video's strongest co-mention (min separation across its co-occurring languages). */
-  representative: EvidenceVariant;
-  /** The same pair in the video's OTHER co-occurring languages (the expander); [] if single-language. */
-  other_language_variants: EvidenceVariant[];
   video_title: string | null;
   channel_title: string | null;
-  /** Server-computed: 1 + other_language_variants.length. */
-  cooccurring_language_count: number;
-  // No `deep_link`: the client builds a per-passage in-app link via `utils/videoDeepLink.ts`.
+  /** Over ALL its passages, folded or not. */
+  closest_gap_seconds: number;
+  /** All of them, in time order; the panel folds after 3. */
+  passages: GroupedPassage[];
 }
 
-export interface ConnectionEvidence {
+export interface FailedScope {
+  video_id: string;
+  language_code: string;
+  video_title: string | null;
+  channel_title: string | null;
+}
+
+export type PairPassagesState =
+  | "passages"
+  | "not_computed"
+  | "no_transcript"
+  | "no_passage_in_window";
+
+export interface PairPassages {
   entity_a_id: string;
   entity_b_id: string;
-  items: EvidenceItem[];
-  /** Distinct co-occurring VIDEOS (one row each; paginate on this). Narrower than the any-source
-   *  `/videos` intersection — the panel labels its denominator rather than implying they match. */
-  total_available: number;
-  /** (video, language) transcript count — "spoken together in N videos (M transcripts)". */
-  raw_cooccurrence_count: number;
-  /** Page offset these items start at (so `truncated` is offset-aware). */
+  window_seconds: ProximityWindow;
+  passage_rule_version: string;
+  items: VideoPassages[];
   offset: number;
-  /** Non-transcript basis when `items` is empty; else null. */
+  /** Totals over every video in the window, never just this page. */
+  video_count: number;
+  passage_count: number;
+  channel_count: number;
+  closest_gap_seconds: number | null;
+  /** Videos where both are spoken but never within the window; not in the totals above. */
+  farther_video_count: number;
+  pending_scopes: number;
+  failed_scopes: FailedScope[];
+  state: PairPassagesState;
   basis_when_empty: "title" | "description" | "tag" | "manual" | null;
   /** Server-computed (computed_field). */
   returned: number;
   truncated: boolean;
 }
 
-export interface ConnectionEvidenceParams {
+export interface FartherVideo {
+  video_id: string;
+  video_title: string | null;
+  channel_title: string | null;
+  language_code: string;
+  nearest_gap_seconds: number;
+  nearest_start_time: number;
+}
+
+export interface FartherVideos {
+  items: FartherVideo[];
+  offset: number;
+  total: number;
+  returned: number;
+  truncated: boolean;
+}
+
+export interface PairPassagesParams {
   a: string;
   b: string;
+  window: ProximityWindow;
   limit?: number;
   offset?: number;
 }
 
-export async function fetchConnectionEvidence(
-  { a, b, limit, offset }: ConnectionEvidenceParams,
-  signal?: AbortSignal,
-): Promise<ConnectionEvidence> {
-  const params = new URLSearchParams({ a, b });
+function pairPassagesQuery({ a, b, window, limit, offset }: PairPassagesParams): string {
+  const params = new URLSearchParams({ a, b, window: String(window) });
   if (limit !== undefined) params.set("limit", String(limit));
   if (offset !== undefined) params.set("offset", String(offset));
-  return apiFetch<ConnectionEvidence>(
-    `/graph/connect/evidence?${params.toString()}`,
-    {
-      ...(signal !== undefined ? { externalSignal: signal } : {}),
-    },
+  return params.toString();
+}
+
+export async function fetchPairPassages(
+  params: PairPassagesParams,
+  signal?: AbortSignal,
+): Promise<PairPassages> {
+  return apiFetch<PairPassages>(
+    `/graph/connect/passages?${pairPassagesQuery(params)}`,
+    { ...(signal !== undefined ? { externalSignal: signal } : {}) },
+  );
+}
+
+export async function fetchFartherVideos(
+  params: PairPassagesParams,
+  signal?: AbortSignal,
+): Promise<FartherVideos> {
+  return apiFetch<FartherVideos>(
+    `/graph/connect/passages/farther?${pairPassagesQuery(params)}`,
+    { ...(signal !== undefined ? { externalSignal: signal } : {}) },
   );
 }
 

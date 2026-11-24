@@ -7,8 +7,9 @@ especially associations that the imported Wikidata/DBpedia relationships don't h
 
 Proximity **surfaces evidence; it does not infer relationships.** It never decides that two entities are
 related, and it never writes to the relationship-candidate queue. A human reads the passages and gives
-them meaning. The graph view and the evidence panel are the intended consumers (later slices). Today
-only the candidate queue reads it, through its own threshold (see the end of this page).
+them meaning. The evidence panel reads it (since Feature 118: see
+[Discussion passages](#discussion-passages-what-the-evidence-panel-shows) below), the graph view is the
+next consumer, and the candidate queue reads it through its own threshold (see the end of this page).
 
 ## Why proximity, not plain co-occurrence
 
@@ -134,6 +135,92 @@ will expose them):
       the numbers may still change.
 - **Records for a pair**: each close co-mention within a window, closest first, with the video,
   language, and both segments, so the passages can be opened.
+
+## Discussion passages: what the evidence panel shows
+
+The connection explorer's evidence panel turns a pair's records into **discussion passages** a person can
+read (`GET /api/v1/graph/connect/passages`, Feature 118). It is built from the records themselves, so
+the videos it lists are, by construction, exactly the videos proximity reports for that pair and
+window. Agreement is a property of the design, not a hope two implementations share. A production
+sample of 55 pairs (the densest, single-video pairs, multi-language pairs and random pairs) at all four
+windows agreed in every case.
+
+### From records to passages
+
+The reviewer picks a **window**: 15, 30, 60 or 120 seconds, default 30. Every record within it is a
+co-mention, and each co-mention gets a time **interval**: from the earlier of the two mentions' starts
+to the later of their ends. A name split across a segment boundary ends in its end segment. Only
+mentions that pass the shared rule give an end. The same entity can carry a rejected mention in the
+same segment, and that must never stretch a passage.
+
+The **passage rule** (version `118.0`) then works in two steps:
+
+1. **Chaining, within one video and language.** Co-mentions are taken in time order. A co-mention joins
+   the current passage when its start is at most one window after the latest end of the passage so far;
+   otherwise it starts a new passage. So dense back-and-forth within a stretch is **one** passage, and two
+   discussions ten minutes apart are **two**. Chaining has a documented consequence: a sustained
+   conversation whose co-mentions keep arriving within the window becomes one long passage. That is
+   intended. A passage is a stretch of nearby co-mentions, **not** a topic boundary: the rule says
+   nothing about what was said.
+2. **Grouping across languages, within one video.** A video with transcripts in several languages has
+   the same discussion once per language. Passages of different languages whose time ranges overlap
+   (one starts before the other ends) form one **grouped discussion passage**, transitively. When one
+   language splits a discussion where another does not, all three passages still land in one group.
+   Ranges that merely touch do not group.
+
+The grouped discussion passage is the unit the panel counts. A translation never adds to a count, and
+no count depends on which page is open, which language leads, or the order the two entities are given in.
+
+### What a passage shows
+
+- Its time range and how many co-mentions it holds.
+- The **closest** co-mention's segments, with both names highlighted, and the segment after each mention
+  dimmed as reading context. At most six segments, however long the passage.
+- A link that opens the video with the player at that moment.
+- The passage's other co-mentions as timestamps only.
+- A **"Several names in one segment"** marker when the closest co-mention sits in one segment naming
+  three or more library entities (a credits line or a panel introduction). Proximity knows this already:
+  every pair of qualifying entities in one segment has a zero-gap record there. The marker never removes
+  or discounts a passage.
+
+Which language variant shows first follows the reviewer's language preferences (fluent, then learning,
+then priority; `es-MX` matches `es`), and falls back to the closest co-mention. Without an established
+identity the panel still works, closest first.
+
+### Videos spoken farther apart
+
+A video where both entities are spoken (qualifying mentions in the **same** transcript language) but
+never within the window is not a passage video. It is reported as a separate count ("plus 9 videos where
+both are spoken farther apart"), and can be listed nearest-first with the closest moment, so a false match
+far from the other entity can still be audited (`/graph/connect/passages/farther`).
+
+### Honest state
+
+The panel reports the freshness of every transcript a pair's evidence depends on (the same set
+`complete` is judged by, above):
+
+- **Updating**: some transcripts are pending (stale, never computed, or retrying with fewer than three
+  failures). The counts are shown but may change, and the panel refreshes itself until none is pending.
+- **Could not be computed**: some transcripts are **failing** exactly as `proximity status` reports them
+  (failed three or more times under the current rule). They are listed by video and language, never
+  described as updating; `chronovista proximity retry-failed` retries them.
+
+When there is no passage at all, the panel says which of these it is, in this order: still computing;
+not spoken together in any transcript (naming a tag, title or description basis when there is one); or
+no passage within the chosen window.
+
+### How it reads, and why that way
+
+Each request reads in one read-only snapshot (`REPEATABLE READ`), because the worker replaces scopes
+while the panel reads and a count must come from the same moment as its rows. The co-mentions come from
+two set-based statements: the records in the window, then the qualifying mention ends for just the
+segments those records reference. Chaining and grouping then run in Python
+(`proximity_service.chain_passages` and `group_across_languages`, where the rule is documented).
+
+A single statement joining the records to the qualifying mentions was tried first and measured on
+production. Postgres estimates the visible-name match (`lower(unaccent(text)) = name`) at one row, plans
+nested loops on that estimate, and re-evaluates the whole mention set per record: up to 39 seconds for a
+dense pair. The two-statement read takes about one second for the densest pair in the library.
 
 ## Operating it
 

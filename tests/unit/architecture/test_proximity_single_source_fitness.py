@@ -21,9 +21,11 @@ from chronovista.repositories import entity_mention_repository
 _RULE = "positioned_transcript_mention_qualifies"
 _SRC = Path(chronovista.__file__).parent
 
-# One call in the panel (co_occurrence_evidence), two in _instance_select (ma, mb).
+# One call in the Feature 114 panel (co_occurrence_evidence), one in the Feature 118
+# passage panel's single qualifying-mention CTE (_pair_qualifying_mentions, shared by its
+# interval ends, highlights and farther-apart list), two in _instance_select (ma, mb).
 _EXPECTED_CALL_SITES = {
-    "repositories/entity_mention_repository.py": 1,
+    "repositories/entity_mention_repository.py": 2,
     "repositories/entity_pair_proximity_repository.py": 2,
 }
 
@@ -38,9 +40,9 @@ def _call_sites() -> dict[str, int]:
     return counts
 
 
-def test_the_positioned_rule_has_exactly_its_three_call_sites() -> None:
+def test_the_positioned_rule_has_exactly_its_four_call_sites() -> None:
     assert _call_sites() == _EXPECTED_CALL_SITES, (
-        "positioned_transcript_mention_qualifies call sites changed. The panel calls "
+        "positioned_transcript_mention_qualifies call sites changed. Each panel calls "
         "it once and the proximity self-join once per endpoint. If a surface was added "
         "or one stopped calling the shared rule, the panel and proximity can now "
         "disagree about which mentions count."
@@ -52,6 +54,16 @@ def test_the_panel_call_is_inside_co_occurrence_evidence() -> None:
         entity_mention_repository.EntityMentionRepository.co_occurrence_evidence
     )
     assert f"{_RULE}(" in method
+
+
+def test_the_passage_panel_call_is_inside_its_one_qualifying_cte() -> None:
+    # Feature 118: interval ends, highlights and the farther-apart list all read
+    # qualifying mentions through this one helper, so none can use a mention the
+    # shared rule rejects (a record proves only that ONE mention per entity qualified).
+    helper = inspect.getsource(
+        entity_mention_repository.EntityMentionRepository._pair_qualifying_mentions
+    )
+    assert f"{_RULE}(" in helper
 
 
 def test_the_rule_states_its_contract_at_the_point_of_definition() -> None:
@@ -131,3 +143,32 @@ def test_the_current_predicate_has_one_home() -> None:
     assert source.count("computed_revision.is_not_distinct_from(") == 1
     assert source.count("computed_revision.is_distinct_from(") == 0
     assert source.count("def _is_current(") == 1
+
+
+def test_the_failing_predicate_has_one_home_and_three_readers() -> None:
+    """Feature 118: ``proximity status`` (count_failing, list_failing) and the evidence panel
+    (pair_scope_health) must call the same scopes failing, so all three read ``_is_failing``
+    and nothing re-states its clauses in SQL. (``scope_states`` evaluates the same rule on
+    already-loaded rows in Python, a different form, and is not counted.)"""
+    source = (_SRC / "repositories/entity_pair_proximity_repository.py").read_text(
+        encoding="utf-8"
+    )
+    assert source.count("_is_failing(") - source.count("def _is_failing(") == 3
+    assert source.count("state.failed_rule_version == rule_version") == 1
+
+
+def test_every_passage_panel_reader_goes_through_the_qualifying_helper() -> None:
+    """Feature 118: the three readers of mentions behind the passage panel read them only
+    through ``_pair_qualifying_mentions``. The call-count guard above would not notice a new
+    reader selecting raw ``EntityMentionDB`` rows; this pins the readers by name."""
+    from chronovista.repositories import entity_pair_proximity_repository
+
+    readers = (
+        entity_mention_repository.EntityMentionRepository.passage_texts,
+        entity_mention_repository.EntityMentionRepository.pair_mention_starts,
+        entity_pair_proximity_repository.EntityPairProximityRepository.pair_comentions,
+    )
+    for reader in readers:
+        assert "_pair_qualifying_mentions(" in inspect.getsource(
+            reader
+        ), reader.__name__

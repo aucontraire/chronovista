@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ConnectionKind } from "../../api/graph";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 
 import { ConnectionExplorerPage } from "../ConnectionExplorerPage";
 import { A_ID, B_ID, entityB, fixtureConnection, noPathConnection } from "../../components/graph/__tests__/fixtures";
@@ -19,9 +19,27 @@ vi.mock("../../hooks/useConnection", () => ({
   useGraphHealth: () => healthMock(),
   useGraphPresence: () => ({ present: new Set<string>(), isLoading: false }),
 }));
-vi.mock("../../hooks/useConnectionEvidence", () => ({
+vi.mock("../../hooks/usePairPassages", () => ({
   EVIDENCE_PAGE_SIZE: 12,
-  useConnectionEvidence: () => ({ evidence: undefined, isLoading: true, isError: false, error: null }),
+  usePairPassages: () => ({ items: [], first: undefined, isLoading: true, isError: false, error: null }),
+}));
+vi.mock("../../components/graph/EvidencePanel", () => ({
+  EvidencePanel: ({
+    window,
+    onWindowChange,
+  }: {
+    window: number;
+    onWindowChange: (w: number) => void;
+  }) => (
+    <div data-testid="evidence-panel" data-window={window}>
+      <button type="button" onClick={() => onWindowChange(120)}>
+        pick 120
+      </button>
+    </div>
+  ),
+}));
+vi.mock("../../components/graph/ExplorePanel", () => ({
+  ExplorePanel: () => <div data-testid="explore-panel" />,
 }));
 vi.mock("../../hooks/useEntitySearch", () => ({
   useEntitySearch: () => ({ entities: [], isLoading: false, isFetched: false, isError: false, isBelowMinChars: true }),
@@ -37,10 +55,16 @@ function result(overrides: Record<string, unknown> = {}) {
   return { connection: undefined, isLoading: false, failure: null, refetch: vi.fn(), ...overrides };
 }
 
+function LocationProbe() {
+  const { search } = useLocation();
+  return <output data-testid="location-search">{search}</output>;
+}
+
 function renderAt(url: string) {
   return render(
     <MemoryRouter initialEntries={[url]}>
       <ConnectionExplorerPage />
+      <LocationProbe />
     </MemoryRouter>,
   );
 }
@@ -56,6 +80,48 @@ describe("ConnectionExplorerPage", () => {
     connectionMock.mockReturnValue(result({ connection: noPathConnection() }));
     renderAt(`/connections?a=${A_ID}&b=${B_ID}`);
     expect(screen.getByTestId("evidence-panel")).toBeInTheDocument();
+  });
+
+  describe("proximity window in the URL", () => {
+    const base = `/connections?a=${A_ID}&b=${B_ID}`;
+    function panelWindow() {
+      return screen.getByTestId("evidence-panel").getAttribute("data-window");
+    }
+
+    beforeEach(() => {
+      connectionMock.mockReturnValue(result({ connection: noPathConnection() }));
+    });
+
+    it("defaults to 30 and leaves the URL untouched when window is missing", () => {
+      renderAt(base);
+      expect(panelWindow()).toBe("30");
+      expect(screen.getByTestId("location-search")).toHaveTextContent(
+        `?a=${A_ID}&b=${B_ID}`,
+      );
+      expect(screen.getByTestId("location-search").textContent).not.toContain("window");
+    });
+
+    it("reads window=60", () => {
+      renderAt(`${base}&window=60`);
+      expect(panelWindow()).toBe("60");
+    });
+
+    it("falls back to 30 for an unsupported value without rewriting the URL", () => {
+      renderAt(`${base}&window=45`);
+      expect(panelWindow()).toBe("30");
+      expect(screen.getByTestId("location-search").textContent).toContain("window=45");
+    });
+
+    it("writes window=120 on choosing it and keeps a, b and mode", () => {
+      renderAt(`${base}&mode=explore`);
+      fireEvent.click(screen.getByRole("button", { name: "pick 120" }));
+      const search = screen.getByTestId("location-search").textContent ?? "";
+      expect(search).toContain("window=120");
+      expect(search).toContain(`a=${A_ID}`);
+      expect(search).toContain(`b=${B_ID}`);
+      expect(search).toContain("mode=explore");
+      expect(panelWindow()).toBe("120");
+    });
   });
 
   it("asks for both entities when none are chosen", () => {

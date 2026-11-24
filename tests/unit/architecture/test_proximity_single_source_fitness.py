@@ -8,6 +8,9 @@ surface that hand-rolls its own copy, or an endpoint that stops being qualified,
 changes the exact count below and fails here (Constitution: single-source guard).
 The behavioral proof lives in ``tests/integration/test_proximity_service.py``
 (``TestSharedQualificationRule`` and ``TestPanelEquivalence``).
+
+The Feature 114 panel (``co_occurrence_evidence``) was the fourth call site until
+its endpoint was retired (#422).
 """
 
 from __future__ import annotations
@@ -21,11 +24,11 @@ from chronovista.repositories import entity_mention_repository
 _RULE = "positioned_transcript_mention_qualifies"
 _SRC = Path(chronovista.__file__).parent
 
-# One call in the Feature 114 panel (co_occurrence_evidence), one in the Feature 118
-# passage panel's single qualifying-mention CTE (_pair_qualifying_mentions, shared by its
-# interval ends, highlights and farther-apart list), two in _instance_select (ma, mb).
+# One in the passage panel's single qualifying-mention CTE (_pair_qualifying_mentions,
+# shared by its interval ends, highlights and farther-apart list), two in
+# _instance_select (ma, mb).
 _EXPECTED_CALL_SITES = {
-    "repositories/entity_mention_repository.py": 2,
+    "repositories/entity_mention_repository.py": 1,
     "repositories/entity_pair_proximity_repository.py": 2,
 }
 
@@ -40,20 +43,13 @@ def _call_sites() -> dict[str, int]:
     return counts
 
 
-def test_the_positioned_rule_has_exactly_its_four_call_sites() -> None:
+def test_the_positioned_rule_has_exactly_its_three_call_sites() -> None:
     assert _call_sites() == _EXPECTED_CALL_SITES, (
-        "positioned_transcript_mention_qualifies call sites changed. Each panel calls "
+        "positioned_transcript_mention_qualifies call sites changed. The panel calls "
         "it once and the proximity self-join once per endpoint. If a surface was added "
         "or one stopped calling the shared rule, the panel and proximity can now "
         "disagree about which mentions count."
     )
-
-
-def test_the_panel_call_is_inside_co_occurrence_evidence() -> None:
-    method = inspect.getsource(
-        entity_mention_repository.EntityMentionRepository.co_occurrence_evidence
-    )
-    assert f"{_RULE}(" in method
 
 
 def test_the_passage_panel_call_is_inside_its_one_qualifying_cte() -> None:

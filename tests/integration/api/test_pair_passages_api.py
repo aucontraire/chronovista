@@ -440,7 +440,7 @@ class TestPassages:
         assert f_moment["mention_a"] == b_moment["mention_b"]
         assert f_moment["mention_a"]["start_time"] == 10.0
 
-    async def test_the_old_evidence_endpoint_still_answers(
+    async def test_the_retired_evidence_endpoint_is_gone(
         self, async_client: AsyncClient, world: World
     ) -> None:
         a, b = await world.pair()
@@ -448,8 +448,7 @@ class TestPassages:
         resp = await async_client.get(
             "/api/v1/graph/connect/evidence", params={"a": str(a), "b": str(b)}
         )
-        assert resp.status_code == 200
-        assert resp.json()["total_available"] == 1
+        assert resp.status_code == 404
 
 
 class TestWindow:

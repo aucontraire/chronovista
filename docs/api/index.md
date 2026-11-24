@@ -181,31 +181,7 @@ Same `a`, `b` and `window` as above; `limit` 1–100 (default 20), `offset`. Ite
 (`nearest_gap_seconds`, then video id), with the language and `nearest_start_time` of the closest moment;
 `total` equals the passages response's `farther_video_count` for the same pair and window.
 
-**`GET /graph/connect/evidence`** → `ConnectionEvidence` (Feature 114). **Superseded** by
-`/graph/connect/passages`, which the panel now uses; kept unchanged for compatibility. The transcript passages
-behind a pair's co-occurrence (the evidence panel). Unlike the three endpoints above, this one is
-**Postgres-backed** (it reads `entity_mentions` / `transcript_segments`), so there is no servability
-gate and no 503.
-
-| Param | Type | Default | Notes |
-|---|---|---|---|
-| `a` | UUID | required | First entity id. |
-| `b` | UUID | required | Second entity id. Must differ from `a`. |
-| `limit` | int 1–50 | 12 | Max video items per page. |
-| `offset` | int ≥ 0 | 0 | Pagination offset over the ordered videos. |
-
-Each item is one **video**: a `representative` (the video's minimum-separation co-mention — language,
-the mention pair, the rendered passage(s), the segment separation) plus `other_language_variants`
-(the same pair in the video's other co-occurring languages, for an expander) and the video/channel
-titles. There is no cross-video collapse — every co-occurring video is a row (closest-first;
-`cooccurring_language_count` = 1 + the expander count). The response reports `total_available`
-(distinct co-occurring **videos** — the pagination total), `raw_cooccurrence_count` (the
-`(video, language)` transcript count, giving "spoken together in N videos (M transcripts)"), `offset`,
-and `truncated`. When the pair has no transcript passage it returns `items: []` and names the
-non-transcript `basis_when_empty` (`title` / `description` / `tag` / `manual`) — set only when
-`total_available == 0`; an empty page with `total_available > 0` is past the end, not "no
-co-occurrence". RFC-7807: **422** for `a == b`, **404** for an entity id absent from the database. No
-**503** — it reads live Postgres, which is why its view can be briefly fresher than the graph snapshot.
+`GET /graph/connect/evidence` (Feature 114) was retired: use `/graph/connect/passages`.
 
 ### Interactive Documentation
 

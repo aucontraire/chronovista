@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.131.0] - 2026-11-24
+
+### Removed
+
+- **`GET /api/v1/graph/connect/evidence`** (Feature 114), superseded in 0.130.0 by
+  `/graph/connect/passages`, is retired and now answers 404. Its response models (`ConnectionEvidence`,
+  `EvidenceItem`, `EvidenceVariant`, `Passage`) are removed. Nothing in the application called it; a
+  script that did should switch to `/graph/connect/passages`. The evidence panel is unchanged.
+
 ## [0.130.0] - 2026-11-23
 
 The connection explorer's evidence panel now shows **discussion passages** built from the transcript

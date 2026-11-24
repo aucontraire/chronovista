@@ -106,6 +106,26 @@ async def require_auth() -> None:
         )
 
 
+async def optional_local_identity(session: AsyncSession) -> str | None:
+    """The canonical local-user identity, or ``None`` when none is established (Feature 118).
+
+    For reads that have a sensible default without an identity (the evidence panel orders
+    language variants by the user's preferences, else by closeness), so they never answer 409.
+    A plain helper, not a ``Depends``: the caller runs it after starting its own transaction
+    (the passage panel opens a read snapshot that must be the transaction's first statement).
+    Like :func:`require_local_identity`, it never establishes an identity.
+    """
+    from chronovista.services.identity_service import (
+        IdentityNotEstablishedError,
+        IdentityService,
+    )
+
+    try:
+        return await IdentityService().get_established_identity(session)
+    except IdentityNotEstablishedError:
+        return None
+
+
 async def require_local_identity(
     session: AsyncSession = Depends(get_db),
 ) -> str:

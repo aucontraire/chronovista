@@ -259,6 +259,21 @@ Not all videos have transcripts in all languages.
 chronovista transcript languages VIDEO_ID
 ```
 
+## Connection explorer
+
+### The evidence panel says "could not be computed"
+
+Some transcripts behind the pair failed to compute three or more times under the current rule. The
+panel lists them by video and language, and keeps showing the counts it has, marked incomplete. Check
+`chronovista proximity status` for the error, fix the cause, and run `chronovista proximity
+retry-failed`. The note clears on the panel's next load.
+
+### The evidence panel keeps saying "Updating"
+
+The panel refreshes itself while transcripts are pending and normally settles within seconds of a
+change. If it doesn't, the recompute worker is not running: check the `proximity_worker` object in
+`/health` (it should be `running`), or run `chronovista proximity drain` with the API stopped.
+
 ## Recovery (Wayback Machine)
 
 ### Recovery times out or hangs

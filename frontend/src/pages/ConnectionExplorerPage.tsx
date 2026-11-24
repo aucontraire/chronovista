@@ -25,7 +25,8 @@ import type { GraphMode } from "../components/graph/GraphModeToggle";
 import { NodeTypeLegend } from "../components/graph/NodeTypeLegend";
 import { EvidencePanel } from "../components/graph/EvidencePanel";
 import { buildConnectionModel, hasKnowledgeBaseConnection } from "../components/graph/connectionModel";
-import type { GraphConnection, GraphNode } from "../api/graph";
+import { DEFAULT_PROXIMITY_WINDOW, PROXIMITY_WINDOWS } from "../api/graph";
+import type { GraphConnection, GraphNode, ProximityWindow } from "../api/graph";
 import { useConnection, useGraphHealth } from "../hooks/useConnection";
 import { useEntityDetail } from "../hooks/useEntityDetail";
 
@@ -157,6 +158,17 @@ export function ConnectionExplorerPage() {
   // and an Explore view is shareable (FR-010).
   const mode: GraphMode = searchParams.get("mode") === "explore" ? "explore" : "connect";
   const exploring = mode === "explore";
+  // Lenient (FR-006a): a missing or unsupported value falls back to the default without
+  // rewriting the address, so a hand-edited or stale link still opens.
+  const windowParam = Number(searchParams.get("window"));
+  const proximityWindow: ProximityWindow =
+    PROXIMITY_WINDOWS.find((w) => w === windowParam) ?? DEFAULT_PROXIMITY_WINDOW;
+
+  function setProximityWindow(next: ProximityWindow) {
+    const params = new URLSearchParams(searchParams);
+    params.set("window", String(next));
+    setSearchParams(params);
+  }
 
   function setMode(next: GraphMode) {
     const params = new URLSearchParams(searchParams);
@@ -348,7 +360,12 @@ export function ConnectionExplorerPage() {
 
       {/* The evidence panel is about a PAIR, so Explore shows it only with both entities chosen. */}
       {exploring && ready && a && b && (
-        <EvidencePanel entityAId={a} entityBId={b} />
+        <EvidencePanel
+          entityAId={a}
+          entityBId={b}
+          window={proximityWindow}
+          onWindowChange={setProximityWindow}
+        />
       )}
 
       {!exploring && ready && !unavailable && connection && model && (
@@ -397,6 +414,8 @@ export function ConnectionExplorerPage() {
             <EvidencePanel
               entityAId={connection.entity_a.entity_id}
               entityBId={connection.entity_b.entity_id}
+              window={proximityWindow}
+              onWindowChange={setProximityWindow}
             />
           )}
         </div>

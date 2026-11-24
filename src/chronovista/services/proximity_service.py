@@ -28,13 +28,29 @@ import random
 import uuid
 from collections.abc import Callable, Sequence
 from enum import Enum
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from chronovista.config.database import db_manager
 from chronovista.db.models import ProximityScopeState as ProximityScopeStateDB
+from chronovista.db.models import UserLanguagePreference as UserLanguagePreferenceDB
+from chronovista.models.connection_evidence import (
+    OTHER_MOMENTS_LIMIT,
+    CoMoment,
+    FailedScope,
+    FartherVideo,
+    FartherVideos,
+    GroupedPassage,
+    LanguagePassage,
+    NonTranscriptBasis,
+    PairPassages,
+    PairPassagesState,
+    PassageMoment,
+    ProximityWindow,
+    VideoPassages,
+)
 from chronovista.models.entity_pair_proximity import (
     DryRunReport,
     DryRunScope,
@@ -46,8 +62,17 @@ from chronovista.models.entity_pair_proximity import (
     RebuildOutcome,
     ScopeFilter,
 )
+from chronovista.models.enums import LanguageCode, LanguagePreferenceType
+from chronovista.repositories.entity_mention_repository import (
+    EntityMentionRepository,
+    PassageText,
+)
 from chronovista.repositories.entity_pair_proximity_repository import (
+    CoMentionRow,
     EntityPairProximityRepository,
+)
+from chronovista.repositories.user_language_preference_repository import (
+    UserLanguagePreferenceRepository,
 )
 
 # The measurement-rule version recorded with every published scope and run. Bump it
@@ -535,4 +560,467 @@ async def proximity_status(*, failing_limit: int = 20) -> ProximityStatusReport:
         failing_total=failing_total,
         oldest_not_current_at=oldest,
         rebuild_lock_holder_pid=holder,
+    )
+
+
+# ----- discussion passages: the evidence panel's read side (Feature 118) ------------
+
+_mention_repo = EntityMentionRepository()
+_preference_repo = UserLanguagePreferenceRepository()
+
+
+class _Passage(NamedTuple):
+    """One language passage while grouping: its range and its co-mentions."""
+
+    video_id: str
+    language_code: str
+    start_time: float
+    end_time: float
+    comentions: list[CoMentionRow]
+
+
+def _in_time_order(row: CoMentionRow) -> tuple[float, float, int, int]:
+    return (row.start_time, row.end_time, row.segment_lo_id, row.segment_hi_id)
+
+
+def _closest_first(row: CoMentionRow) -> tuple[float, float, int, int]:
+    """Total order for a passage's closest co-mention (gap, then time, then segments)."""
+    return (row.gap_seconds, row.start_time, row.segment_lo_id, row.segment_hi_id)
+
+
+def chain_passages(rows: Sequence[CoMentionRow], window_s: float) -> list[_Passage]:
+    """Merge co-mentions into passages, per video and language: passage rule ``118.0``.
+
+    The passage rule (``PASSAGE_RULE_VERSION``, Feature 118 FR-001, FR-005). Within one video and
+    transcript language, co-mentions are taken in time order. A co-mention joins the current
+    passage when its start is at most ``window_s`` after the latest end of any co-mention already in
+    the passage; otherwise it starts a new passage. This chains: a sustained discussion whose
+    co-mentions keep arriving within the window becomes ONE long passage, however long. That is
+    documented behavior and it is **not** topic separation: a passage is a stretch of nearby
+    co-mentions, not a judgement about what was said. Because a new passage starts only after
+    everything before it has ended, the passages of one (video, language) never overlap.
+    """
+    by_scope: dict[tuple[str, str], list[CoMentionRow]] = {}
+    for row in rows:
+        by_scope.setdefault((row.video_id, row.language_code), []).append(row)
+    passages: list[_Passage] = []
+    for (video_id, language_code), scope_rows in by_scope.items():
+        current: list[CoMentionRow] = []
+        end = 0.0
+        for row in sorted(scope_rows, key=_in_time_order):
+            if current and row.start_time > end + window_s:
+                passages.append(
+                    _Passage(
+                        video_id, language_code, current[0].start_time, end, current
+                    )
+                )
+                current = []
+            if not current:
+                end = row.end_time
+            current.append(row)
+            end = max(end, row.end_time)
+        passages.append(
+            _Passage(video_id, language_code, current[0].start_time, end, current)
+        )
+    return passages
+
+
+def group_across_languages(passages: Sequence[_Passage]) -> list[list[_Passage]]:
+    """Group one video's passages whose time ranges overlap: grouped discussion passages (FR-011).
+
+    Ranges overlap when one starts before the other ends; ranges that merely touch are not grouped
+    (passages that start at the same moment always group, even when zero-length).
+    Grouping is transitive (overlap with any member joins the group), so unequal boundaries across
+    languages still land in one group, and one language can appear twice in a group. A group is the
+    unit the summary counts, so a translation never adds to a count (FR-012). Groups are returned in
+    time order.
+    """
+    groups: list[list[_Passage]] = []
+    end = 0.0
+    for passage in sorted(
+        passages, key=lambda p: (p.start_time, p.end_time, p.language_code)
+    ):
+        # Overlap, or the same start: two zero-length passages at one moment are one discussion.
+        if groups and (
+            passage.start_time < end or passage.start_time == groups[-1][0].start_time
+        ):
+            groups[-1].append(passage)
+            end = max(end, passage.end_time)
+        else:
+            groups.append([passage])
+            end = passage.end_time
+    return groups
+
+
+class _LanguageRank(NamedTuple):
+    """Where a preferred language ranks: its tier (fluent 0, learning 1) and priority."""
+
+    tier: int
+    priority: int
+
+
+_UNRANKED = _LanguageRank(tier=2, priority=0)
+
+
+def _language_ranks(
+    preferences: Sequence[UserLanguagePreferenceDB],
+) -> dict[str, _LanguageRank]:
+    """Fluent and learning preferences by BASE language (``es-MX`` and ``es`` match, Principle VII).
+
+    Curious and exclude never promote a variant. When one base language carries several
+    preferences, the best-ranked wins.
+    """
+    tiers = {
+        LanguagePreferenceType.FLUENT.value: 0,
+        LanguagePreferenceType.LEARNING.value: 1,
+    }
+    ranks: dict[str, _LanguageRank] = {}
+    for pref in preferences:
+        tier = tiers.get(pref.preference_type)
+        if tier is None:
+            continue
+        rank = _LanguageRank(tier=tier, priority=pref.priority)
+        base = LanguageCode.get_base_language(pref.language_code)
+        if base not in ranks or rank < ranks[base]:
+            ranks[base] = rank
+    return ranks
+
+
+def _order_variants(
+    variants: list[LanguagePassage], ranks: dict[str, _LanguageRank]
+) -> list[LanguagePassage]:
+    """Which variant of a grouped passage leads (FR-011a, FR-014b).
+
+    The reviewer's preferred language first (fluent before learning, then by preference
+    priority); among equally ranked variants, and when no variant is preferred, the closest
+    co-mention leads, then language code. Never changes a count or the group's closest gap.
+    """
+    return sorted(
+        variants,
+        key=lambda v: (
+            ranks.get(LanguageCode.get_base_language(v.language_code), _UNRANKED),
+            v.closest_gap_seconds,
+            v.language_code,
+        ),
+    )
+
+
+def _language_passage(
+    passage: _Passage, text: PassageText, *, a_is_lo: bool, name_lists: set[int]
+) -> LanguagePassage:
+    """One language passage, its closest co-mention rendered and the others listed by time."""
+    closest, *others = sorted(passage.comentions, key=_closest_first)
+    mention_a, mention_b = (
+        (text.mention_lo, text.mention_hi)
+        if a_is_lo
+        else (text.mention_hi, text.mention_lo)
+    )
+    lead = min((text.mention_lo, text.mention_hi), key=lambda m: m.start_time)
+    one_segment = closest.segment_lo_id == closest.segment_hi_id
+    return LanguagePassage(
+        language_code=passage.language_code,
+        start_time=passage.start_time,
+        end_time=passage.end_time,
+        co_mention_count=len(passage.comentions),
+        closest_gap_seconds=closest.gap_seconds,
+        closest=PassageMoment(
+            gap_seconds=closest.gap_seconds,
+            start_time=closest.start_time,
+            segment_id=lead.segment_id,
+            mention_a=mention_a,
+            mention_b=mention_b,
+            segments=text.segments,
+        ),
+        other_moments=[
+            CoMoment(start_time=o.start_time, gap_seconds=o.gap_seconds)
+            for o in sorted(others, key=lambda o: (o.start_time, o.gap_seconds))[
+                :OTHER_MOMENTS_LIMIT
+            ]
+        ],
+        name_list=one_segment and closest.segment_lo_id in name_lists,
+    )
+
+
+class PassageInvariantError(RuntimeError):
+    """A passage's text could not be read although its co-mentions were (Feature 118).
+
+    Inside one snapshot the two reads use the same qualifying mentions, so this means they have
+    drifted apart in code. It fails the request loudly rather than return a page whose ``returned``
+    no longer matches the videos it consumed (which would make the next page overlap this one).
+    """
+
+
+def _text_for(
+    texts: dict[tuple[str, str, int, int], PassageText], passage: _Passage
+) -> PassageText:
+    key = _moment_key(passage)
+    text = texts.get(key)
+    if text is None:
+        raise PassageInvariantError(
+            f"passage text missing for {key}: the co-mention and text reads disagree"
+        )
+    return text
+
+
+def _moment_key(passage: _Passage) -> tuple[str, str, int, int]:
+    closest = min(passage.comentions, key=_closest_first)
+    return (
+        passage.video_id,
+        passage.language_code,
+        closest.segment_lo_id,
+        closest.segment_hi_id,
+    )
+
+
+async def begin_read_snapshot(session: AsyncSession) -> None:
+    """Start a read-only snapshot on a fresh session, before :func:`pair_passages` reads."""
+    await _repo.begin_read_snapshot(session)
+
+
+async def pair_passages(
+    session: AsyncSession,
+    *,
+    entity_a: uuid.UUID,
+    entity_b: uuid.UUID,
+    window: ProximityWindow,
+    limit: int,
+    offset: int,
+    user_id: str | None = None,
+) -> PairPassages:
+    """A pair's discussion passages for one window: the evidence panel's response (Feature 118).
+
+    Read-only, and meant to run inside one snapshot (:func:`begin_read_snapshot` first): the proximity
+    worker commits scope replacements concurrently, and a count from one statement must match the
+    rows of the next.
+    Built from the Feature 117 records, so the videos shown are exactly the videos the measurement
+    reports for this pair and window. The summary counts cover every video in the window; only the
+    page of videos (closest-first, then by video id) is rendered with text. ``user_id``'s
+    language preferences decide which language variant leads; without one, the closest does.
+    """
+    rows = await _repo.pair_comentions(
+        session, entity_a=entity_a, entity_b=entity_b, window_s=float(window)
+    )
+    lo, hi = sorted((entity_a, entity_b))
+    by_video: dict[str, list[_Passage]] = {}
+    for passage in chain_passages(rows, float(window)):
+        by_video.setdefault(passage.video_id, []).append(passage)
+    groups = {
+        video_id: group_across_languages(passages)
+        for video_id, passages in by_video.items()
+    }
+    video_gap = {
+        video_id: min(r.gap_seconds for p in passages for r in p.comentions)
+        for video_id, passages in by_video.items()
+    }
+    ordered = sorted(by_video, key=lambda v: (video_gap[v], v))
+    page = ordered[offset : offset + limit]
+
+    texts = await _mention_repo.passage_texts(
+        session,
+        entity_lo=lo,
+        entity_hi=hi,
+        moments=[_moment_key(p) for video_id in page for p in by_video[video_id]],
+    )
+    titles = await _mention_repo._video_titles(session, page)
+    page_closest = [
+        min(p.comentions, key=_closest_first) for v in page for p in by_video[v]
+    ]
+    name_lists = await _repo.name_list_segments(
+        session,
+        segment_ids={
+            c.segment_lo_id for c in page_closest if c.segment_lo_id == c.segment_hi_id
+        },
+    )
+    ranks = (
+        _language_ranks(await _preference_repo.get_user_preferences(session, user_id))
+        if user_id is not None
+        else {}
+    )
+
+    items: list[VideoPassages] = []
+    for video_id in page:
+        grouped: list[GroupedPassage] = []
+        for group in groups[video_id]:
+            variants = [
+                _language_passage(
+                    p,
+                    _text_for(texts, p),
+                    a_is_lo=entity_a == lo,
+                    name_lists=name_lists,
+                )
+                for p in group
+            ]
+            grouped.append(
+                GroupedPassage(
+                    start_time=min(v.start_time for v in variants),
+                    end_time=max(v.end_time for v in variants),
+                    closest_gap_seconds=min(v.closest_gap_seconds for v in variants),
+                    variants=_order_variants(variants, ranks),
+                )
+            )
+        video_title, channel_title = titles.get(video_id, (None, None))
+        items.append(
+            VideoPassages(
+                video_id=video_id,
+                video_title=video_title,
+                channel_title=channel_title,
+                closest_gap_seconds=video_gap[video_id],
+                passages=grouped,
+            )
+        )
+
+    pending, failed = await _repo.pair_scope_health(
+        session,
+        entity_a=entity_a,
+        entity_b=entity_b,
+        rule_version=MEASUREMENT_RULE_VERSION,
+        failing_threshold=FAILING_ATTEMPTS,
+    )
+    spoken = {
+        video_id
+        for video_id, _ in _shared_scopes(
+            await _mention_repo.pair_mention_starts(
+                session, entity_a=entity_a, entity_b=entity_b
+            ),
+            entity_a,
+            entity_b,
+        )
+    }
+    failed_titles = await _mention_repo._video_titles(
+        session, sorted({video_id for video_id, _ in failed})
+    )
+
+    # FR-015b: exactly one outcome, in this order.
+    state: PairPassagesState
+    basis: NonTranscriptBasis | None = None
+    if by_video:
+        state = "passages"
+    elif not spoken:
+        state = "not_computed" if pending else "no_transcript"
+        if state == "no_transcript":
+            triples = await _mention_repo.association_triples(
+                session, [entity_a, entity_b]
+            )
+            basis = _mention_repo._non_transcript_basis(triples, entity_a, entity_b)
+    elif pending:
+        state = "not_computed"
+    else:
+        state = "no_passage_in_window"
+
+    return PairPassages(
+        entity_a_id=entity_a,
+        entity_b_id=entity_b,
+        window_seconds=window,
+        items=items,
+        offset=offset,
+        video_count=len(by_video),
+        passage_count=sum(len(g) for g in groups.values()),
+        channel_count=len({r.channel_id for r in rows}),
+        closest_gap_seconds=min(video_gap.values()) if video_gap else None,
+        farther_video_count=len(spoken - by_video.keys()),
+        pending_scopes=pending,
+        failed_scopes=[
+            FailedScope(
+                video_id=video_id,
+                language_code=language_code,
+                video_title=failed_titles.get(video_id, (None, None))[0],
+                channel_title=failed_titles.get(video_id, (None, None))[1],
+            )
+            for video_id, language_code in failed
+        ],
+        state=state,
+        basis_when_empty=basis,
+    )
+
+
+def _shared_scopes(
+    rows: Sequence[tuple[uuid.UUID, str, str, float]],
+    entity_a: uuid.UUID,
+    entity_b: uuid.UUID,
+) -> set[tuple[str, str]]:
+    """The ``(video_id, language_code)`` where both entities have a qualifying mention."""
+    seen: dict[tuple[str, str], set[uuid.UUID]] = {}
+    for entity_id, video_id, language_code, _ in rows:
+        seen.setdefault((video_id, language_code), set()).add(entity_id)
+    return {scope for scope, ids in seen.items() if {entity_a, entity_b} <= ids}
+
+
+def _nearest(starts_a: list[float], starts_b: list[float]) -> tuple[float, float]:
+    """Smallest start-to-start gap between two mention lists, and that pair's earlier start.
+
+    A sorted merge (each list sorted once), so a video with many mentions stays linear.
+    """
+    xs, ys = sorted(starts_a), sorted(starts_b)
+    best = (abs(xs[0] - ys[0]), min(xs[0], ys[0]))
+    i = j = 0
+    while i < len(xs) and j < len(ys):
+        gap = abs(xs[i] - ys[j])
+        if gap < best[0]:
+            best = (gap, min(xs[i], ys[j]))
+        if xs[i] < ys[j]:
+            i += 1
+        else:
+            j += 1
+    return best
+
+
+async def farther_videos(
+    session: AsyncSession,
+    *,
+    entity_a: uuid.UUID,
+    entity_b: uuid.UUID,
+    window: ProximityWindow,
+    limit: int,
+    offset: int,
+) -> FartherVideos:
+    """Videos where both are spoken but never within the window, nearest-first (FR-010).
+
+    "Both spoken" is qualifying mentions of both in one transcript language; a video with a
+    co-mention within the window is a passage video, never listed here. Each row shows the
+    smallest start-to-start gap in any shared language. Its total equals the passages
+    response's ``farther_video_count`` for the same pair, window and snapshot.
+    """
+    starts_rows = await _mention_repo.pair_mention_starts(
+        session, entity_a=entity_a, entity_b=entity_b
+    )
+    within = {
+        r.video_id
+        for r in await _repo.pair_comentions(
+            session, entity_a=entity_a, entity_b=entity_b, window_s=float(window)
+        )
+    }
+    # The same "both spoken here" rule as the passages response's farther_video_count.
+    farther = {
+        scope
+        for scope in _shared_scopes(starts_rows, entity_a, entity_b)
+        if scope[0] not in within
+    }
+    starts: dict[tuple[str, str], dict[uuid.UUID, list[float]]] = {}
+    for entity_id, video_id, language_code, start in starts_rows:
+        if (video_id, language_code) in farther:
+            starts.setdefault((video_id, language_code), {}).setdefault(
+                entity_id, []
+            ).append(start)
+    nearest: dict[str, tuple[float, float, str]] = {}
+    for (video_id, language_code), by_entity in starts.items():
+        gap, at = _nearest(by_entity[entity_a], by_entity[entity_b])
+        if video_id not in nearest or (gap, language_code) < nearest[video_id][::2]:
+            nearest[video_id] = (gap, at, language_code)
+    ordered = sorted(nearest, key=lambda v: (nearest[v][0], v))
+    page = ordered[offset : offset + limit]
+    titles = await _mention_repo._video_titles(session, page)
+    return FartherVideos(
+        items=[
+            FartherVideo(
+                video_id=video_id,
+                video_title=titles.get(video_id, (None, None))[0],
+                channel_title=titles.get(video_id, (None, None))[1],
+                language_code=nearest[video_id][2],
+                nearest_gap_seconds=nearest[video_id][0],
+                nearest_start_time=nearest[video_id][1],
+            )
+            for video_id in page
+        ],
+        offset=offset,
+        total=len(nearest),
     )

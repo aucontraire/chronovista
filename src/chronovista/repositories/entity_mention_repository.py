@@ -14,6 +14,7 @@ from typing import Any, NamedTuple
 from sqlalchemy import (
     ColumnElement,
     ColumnExpressionArgument,
+    CompoundSelect,
     Integer,
     ScalarSelect,
     Select,
@@ -41,6 +42,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from uuid_utils import uuid7
 
 from chronovista.db.models import (
@@ -82,6 +84,7 @@ from chronovista.models.connection_evidence import (
     MentionRef,
     NonTranscriptBasis,
     Passage,
+    PassageSegment,
 )
 from chronovista.models.entity_association import (
     AssociationCount,
@@ -267,6 +270,54 @@ class _EvPair(NamedTuple):
             self.ma.sequence_number,
             self.mb.sequence_number,
         )
+
+
+def co_positioned_scopes(
+    entity_a: uuid.UUID, entity_b: uuid.UUID
+) -> CompoundSelect[tuple[str, str]]:
+    """``(video_id, language_code)`` where BOTH entities have positioned transcript mentions.
+
+    Positioned, not qualifying: a superset, cheap to compute from the mention indexes. Feature 118
+    uses it to bound reads before the shared rule runs, and as the "both mentioned here" half of
+    the transcripts a pair's evidence depends on.
+    """
+
+    def positioned(entity_id: uuid.UUID) -> Select[Any]:
+        return select(EntityMentionDB.video_id, EntityMentionDB.language_code).where(
+            EntityMentionDB.entity_id == entity_id,
+            EntityMentionDB.mention_source == "transcript",
+            EntityMentionDB.segment_id.is_not(None),
+            EntityMentionDB.language_code.is_not(None),
+        )
+
+    return positioned(entity_a).intersect(positioned(entity_b))
+
+
+def _effective_segment_text(segment: type[TranscriptSegmentDB]) -> ColumnElement[str]:
+    """A segment's display text: its correction when one exists and is non-empty, else the raw text.
+
+    Shared by the Feature 114 passage windows and the Feature 118 discussion passages, so both
+    panels show the same text for the same segment (research D4).
+    """
+    return case(
+        (
+            and_(
+                segment.has_correction,
+                segment.corrected_text.isnot(None),
+                segment.corrected_text != "",
+            ),
+            segment.corrected_text,
+        ),
+        else_=segment.text,
+    )
+
+
+class PassageText(NamedTuple):
+    """A Feature 118 passage moment's rendered parts, oriented to the canonical (lo, hi) pair."""
+
+    mention_lo: MentionRef
+    mention_hi: MentionRef
+    segments: list[PassageSegment]
 
 
 def _available_video_id_subquery() -> Select[Any]:
@@ -2980,6 +3031,278 @@ class EntityMentionRepository(
         )
 
     @staticmethod
+    def _pair_qualifying_mentions(entity_ids: Sequence[uuid.UUID]) -> Select[Any]:
+        """The entities' qualifying positioned mentions: the passage panel's ONE source (Feature 118).
+
+        Every reader of mentions behind the passage panel (a co-mention's interval end, the
+        highlighted mention, the farther-apart list) goes through this SELECT, so none can use a
+        mention the shared rule rejects. A proximity record only proves that ONE mention of each
+        entity in its segments qualified; the same entity can carry a rejected mention in the same
+        segment. Applies ``positioned_transcript_mention_qualifies`` and the manual (entity, video)
+        exclusions, as the measurement does.
+
+        Columns: the mention's identity and text (``entity_id`` … ``detection_method``), its start
+        segment's ``start_time`` and ``sequence_number``, and its END (``end_time``,
+        ``end_sequence_number``): the end segment's when the mention spans segments, else its own.
+
+        Returned as a SELECT so each caller narrows it (``.where(...)`` on ``EntityMentionDB``
+        columns) before it runs: two hub entities carry tens of thousands of mentions, and the
+        planner cannot estimate the visible-name join, so an unnarrowed set reused per row goes
+        quadratic. No DISTINCT: the visible names are a UNION (one row per entity and folded name)
+        and exclusions are unique per (entity, video), so the joins cannot duplicate a mention.
+        """
+        visible_names = _visible_names_subquery(list(entity_ids))
+        start = aliased(TranscriptSegmentDB, name="mention_start")
+        end = aliased(TranscriptSegmentDB, name="mention_end")
+        excluded = aliased(EntityVideoExclusionDB, name="excluded")
+        return (
+            select(
+                EntityMentionDB.entity_id,
+                EntityMentionDB.video_id,
+                EntityMentionDB.language_code,
+                EntityMentionDB.segment_id,
+                EntityMentionDB.end_segment_id,
+                EntityMentionDB.mention_text,
+                EntityMentionDB.match_start,
+                EntityMentionDB.match_end,
+                EntityMentionDB.detection_method,
+                start.start_time.label("start_time"),
+                start.sequence_number.label("sequence_number"),
+                func.coalesce(end.end_time, start.end_time).label("end_time"),
+                func.coalesce(end.sequence_number, start.sequence_number).label(
+                    "end_sequence_number"
+                ),
+            )
+            .join(
+                start,
+                and_(
+                    start.id == EntityMentionDB.segment_id,
+                    start.language_code == EntityMentionDB.language_code,
+                ),
+            )
+            .outerjoin(
+                end,
+                and_(
+                    end.id == EntityMentionDB.end_segment_id,
+                    end.language_code == EntityMentionDB.language_code,
+                ),
+            )
+            .outerjoin(
+                visible_names,
+                and_(
+                    visible_names.c.entity_id == EntityMentionDB.entity_id,
+                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+                ),
+            )
+            .outerjoin(
+                excluded,
+                and_(
+                    excluded.entity_id == EntityMentionDB.entity_id,
+                    excluded.video_id == EntityMentionDB.video_id,
+                ),
+            )
+            .where(
+                EntityMentionDB.entity_id.in_(list(entity_ids)),
+                positioned_transcript_mention_qualifies(EntityMentionDB, visible_names),
+                excluded.entity_id.is_(None),
+            )
+        )
+
+    async def passage_texts(
+        self,
+        session: AsyncSession,
+        *,
+        entity_lo: uuid.UUID,
+        entity_hi: uuid.UUID,
+        moments: Sequence[tuple[str, str, int, int]],
+    ) -> dict[tuple[str, str, int, int], PassageText]:
+        """Rendered parts of one page of passage moments, in a fixed number of queries (Feature 118).
+
+        ``moments`` are ``(video_id, language_code, segment_lo_id, segment_hi_id)``: a passage's
+        closest co-mention, in the canonical pair order. For each, returns the two mentions (from
+        :meth:`_pair_qualifying_mentions`, so a rejected mention is never highlighted; the lowest
+        offset when an entity has several qualifying mentions in a segment) and the segments to
+        show: each mention's start and end segment, plus the segment after each mention's end as
+        context (FR-003), so at most six per moment; empty-text segments are skipped.
+        """
+        if not moments:
+            return {}
+        video_ids = sorted({m[0] for m in moments})
+        segment_ids = sorted({m[2] for m in moments} | {m[3] for m in moments})
+        qm = (
+            self._pair_qualifying_mentions([entity_lo, entity_hi])
+            .where(
+                EntityMentionDB.video_id.in_(video_ids),
+                EntityMentionDB.segment_id.in_(segment_ids),
+            )
+            .subquery("pair_qualifying_mentions")
+        )
+        # (entity, start segment) -> the lowest-offset qualifying mention there, with its end
+        # sequence number (a name split across a segment boundary ends in a later segment).
+        chosen: dict[tuple[uuid.UUID, int], tuple[_EvMention, int]] = {}
+        for row in (
+            await session.execute(
+                select(qm).order_by(
+                    qm.c.entity_id,
+                    qm.c.segment_id,
+                    func.coalesce(qm.c.match_start, -1),
+                    qm.c.mention_text,
+                )
+            )
+        ).all():
+            key = (row.entity_id, row.segment_id)
+            if key in chosen:
+                continue
+            chosen[key] = (
+                _EvMention(
+                    row.entity_id,
+                    row.video_id,
+                    row.language_code,
+                    row.segment_id,
+                    row.end_segment_id,
+                    row.mention_text,
+                    row.match_start,
+                    row.match_end,
+                    row.detection_method,
+                    row.sequence_number,
+                    float(row.start_time),
+                ),
+                int(row.end_sequence_number),
+            )
+
+        # (video, language) -> sequence numbers to show, and which of them are context.
+        wanted: dict[tuple[str, str], set[int]] = {}
+        context: dict[tuple[str, str], set[int]] = {}
+        resolved: dict[
+            tuple[str, str, int, int],
+            tuple[tuple[_EvMention, int], tuple[_EvMention, int]],
+        ] = {}
+        for moment in moments:
+            video_id, language_code, seg_lo, seg_hi = moment
+            lo_end = chosen.get((entity_lo, seg_lo))
+            hi_end = chosen.get((entity_hi, seg_hi))
+            if lo_end is None or hi_end is None:
+                continue  # unreachable while records and the shared rule agree
+            resolved[moment] = (lo_end, hi_end)
+            scope = (video_id, language_code)
+            for m, end_seq in (lo_end, hi_end):
+                wanted.setdefault(scope, set()).update({m.sequence_number, end_seq})
+                context.setdefault(scope, set()).add(end_seq + 1)
+        if not resolved:
+            return {}
+
+        # One predicate per (video, language), so each seeks the (video_id, language_code, ...)
+        # segment index; a row-value IN over (video, language, sequence) cannot use an index and
+        # was measured at 2.5 s on a dense page.
+        per_scope = [
+            and_(
+                TranscriptSegmentDB.video_id == video_id,
+                TranscriptSegmentDB.language_code == language_code,
+                TranscriptSegmentDB.sequence_number.in_(
+                    sorted(seqs | context[(video_id, language_code)])
+                ),
+            )
+            for (video_id, language_code), seqs in wanted.items()
+        ]
+        segments: dict[tuple[str, str, int], tuple[int, float, str]] = {}
+        for row in (
+            await session.execute(
+                select(
+                    TranscriptSegmentDB.video_id,
+                    TranscriptSegmentDB.language_code,
+                    TranscriptSegmentDB.sequence_number,
+                    TranscriptSegmentDB.id,
+                    TranscriptSegmentDB.start_time,
+                    _effective_segment_text(TranscriptSegmentDB).label("text"),
+                ).where(or_(*per_scope))
+            )
+        ).all():
+            segments[(row.video_id, row.language_code, row.sequence_number)] = (
+                row.id,
+                float(row.start_time),
+                row.text or "",
+            )
+
+        result: dict[tuple[str, str, int, int], PassageText] = {}
+        for moment, ((m_lo, lo_end_seq), (m_hi, hi_end_seq)) in resolved.items():
+            video_id, language_code, _, _ = moment
+            # Each mention's start and end segment (a name split across a boundary), plus the
+            # segment after each mention as context: at most six segments.
+            shown = {
+                m_lo.sequence_number,
+                lo_end_seq,
+                m_hi.sequence_number,
+                hi_end_seq,
+            }
+            after = {lo_end_seq + 1, hi_end_seq + 1} - shown
+            parts: list[PassageSegment] = []
+            for seq in sorted(shown | after):
+                found = segments.get((video_id, language_code, seq))
+                if found is None or not found[2].strip():
+                    continue
+                segment_id, start_time, text = found
+                parts.append(
+                    PassageSegment(
+                        segment_id=segment_id,
+                        sequence_number=seq,
+                        start_time=start_time,
+                        text=text,
+                        is_context=seq in after,
+                    )
+                )
+            if not parts:
+                # Every shown segment has empty text: still render the moment, or the passage
+                # it belongs to would vanish while the counts include it.
+                parts = [
+                    PassageSegment(
+                        segment_id=m_lo.segment_id,
+                        sequence_number=m_lo.sequence_number,
+                        start_time=min(m_lo.start_time, m_hi.start_time),
+                        text="…",
+                    )
+                ]
+            result[moment] = PassageText(
+                mention_lo=self._mention_ref(m_lo),
+                mention_hi=self._mention_ref(m_hi),
+                segments=parts,
+            )
+        return result
+
+    async def pair_mention_starts(
+        self, session: AsyncSession, *, entity_a: uuid.UUID, entity_b: uuid.UUID
+    ) -> list[tuple[uuid.UUID, str, str, float]]:
+        """``(entity_id, video_id, language_code, start_time)`` of both entities' qualifying
+        mentions, in the transcripts where both are positioned (Feature 118).
+
+        Answers "where are both spoken" (FR-010, FR-015b: qualifying mentions of both in one
+        transcript language) and gives the farther-apart list its nearest moments, from one read.
+        Narrowed BEFORE the shared rule runs to the scopes holding positioned mentions of both
+        (:func:`co_positioned_scopes`), so two hub entities are not scanned in full, and with no
+        bind list that could grow with the library.
+        """
+        qualifying = (
+            self._pair_qualifying_mentions([entity_a, entity_b])
+            .where(
+                tuple_(EntityMentionDB.video_id, EntityMentionDB.language_code).in_(
+                    co_positioned_scopes(entity_a, entity_b)
+                )
+            )
+            .subquery("pair_qualifying_mentions")
+        )
+        rows = await session.execute(
+            select(
+                qualifying.c.entity_id,
+                qualifying.c.video_id,
+                qualifying.c.language_code,
+                qualifying.c.start_time,
+            )
+        )
+        return [
+            (r.entity_id, r.video_id, r.language_code, float(r.start_time))
+            for r in rows.all()
+        ]
+
+    @staticmethod
     def _non_transcript_basis(
         triples: list[tuple[uuid.UUID, str, str]],
         entity_a: uuid.UUID,
@@ -3116,17 +3439,7 @@ class EntityMentionRepository(
         hi: int,
     ) -> Passage | None:
         """Fetch one bounded passage window as prose, via the 3-branch effective-text CASE (D4)."""
-        effective = case(
-            (
-                and_(
-                    TranscriptSegmentDB.has_correction,
-                    TranscriptSegmentDB.corrected_text.isnot(None),
-                    TranscriptSegmentDB.corrected_text != "",
-                ),
-                TranscriptSegmentDB.corrected_text,
-            ),
-            else_=TranscriptSegmentDB.text,
-        )
+        effective = _effective_segment_text(TranscriptSegmentDB)
         rows = (
             await session.execute(
                 select(

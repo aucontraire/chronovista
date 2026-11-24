@@ -189,7 +189,8 @@ interface HookHarness {
 function renderHookWithContainer(
   videoId: string,
   segments: TranscriptSegment[],
-  queryClient: QueryClient
+  queryClient: QueryClient,
+  startSeconds?: number | null
 ): HookHarness {
   const resultRef: MutableRefObject<UseYouTubePlayerResult | null> = {
     current: null,
@@ -204,7 +205,11 @@ function renderHookWithContainer(
     segs: TranscriptSegment[];
     resultHolder: MutableRefObject<UseYouTubePlayerResult | null>;
   }) {
-    const hookResult = useYouTubePlayer({ videoId: vid, segments: segs });
+    const hookResult = useYouTubePlayer({
+      videoId: vid,
+      segments: segs,
+      ...(startSeconds !== undefined ? { startSeconds } : {}),
+    });
     resultHolder.current = hookResult;
     return React.createElement("div", {
       "data-testid": "player-container",
@@ -404,6 +409,18 @@ describe("useYouTubePlayer", () => {
         enablejsapi: 1,
         modestbranding: 1,
       });
+    });
+
+    it("passes playerVars.start = floor(startSeconds) when a deep-link time is given", () => {
+      renderHookWithContainer(VIDEO_ID, [], queryClient, 125.9);
+      expect(captured.options.playerVars).toMatchObject({ start: 125 });
+    });
+
+    it("omits playerVars.start when no deep-link time is given", () => {
+      renderHookWithContainer(VIDEO_ID, [], queryClient);
+      expect(captured.options.playerVars).not.toHaveProperty("start");
+      renderHookWithContainer(VIDEO_ID, [], queryClient, null);
+      expect(captured.options.playerVars).not.toHaveProperty("start");
     });
 
     it("registers onReady, onStateChange, and onError event callbacks", () => {

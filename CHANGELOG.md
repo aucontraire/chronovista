@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.130.0] - 2026-11-23
+
+The connection explorer's evidence panel now shows **discussion passages** built from the transcript
+proximity measurement, instead of one strongest moment per video. Because the panel reads the
+measurement's own records, the videos it lists are exactly the videos proximity reports for the pair
+and the chosen window. A production sample of 55 pairs at all four windows agreed in every case. This
+is the second slice of transcript association discovery; the graph's proximity layer comes next. As
+before, the panel shows where two entities are discussed together. It never says they are related.
+
+### Added
+
+- **Discussion passages.** Within one video and language, co-mentions are merged by chaining: a
+  co-mention joins the passage when it starts within the window of the passage's latest end. Two
+  discussions ten minutes apart are two passages, and dense back-and-forth is one. A sustained
+  conversation can be one long passage; that is documented, and a passage is not a topic boundary.
+- Each passage shows its time range, its number of co-mentions, its own closest gap ("closest 9s
+  apart"; the video's header gives the minimum over all its passages), the closest co-mention's text with
+  both names highlighted, and the segment after each mention as dimmed context, so a name split
+  across segments reads whole. Names are highlighted from their stored positions, so a name split
+  across two segments is highlighted in both; if a later correction has made the stored positions
+  stale, the panel falls back to finding the name in the text. Where the shown segments are not
+  next to each other in the transcript, a "…" marks the omitted text (each passage segment now
+  carries its `sequence_number`). It also has a link that opens the
+  video at that moment, the other co-mention moments with both mentions' times ("0:12 → 0:25 · 13s
+  apart", the first 50), and a **"Several names in one segment"** marker on
+  credits-style lines. Nothing is filtered.
+- **A window selector**: mentions within 15, 30, 60 or 120 seconds, default 30. The choice is kept in
+  the page address (`window=`), so refreshing or sharing a link keeps it. A missing or unsupported
+  value opens at 30 without an error.
+- **Languages are variants, not extra evidence.** Passages from different transcript languages of one
+  video that overlap in time are one grouped passage and count once. Your language preferences decide
+  which language is shown first (fluent, then learning; `es-MX` matches `es`). Without preferences,
+  the closest co-mention is shown first. Changing a preference updates an open panel.
+- **A plain summary**, for example "7 discussion passages across 4 videos, 3 channels; closest
+  mentions 6 s apart". Videos where both entities are spoken but never within the window are a
+  separate count, which you can open as a list, nearest first, to audit a far-away false match.
+- **Honest state.** While transcripts are being recomputed the panel says "Updating", keeps the counts,
+  and refreshes itself. Transcripts that failed to compute are listed as "could not be computed"
+  (never as updating). With no passage, it says whether the evidence is still being computed, the two
+  are not spoken together in any transcript (naming a tag, title or description link if there is
+  one), or there is no passage within the window. A failed load offers Retry.
+- **`GET /api/v1/graph/connect/passages`** and **`GET /api/v1/graph/connect/passages/farther`**, the
+  read-only endpoints behind the panel. Each request reads from one snapshot.
+
+### Changed
+
+- **Video links start the player at their time.** A deep link with `t=`, from the evidence panel,
+  search results or an entity page, now starts the embedded player there. Before, it only scrolled the
+  transcript.
+- The evidence panel has accessible names that match the visible link text, a heading per video, and
+  context and name-list markers that do not rely on colour alone.
+
+### Deprecated
+
+- `GET /api/v1/graph/connect/evidence` is superseded by `/graph/connect/passages`. It is kept
+  unchanged for compatibility, and the panel no longer uses it.
+
+No migration: this release only reads existing tables.
+
 ## [0.129.0] - 2026-11-22
 
 Transcript proximity is redirected from the candidate queue to discovery: it now measures every close

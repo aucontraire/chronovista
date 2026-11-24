@@ -59,12 +59,14 @@ export function noPathConnection(): GraphConnection {
   return { ...fixtureConnection(), chains: [], has_connection: false };
 }
 
-// --- Feature 114: transcript evidence ----------------------------------------
+// --- Features 114/118: discussion passages -----------------------------------
 import type {
-  ConnectionEvidence,
-  EvidenceItem,
-  EvidenceVariant,
+  GroupedPassage,
+  LanguagePassage,
   MentionRef,
+  PairPassages,
+  PassageSegment,
+  VideoPassages,
 } from "../../../api/graph";
 
 export function fixtureMention(
@@ -84,55 +86,82 @@ export function fixtureMention(
   };
 }
 
-/** One (video, language) variant (the representative, or an expander row). */
-export function fixtureVariant(
-  overrides: Partial<EvidenceVariant> = {},
-): EvidenceVariant {
+/** Two mention segments (one per name) followed by one dimmed context segment. */
+export function fixtureSegments(): PassageSegment[] {
+  return [
+    { segment_id: 101, sequence_number: 20, start_time: 12.4, text: "Alpha came up first.", is_context: false },
+    { segment_id: 102, sequence_number: 21, start_time: 16, text: "Then Beta was named.", is_context: false },
+    { segment_id: 103, sequence_number: 22, start_time: 20, text: "Afterwards they moved on.", is_context: true },
+  ];
+}
+
+/** One (video, language) passage: its closest co-mention as segments, plus other moments. */
+export function fixtureLanguagePassage(
+  overrides: Partial<LanguagePassage> = {},
+): LanguagePassage {
   return {
     language_code: "en",
-    mention_a: fixtureMention(),
-    mention_b: fixtureMention({
-      segment_id: 103,
-      mention_text: "Beta",
-      start_time: 20,
-    }),
-    separation_segments: 2,
-    passages: [
-      {
-        text: "Alpha was discussed alongside Beta here.",
-        start_time: 12.4,
-        segment_id: 101,
-      },
-    ],
-    separation_seconds: 7.6,
+    start_time: 12.4,
+    end_time: 80,
+    co_mention_count: 1,
+    closest_gap_seconds: 7.6,
+    closest: {
+      gap_seconds: 7.6,
+      start_time: 12.4,
+      segment_id: 101,
+      mention_a: fixtureMention(),
+      mention_b: fixtureMention({ segment_id: 102, mention_text: "Beta", start_time: 16 }),
+      segments: fixtureSegments(),
+    },
+    other_moments: [],
+    name_list: false,
     ...overrides,
   };
 }
 
-export function fixtureEvidenceItem(
-  overrides: Partial<EvidenceItem> = {},
-): EvidenceItem {
+export function fixtureGroupedPassage(
+  overrides: Partial<GroupedPassage> = {},
+): GroupedPassage {
+  return {
+    start_time: 12.4,
+    end_time: 80,
+    closest_gap_seconds: 7.6,
+    variants: [fixtureLanguagePassage()],
+    ...overrides,
+  };
+}
+
+export function fixtureVideoPassages(
+  overrides: Partial<VideoPassages> = {},
+): VideoPassages {
   return {
     video_id: "vid00000001",
-    representative: fixtureVariant(),
-    other_language_variants: [],
     video_title: "Generic Video Title",
     channel_title: "Generic Channel",
-    cooccurring_language_count: 1,
+    closest_gap_seconds: 7.6,
+    passages: [fixtureGroupedPassage()],
     ...overrides,
   };
 }
 
-export function fixtureEvidence(
-  overrides: Partial<ConnectionEvidence> = {},
-): ConnectionEvidence {
+export function fixturePairPassages(
+  overrides: Partial<PairPassages> = {},
+): PairPassages {
   return {
     entity_a_id: A_ID,
     entity_b_id: B_ID,
-    items: [fixtureEvidenceItem()],
-    total_available: 1,
-    raw_cooccurrence_count: 3,
+    window_seconds: 30,
+    passage_rule_version: "v1",
+    items: [fixtureVideoPassages()],
     offset: 0,
+    video_count: 1,
+    passage_count: 1,
+    channel_count: 1,
+    closest_gap_seconds: 7.6,
+    farther_video_count: 0,
+    pending_scopes: 0,
+    failed_scopes: [],
+    state: "passages",
     basis_when_empty: null,
     returned: 1,
     truncated: false,

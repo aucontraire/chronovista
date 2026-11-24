@@ -419,6 +419,29 @@ describe("VideoDetailPage", () => {
       );
     });
 
+    it("starts the player at the deep-link time (?t=125)", () => {
+      vi.mocked(useDeepLinkParams).mockReturnValue({
+        lang: null,
+        segmentId: null,
+        timestamp: 125,
+        clearDeepLinkParams: mockClearDeepLinkParams,
+      });
+
+      renderVideoDetailPage("/videos/test-video-123?t=125");
+
+      expect(useYouTubePlayer).toHaveBeenCalledWith(
+        expect.objectContaining({ startSeconds: 125 })
+      );
+    });
+
+    it("passes no start time to the player when the URL has no ?t=", () => {
+      renderVideoDetailPage("/videos/test-video-123");
+
+      expect(useYouTubePlayer).toHaveBeenCalledWith(
+        expect.objectContaining({ startSeconds: null })
+      );
+    });
+
     it("passes onDeepLinkComplete callback from clearDeepLinkParams", () => {
       vi.mocked(useDeepLinkParams).mockReturnValue({
         lang: "es",

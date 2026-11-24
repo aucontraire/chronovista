@@ -20,7 +20,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Collection, Sequence
 from datetime import UTC, datetime
-from typing import Any, TypeVar
+from typing import Any, NamedTuple, TypeVar
 
 from sqlalchemy import (
     ColumnElement,
@@ -53,6 +53,7 @@ from chronovista.db.models import EntityVideoExclusion as EntityVideoExclusionDB
 from chronovista.db.models import ProximityGenerationRun as ProximityGenerationRunDB
 from chronovista.db.models import ProximityScopeState as ProximityScopeStateDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
+from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
 from chronovista.models.entity_pair_proximity import (
     EntityPairProximityBase,
@@ -64,8 +65,10 @@ from chronovista.models.entity_pair_proximity import (
 )
 from chronovista.repositories.base import BaseSQLAlchemyRepository
 from chronovista.repositories.entity_mention_repository import (
+    EntityMentionRepository,
     _folded,
     _visible_names_subquery,
+    co_positioned_scopes,
     positioned_transcript_mention_qualifies,
 )
 
@@ -253,6 +256,21 @@ def _is_current(rule_version: str) -> ColumnElement[bool]:
     )
 
 
+def _is_failing(rule_version: str, threshold: int) -> ColumnElement[bool]:
+    """THE "this scope is failing" predicate; one home (Features 117, 118).
+
+    Not current, and failed under ``rule_version`` at least ``threshold`` times. What
+    ``proximity status`` lists as failing and what the evidence panel reports as "could not be
+    computed" are the same scopes because both read this; a fitness test pins its call sites.
+    """
+    state = ProximityScopeStateDB
+    return and_(
+        _not_current(rule_version),
+        state.failed_rule_version == rule_version,
+        state.attempts >= threshold,
+    )
+
+
 def _not_current(rule_version: str) -> ColumnElement[bool]:
     """Negation of :func:`_is_current` (both operands are null-safe, so NOT is too)."""
     return ~_is_current(rule_version)
@@ -280,6 +298,23 @@ def _apply_scope_filter(stmt: _Stmt, scope_filter: ScopeFilter | None) -> _Stmt:
             )
         )
     return stmt
+
+
+class CoMentionRow(NamedTuple):
+    """One co-mention of a pair within a window, with its time interval (Feature 118).
+
+    In the canonical (lo, hi) orientation the records are stored in. ``end_time`` is the
+    later of the two mentions' ends (FR-002).
+    """
+
+    video_id: str
+    channel_id: str | None
+    language_code: str
+    segment_lo_id: int
+    segment_hi_id: int
+    gap_seconds: float
+    start_time: float
+    end_time: float
 
 
 _INSTANCE_INSERT_COLUMNS = [
@@ -763,6 +798,196 @@ class EntityPairProximityRepository(
             for row in rows
         ]
 
+    # ----- discussion passages (Feature 118) -------------------------------
+
+    @staticmethod
+    async def begin_read_snapshot(session: AsyncSession) -> None:
+        """Make the session's transaction a read-only snapshot (REPEATABLE READ).
+
+        MUST be the transaction's first statement. The passage panel reads in several statements
+        while the proximity worker commits scope replacements; under the default READ COMMITTED a
+        count from one statement could disagree with the rows of the next.
+        """
+        await session.execute(
+            text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        )
+
+    async def name_list_segments(
+        self, session: AsyncSession, *, segment_ids: Collection[int]
+    ) -> set[int]:
+        """The ``segment_ids`` that name three or more distinct qualifying entities (FR-018).
+
+        Read from the measurement itself: every pair of entities with qualifying mentions in one
+        segment has a record with ``segment_a_id = segment_b_id`` there, so the distinct entities
+        across those records are exactly the segment's qualifying entities (the pair included).
+        A reading aid only: it never filters or discounts anything.
+        """
+        if not segment_ids:
+            return set()
+        rec = EntityPairProximityDB
+        same_segment = (
+            rec.segment_a_id == rec.segment_b_id,
+            rec.segment_a_id.in_(list(segment_ids)),
+        )
+        entities = union(
+            select(
+                rec.segment_a_id.label("segment_id"), rec.entity_a_id.label("entity_id")
+            ).where(*same_segment),
+            select(
+                rec.segment_a_id.label("segment_id"), rec.entity_b_id.label("entity_id")
+            ).where(*same_segment),
+        ).subquery("segment_entities")
+        rows = await session.execute(
+            select(entities.c.segment_id)
+            .group_by(entities.c.segment_id)
+            .having(func.count() >= 3)
+        )
+        return {int(r.segment_id) for r in rows.all()}
+
+    async def pair_scope_health(
+        self,
+        session: AsyncSession,
+        *,
+        entity_a: uuid.UUID,
+        entity_b: uuid.UUID,
+        rule_version: str,
+        failing_threshold: int,
+    ) -> tuple[int, list[tuple[str, str]]]:
+        """``(pending, failed)`` among the transcripts a pair's evidence depends on (Feature 118).
+
+        The contributing set is the one :meth:`pair_summaries` judges completeness by: the scopes
+        holding the pair's records UNION the scopes where both entities have positioned transcript
+        mentions (a deliberate superset, so the panel can only err toward "updating"). A scope is
+        **failed** exactly when ``proximity status`` calls it failing: not current, failed under
+        ``rule_version`` at least ``failing_threshold`` times. Every other scope that is not current,
+        including one with no state row, is **pending**. Returns the pending count and the failed
+        ``(video_id, language_code)`` scopes, ordered.
+        """
+        lo, hi = sorted((entity_a, entity_b))
+        rec = EntityPairProximityDB
+        state = ProximityScopeStateDB
+
+        contributing = union(
+            select(rec.video_id, rec.language_code).where(
+                rec.entity_a_id == lo, rec.entity_b_id == hi
+            ),
+            co_positioned_scopes(lo, hi),
+        ).subquery("contributing")
+        failing = _is_failing(rule_version, failing_threshold)
+        rows = (
+            await session.execute(
+                select(
+                    contributing.c.video_id,
+                    contributing.c.language_code,
+                    func.coalesce(failing, False).label("failed"),
+                )
+                .outerjoin(
+                    state,
+                    and_(
+                        state.video_id == contributing.c.video_id,
+                        state.language_code == contributing.c.language_code,
+                    ),
+                )
+                .where(or_(state.video_id.is_(None), _not_current(rule_version)))
+                .order_by(contributing.c.video_id, contributing.c.language_code)
+            )
+        ).all()
+        failed = [(r.video_id, r.language_code) for r in rows if r.failed]
+        return len(rows) - len(failed), failed
+
+    async def pair_comentions(
+        self,
+        session: AsyncSession,
+        *,
+        entity_a: uuid.UUID,
+        entity_b: uuid.UUID,
+        window_s: float,
+    ) -> list[CoMentionRow]:
+        """Every co-mention of a pair within ``window_s``, each with its interval (FR-002).
+
+        One row per record ``gap_seconds <= window_s`` (inclusive) of the canonical pair, so the
+        videos here are exactly the videos the measurement reports for this window (FR-008). The
+        interval is ``[earlier start segment's start, later mention's end]``; a mention's end is its
+        end segment's end when it spans segments. Ends come ONLY from
+        :meth:`EntityMentionRepository._pair_qualifying_mentions`, so a mention the shared rule
+        rejects cannot stretch an interval; a record whose segment has no qualifying mention (the
+        library changed since the scope was measured, and the scope is now pending) is left out.
+
+        Two set-based statements, joined in Python. Measured on production's densest pair (~58k
+        records at 120 s): a single statement joining records to the qualifying mentions was planned
+        against a one-row estimate of the visible-name join and ran up to 39 s; per-record
+        correlated lookups took ~3.6 s; these two statements take ~0.9 s together.
+        """
+        lo, hi = sorted((entity_a, entity_b))
+        rec = EntityPairProximityDB
+        sa = aliased(TranscriptSegmentDB, name="sa")
+        sb = aliased(TranscriptSegmentDB, name="sb")
+        in_window = (
+            rec.entity_a_id == lo,
+            rec.entity_b_id == hi,
+            rec.gap_seconds <= window_s,
+        )
+        records = (
+            await session.execute(
+                select(
+                    rec.video_id,
+                    VideoDB.channel_id,
+                    rec.language_code,
+                    rec.segment_a_id,
+                    rec.segment_b_id,
+                    rec.gap_seconds,
+                    func.least(sa.start_time, sb.start_time).label("start_time"),
+                )
+                .join(sa, sa.id == rec.segment_a_id)
+                .join(sb, sb.id == rec.segment_b_id)
+                .join(VideoDB, VideoDB.video_id == rec.video_id)
+                .where(*in_window)
+            )
+        ).all()
+        if not records:
+            return []
+        segments = union(
+            select(rec.segment_a_id).where(*in_window),
+            select(rec.segment_b_id).where(*in_window),
+        )
+        qualifying = (
+            EntityMentionRepository._pair_qualifying_mentions([lo, hi])
+            .where(EntityMentionDB.segment_id.in_(segments))
+            .subquery("pair_qualifying_mentions")
+        )
+        # A segment can hold several qualifying mentions of one entity: its end is the latest.
+        ends: dict[tuple[uuid.UUID, int], float] = {
+            (row.entity_id, row.segment_id): float(row.end_time)
+            for row in (
+                await session.execute(
+                    select(
+                        qualifying.c.entity_id,
+                        qualifying.c.segment_id,
+                        func.max(qualifying.c.end_time).label("end_time"),
+                    ).group_by(qualifying.c.entity_id, qualifying.c.segment_id)
+                )
+            ).all()
+        }
+        rows: list[CoMentionRow] = []
+        for r in records:
+            end_lo = ends.get((lo, r.segment_a_id))
+            end_hi = ends.get((hi, r.segment_b_id))
+            if end_lo is None or end_hi is None:
+                continue
+            rows.append(
+                CoMentionRow(
+                    video_id=r.video_id,
+                    channel_id=r.channel_id,
+                    language_code=r.language_code,
+                    segment_lo_id=int(r.segment_a_id),
+                    segment_hi_id=int(r.segment_b_id),
+                    gap_seconds=float(r.gap_seconds),
+                    start_time=float(r.start_time),
+                    end_time=max(end_lo, end_hi),
+                )
+            )
+        return rows
+
     async def read_rollup(
         self, session: AsyncSession, *, min_shared_videos: int = 5
     ) -> list[tuple[uuid.UUID, uuid.UUID, int, float]]:
@@ -1013,11 +1238,7 @@ class EntityPairProximityRepository(
         state = ProximityScopeStateDB
         stmt = (
             select(state)
-            .where(
-                _not_current(rule_version),
-                state.failed_rule_version == rule_version,
-                state.attempts >= threshold,
-            )
+            .where(_is_failing(rule_version, threshold))
             .order_by(state.attempts.desc(), state.video_id, state.language_code)
             .limit(limit)
         )
@@ -1202,11 +1423,7 @@ class EntityPairProximityRepository(
         stmt = (
             select(func.count())
             .select_from(state)
-            .where(
-                _not_current(rule_version),
-                state.failed_rule_version == rule_version,
-                state.attempts >= threshold,
-            )
+            .where(_is_failing(rule_version, threshold))
         )
         result = await session.execute(_apply_scope_filter(stmt, scope_filter))
         return int(result.scalar_one())

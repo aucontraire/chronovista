@@ -137,11 +137,15 @@ def test_alias_linkable_methods_are_rule_match_only() -> None:
 # 8th site added by Feature 114: EntityMentionRepository.co_occurrence_evidence's locate query
 # qualifies transcript mentions via the shared predicate (admits asr_match, excludes manual) so the
 # evidence panel and the CO_OCCURS_* counts share one mention definition (FR-014).
-_EXPECTED_QUALIFICATION_CALL_SITES = 8
+# 9th site added by Feature 118: EntityMentionRepository._pair_qualifying_mentions, the one
+# qualifying-mention CTE behind the passage panel (interval ends, highlights, farther-apart
+# list). It reaches the shared predicate through ``positioned_transcript_mention_qualifies``.
+_EXPECTED_QUALIFICATION_CALL_SITES = 9
 # Feature 117: the evidence panel reaches the shared predicate through
 # ``positioned_transcript_mention_qualifies`` (the rule it shares with proximity), so
-# it is counted there rather than as a direct call. The surface count is unchanged.
-_EXPECTED_POSITIONED_SURFACES_IN_MODULE = 1
+# it is counted there rather than as a direct call. Feature 118 adds the passage
+# panel's call (see above).
+_EXPECTED_POSITIONED_SURFACES_IN_MODULE = 2
 
 
 def test_all_association_surfaces_use_the_shared_qualification() -> None:

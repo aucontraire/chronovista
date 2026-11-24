@@ -17,17 +17,25 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from chronovista.db.models import EntityMention as EntityMentionDB
 from chronovista.db.models import EntityPairProximity as EntityPairProximityDB
+from chronovista.db.models import EntityVideoExclusion as EntityVideoExclusionDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
 from chronovista.db.models import ProximityScopeState as ProximityScopeStateDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
+from chronovista.db.models import UserLanguagePreference as UserLanguagePreferenceDB
 from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTranscript as VideoTranscriptDB
-from chronovista.services.proximity_service import MEASUREMENT_RULE_VERSION
+from chronovista.repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
+from chronovista.services.proximity_service import (
+    MEASUREMENT_RULE_VERSION,
+    OUTER_WINDOW_SECONDS,
+)
 from tests.factories.named_entity_orm_factory import create_named_entity_db
 
 
@@ -149,15 +157,18 @@ async def seed_segment(
     language_code: str,
     start_time: float,
     sequence_number: int,
+    *,
+    text: str = "placeholder",
+    duration: float = 2.0,
 ) -> int:
     """Persist one transcript segment and return its integer id."""
     segment = TranscriptSegmentDB(
         video_id=video_id,
         language_code=language_code,
-        text="placeholder",
+        text=text,
         start_time=start_time,
-        duration=2.0,
-        end_time=start_time + 2.0,
+        duration=duration,
+        end_time=start_time + duration,
         sequence_number=sequence_number,
     )
     session.add(segment)
@@ -200,6 +211,62 @@ async def seed_mention(
             mention_text=mention_text,
             detection_method=detection_method,
             mention_source="transcript",
+        )
+    )
+    await session.flush()
+
+
+async def seed_title_mention(
+    session: AsyncSession, *, entity_id: uuid.UUID, video_id: str
+) -> None:
+    """A title association (no segment, no position): a non-transcript basis."""
+    name = (
+        await session.execute(
+            select(NamedEntityDB.canonical_name).where(NamedEntityDB.id == entity_id)
+        )
+    ).scalar_one()
+    session.add(
+        EntityMentionDB(
+            entity_id=entity_id,
+            video_id=video_id,
+            mention_text=name,
+            detection_method="rule_match",
+            mention_source="title",
+        )
+    )
+    await session.flush()
+
+
+async def seed_exclusion(
+    session: AsyncSession, *, entity_id: uuid.UUID, video_id: str
+) -> None:
+    """A manual (entity, video) exclusion, as the exclusion tooling records it."""
+    session.add(
+        EntityVideoExclusionDB(
+            entity_id=entity_id,
+            video_id=video_id,
+            excluded_by="test",
+            excluded_at=datetime.now(UTC),
+        )
+    )
+    await session.flush()
+
+
+async def seed_preference(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    language_code: str,
+    preference_type: str,
+    priority: int,
+) -> None:
+    """One language preference row for ``user_id``."""
+    session.add(
+        UserLanguagePreferenceDB(
+            user_id=user_id,
+            language_code=language_code,
+            preference_type=preference_type,
+            priority=priority,
         )
     )
     await session.flush()
@@ -290,6 +357,118 @@ async def seed_scope_state(
         raise ValueError(f"unknown scope state {state!r}")
     session.add(row)
     await session.flush()
+
+
+async def measure_scope(
+    session: AsyncSession, *, video_id: str, language_code: str
+) -> int:
+    """Compute one scope's records through the real path and mark it current.
+
+    Records come from ``replace_scope_records`` (the production INSERT...SELECT), so a
+    test exercises the shared qualification rule and exclusions rather than
+    hand-inserted rows. Any existing state row for the scope is replaced by a current
+    one. Returns the number of records written.
+    """
+    written = await EntityPairProximityRepository().replace_scope_records(
+        session,
+        video_id=video_id,
+        language_code=language_code,
+        outer_window=OUTER_WINDOW_SECONDS,
+    )
+    await session.execute(
+        delete(ProximityScopeStateDB).where(
+            ProximityScopeStateDB.video_id == video_id,
+            ProximityScopeStateDB.language_code == language_code,
+        )
+    )
+    await seed_scope_state(
+        session, video_id=video_id, language_code=language_code, state="current"
+    )
+    return written
+
+
+async def seed_timed_comentions(
+    session: AsyncSession,
+    *,
+    entity_a: uuid.UUID,
+    entity_b: uuid.UUID,
+    video_id: str,
+    moments: Sequence[tuple[float, float]],
+    language_code: str = "en",
+    create_video: bool = True,
+    measure: bool = True,
+) -> list[tuple[int, int]]:
+    """Co-mention two entities at explicit times in one video and language.
+
+    Each ``(a_time, b_time)`` becomes a segment per distinct time (one segment when the
+    two times are equal) carrying qualifying mentions, with sequence numbers in
+    insertion order. Segment text names the entity it carries, so highlights can be
+    asserted. With ``create_video=False`` the video and transcript row must exist
+    (seed several languages with :func:`seed_video` first). With ``measure=True`` the
+    scope is then computed through :func:`measure_scope`. Returns the
+    ``(segment_a_id, segment_b_id)`` of each moment, in order.
+    """
+    if create_video:
+        await seed_video(session, video_id, (language_code,))
+    names = dict(
+        (
+            await session.execute(
+                select(NamedEntityDB.id, NamedEntityDB.canonical_name).where(
+                    NamedEntityDB.id.in_([entity_a, entity_b])
+                )
+            )
+        )
+        .tuples()
+        .all()
+    )
+    next_seq = (
+        await session.execute(
+            select(
+                func.coalesce(func.max(TranscriptSegmentDB.sequence_number), -1)
+            ).where(
+                TranscriptSegmentDB.video_id == video_id,
+                TranscriptSegmentDB.language_code == language_code,
+            )
+        )
+    ).scalar_one() + 1
+    segments: list[tuple[int, int]] = []
+    for a_time, b_time in moments:
+        if a_time == b_time:
+            shared = await seed_segment(
+                session,
+                video_id,
+                language_code,
+                a_time,
+                next_seq,
+                text=f"{names[entity_a]} and {names[entity_b]}",
+            )
+            next_seq += 1
+            seg_a = seg_b = shared
+        else:
+            seg_a = await seed_segment(
+                session, video_id, language_code, a_time, next_seq, text=names[entity_a]
+            )
+            seg_b = await seed_segment(
+                session,
+                video_id,
+                language_code,
+                b_time,
+                next_seq + 1,
+                text=names[entity_b],
+            )
+            next_seq += 2
+        for entity_id, segment_id in ((entity_a, seg_a), (entity_b, seg_b)):
+            await seed_mention(
+                session,
+                entity_id=entity_id,
+                video_id=video_id,
+                language_code=language_code,
+                segment_id=segment_id,
+            )
+        segments.append((seg_a, seg_b))
+    if measure:
+        await measure_scope(session, video_id=video_id, language_code=language_code)
+    return segments
 
 
 LogicalRecord = tuple[uuid.UUID, uuid.UUID, str, str, int, int, float]

@@ -164,7 +164,7 @@ Long lists (transcript segments, video libraries) use `@tanstack/react-virtual` 
 Transcript segments load in batches (50 initial, then 25 per page) using `useInfiniteQuery`. The `IntersectionObserver` API triggers the next page fetch.
 
 ### Deep Link Navigation
-Search results link to specific transcript timestamps via URL parameters (`?t=90&lang=en`). The `seekToTimestamp` function uses the backend's `start_time` filter for precise segment loading without offset estimation.
+Search results link to specific transcript timestamps via URL parameters (`?t=90&lang=en`). The `seekToTimestamp` function uses the backend's `start_time` filter for precise segment loading without offset estimation. Since Feature 118, a link's `t` also starts the embedded player there: `VideoDetailPage` passes it to `useYouTubePlayer` as `startSeconds`, which becomes the player's `start` (read once, when the player is created).
 
 ### Entity Type Identity — one pill, two contents
 Entity type colours live in exactly one place (`constants/entityTypes.ts`) and reach every surface through two components, chosen by what the surface is *doing*:
@@ -265,6 +265,15 @@ rule: the interactive graph and its accessible equivalent must never be able to 
 - **Deep-link entry** — endpoints live in the URL (`?a=<id>&b=<id>`), so a result is shareable and
   the `CooccurringPanel`'s per-row "How do these connect?" action can prefill both endpoints
   (FR-023).
+- **Evidence panel (Feature 118)** — `EvidencePanel` reads `GET /graph/connect/passages` through
+  `usePairPassages(a, b, window)` (offset-paged `useInfiniteQuery`, key `["pairPassages", a, b,
+  window]`). The `window` lives in the URL (`?window=15|30|60|120`); the page parses it leniently and
+  never rewrites an unsupported value. While the first page reports `pending_scopes > 0` the query
+  refetches every 3 s (`pendingRefetchInterval`), and stops at 0. The farther-apart list is a second
+  query (`useFartherVideos`), enabled only when opened. A language-preference mutation invalidates
+  `["pairPassages"]`, so an open panel picks up the new leading language. The server picks the
+  leading variant and the client renders `variants[0]` first; it never re-sorts. `EvidenceItem` folds
+  a video's passages after three.
 
 ### React Router v7 Future Flags
 

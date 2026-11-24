@@ -568,4 +568,28 @@ describe("useLanguagePreferences", () => {
 
     invalidateSpy.mockRestore();
   });
+
+  it("mutation success also invalidates the open discussion-passages panel (FR-011a)", async () => {
+    mockedApiFetch
+      .mockResolvedValueOnce(makePreferencesResponse([]))
+      .mockResolvedValueOnce(makePreferencesResponse([]));
+
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+    const { result } = renderHook(() => useLanguagePreferences(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => {
+      result.current.resetAll();
+    });
+
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["pairPassages"] })
+    );
+
+    invalidateSpy.mockRestore();
+  });
 });

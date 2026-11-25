@@ -1838,6 +1838,78 @@ def repair_mentions(
     asyncio.run(_run())
 
 
+@entity_app.command("audit-mentions")
+def audit_mentions(
+    save: Path | None = typer.Option(
+        None,
+        "--save",
+        help="Write a snapshot of what transcript mentions count now to this file.",
+    ),
+    compare_with: Path | None = typer.Option(
+        None,
+        "--compare",
+        help="Compare what counts now with a snapshot saved earlier.",
+    ),
+) -> None:
+    """Check that a change to mention data lost nothing that counted.
+
+    Save a snapshot before a repair, a full rescan or a batch correction, and
+    compare after it. The comparison lists the places where an entity stopped
+    being counted, and the videos it stopped being linked to. Removing a
+    duplicate loses nothing. Exits 1 when something was lost.
+
+    Snapshots hold library ids: keep them out of the repository (backups/ is
+    ignored by git). Reads only; writes nothing to the database.
+    """
+    from chronovista.services.mention_audit_service import (
+        MentionAuditSnapshot,
+        compare,
+        take_snapshot,
+    )
+
+    if save is None and compare_with is None:
+        console.print("[red]Give --save, --compare, or both.[/red]")
+        raise typer.Exit(2)
+    before = MentionAuditSnapshot.load(compare_with) if compare_with else None
+    lost = False
+
+    async def _run() -> None:
+        nonlocal lost
+        async with db_manager.session(echo=False) as session:
+            now = await take_snapshot(session)
+        if save is not None:
+            now.save(save)
+            console.print(
+                f"Saved: {len(now.counted_segments)} counted (entity, segment) "
+                f"pairs, {len(now.associations)} (entity, video) links."
+            )
+        if before is None:
+            return
+        result = compare(before, now)
+        summary = (
+            f"[bold]Counted (entity, segment) pairs lost:[/bold] "
+            f"{len(result.counted_segments_lost)} "
+            f"({len(result.entities_losing_counts)} entities)\n"
+            f"[bold]Counted (entity, segment) pairs gained:[/bold] "
+            f"{result.counted_segments_gained}\n"
+            f"[bold](entity, video) links lost:[/bold] "
+            f"{len(result.associations_lost)}\n"
+            f"[bold](entity, video) links gained:[/bold] {result.associations_gained}"
+        )
+        if result.holds:
+            title, style = "[green]Nothing that counted was lost[/green]", "green"
+        else:
+            title, style = "[red]Counted mentions were lost[/red]", "red"
+        console.print(Panel(summary, title=title, border_style=style))
+        for entity_id, segment_id in sorted(result.counted_segments_lost, key=str)[:20]:
+            console.print(f"  entity {entity_id}  segment {segment_id}")
+        lost = not result.holds
+
+    asyncio.run(_run())
+    if lost:
+        raise typer.Exit(1)
+
+
 def _merge_scan_results(
     transcript_result: ScanResult | None,
     metadata_result: ScanResult | None,

@@ -20,15 +20,26 @@ command repairs rows written by earlier versions.
 - **`chronovista entities repair-mentions`** repairs mentions written before this release.
   Each mention that no longer reads as its text moves to the occurrence it belongs to, or is
   removed when another mention already records that occurrence. Of overlapping mentions of
-  one entity it keeps one (the longer name, then a correction over a scan match). It then
+  one entity it keeps one (one that counts, then the longer name, then a correction over a
+  scan match). It then
   recomputes the affected counters and marks their proximity for recompute. It works one
   transcript at a time and commits every 50, marking each transcript's proximity stale before
   writing to it (the order corrections use), so it can run while the app is in use and an
   interrupted run is finished by running it again. `--dry-run` reports exactly what a real
   run would do, without writing; `--video-id` limits it. Running it twice changes nothing.
   Run it once after upgrading, after a backup; it is deliberately not a migration.
+- **`chronovista entities audit-mentions`** checks that a change to mention data lost nothing
+  that counted. `--save` records every place a counted mention covers and every entity-to-video
+  link; `--compare` lists what a later state lost, and exits 1 if anything was. Use it around a
+  repair, a `scan --full` or a batch correction.
 
 ### Fixed
+
+- **The mention repair no longer trades a counted mention for an uncounted one**.
+  Of two overlapping mentions of one entity it kept the longer, so a disfluency-gap match (a
+  name with a repeat or filler in it, which does not count) replaced the clean name inside it.
+  It now keeps a mention that counts first, then the longer one. Gap matches themselves still
+  do not count (#405).
 
 - **Corrections keep mentions on their words** (#426). When a correction or a revert changes a
   segment's text, every mention in that segment moves with it:

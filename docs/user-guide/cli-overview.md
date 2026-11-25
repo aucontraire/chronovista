@@ -274,6 +274,29 @@ recompute. It works one transcript at a time and commits as it goes, so it can r
 the app is in use; if it is interrupted, run it again to finish. Running it again after it
 completes changes nothing.
 
+**Checking that a change to mention data lost nothing that counted:** a repair, a
+`scan --full` or a batch correction can pass its own checks and still leave an entity
+uncounted where it was counted before. Take a snapshot before the change and compare
+after it:
+
+```bash
+chronovista entities audit-mentions --save backups/mentions-before.json
+# ... the repair, rescan or correction ...
+chronovista entities audit-mentions --compare backups/mentions-before.json
+```
+
+The comparison reports the places where an entity stopped being counted, and the videos
+it stopped being linked to. Removing a duplicate loses nothing. The command exits with
+status 1 when something was lost, so a script can stop on it.
+
+Treat the list as places to look at, not as a verdict. Places are compared per segment,
+so two cases show as lost although nothing that should count was:
+- a name split across two segments, where one occurrence had also been recorded from the
+  next segment and the repair kept that record;
+- a mention whose words a correction removed. Snapshots hold library ids,
+so keep them out of version control; `backups/` is ignored. Until disfluency-gap matches
+count (#405), a `scan --full` can lose counts where a speaker repeated a name.
+
 **Scan Options:**
 
 | Flag | Description |

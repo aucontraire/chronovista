@@ -17,7 +17,7 @@ Exact counts (Constitution: Single-Source Operations and Fitness Guards): a new 
 or a removed one, changes a number here and must be a reviewed edit. Files are read
 from disk, so untracked new modules are counted too.
 
-Mutation-verified (2026-11-24): adding a hand-rolled ``.casefold() ==
+Mutation-verified (2026-11-24, counting rule 2026-11-25): adding a hand-rolled ``.casefold() ==
 mention_text.casefold()`` comparison to the repair turns
 ``test_only_the_predicate_compares_a_slice_to_mention_text`` red; deleting the
 ``mention_reads`` call from ``TextEdit.rebase`` turns the call-site test red; adding a
@@ -91,3 +91,31 @@ def test_corrections_find_names_by_the_scans_rule() -> None:
         "name is in a text uses the scan's matching rule through it; a private "
         "matcher drifts from the scan (accents, case-sensitive aliases, ASR forms)."
     )
+
+
+# What counts toward an entity's stored totals: the counter recompute,
+# the span column the survivor rule ranks by, and the audit's snapshot. Before this rule had a home the
+# recompute held the only copy inline, and the survivor rule ranked by length alone.
+_EXPECTED_COUNTING_RULE_CALLS = {"repositories/entity_mention_repository.py": 3}
+
+
+def test_what_counts_has_one_home() -> None:
+    assert (
+        _count(
+            "_mention_counts_toward_totals(",
+            exclude="def _mention_counts_toward_totals(",
+        )
+        == _EXPECTED_COUNTING_RULE_CALLS
+    ), (
+        "_mention_counts_toward_totals call sites changed. Code that decides whether "
+        "a mention counts toward mention_count / video_count uses it; a private copy "
+        "can keep an uncounted row over a counted one."
+    )
+
+
+def test_no_private_copy_of_the_counting_method_arm() -> None:
+    """The stored-counter rule's method arm, written out by hand, is the copy its
+    extraction removed from ``update_entity_counters``."""
+    assert _count('detection_method == "asr_match"') == {
+        "repositories/entity_mention_repository.py": 1
+    }

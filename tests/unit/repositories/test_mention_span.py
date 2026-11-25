@@ -21,6 +21,7 @@ def _span(
     end_segment_id: int | None = None,
     start: int = 0,
     end: int = 9,
+    counts: bool = True,
 ) -> MentionSpan:
     return MentionSpan(
         id=uuid.UUID(mention_id),
@@ -33,11 +34,24 @@ def _span(
         match_end=end,
         mention_text=text,
         detection_method=method,
+        counts=counts,
     )
 
 
 class TestSurvivorRank:
     """The rule the correction rebase and the repair share. Lowest rank survives."""
+
+    def test_a_counted_name_beats_a_longer_uncounted_gap_span(self) -> None:
+        """Keeping one row never loses a counted occurrence. A
+        disfluency-gap span is longer than the clean name inside it but does not
+        count. Mutation: drop the counts term (the gap span would win on length)."""
+        clean = _span(text="Zeta Quux", counts=True)
+        gap = _span(
+            mention_id="00000000-0000-7000-8000-000000000000",
+            text="Zeta Zeta Quux",
+            counts=False,
+        )
+        assert clean.survivor_rank() < gap.survivor_rank()
 
     def test_the_longer_name_beats_the_shorter_whatever_wrote_it(self) -> None:
         """Mutation: drop the length term, or flip its sign."""

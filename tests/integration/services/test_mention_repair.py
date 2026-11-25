@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import re
 import uuid
+from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import EntityAlias as EntityAliasDB
@@ -24,6 +25,7 @@ from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
     MentionRelabel,
 )
+from chronovista.services.mention_audit_service import compare, take_snapshot
 from chronovista.services.mention_repair_service import MentionRepairService
 from tests.factories.mention_world import (
     A_NAME,
@@ -333,6 +335,180 @@ class TestFragmentOverlap:
 
         assert await _rows(db_session, a) == [("rule_match", A_NAME, 7, 16)]
         assert report.duplicates_removed == 1
+
+
+class TestWhatCountsIsKept:
+    """The repair never trades a counted row for an uncounted one.
+
+    A disfluency-gap span ("Zeta Zeta Quux") is longer than the clean name inside it
+    but does not count, because its text is no registered name. Production lost 28
+    counted occurrences this way on 2026-11-24.
+    """
+
+    _TEXT = f"we saw {A_NAME.split(' ')[0]} {A_NAME} here"
+
+    async def _counted(self, session: AsyncSession, entity_id: uuid.UUID) -> int | None:
+        return (
+            await session.execute(
+                select(NamedEntityDB.mention_count)
+                .where(NamedEntityDB.id == entity_id)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
+
+    async def test_a_counted_name_is_kept_over_a_longer_gap_span(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Mutation: drop the counts term from ``survivor_rank`` (the gap span would
+        win on length and the entity would count nothing here)."""
+        a, video, seg = await _corrected_world(db_session, self._TEXT)
+        gap = self._TEXT[7:21]
+        await place(
+            db_session,
+            entity_id=a,
+            video_id=video,
+            segment_id=seg,
+            mention_text=gap,
+            start=7,
+        )
+        clean_at = self._TEXT.index(A_NAME)
+        await place(
+            db_session,
+            entity_id=a,
+            video_id=video,
+            segment_id=seg,
+            mention_text=A_NAME,
+            start=clean_at,
+        )
+        before = await take_snapshot(db_session)
+
+        report = await MentionRepairService().repair(
+            db_session, video_ids=[video], dry_run=False
+        )
+
+        assert await _rows(db_session, a) == [
+            ("rule_match", A_NAME, clean_at, clean_at + len(A_NAME))
+        ]
+        assert report.duplicates_removed == 1
+        assert await self._counted(db_session, a) == 1
+        assert compare(before, await take_snapshot(db_session)).holds
+
+    async def test_a_stale_counted_row_moves_past_a_gap_span_onto_the_name(
+        self, db_session: AsyncSession
+    ) -> None:
+        """A stale correction row relocates onto the clean name although a longer,
+        uncounted gap span covers it; the gap span is then the duplicate.
+
+        Mutation: let a blocker stand on length alone in ``_free_occurrence`` (the
+        stale row would be removed as the gap span's twin, and nothing would count).
+        """
+        a, video, seg = await _corrected_world(db_session, self._TEXT)
+        await place(
+            db_session,
+            entity_id=a,
+            video_id=video,
+            segment_id=seg,
+            mention_text=self._TEXT[7:21],
+            start=7,
+        )
+        await place(
+            db_session,
+            entity_id=a,
+            video_id=video,
+            segment_id=seg,
+            mention_text=A_NAME,
+            start=0,
+            method="user_correction",
+        )
+
+        report = await MentionRepairService().repair(
+            db_session, video_ids=[video], dry_run=False
+        )
+
+        clean_at = self._TEXT.index(A_NAME)
+        assert await _rows(db_session, a) == [
+            ("user_correction", A_NAME, clean_at, clean_at + len(A_NAME))
+        ]
+        assert (report.stale_moved, report.duplicates_removed) == (1, 1)
+        assert await self._counted(db_session, a) == 1
+
+
+class TestAuditMentions:
+    """``entities audit-mentions``: what counted before a change and no longer does."""
+
+    async def _counted_world(self, session: AsyncSession) -> tuple[uuid.UUID, str, int]:
+        text = f"we saw {A_NAME} here"
+        a, video, seg = await _corrected_world(session, text)
+        await place(
+            session,
+            entity_id=a,
+            video_id=video,
+            segment_id=seg,
+            mention_text=A_NAME,
+            start=text.index(A_NAME),
+        )
+        return a, video, seg
+
+    async def test_a_removed_counted_mention_is_reported_lost(
+        self, db_session: AsyncSession
+    ) -> None:
+        """Mutation: compare after-minus-before instead of before-minus-after, or read
+        mentions regardless of whether they count."""
+        a, video, seg = await self._counted_world(db_session)
+        before = await take_snapshot(db_session)
+        await db_session.execute(
+            delete(EntityMentionDB).where(EntityMentionDB.entity_id == a)
+        )
+
+        result = compare(before, await take_snapshot(db_session))
+
+        assert result.counted_segments_lost == {(a, seg)}
+        assert result.associations_lost == {(a, video)}
+        assert not result.holds
+
+    async def test_an_uncounted_mention_is_not_in_the_snapshot(
+        self, db_session: AsyncSession
+    ) -> None:
+        """A gap span does not count, so losing one is not a loss of counts.
+
+        Mutation: drop ``_mention_counts_toward_totals`` from the snapshot query.
+        """
+        text = f"we saw {A_NAME.split(' ')[0]} {A_NAME} here"
+        a, video, seg = await _corrected_world(db_session, text)
+        await place(
+            db_session,
+            entity_id=a,
+            video_id=video,
+            segment_id=seg,
+            mention_text=text[7:21],
+            start=7,
+        )
+
+        snapshot_now = await take_snapshot(db_session)
+
+        assert (a, seg) not in snapshot_now.counted_segments
+        assert (a, video) not in snapshot_now.associations
+
+    async def test_the_command_saves_then_compares(
+        self,
+        db_session: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        await self._counted_world(db_session)
+        saved = tmp_path / "before.json"
+
+        await invoke_cli(
+            monkeypatch, db_session, ["audit-mentions", "--save", str(saved)]
+        )
+        await invoke_cli(
+            monkeypatch, db_session, ["audit-mentions", "--compare", str(saved)]
+        )
+
+        out = capsys.readouterr().out
+        assert saved.exists()
+        assert "Nothing that counted was lost" in out, out
 
 
 class TestSplitNameAndItsAlias:

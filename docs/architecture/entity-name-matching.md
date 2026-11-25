@@ -202,6 +202,68 @@ English *uh/um*, Spanish *este/pues*) or a false start, scoped to the same
 candidate entities the regex already considered. It is additive and never widens a
 match past its bound.
 
+### What the field does, and where we stand
+
+Speech research has described the structure of a disfluency the same way since
+Shriberg's work, on which the Switchboard corpus annotation is built. There is a
+**reparandum** (what the speaker abandons), an optional **interregnum** (a filler
+such as *uh* or *I mean*), and a **repair** (what they meant), written
+`[reparandum + {interregnum} repair]`
+([Zayats et al.](https://arxiv.org/pdf/1808.09091v1.pdf);
+[Lou & Johnson](https://ar5iv.arxiv.org/html/1604.03209)). Applied to names:
+
+| Transcript | Reparandum | Interregnum | Repair | Intended |
+|---|---|---|---|---|
+| *Quade Quade Marlowe* (repeat) | *Quade* | (none) | *Quade Marlowe* | Quade Marlowe |
+| *Quade uh Marlowe* (filler) | (none) | *uh* | (the name continues) | Quade Marlowe |
+| *Quade Mar Marlowe* (false start) | *Mar* | (none) | *Marlowe* | Quade Marlowe |
+
+Four practices follow from the literature:
+
+1. **All three are true mentions of the entity.** The speaker said the name each
+   time.
+2. **The entity is recognised on the fluent form, and the disfluency is kept as a
+   separate annotation, not a reason the mention doesn't count.** Pipelines remove or
+   mark disfluencies first, or model both together. Joint models use the entity
+   signal to stop real names being deleted as disfluencies
+   ([SLUE](https://arxiv.org/pdf/2111.10367);
+   [Fillers in SLU](https://arxiv.org/pdf/2301.10761);
+   [auxiliary sequence labeling](https://arxiv.org/pdf/2011.04512)). Systems that
+   treat fillers as boundaries split one entity into unrecognised fragments
+   ([Gladia](https://www.gladia.io/blog/named-entity-recognition-from-call-transcripts-improving-precision)).
+3. **Entity spans in speech are where errors concentrate, so precision is measured
+   at the entity level before a new kind of evidence is trusted**
+   ([Why Aren't We NER Yet?, ACL 2023](https://aclanthology.org/2023.acl-long.98.pdf);
+   [Deepgram](https://deepgram.com/blog/named-entity-recognition-voice-transcripts)).
+   The ASR-error forms above went through exactly this review before they counted.
+4. **The raw text stays as written, and the identified entity and how it was found
+   are recorded beside it.** This is general text-annotation practice rather than
+   something a speech source prescribes. It is also how `asr_match` already works:
+   the stored text is the garble, the detection method is the provenance, and the
+   row counts by provenance and can be reverted.
+
+**Where chronovista stands (2026-11-25).**
+
+- **What we follow:** the gap matcher finds all three kinds and stores the raw span,
+  stumble included, so highlights are faithful.
+- **What we don't:**
+  - A gap match is recorded as `rule_match` with its raw text. Its text is not a
+    registered name, so it **does not count**: no `mention_count`, no
+    entity→video link, no proximity evidence. That breaks practices 1 and 2.
+  - Longest-match-wins keeps the gap span over a clean name inside it, so a repeat
+    turns a counted mention into an uncounted one, and every `scan --full` does
+    this again.
+  - The gap span does not record the form it matched (#405), which practice 4 needs.
+
+**The intended fix:**
+1. Measure the precision of the existing gap matches by kind (practice 3).
+2. Give gap matches their own provenance, carrying the fluent form they matched.
+3. Count them by provenance, as `asr_match` rows are counted.
+
+Until then, the mention repair keeps a counted row over an uncounted one, and a
+`scan --full` should be bracketed by `entities audit-mentions --save` and
+`--compare`.
+
 ## Correction-time disambiguation
 
 When a user's transcript correction maps a garble to an entity, the resolver links

@@ -745,6 +745,9 @@ class TextMatch(NamedTuple):
     mention_text: str
     detection_method: DetectionMethod
     alias_id: uuid.UUID | None
+    counts: bool
+    """Whether the stored row would count toward the entity's totals: it is one of
+    the entity's names or ASR forms, not a disfluency-gap span (Feature 111)."""
 
 
 class EntityMentionScanService:
@@ -856,9 +859,11 @@ class EntityMentionScanService:
             False,
             write_scope,
         )
+        regex_of = {pattern.entity_id: regex for pattern, regex in compiled}
         result: list[TextMatch] = []
         for entity_id, start, end, matched_text, pattern in matches:
-            fold_key = _fold_diacritics(matched_text)[0].casefold()
+            folded = _fold_diacritics(matched_text)[0]
+            fold_key = folded.casefold()
             is_asr = fold_key in pattern.asr_folds
             result.append(
                 TextMatch(
@@ -873,6 +878,12 @@ class EntityMentionScanService:
                     ),
                     # Only a rule match links to an alias (an ASR form is not a name).
                     alias_id=None if is_asr else pattern.alias_id_by_fold.get(fold_key),
+                    # The entity's own pattern matches a name or ASR form whole; a
+                    # gap span has the interrupting word in it.
+                    counts=(
+                        entity_id in regex_of
+                        and regex_of[entity_id].fullmatch(folded) is not None
+                    ),
                 )
             )
         return result

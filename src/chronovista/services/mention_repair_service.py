@@ -11,7 +11,9 @@ same rules, one transcript at a time:
    the same segments. When there is none it is removed: a stale twin of a mention
    that already reads, or the entity is no longer said there.
 2. Of overlapping mentions of one entity, one is kept, by
-   :meth:`MentionSpan.survivor_rank` (the rule the correction rebase uses too).
+   :meth:`MentionSpan.survivor_rank` (the rule the correction rebase uses too): one
+   that counts toward the entity's totals first, so the repair never loses a counted
+   occurrence, then the longer name.
 
 Positions are compared in the transcript's assembled text, so a split name and an
 alias inside either of its halves are seen to overlap.
@@ -204,7 +206,7 @@ class MentionRepairService:
                 plan.stale_removed += 1
                 plan.entities.add(span.entity_id)
                 continue
-            (start, end), relabel = found
+            (start, end), relabel, counts = found
             plan.moves.append(
                 MentionMove(
                     id=span.id,
@@ -222,6 +224,7 @@ class MentionRepairService:
                 detection_method=(
                     relabel.detection_method if relabel else span.detection_method
                 ),
+                counts=counts,
             )
             current[span.id] = moved
             located = at(moved)
@@ -265,15 +268,17 @@ class MentionRepairService:
         language_code: str,
         covered: dict[uuid.UUID, tuple[int, int]],
         current: dict[uuid.UUID, MentionSpan],
-    ) -> tuple[tuple[int, int], MentionRelabel | None] | None:
+    ) -> tuple[tuple[int, int], MentionRelabel | None, bool] | None:
         """The occurrence of ``span``'s entity nearest its old start that runs over
-        the same segments and that no kept mention of the entity as long or longer
-        overlaps: ``((start, end), relabel)``. A shorter row in the way (an alias
-        inside a split name) is removed by the duplicate step afterwards. Overlap
-        covers a shared start too: every kept row is in ``covered``, and removals are
-        written before moves, so the unique index on the start cannot be hit."""
+        the same segments and that no kept mention of the entity it would lose to
+        overlaps: ``((start, end), relabel, counts)``. A row in the way gives way when
+        the moved row outranks it on what counts, then length (the survivor rule
+        without its tie-breaks: an equal row stands, and this stale row is its twin);
+        the duplicate step removes it afterwards. Overlap covers a shared start too:
+        every kept row is in ``covered``, and removals are written before moves, so
+        the unique index on the start cannot be hit."""
         same_segments = (span.segment_id, span.end_segment_id)
-        options: list[tuple[int, int, MentionRelabel | None]] = []
+        options: list[tuple[int, int, MentionRelabel | None, bool]] = []
         if (
             span.end_segment_id is None
             and span.detection_method in SCAN_DETECTION_METHODS
@@ -297,7 +302,9 @@ class MentionRepairService:
                         detection_method=match.detection_method.value,
                         alias_id=match.alias_id,
                     )
-                options.append((match.match_start, match.match_end, relabel))
+                options.append(
+                    (match.match_start, match.match_end, relabel, match.counts)
+                )
         else:
             # A correction row, or a split name: its own words, case-insensitively.
             for found in re.finditer(
@@ -305,10 +312,12 @@ class MentionRepairService:
             ):
                 anchor = index.resolve_span(found.start(), found.end())
                 if (anchor.segment_id, anchor.end_segment_id) == same_segments:
-                    options.append((anchor.match_start, anchor.match_end, None))
+                    options.append(
+                        (anchor.match_start, anchor.match_end, None, span.counts)
+                    )
 
         free = []
-        for start, end, relabel in options:
+        for start, end, relabel, counts in options:
             located = index.locate(
                 segment_id=span.segment_id,
                 end_segment_id=span.end_segment_id,
@@ -323,11 +332,13 @@ class MentionRepairService:
                 for other, (lo, hi) in covered.items()
                 if lo < located[1] and located[0] < hi
             }
-            # Only a shorter name gives way (an alias inside the full name); a correct
-            # row as long or longer stands, and this stale row is its twin.
-            if any(len(current[other].mention_text) >= length for other in blockers):
+            if any(
+                (current[other].counts, len(current[other].mention_text))
+                >= (counts, length)
+                for other in blockers
+            ):
                 continue
-            free.append(((start, end), relabel))
+            free.append(((start, end), relabel, counts))
         if not free:
             return None
         return min(free, key=lambda option: abs(option[0][0] - span.match_start))

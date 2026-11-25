@@ -28,6 +28,7 @@ from sqlalchemy import (
     cast,
     delete,
     distinct,
+    exists,
     func,
     literal,
     null,
@@ -194,6 +195,26 @@ def _mention_qualifies_as_association(
     )
 
 
+def _mention_counts_toward_totals(
+    visible_names: Subquery, mention: type[EntityMentionDB] = EntityMentionDB
+) -> ColumnElement[bool]:
+    """Predicate: a mention counts toward the stored ``mention_count`` / ``video_count``.
+
+    The one stored-counter rule: its text folds to one of the entity's visible names,
+    or it is a recovered ``asr_match`` (the garble, admitted by provenance, FR-014).
+    Unlike :func:`_mention_qualifies_as_association` it does NOT exempt ``manual``:
+    a hand-linked row counts only when its text is a visible name, so a manual-only
+    entity keeps ``mention_count == 0`` on the per-video surfaces that read it. A
+    disfluency-gap match (Feature 111) does not count: its text is no name. Callers
+    LEFT OUTER JOIN ``visible_names`` on entity_id + folded text, or evaluate it
+    inside an EXISTS bounded to the mention's entity (:data:`_MENTION_SPAN_COLUMNS`).
+    """
+    return or_(
+        _folded(mention.mention_text) == visible_names.c.name_lower,
+        mention.detection_method == "asr_match",
+    )
+
+
 def positioned_transcript_mention_qualifies(
     mention: type[EntityMentionDB], visible_names: Subquery
 ) -> ColumnElement[bool]:
@@ -290,6 +311,20 @@ class PassageText(NamedTuple):
     segments: list[PassageSegment]
 
 
+def _counts_column() -> ColumnElement[bool]:
+    """Whether the selected mention counts toward the stored totals, as a column."""
+    names = _visible_names_subquery(None)
+    return exists(
+        select(literal(1))
+        .select_from(names)
+        .where(
+            names.c.entity_id == EntityMentionDB.entity_id,
+            # Every entity has its canonical name here, so the method arm holds too.
+            _mention_counts_toward_totals(names),
+        )
+    ).label("counts")
+
+
 # The columns a MentionSpan is built from, in its field order.
 _MENTION_SPAN_COLUMNS = (
     EntityMentionDB.id,
@@ -302,6 +337,7 @@ _MENTION_SPAN_COLUMNS = (
     EntityMentionDB.match_end,
     EntityMentionDB.mention_text,
     EntityMentionDB.detection_method,
+    _counts_column(),
 )
 
 
@@ -344,17 +380,26 @@ class MentionSpan(NamedTuple):
     match_end: int
     mention_text: str
     detection_method: str
+    counts: bool
 
-    def survivor_rank(self) -> tuple[int, int, str]:
+    def survivor_rank(self) -> tuple[int, int, int, str]:
         """Order for which of two mentions of one occurrence is kept (#426).
 
-        The longer name (a full name over a fragment, a split name over an alias
-        inside it), then a correction over a scan match (a person tagged it), then the
-        oldest row (ids are UUIDv7, so their text sorts by creation). Lowest first.
-        Used by the correction rebase and the repair, so both keep the same row.
+        A mention that counts toward the entity's totals first, so keeping one row
+        never loses a counted occurrence (a disfluency-gap match is
+        longer than the clean name inside it but does not count). Then the longer
+        name (a full name over a fragment, a split name over an alias inside it), then
+        a correction over a scan match (a person tagged it), then the oldest row (ids
+        are UUIDv7, so their text sorts by creation). Lowest first. Used by the
+        correction rebase and the repair, so both keep the same row.
         """
         scan_owned = self.detection_method in SCAN_DETECTION_METHODS
-        return (-len(self.mention_text), 1 if scan_owned else 0, str(self.id))
+        return (
+            0 if self.counts else 1,
+            -len(self.mention_text),
+            1 if scan_owned else 0,
+            str(self.id),
+        )
 
     def part_in(self, segment_id: int, text_length: int) -> tuple[int, int]:
         """The ``[start, end)`` of ``segment_id``'s text this mention covers: all of a
@@ -790,6 +835,65 @@ class EntityMentionRepository(
                 EntityMentionDB.detection_method.not_in(list(exclude_methods))
             )
         return [MentionSpan(*row) for row in (await session.execute(stmt)).all()]
+
+    async def counted_mention_segments(
+        self, session: AsyncSession
+    ) -> set[tuple[uuid.UUID, int]]:
+        """Every ``(entity_id, segment_id)`` a counted transcript mention covers.
+
+        A mention covers its start segment and, when split, its end segment. A
+        snapshot of this before a change to mention data, compared with one after,
+        shows where an entity stopped being counted: removing a duplicate leaves the
+        pair in place, removing the only counted row of a spot takes it out. Counted
+        means :func:`_mention_counts_toward_totals`.
+        """
+        names = _visible_names_subquery(None)
+        counted = and_(
+            EntityMentionDB.mention_source == "transcript",
+            _mention_counts_toward_totals(names),
+        )
+        joined = and_(
+            names.c.entity_id == EntityMentionDB.entity_id,
+            _folded(EntityMentionDB.mention_text) == names.c.name_lower,
+        )
+        starts = (
+            select(EntityMentionDB.entity_id, EntityMentionDB.segment_id)
+            .outerjoin(names, joined)
+            .where(counted, EntityMentionDB.segment_id.is_not(None))
+        )
+        ends = (
+            select(EntityMentionDB.entity_id, EntityMentionDB.end_segment_id)
+            .outerjoin(names, joined)
+            .where(counted, EntityMentionDB.end_segment_id.is_not(None))
+        )
+        rows = await session.execute(union(starts, ends))
+        return {(row[0], int(row[1])) for row in rows.all()}
+
+    async def transcript_associations(
+        self, session: AsyncSession
+    ) -> set[tuple[uuid.UUID, str]]:
+        """Every ``(entity_id, video_id)`` a qualifying transcript mention links.
+
+        Qualifying means :func:`_mention_qualifies_as_association`, the rule every
+        association surface uses.
+        """
+        names = _visible_names_subquery(None)
+        rows = await session.execute(
+            select(EntityMentionDB.entity_id, EntityMentionDB.video_id)
+            .distinct()
+            .outerjoin(
+                names,
+                and_(
+                    names.c.entity_id == EntityMentionDB.entity_id,
+                    _folded(EntityMentionDB.mention_text) == names.c.name_lower,
+                ),
+            )
+            .where(
+                EntityMentionDB.mention_source == "transcript",
+                _mention_qualifies_as_association(names),
+            )
+        )
+        return {(row[0], row[1]) for row in rows.all()}
 
     async def mention_repair_candidates(
         self, session: AsyncSession, *, video_ids: Sequence[str] | None = None
@@ -1521,10 +1625,7 @@ class EntityMentionRepository(
             )
             .where(
                 EntityMentionDB.entity_id.in_(entity_ids),
-                or_(
-                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
-                    EntityMentionDB.detection_method == "asr_match",
-                ),
+                _mention_counts_toward_totals(visible_names),
             )
             .group_by(EntityMentionDB.entity_id)
             .subquery()

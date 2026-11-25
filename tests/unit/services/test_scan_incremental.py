@@ -94,7 +94,7 @@ class TestResumeFrom:
 
         svc = _service()
         session = _session()
-        svc._session_factory = _factory(session)
+        svc._factory = _factory(session)
         _wire(svc)
         fetch = AsyncMock(side_effect=[[]])  # immediately empty
         with (
@@ -114,7 +114,7 @@ class TestPerBatchCommitAndCursor:
 
         svc = _service()
         session = _session()
-        svc._session_factory = _factory(session)
+        svc._factory = _factory(session)
         _wire(svc)
         checkpoints: list[int] = []
         fetch = AsyncMock(side_effect=[[_seg(10), _seg(11)], [_seg(20)], []])
@@ -141,7 +141,7 @@ class TestCooperativeStop:
 
         svc = _service()
         session = _session()
-        svc._session_factory = _factory(session)
+        svc._factory = _factory(session)
         _wire(svc)
         # should_continue returns False after the first batch
         calls = {"n": 0}
@@ -170,7 +170,7 @@ class TestDryRunUnchanged:
 
         svc = _service()
         session = _session()
-        svc._session_factory = _factory(session)
+        svc._factory = _factory(session)
         _wire(svc)
         checkpoints: list[int] = []
         fetch = AsyncMock(side_effect=[[_seg(10)], []])

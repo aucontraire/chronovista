@@ -427,13 +427,18 @@ To resolve the mismatch, open the entity detail page and add the replacement tex
 #### What Happens on Apply
 
 - Entity mentions with `detection_method=user_correction` are created for each corrected segment
+- Only the occurrences the correction changed are recorded; the same words elsewhere in the segment, which you did not correct, are left to a scan
+- Each mention covers the entity's whole name where it occurs (its canonical name or an alias), so correcting only a misheard surname records the full name, as a scan would
+- An occurrence that already has a mention of the same entity is not recorded again
 - Mentions are created within the same transaction as the correction (wrapped in a savepoint — mention failure does not roll back the correction)
-- Duplicate mentions (same entity + same segment) are handled with `ON CONFLICT DO NOTHING`
 - A `correction_id` FK links mentions back to the correction that created them
+
+Any correction, with or without an entity, also keeps the segment's existing mentions in place: an edit before a mention moves its stored position, and a mention whose own words the edit replaced is removed.
 
 #### What Happens on Revert
 
 - When you revert a correction that was linked to an entity, all entity mentions with that `correction_id` are automatically deleted
+- The segment's other mentions move back with the restored text
 - Mention counters are recalculated after deletion
 - Mentions created by `entities scan` (`detection_method=rule_match`) are not affected by correction reverts
 

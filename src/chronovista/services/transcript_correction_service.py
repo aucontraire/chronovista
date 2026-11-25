@@ -15,14 +15,24 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.db.models import TranscriptCorrection as TranscriptCorrectionDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
-from chronovista.models.enums import CorrectionType
+from chronovista.models.enums import SCAN_DETECTION_METHODS, CorrectionType
 from chronovista.models.transcript_correction import TranscriptCorrectionCreate
+from chronovista.repositories.entity_mention_repository import (
+    EntityMentionRepository,
+    MentionMove,
+    MentionRelabel,
+    MentionSpan,
+)
+from chronovista.repositories.entity_pair_proximity_repository import (
+    EntityPairProximityRepository,
+)
 from chronovista.repositories.transcript_correction_repository import (
     TranscriptCorrectionRepository,
 )
@@ -32,6 +42,14 @@ from chronovista.repositories.transcript_segment_repository import (
 from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
+from chronovista.services.mention_offset_rebase import TextEdit, word_bounded
+from chronovista.services.transcript_text_index import TranscriptTextIndex
+
+if TYPE_CHECKING:
+    from chronovista.services.entity_mention_scan_service import (
+        EntityMentionScanService,
+        TextMatch,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -161,10 +179,18 @@ class TranscriptCorrectionService:
             session, obj_in=create_model
         )
 
-        # Step 7: Update segment
+        # Step 7: Update segment, and move its mentions with the text (#426)
         segment.corrected_text = corrected_text
         segment.has_correction = True
         await session.flush()
+        await self._rebase_segment_mentions(
+            session,
+            segment_id=segment_id,
+            video_id=video_id,
+            language_code=language_code,
+            old_text=effective_text,
+            new_text=corrected_text,
+        )
 
         # Step 8-9: Update transcript metadata
         transcript = await self._transcript_repo.get(session, (video_id, language_code))
@@ -298,6 +324,9 @@ class TranscriptCorrectionService:
         )
 
         # Step 4 / 5: Update segment based on revert type
+        text_before_revert: str = (
+            segment.corrected_text if segment.has_correction else segment.text
+        ) or ""
         if is_revert_to_original:
             # Full revert: segment returns to its original uncorrected state
             segment.corrected_text = None
@@ -308,6 +337,17 @@ class TranscriptCorrectionService:
             # has_correction remains True (the segment is still corrected)
 
         await session.flush()
+        await self._rebase_segment_mentions(
+            session,
+            segment_id=segment_id,
+            video_id=segment.video_id,
+            language_code=segment.language_code,
+            old_text=text_before_revert,
+            new_text=(
+                segment.corrected_text if segment.has_correction else segment.text
+            )
+            or "",
+        )
 
         # Step 6: Update transcript metadata
         transcript = await self._transcript_repo.get(
@@ -352,6 +392,273 @@ class TranscriptCorrectionService:
         # Step 8: Return the revert audit record
         return revert_record
 
+    async def _rebase_segment_mentions(
+        self,
+        session: AsyncSession,
+        *,
+        segment_id: int,
+        video_id: str,
+        language_code: str,
+        old_text: str,
+        new_text: str,
+    ) -> None:
+        """Keep the segment's mentions on their own words through an edit (#426).
+
+        For every transcript mention starting, ending or running through the segment
+        that reads correctly before the edit (:meth:`TranscriptTextIndex.mention_reads`):
+
+        - an edit elsewhere moves its offsets;
+        - an edit of a scan-owned row's own words re-points it to what those words
+          became, when the scan's matching rule
+          (:meth:`EntityMentionScanService.detect_in_text`) finds the same entity
+          there: fixing a misheard name keeps its mention, now reading as the name. A
+          split name is re-pointed only to an occurrence that still runs across the
+          same segments;
+        - otherwise it is removed: the entity is no longer said there, a correction
+          row's asserted words are gone, or the name was glued to a longer word.
+
+        A mention already wrong before the edit is left as it is (a repair is a
+        deliberate step), except that it gives way when a correct mention of the same
+        entity lands on its start. Two correct mentions of one entity on one start are
+        one occurrence; the one kept is decided by :meth:`MentionSpan.survivor_rank`,
+        the rule the repair uses too.
+
+        Removing or re-pointing a mention can change which mentions qualify, so the
+        scope is invalidated before any delete (the lock order every correction path
+        uses) and the entity's counters are recomputed. Moving one cannot: proximity
+        records key on segments and their start times, never on character offsets.
+        """
+        if old_text == new_text:
+            return
+        mention_repo = EntityMentionRepository()
+        spans = await mention_repo.transcript_mention_spans(
+            session, segment_ids=[segment_id]
+        ) + await mention_repo.spans_crossing_segment(session, segment_id=segment_id)
+        if not spans:
+            return
+        edit = TextEdit(old_text, new_text)
+        old_index = TranscriptTextIndex.of([(segment_id, old_text)])
+
+        stale: set[uuid.UUID] = set()
+        final: dict[uuid.UUID, tuple[int, int]] = {}
+        rewritten: dict[uuid.UUID, tuple[int, int]] = {}
+        removed: dict[uuid.UUID, MentionSpan] = {}
+        relabels: list[MentionRelabel] = []
+        for span in spans:
+            if span.end_segment_id is not None:
+                outcome, offsets, match = await self._rebase_spanning(
+                    mention_repo,
+                    session,
+                    span=span,
+                    segment_id=segment_id,
+                    language_code=language_code,
+                    old_text=old_text,
+                    edit=edit,
+                )
+                if outcome == "stale":
+                    stale.add(span.id)
+                elif offsets is None:
+                    removed[span.id] = span
+                else:
+                    final[span.id] = offsets
+                    if match is not None:
+                        relabels.append(_relabel(span.id, match))
+                continue
+            if not old_index.mention_reads(
+                segment_id=segment_id,
+                end_segment_id=None,
+                match_start=span.match_start,
+                match_end=span.match_end,
+                mention_text=span.mention_text,
+            ):
+                stale.add(span.id)
+                continue
+            moved = edit.rebase(
+                match_start=span.match_start,
+                match_end=span.match_end,
+                mention_text=span.mention_text,
+            )
+            if moved is not None:
+                final[span.id] = moved
+                continue
+            # Only a scan-owned row is re-pointed: the scan would re-derive it from the
+            # new words. A correction row asserted these exact words; once an edit
+            # rewrites them (including reverting its own correction) it goes.
+            region = (
+                edit.map_region(span.match_start, span.match_end)
+                if span.detection_method in SCAN_DETECTION_METHODS
+                else None
+            )
+            if region is None:
+                removed[span.id] = span
+            else:
+                rewritten[span.id] = region
+
+        if rewritten:
+            by_id = {span.id: span for span in spans}
+            matches = await _detector().detect_in_text(
+                session,
+                text=new_text,
+                language_code=language_code,
+                entity_ids=sorted({by_id[i].entity_id for i in rewritten}, key=str),
+                segment_id=segment_id,
+            )
+            for mention_id, region in rewritten.items():
+                found = _repointed(matches, by_id[mention_id].entity_id, region)
+                if found is None:
+                    removed[mention_id] = by_id[mention_id]
+                    continue
+                final[mention_id] = (found.match_start, found.match_end)
+                relabels.append(_relabel(mention_id, found))
+
+        # One mention per (entity, segment, start): a correct mention wins over a
+        # stale one on the same start; between correct ones the survivor rank decides.
+        holder: dict[tuple[uuid.UUID, int, int], MentionSpan] = {}
+        for span in sorted(spans, key=lambda s: s.survivor_rank()):
+            if span.id in removed:
+                continue
+            start = final[span.id][0] if span.id in final else span.match_start
+            key = (span.entity_id, span.segment_id, start)
+            other = holder.get(key)
+            if other is None:
+                holder[key] = span
+            elif other.id in stale and span.id not in stale:
+                removed[other.id] = other
+                holder[key] = span
+            else:
+                removed[span.id] = span
+        relabels = [r for r in relabels if r.id not in removed]
+        moves = [
+            MentionMove(
+                id=span.id,
+                match_start=final[span.id][0],
+                match_end=final[span.id][1],
+                start_changed=final[span.id][0] != span.match_start,
+            )
+            for span in spans
+            if span.id in final
+            and span.id not in removed
+            and final[span.id] != (span.match_start, span.match_end)
+        ]
+
+        entity_of = {span.id: span.entity_id for span in spans}
+        changed = {span.entity_id for span in removed.values()} | {
+            entity_of[r.id] for r in relabels
+        }
+        if changed:
+            await EntityPairProximityRepository().invalidate_proximity_scopes(
+                session,
+                video_id=video_id,
+                language_code=language_code,
+                reason="correction",
+            )
+        # Delete before moving: a moved mention may land on the start a removed one
+        # still holds, and the unique index on (entity, segment, start) would reject it.
+        if removed:
+            await mention_repo.delete_mentions_by_ids(session, list(removed))
+        await mention_repo.move_mention_offsets(session, moves)
+        await mention_repo.relabel_mentions(session, relabels)
+        if changed:
+            entity_ids = sorted(changed, key=str)
+            await mention_repo.update_entity_counters(session, entity_ids)
+            await mention_repo.update_alias_counters(session, entity_ids)
+        await session.flush()
+
+    @staticmethod
+    async def _rebase_spanning(
+        mention_repo: EntityMentionRepository,
+        session: AsyncSession,
+        *,
+        span: MentionSpan,
+        segment_id: int,
+        language_code: str,
+        old_text: str,
+        edit: TextEdit,
+    ) -> tuple[Literal["stale", "kept"], tuple[int, int] | None, TextMatch | None]:
+        """A cross-segment mention through an edit of one of its segments (#426).
+
+        Read across all its segments joined, as the scan assembles them. Returns
+        ``("stale", None, None)`` when it did not read before the edit either (left
+        for a deliberate repair); ``("kept", offsets, match)`` with its new offsets,
+        and the detected match when a scan-owned row was re-pointed; or
+        ``("kept", None, None)`` when it is to be removed. The edited segment's new
+        text is already flushed.
+        """
+        assert span.end_segment_id is not None
+        texts = await mention_repo.segment_texts(
+            session,
+            start_segment_id=span.segment_id,
+            end_segment_id=span.end_segment_id,
+        )
+        new_index = TranscriptTextIndex.of(texts)
+        old_index = TranscriptTextIndex.of(
+            [(sid, old_text if sid == segment_id else text) for sid, text in texts]
+        )
+        if not old_index.mention_reads(
+            segment_id=span.segment_id,
+            end_segment_id=span.end_segment_id,
+            match_start=span.match_start,
+            match_end=span.match_end,
+            mention_text=span.mention_text,
+        ):
+            return "stale", None, None
+        start, end = span.match_start, span.match_end
+        mapped_start = edit.map_start(start) if span.segment_id == segment_id else start
+        mapped_end = edit.map_end(end) if span.end_segment_id == segment_id else end
+        if mapped_start is not None and mapped_end is not None:
+            reads = new_index.mention_reads(
+                segment_id=span.segment_id,
+                end_segment_id=span.end_segment_id,
+                match_start=mapped_start,
+                match_end=mapped_end,
+                mention_text=span.mention_text,
+            )
+            old_at = old_index.locate(
+                segment_id=span.segment_id,
+                end_segment_id=span.end_segment_id,
+                match_start=start,
+                match_end=end,
+            )
+            new_at = new_index.locate(
+                segment_id=span.segment_id,
+                end_segment_id=span.end_segment_id,
+                match_start=mapped_start,
+                match_end=mapped_end,
+            )
+            glued = (
+                old_at is not None
+                and new_at is not None
+                and word_bounded(old_index.text, *old_at)
+                and not word_bounded(new_index.text, *new_at)
+            )
+            if reads and not glued:
+                return "kept", (mapped_start, mapped_end), None
+        if span.detection_method not in SCAN_DETECTION_METHODS:
+            return "kept", None, None
+        # A scan-owned split name whose words were rewritten: re-point it to what the
+        # scan finds there, if the entity still runs across the same segments.
+        matches = await _detector().detect_in_text(
+            session,
+            text=new_index.text,
+            language_code=language_code,
+            entity_ids=[span.entity_id],
+            segment_id=span.segment_id,
+        )
+        anchored = []
+        for match in matches:
+            anchor = new_index.resolve_span(match.match_start, match.match_end)
+            if (anchor.segment_id, anchor.end_segment_id) == (
+                span.segment_id,
+                span.end_segment_id,
+            ):
+                anchored.append((match, anchor.match_start, anchor.match_end))
+        if not anchored:
+            return "kept", None, None
+        match, local_start, local_end = max(
+            anchored, key=lambda m: m[0].match_end - m[0].match_start
+        )
+        return "kept", (local_start, local_end), match
+
     async def _record_asr_alias_if_entity_match(
         self,
         session: AsyncSession,
@@ -377,6 +684,42 @@ class TranscriptCorrectionService:
             log_prefix="B-lite",
             video_id=video_id,
         )
+
+
+def _detector() -> EntityMentionScanService:
+    """The scan's matching rule, on the caller's session (imported here: the scan
+    service imports cross-segment discovery, which imports this module's callers)."""
+    from chronovista.services.entity_mention_scan_service import (
+        EntityMentionScanService,
+    )
+
+    return EntityMentionScanService()
+
+
+def _repointed(
+    matches: list[TextMatch], entity_id: uuid.UUID, region: tuple[int, int]
+) -> TextMatch | None:
+    """The longest detected occurrence of the entity overlapping ``region``."""
+    lo, hi = region
+    found = [
+        m
+        for m in matches
+        if m.entity_id == entity_id
+        and m.match_start < max(hi, lo + 1)
+        and lo < m.match_end
+    ]
+    if not found:
+        return None
+    return max(found, key=lambda m: m.match_end - m.match_start)
+
+
+def _relabel(mention_id: uuid.UUID, match: TextMatch) -> MentionRelabel:
+    return MentionRelabel(
+        id=mention_id,
+        mention_text=match.mention_text,
+        detection_method=match.detection_method.value,
+        alias_id=match.alias_id,
+    )
 
 
 __all__ = ["TranscriptCorrectionService"]

@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.132.0] - 2026-11-24
+
+Entity mentions in transcripts now stay on the words they record through corrections and
+rescans, and one spoken name is recorded once. Before, a corrected segment could keep
+mentions pointing at the wrong words, and a later full rescan recorded the same name a
+second time; 325 surplus mentions across 85 entities were found in one library. A new
+command repairs rows written by earlier versions.
+
+### Added
+
+- **`chronovista entities repair-mentions`** repairs mentions written before this release.
+  Each mention that no longer reads as its text moves to the occurrence it belongs to, or is
+  removed when another mention already records that occurrence. Of overlapping mentions of
+  one entity it keeps one (the longer name, then a correction over a scan match). It then
+  recomputes the affected counters and marks their proximity for recompute. It works one
+  transcript at a time and commits every 50, marking each transcript's proximity stale before
+  writing to it (the order corrections use), so it can run while the app is in use and an
+  interrupted run is finished by running it again. `--dry-run` reports exactly what a real
+  run would do, without writing; `--video-id` limits it. Running it twice changes nothing.
+  Run it once after upgrading, after a backup; it is deliberately not a migration.
+
+### Fixed
+
+- **Corrections keep mentions on their words** (#426). When a correction or a revert changes a
+  segment's text, every mention in that segment moves with it:
+  - an edit elsewhere in the segment moves its position;
+  - an edit of a scanned mention's own words re-points it to what they became, when the scan
+    would find the same entity there, so fixing a misheard name keeps its mention, now
+    reading as the name (for a name split across segments, when it still runs across the
+    same segments);
+  - a mention is removed when its entity is no longer said there, when a correction's own
+    words are rewritten (including reverting that correction), or when a name is glued into a
+    longer word.
+
+  A name split across segments is checked across all of them joined, so its halves must
+  still meet as the name, including after an edit of a middle segment of a three-segment
+  name. A mention that was already wrong is left for the repair command rather than
+  silently deleted.
+- **An entity-tagged correction records the occurrences it corrected, as whole names.** It
+  records the entity's full name where it occurs (by the scan's own matching rule), not just
+  the corrected fragment, and no longer tags untouched occurrences of the replacement
+  elsewhere in the segment. A correction whose garbled half sits only in the second of two
+  segments now records the split name. Offsets are no longer shifted by characters whose
+  lowercase is longer (such as a dotted capital I).
+- **One occurrence is recorded once.** Neither the correction writer nor `scan --full` records
+  an occurrence an existing, correctly placed mention of the same entity covers; before, only
+  rows starting on the same character were caught. The scanner also no longer records a
+  name split across two segments together with its own alias inside it, and a plain scan no
+  longer records again the second half of a name split from the previous segment.
+
+Duplicates inflated stored mention counts, alias counters and per-video mention counts, and
+stale positions highlighted the wrong words. Transcript proximity was never affected, because
+its records are per segment pair.
+
 ## [0.131.0] - 2026-11-24
 
 ### Removed

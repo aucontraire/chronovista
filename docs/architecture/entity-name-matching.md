@@ -115,6 +115,25 @@ rescan like a rule match, or — because the re-insert is `ON CONFLICT DO NOTHIN
 — a recovered row whose match moved or whose ASR form was unregistered would
 survive as a stale/duplicate row *silently*.
 
+Because `user_correction` rows survive the delete, the conflict key
+(`entity_id, segment_id, match_start`) cannot stop a scan from recording the same
+occurrence again whenever the two rows start on different characters. So both
+`--full` passes drop a scan match that overlaps a surviving mention of the same
+entity, and the correction writer likewise skips an occurrence an existing mention
+already covers (#426). Offsets stay comparable because every correction and revert
+moves the segment's mentions with its text (`services/mention_offset_rebase.py`).
+
+Two rules each have one home, guarded by exact-count fitness tests
+(`tests/unit/architecture/test_mention_single_source_fitness.py`):
+
+- **Whether a stored mention still reads as its text** is
+  `TranscriptTextIndex.mention_reads`. A split name is read across all its segments
+  joined, so halves that no longer meet do not read. Before #426 this was answered four
+  different ways, and two of them disagreed.
+- **Where an entity's name is in a text**, for code other than the scan itself, is
+  `EntityMentionScanService.detect_in_text`: the scan's own matching rule (diacritic
+  folding, case-sensitive aliases, registered ASR forms, longest-match-wins).
+
 ## Surfacing: qualification vs display
 
 Every surface that answers "which videos mention this entity, and how often?"

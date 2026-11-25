@@ -15,13 +15,13 @@ import re
 import time
 import unicodedata
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, NamedTuple
 
-from sqlalchemy import Select, func, literal_column, select, text
+from sqlalchemy import Select, func, literal_column, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from chronovista.db.models import EntityAlias as EntityAliasDB
@@ -41,6 +41,7 @@ from chronovista.repositories.entity_asr_error_repository import (
 )
 from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
+    MentionSpan,
 )
 from chronovista.repositories.entity_pair_proximity_repository import (
     EntityPairProximityRepository,
@@ -735,6 +736,17 @@ def _build_entity_pattern(
     )
 
 
+class TextMatch(NamedTuple):
+    """One entity name the scan's matching rule finds in a text (#426)."""
+
+    entity_id: uuid.UUID
+    match_start: int
+    match_end: int
+    mention_text: str
+    detection_method: DetectionMethod
+    alias_id: uuid.UUID | None
+
+
 class EntityMentionScanService:
     """Service for scanning transcript segments for named entity mentions.
 
@@ -745,21 +757,125 @@ class EntityMentionScanService:
 
     Parameters
     ----------
-    session_factory : async_sessionmaker[AsyncSession]
-        Factory for creating database sessions.
+    session_factory : async_sessionmaker[AsyncSession] | None
+        Factory for creating database sessions. Only :meth:`detect_in_text`, which
+        runs on the caller's session, works without one.
     """
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
-        self._session_factory = session_factory
+    def __init__(
+        self, session_factory: async_sessionmaker[AsyncSession] | None = None
+    ) -> None:
+        self._factory = session_factory
+        # detect_in_text's loaded patterns, kept for this instance's life: one
+        # repair run shares them, and a correction uses a fresh instance, so an
+        # alias edit is never served stale patterns by a long-lived process.
+        self._detection_patterns: dict[
+            tuple[frozenset[uuid.UUID], bool],
+            tuple[
+                list[tuple[_EntityPattern, re.Pattern[str]]],
+                list[_EntityPattern],
+                set[uuid.UUID],
+            ],
+        ] = {}
         self._mention_repo = EntityMentionRepository()
         self._asr_error_repo = EntityAsrErrorRepository()
         # Feature 116: producer hook — every durable transcript-mention change marks
         # its (video, language) scope stale so proximity can be recomputed (T010).
         self._proximity_repo = EntityPairProximityRepository()
 
+    @property
+    def _session_factory(self) -> async_sessionmaker[AsyncSession]:
+        if self._factory is None:
+            raise RuntimeError(
+                "EntityMentionScanService was built without a session factory; "
+                "only detect_in_text is available"
+            )
+        return self._factory
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    async def detect_in_text(
+        self,
+        session: AsyncSession,
+        *,
+        text: str,
+        language_code: str | None,
+        entity_ids: Sequence[uuid.UUID],
+        segment_id: int | None = None,
+        arbitrate_with_neighbours: bool = True,
+    ) -> list[TextMatch]:
+        """Where the scan would find these entities in one segment's text (#426).
+
+        The scan's own matching rule, applied to ``text`` without reading or
+        writing mentions: diacritic folding, case-sensitive aliases, registered ASR
+        forms, disfluency gaps, exclusion patterns, and longest-match-wins against
+        the entities that share a name token with these (as a scoped scan does).
+        Matches of those neighbouring entities are not returned.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            The caller's session; nothing is committed.
+        text : str
+            The segment's effective text.
+        language_code : str | None
+            The segment's language (selects disfluency fillers).
+        entity_ids : Sequence[uuid.UUID]
+            The entities to look for. Inactive entities are ignored.
+        segment_id : int | None, optional
+            Used only in log messages.
+        arbitrate_with_neighbours : bool, optional
+            ``True`` (default) arbitrates against entities that share a name token,
+            as a scan does. ``False`` finds these entities' names even where another
+            entity's equally long name overlaps them: for a correction a person
+            tagged with this entity, whose choice another name must not override.
+
+        Returns
+        -------
+        list[TextMatch]
+            The surviving matches, in no particular order.
+        """
+        if not text or not entity_ids:
+            return []
+        key = (frozenset(entity_ids), arbitrate_with_neighbours)
+        if key not in self._detection_patterns:
+            self._detection_patterns[key] = await self._detection_patterns_for(
+                session, list(entity_ids), arbitrate_with_neighbours
+            )
+        compiled, match_patterns, write_scope = self._detection_patterns[key]
+        if not compiled:
+            return []
+        matches, _lmw, _ep = self._detect_matches(
+            text,
+            compiled,
+            match_patterns,
+            {p.entity_id: p for p in match_patterns},
+            SimpleNamespace(id=segment_id, language_code=language_code),
+            False,
+            write_scope,
+        )
+        result: list[TextMatch] = []
+        for entity_id, start, end, matched_text, pattern in matches:
+            fold_key = _fold_diacritics(matched_text)[0].casefold()
+            is_asr = fold_key in pattern.asr_folds
+            result.append(
+                TextMatch(
+                    entity_id=entity_id,
+                    match_start=start,
+                    match_end=end,
+                    mention_text=matched_text,
+                    detection_method=(
+                        DetectionMethod.ASR_MATCH
+                        if is_asr
+                        else DetectionMethod.RULE_MATCH
+                    ),
+                    # Only a rule match links to an alias (an ASR form is not a name).
+                    alias_id=None if is_asr else pattern.alias_id_by_fold.get(fold_key),
+                )
+            )
+        return result
 
     async def scan(
         self,
@@ -1364,6 +1480,63 @@ class EntityMentionScanService:
             )
             result.skipped_exclusion_pattern += ep_skips
 
+            # #426: a boundary-crossing occurrence already recorded by a correction
+            # (or any other non-scan method) is not recorded again. The insert's
+            # conflict-skip keys on the start character, so it cannot tell.
+            recorded: dict[uuid.UUID, list[tuple[int, int]]] = {}
+            spanning_found = any(
+                index.resolve_span(m_start, m_end).end_segment_id is not None
+                for _eid, m_start, m_end, _txt, _pat in final_matches
+            )
+            spans_in_transcript = (
+                await self._mention_repo.transcript_mention_spans(
+                    session, transcript=(video_id, lang)
+                )
+                if spanning_found
+                else []
+            )
+            # Stored single-segment scan rows, for the same-entity suppression below.
+            stored_in_segment = [
+                span
+                for span in spans_in_transcript
+                if span.detection_method in SCAN_DETECTION_METHODS
+                and span.end_segment_id is None
+            ]
+            for span in spans_in_transcript:
+                if span.detection_method in SCAN_DETECTION_METHODS:
+                    continue
+                # Only a mention that still reads as its text occupies its position.
+                if not index.mention_reads(
+                    segment_id=span.segment_id,
+                    end_segment_id=span.end_segment_id,
+                    match_start=span.match_start,
+                    match_end=span.match_end,
+                    mention_text=span.mention_text,
+                ):
+                    continue
+                located = index.locate(
+                    segment_id=span.segment_id,
+                    end_segment_id=span.end_segment_id,
+                    match_start=span.match_start,
+                    match_end=span.match_end,
+                )
+                if located is not None:
+                    recorded.setdefault(span.entity_id, []).append(located)
+            if recorded:
+                kept: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
+                for candidate in final_matches:
+                    entity_id, m_start, m_end = candidate[0], candidate[1], candidate[2]
+                    if index.resolve_span(
+                        m_start, m_end
+                    ).end_segment_id is not None and any(
+                        start < m_end and m_start < end
+                        for start, end in recorded.get(entity_id, [])
+                    ):
+                        result.mentions_skipped += 1
+                        continue
+                    kept.append(candidate)
+                final_matches = kept
+
             # Feature 111 US4 (FR-005/FR-006): single longest-match-wins pool per
             # transcript. ``_apply_longest_match_wins`` above arbitrated spanning
             # and single-segment matches TOGETHER over the concatenated text, so a
@@ -1396,6 +1569,33 @@ class EntityMentionScanService:
                                 anchor.match_end,
                             )
                         )
+                # #426: one entity's regex finds its longest form in the joined text
+                # and consumes the shorter one inside it, so an alias the per-segment
+                # pass recorded within a split name ("Quux" in "Zeta | Quux") never
+                # appears in raw_matches. Suppress the stored row by position.
+                spanning_by_entity: dict[uuid.UUID, list[tuple[int, int]]] = {}
+                for eid, m_start, m_end, _txt, _pat in final_matches:
+                    if index.resolve_span(m_start, m_end).end_segment_id is not None:
+                        spanning_by_entity.setdefault(eid, []).append((m_start, m_end))
+                for span in stored_in_segment:
+                    located = index.locate(
+                        segment_id=span.segment_id,
+                        end_segment_id=None,
+                        match_start=span.match_start,
+                        match_end=span.match_end,
+                    )
+                    if located is not None and any(
+                        s_start < located[1] and located[0] < s_end
+                        for s_start, s_end in spanning_by_entity.get(span.entity_id, [])
+                    ):
+                        target = (
+                            span.segment_id,
+                            span.entity_id,
+                            span.match_start,
+                            span.match_end,
+                        )
+                        if target not in suppression_targets:
+                            suppression_targets.append(target)
 
             mentions: list[EntityMentionCreate] = []
             for entity_id, m_start, m_end, matched_text, pat in final_matches:
@@ -2619,76 +2819,55 @@ class EntityMentionScanService:
             p.entity_id: p for p in patterns
         }
 
+        # #426: a full rescan re-derives only its own methods; mentions written
+        # by corrections (and any other non-scan method) survive its delete. A scan
+        # match over the same occurrence would record it a second time.
+        survivors: dict[tuple[int, uuid.UUID], list[MentionSpan]] = {}
+        if full_rescan:
+            text_of = {row.id: row.effective_text or "" for row in batch_rows}
+            for span in await self._mention_repo.transcript_mention_spans(
+                session,
+                segment_ids=[row.id for row in batch_rows],
+                exclude_methods=sorted(SCAN_DETECTION_METHODS),
+            ):
+                texts = (
+                    [(span.segment_id, text_of.get(span.segment_id, ""))]
+                    if span.end_segment_id is None
+                    else await self._mention_repo.segment_texts(
+                        session,
+                        start_segment_id=span.segment_id,
+                        end_segment_id=span.end_segment_id,
+                    )
+                )
+                # A stale row must not hide the occurrence it no longer points at.
+                if not TranscriptTextIndex.of(texts).mention_reads(
+                    segment_id=span.segment_id,
+                    end_segment_id=span.end_segment_id,
+                    match_start=span.match_start,
+                    match_end=span.match_end,
+                    mention_text=span.mention_text,
+                ):
+                    continue
+                for seg_id in (span.segment_id, span.end_segment_id):
+                    if seg_id is not None:
+                        survivors.setdefault((seg_id, span.entity_id), []).append(span)
+
         for row in batch_rows:
             effective_text = row.effective_text
             if not effective_text:
                 continue
 
-            # ----------------------------------------------------------
-            # Step 1: Collect ALL (entity_id, start, end, text) via finditer.
-            # Matching runs against the diacritic-folded text so accented
-            # occurrences match accent-free aliases; each folded match is then
-            # mapped back to RAW offsets so match_start/match_end/mention_text
-            # reference the real (accented) segment text.
-            # ----------------------------------------------------------
-            folded_text, offset_map = _fold_diacritics(effective_text)
-            raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
-            for pattern, py_regex in compiled_patterns:
-                for match in py_regex.finditer(folded_text):
-                    f_start, f_end = match.start(), match.end()
-                    if f_end <= f_start:
-                        continue
-                    raw_start = offset_map[f_start]
-                    raw_end = offset_map[f_end - 1] + 1
-                    raw_matches.append(
-                        (
-                            pattern.entity_id,
-                            raw_start,
-                            raw_end,
-                            effective_text[raw_start:raw_end],
-                            pattern,
-                        )
-                    )
-
-            # Feature 111 US3 (FR-010): additively add disfluency-gap matches the
-            # contiguous regex missed, scoped to the same candidate patterns.
-            raw_matches.extend(
-                self._collect_gap_matches(
-                    folded_text,
-                    offset_map,
-                    effective_text,
-                    patterns,
-                    row.language_code,
-                )
-            )
-
-            if not raw_matches:
-                continue
-
-            # ----------------------------------------------------------
-            # Step 2: Longest-match-wins disambiguation
-            # ----------------------------------------------------------
-            surviving_matches, lmw_skips = self._apply_longest_match_wins(
-                raw_matches, row, dry_run
+            final_matches, lmw_skips, ep_skips = self._detect_matches(
+                effective_text,
+                compiled_patterns,
+                patterns,
+                pattern_by_entity,
+                row,
+                dry_run,
+                write_scope,
             )
             longest_match_skips += lmw_skips
-
-            # ----------------------------------------------------------
-            # Step 3: Exclusion pattern filtering
-            # ----------------------------------------------------------
-            final_matches, ep_skips = self._apply_exclusion_patterns(
-                surviving_matches, effective_text, pattern_by_entity, row, dry_run
-            )
             exclusion_pattern_skips += ep_skips
-
-            # NOTE 020 §2: the MATCH set may include shared-token neighbours loaded
-            # only so longest-match-wins could arbitrate against them. Their matches
-            # survived arbitration above but are OUT of the write scope — drop them
-            # here, before dedup/counters/previews, so they neither count as skips
-            # nor consume the preview cap. A neighbour that WON arbitration simply
-            # produces no row for this (scoped) scan, which is the correct outcome.
-            if write_scope is not None:
-                final_matches = [m for m in final_matches if m[0] in write_scope]
 
             if not final_matches:
                 continue
@@ -2700,19 +2879,33 @@ class EntityMentionScanService:
                 entity_ids_in_segment = list(
                     {entity_id for entity_id, _, _, _, _ in final_matches}
                 )
-                existing_stmt = select(
-                    EntityMentionDB.segment_id,
-                    EntityMentionDB.entity_id,
-                ).where(
-                    EntityMentionDB.segment_id == row.id,
+                # A mention ending here (a name split from the previous segment)
+                # counts too, or the scan would record its second half again (#426).
+                existing_stmt = select(EntityMentionDB.entity_id).where(
+                    or_(
+                        EntityMentionDB.segment_id == row.id,
+                        EntityMentionDB.end_segment_id == row.id,
+                    ),
                     EntityMentionDB.entity_id.in_(entity_ids_in_segment),
                 )
                 existing_result = await session.execute(existing_stmt)
-                existing_pairs = {
-                    (r.segment_id, r.entity_id) for r in existing_result.all()
-                }
+                existing_pairs = {(row.id, r.entity_id) for r in existing_result.all()}
             else:
                 existing_pairs = set()
+                unrecorded: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
+                for candidate in final_matches:
+                    entity_id, m_start, m_end = candidate[0], candidate[1], candidate[2]
+                    if any(
+                        start < m_end and m_start < end
+                        for start, end in (
+                            span.part_in(row.id, len(effective_text))
+                            for span in survivors.get((row.id, entity_id), [])
+                        )
+                    ):
+                        skipped += 1
+                        continue
+                    unrecorded.append(candidate)
+                final_matches = unrecorded
 
             # ----------------------------------------------------------
             # Step 5: Create mentions from surviving matches
@@ -2794,6 +2987,126 @@ class EntityMentionScanService:
     # ------------------------------------------------------------------
     # Disambiguation & filtering helpers
     # ------------------------------------------------------------------
+
+    async def _detection_patterns_for(
+        self,
+        session: AsyncSession,
+        entity_ids: list[uuid.UUID],
+        arbitrate_with_neighbours: bool,
+    ) -> tuple[
+        list[tuple[_EntityPattern, re.Pattern[str]]],
+        list[_EntityPattern],
+        set[uuid.UUID],
+    ]:
+        """The compiled patterns :meth:`detect_in_text` matches with, and its scope."""
+        patterns = await self._load_entity_patterns(
+            session,
+            entity_type=None,
+            new_entities_only=False,
+            entity_ids=entity_ids,
+        )
+        write_scope = {p.entity_id for p in patterns}
+        match_patterns = patterns
+        if patterns and arbitrate_with_neighbours:
+            neighbour_ids = await self._shared_token_neighbour_ids(session, patterns)
+            extra_ids = [nid for nid in neighbour_ids if nid not in write_scope]
+            if extra_ids:
+                match_patterns = patterns + await self._load_entity_patterns(
+                    session,
+                    entity_type=None,
+                    new_entities_only=False,
+                    entity_ids=extra_ids,
+                )
+        compiled: list[tuple[_EntityPattern, re.Pattern[str]]] = []
+        for pattern in match_patterns:
+            try:
+                compiled.append((pattern, _compile_entity_regex(pattern)))
+            except re.error:
+                continue
+        return compiled, match_patterns, write_scope
+
+    def _detect_matches(
+        self,
+        effective_text: str,
+        compiled_patterns: list[tuple[_EntityPattern, re.Pattern[str]]],
+        patterns: list[_EntityPattern],
+        pattern_by_entity: dict[uuid.UUID, _EntityPattern],
+        row: Any,
+        dry_run: bool,
+        write_scope: set[uuid.UUID] | None,
+    ) -> tuple[list[tuple[uuid.UUID, int, int, str, _EntityPattern]], int, int]:
+        """Detect entity names in one segment's text (the scan's matching rule).
+
+        Collects every pattern match on the diacritic-folded text (mapped back to raw
+        offsets), adds disfluency-gap matches, arbitrates longest-match-wins, applies
+        exclusion patterns, and drops matches outside ``write_scope``. ``row`` is only
+        used for its ``id`` and ``language_code``. Returns ``(matches,
+        longest_match_skips, exclusion_pattern_skips)``.
+        """
+        # ----------------------------------------------------------
+        # Step 1: Collect ALL (entity_id, start, end, text) via finditer.
+        # Matching runs against the diacritic-folded text so accented
+        # occurrences match accent-free aliases; each folded match is then
+        # mapped back to RAW offsets so match_start/match_end/mention_text
+        # reference the real (accented) segment text.
+        # ----------------------------------------------------------
+        folded_text, offset_map = _fold_diacritics(effective_text)
+        raw_matches: list[tuple[uuid.UUID, int, int, str, _EntityPattern]] = []
+        for pattern, py_regex in compiled_patterns:
+            for match in py_regex.finditer(folded_text):
+                f_start, f_end = match.start(), match.end()
+                if f_end <= f_start:
+                    continue
+                raw_start = offset_map[f_start]
+                raw_end = offset_map[f_end - 1] + 1
+                raw_matches.append(
+                    (
+                        pattern.entity_id,
+                        raw_start,
+                        raw_end,
+                        effective_text[raw_start:raw_end],
+                        pattern,
+                    )
+                )
+
+        # Feature 111 US3 (FR-010): additively add disfluency-gap matches the
+        # contiguous regex missed, scoped to the same candidate patterns.
+        raw_matches.extend(
+            self._collect_gap_matches(
+                folded_text,
+                offset_map,
+                effective_text,
+                patterns,
+                row.language_code,
+            )
+        )
+
+        if not raw_matches:
+            return [], 0, 0
+
+        # ----------------------------------------------------------
+        # Step 2: Longest-match-wins disambiguation
+        # ----------------------------------------------------------
+        surviving_matches, lmw_skips = self._apply_longest_match_wins(
+            raw_matches, row, dry_run
+        )
+
+        # ----------------------------------------------------------
+        # Step 3: Exclusion pattern filtering
+        # ----------------------------------------------------------
+        final_matches, ep_skips = self._apply_exclusion_patterns(
+            surviving_matches, effective_text, pattern_by_entity, row, dry_run
+        )
+
+        # NOTE 020 §2: the MATCH set may include shared-token neighbours loaded
+        # only so longest-match-wins could arbitrate against them. Their matches
+        # survived arbitration above but are OUT of the write scope — drop them
+        # here, before dedup/counters/previews, so they neither count as skips
+        # nor consume the preview cap. A neighbour that WON arbitration simply
+        # produces no row for this (scoped) scan, which is the correct outcome.
+        if write_scope is not None:
+            final_matches = [m for m in final_matches if m[0] in write_scope]
+        return final_matches, lmw_skips, ep_skips
 
     @staticmethod
     def _collect_gap_matches(

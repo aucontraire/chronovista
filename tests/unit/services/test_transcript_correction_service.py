@@ -30,7 +30,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -114,6 +114,18 @@ def _make_correction_record(
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _no_mention_rebase() -> Any:
+    """#426: moving a segment's mentions with its text is covered against a real
+    database (tests/integration/services/test_mention_correction_integrity.py)."""
+    with patch(
+        "chronovista.services.transcript_correction_service."
+        "TranscriptCorrectionService._rebase_segment_mentions",
+        new=AsyncMock(),
+    ):
+        yield
 
 
 @pytest.fixture

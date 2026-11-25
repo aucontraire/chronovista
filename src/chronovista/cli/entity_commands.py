@@ -1778,6 +1778,66 @@ def recount(
     asyncio.run(_run())
 
 
+@entity_app.command("repair-mentions")
+def repair_mentions(
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Report what would be repaired without writing.",
+    ),
+    video_ids: list[str] | None = typer.Option(
+        None,
+        "--video-id",
+        help="Repair only these videos (repeatable). Default: the whole library.",
+    ),
+) -> None:
+    """Repair transcript mentions left stale or duplicated by corrections (#426).
+
+    Before 0.132.0, corrections could leave mentions pointing at the wrong
+    words, and a later scan could record the same spoken name twice. This
+    moves each mention that no longer reads as its text to the occurrence it
+    belongs to (or removes it when another mention already records that
+    occurrence), keeps one mention per occurrence, then recomputes the
+    affected counters and marks their proximity for recompute. Running it
+    again changes nothing.
+
+    Run it once after upgrading, with --dry-run first, and take a database
+    backup before the real run. It is a separate operator step, deliberately
+    not a migration (which the container applies on every deploy).
+    """
+    from chronovista.services.mention_repair_service import MentionRepairService
+
+    async def _run() -> None:
+        async with db_manager.session(echo=False) as session:
+            report = await MentionRepairService().repair(
+                session, video_ids=video_ids, dry_run=dry_run
+            )
+            # db_manager.session commits on exit: roll back explicitly so a dry run
+            # can never write. A real run has committed as it went.
+            if dry_run:
+                await session.rollback()
+
+        summary = (
+            f"[bold]Transcripts examined:[/bold] {report.transcripts_examined}\n"
+            f"[bold]Stale mentions moved to their words:[/bold] {report.stale_moved}\n"
+            f"[bold]Stale mentions removed:[/bold] {report.stale_removed}\n"
+            f"[bold]Duplicate mentions removed:[/bold] {report.duplicates_removed}\n"
+            f"[bold]Entities recounted:[/bold] {report.entities_changed}\n"
+            f"[bold]Transcripts marked for proximity recompute:[/bold] "
+            f"{report.scopes_invalidated}"
+        )
+        if dry_run:
+            title, style = (
+                "[yellow]Mention repair (dry run — nothing written)[/yellow]",
+                "yellow",
+            )
+        else:
+            title, style = "[green]Mention repair complete[/green]", "green"
+        console.print(Panel(summary, title=title, border_style=style))
+
+    asyncio.run(_run())
+
+
 def _merge_scan_results(
     transcript_result: ScanResult | None,
     metadata_result: ScanResult | None,

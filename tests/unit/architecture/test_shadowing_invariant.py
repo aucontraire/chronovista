@@ -11,8 +11,9 @@ Two arms, guarding two different failure modes:
 
 * **Behavioural** -- ``_apply_longest_match_wins`` keeps the longer of two overlapping
   spans. Sees a mutated sort key (e.g. shortest-first) that every route would inherit.
-* **Single-source** -- the three scan routes (per-segment ``_scan_batch``, metadata
-  ``_match_text_for_video``, cross-segment ``_scan_cross_segment``) each call the
+* **Single-source** -- the three scan routes (per-segment ``_detect_matches``, which
+  ``_scan_batch`` and ``detect_in_text`` share since #426; metadata
+  ``_match_text_for_video``; cross-segment ``_scan_cross_segment``) each call the
   ranker, and no OTHER function in ``src/chronovista`` re-implements a
   length-descending greedy claim. Sees a route that quietly stops arbitrating (or grows
   a private copy), which no behavioural test of the ranker can notice because the
@@ -49,9 +50,11 @@ _SCAN_SERVICE = _SRC / "services" / "entity_mention_scan_service.py"
 
 _RANKER = "_apply_longest_match_wins"
 
-# The only functions allowed to call the ranker: one per scan route.
+# The only functions allowed to call the ranker: one per scan route. The per-segment
+# route's matching lives in _detect_matches (#426), shared by _scan_batch and by
+# detect_in_text, so corrections locate names by the same rule as the scan.
 _EXPECTED_CALLERS = frozenset(
-    {"_scan_batch", "_match_text_for_video", "_scan_cross_segment"}
+    {"_detect_matches", "_match_text_for_video", "_scan_cross_segment"}
 )
 
 Match = tuple[uuid.UUID, int, int, str, _EntityPattern]

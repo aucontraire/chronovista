@@ -258,12 +258,51 @@ chronovista corrections rebuild-text
 chronovista entities scan --full
 ```
 
+**Repairing mentions written before 0.132.0:** earlier versions could leave a corrected
+segment's mentions pointing at the wrong words, and record one spoken name twice. Run
+this once after upgrading. Preview it first, and back up the database before the real
+run:
+
+```bash
+chronovista entities repair-mentions --dry-run
+chronovista entities repair-mentions
+```
+
+It moves each mention to the words it belongs to, removes mentions that duplicate one
+occurrence, then recomputes the affected counters and marks their proximity for
+recompute. It works one transcript at a time and commits as it goes, so it can run while
+the app is in use; if it is interrupted, run it again to finish. Running it again after it
+completes changes nothing.
+
+**Checking that a change to mention data lost nothing that counted:** a repair, a
+`scan --full` or a batch correction can pass its own checks and still leave an entity
+uncounted where it was counted before. Take a snapshot before the change and compare
+after it:
+
+```bash
+chronovista entities audit-mentions --save backups/mentions-before.json
+# ... the repair, rescan or correction ...
+chronovista entities audit-mentions --compare backups/mentions-before.json
+```
+
+The comparison reports the places where an entity stopped being counted, and the videos
+it stopped being linked to. Removing a duplicate loses nothing. The command exits with
+status 1 when something was lost, so a script can stop on it.
+
+Treat the list as places to look at, not as a verdict. Places are compared per segment,
+so two cases show as lost although nothing that should count was:
+- a name split across two segments, where one occurrence had also been recorded from the
+  next segment and the repair kept that record;
+- a mention whose words a correction removed. Snapshots hold library ids,
+so keep them out of version control; `backups/` is ignored. Until disfluency-gap matches
+count (#405), a `scan --full` can lose counts where a speaker repeated a name.
+
 **Scan Options:**
 
 | Flag | Description |
 |------|-------------|
 | `--dry-run` | Preview mentions without writing |
-| `--full` | Re-derive `rule_match` mentions. Deletes and re-inserts one batch at a time (committed together), so no segment is ever left with its old mentions removed and the new ones not yet written — even under interrupt. Manually added mentions are untouched. |
+| `--full` | Re-derive `rule_match` mentions. Deletes and re-inserts one batch at a time (committed together), so no segment is ever left with its old mentions removed and the new ones not yet written — even under interrupt. Manually added mentions are untouched, and an occurrence a correction already recorded is not recorded again. |
 | `--resume` | Continue an interrupted scan from its last committed position (repeats at most one batch). Repeat the original flags — the saved position is keyed to the scan's scope. A no-op with `--dry-run`. |
 | `--audit` | Report user-correction mentions with unregistered text forms. Displays a Rich table showing entities with mention texts that don't match any registered alias or canonical name, along with suggested CLI commands to register them. Read-only operation. Mutually exclusive with `--full`. |
 | `--new-entities-only` | Scan only entities with zero existing mentions |

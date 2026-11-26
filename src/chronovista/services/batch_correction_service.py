@@ -54,6 +54,7 @@ from chronovista.models.entity_mention import EntityMentionCreate
 from chronovista.models.enums import CorrectionType, DetectionMethod
 from chronovista.repositories.entity_mention_repository import (
     EntityMentionRepository,
+    MentionSpan,
 )
 from chronovista.repositories.entity_pair_proximity_repository import (
     EntityPairProximityRepository,
@@ -64,6 +65,7 @@ from chronovista.repositories.transcript_correction_repository import (
 from chronovista.repositories.transcript_segment_repository import (
     TranscriptSegmentRepository,
 )
+from chronovista.services.mention_offset_rebase import TextEdit
 from chronovista.services.transcript_correction_service import (
     TranscriptCorrectionService,
 )
@@ -783,6 +785,7 @@ class BatchCorrectionService:
                         corrected_text=new_text,
                         replacement=replacement,
                         correction_id=correction_record.id,
+                        previous_text=effective_text,
                     )
                     affected_scopes.add((segment.video_id, segment.language_code))
             except ValueError:
@@ -2806,6 +2809,13 @@ class BatchCorrectionService:
                         f"{correction_note} " if correction_note else ""
                     ) + f"[cross-segment:partner={seg_a.id}]"
 
+                    previous_a = (
+                        seg_a.corrected_text if seg_a.has_correction else seg_a.text
+                    ) or ""
+                    previous_b = (
+                        seg_b.corrected_text if seg_b.has_correction else seg_b.text
+                    ) or ""
+
                     # Apply correction to segment A
                     a_applied = False
                     correction_record_a = None
@@ -2873,6 +2883,7 @@ class BatchCorrectionService:
                                 corrected_text=csm.text_for_seg_a,
                                 replacement=replacement,
                                 correction_id=correction_record_a.id,
+                                previous_text=previous_a,
                             )
                         if b_applied and correction_record_b is not None:
                             await self._create_entity_mentions_for_segment(
@@ -2882,22 +2893,34 @@ class BatchCorrectionService:
                                 corrected_text=b_corrected_text,
                                 replacement=replacement,
                                 correction_id=correction_record_b.id,
+                                previous_text=previous_b,
                             )
                         # T027 (FR-016): record the boundary-crossing occurrence as
                         # ONE spanning mention anchored at seg A, via the shared
                         # span-resolution primitive — the same component the
                         # detection scanner uses, so corrections and detection
                         # anchor spans identically (FR-013).
-                        if a_applied and correction_record_a is not None:
+                        # Either side may be the one corrected: a garble only in
+                        # segment B still leaves the name running across the
+                        # boundary (#426). The mention links to segment A's record
+                        # when A changed, else to B's.
+                        span_record = (
+                            correction_record_a
+                            if a_applied and correction_record_a is not None
+                            else correction_record_b if b_applied else None
+                        )
+                        if span_record is not None:
                             await self._create_cross_segment_entity_mention(
                                 session,
                                 entity=entity,
                                 segment_a=seg_a,
                                 segment_b=seg_b,
-                                text_for_seg_a=csm.text_for_seg_a,
+                                text_for_seg_a=(
+                                    csm.text_for_seg_a if a_applied else previous_a
+                                ),
                                 text_for_seg_b=b_corrected_text,
                                 replacement=replacement,
-                                correction_id=correction_record_a.id,
+                                correction_id=span_record.id,
                             )
 
                     if a_applied or b_applied:
@@ -3056,19 +3079,14 @@ class BatchCorrectionService:
         list[tuple[int, int]]
             List of ``(start, end)`` positions.
         """
-        positions: list[tuple[int, int]] = []
         if not substring:
-            return positions
-        start = 0
-        sub_lower = substring.lower()
-        text_lower = text.lower()
-        while start < len(text_lower):
-            idx = text_lower.find(sub_lower, start)
-            if idx == -1:
-                break
-            positions.append((idx, idx + len(substring)))
-            start = idx + len(substring)  # non-overlapping
-        return positions
+            return []
+        # Matched on the original text: lower-casing first can change its length
+        # ("İ" lower-cases to two characters) and shift every later offset (#426).
+        return [
+            (m.start(), m.end())
+            for m in re.finditer(re.escape(substring), text, flags=re.IGNORECASE)
+        ]
 
     @staticmethod
     def _is_excluded_by_patterns(
@@ -3113,6 +3131,96 @@ class BatchCorrectionService:
                 search_start = idx + len(exc_pattern)
         return False
 
+    @staticmethod
+    async def _name_spans(
+        session: AsyncSession,
+        entity: NamedEntityDB,
+        text: str,
+        language_code: str,
+        segment_id: int,
+    ) -> list[tuple[int, int]]:
+        """Where the scan's matching rule finds ``entity`` in ``text`` (#426).
+
+        No arbitration with other entities' names: a person tagged this correction
+        with this entity, and another name must not override that choice.
+        """
+        # Imported here: the scan service imports cross-segment discovery, which
+        # imports this module.
+        from chronovista.services.entity_mention_scan_service import (
+            EntityMentionScanService,
+        )
+
+        return [
+            (match.match_start, match.match_end)
+            for match in await EntityMentionScanService().detect_in_text(
+                session,
+                text=text,
+                language_code=language_code,
+                entity_ids=[entity.id],
+                segment_id=segment_id,
+                arbitrate_with_neighbours=False,
+            )
+        ]
+
+    @staticmethod
+    async def _reading_mentions(
+        session: AsyncSession,
+        mention_repo: EntityMentionRepository,
+        entity: NamedEntityDB,
+        texts: dict[int, str],
+    ) -> list[MentionSpan]:
+        """The entity's stored mentions in these segments that still read as their
+        text: only those occupy an occurrence; a stale row must not hide the
+        occurrence it no longer points at (#426)."""
+        reading: list[MentionSpan] = []
+        for span in await mention_repo.transcript_mention_spans(
+            session, segment_ids=list(texts), entity_ids=[entity.id]
+        ):
+            if span.end_segment_id is None and span.segment_id in texts:
+                segment_texts = [(span.segment_id, texts[span.segment_id])]
+            else:
+                segment_texts = await mention_repo.segment_texts(
+                    session,
+                    start_segment_id=span.segment_id,
+                    end_segment_id=span.end_segment_id or span.segment_id,
+                )
+            if TranscriptTextIndex.of(segment_texts).mention_reads(
+                segment_id=span.segment_id,
+                end_segment_id=span.end_segment_id,
+                match_start=span.match_start,
+                match_end=span.match_end,
+                mention_text=span.mention_text,
+            ):
+                reading.append(span)
+        return reading
+
+    @staticmethod
+    def _widen_to_name(
+        position: tuple[int, int], name_spans: Sequence[tuple[int, int]]
+    ) -> tuple[int, int]:
+        """The longest name occurrence overlapping ``position``, else ``position``.
+
+        ``name_spans`` come from the scan's own matching rule
+        (:meth:`EntityMentionScanService.detect_in_text`).
+
+        Correcting part of a name (a misheard surname) records the whole name, as
+        the scanner would, so a later scan finds the occurrence already recorded.
+        """
+        overlapping = [
+            span
+            for span in name_spans
+            if BatchCorrectionService._overlaps_any(position, [span])
+        ]
+        if not overlapping:
+            return position
+        return max(overlapping, key=lambda span: (span[1] - span[0], -span[0]))
+
+    @staticmethod
+    def _overlaps_any(
+        position: tuple[int, int], spans: Sequence[tuple[int, int]]
+    ) -> bool:
+        return any(start < position[1] and position[0] < end for start, end in spans)
+
     async def _create_entity_mentions_for_segment(
         self,
         session: AsyncSession,
@@ -3122,6 +3230,7 @@ class BatchCorrectionService:
         corrected_text: str,
         replacement: str,
         correction_id: UUID,
+        previous_text: str | None = None,
     ) -> None:
         """Create entity mentions for replacement text occurrences in a segment.
 
@@ -3143,22 +3252,46 @@ class BatchCorrectionService:
             The replacement text to search for.
         correction_id : UUID
             The correction record's ID to link mentions to.
+        previous_text : str | None, optional
+            The segment's text before this correction. When given, only occurrences
+            the correction touched are recorded; one it left alone is not what the
+            person corrected (#426).
         """
         try:
             # Find all occurrences of replacement text in corrected text
             positions = self._find_all_occurrences(corrected_text, replacement)
+            if previous_text is not None:
+                edit = TextEdit(previous_text, corrected_text)
+                positions = [p for p in positions if edit.touches(*p)]
             if not positions:
                 return
+
+            # #426: record the entity's whole name occurrence, not just the replaced
+            # fragment, and never a second mention of an occurrence already recorded.
+            name_spans = await self._name_spans(
+                session, entity, corrected_text, segment.language_code, segment.id
+            )
+            mention_repo = EntityMentionRepository()
+            occupied = [
+                span.part_in(segment.id, len(corrected_text))
+                for span in await self._reading_mentions(
+                    session, mention_repo, entity, {segment.id: corrected_text}
+                )
+            ]
 
             # T029: Filter out positions overlapping with exclusion patterns
             exclusion_patterns: list[Any] = entity.exclusion_patterns or []
             mentions_to_create: list[EntityMentionCreate] = []
 
-            for match_start, match_end in positions:
+            for position in positions:
+                match_start, match_end = self._widen_to_name(position, name_spans)
+                if self._overlaps_any((match_start, match_end), occupied):
+                    continue
                 if exclusion_patterns and self._is_excluded_by_patterns(
                     match_start, match_end, corrected_text, exclusion_patterns
                 ):
                     continue
+                occupied.append((match_start, match_end))
 
                 mentions_to_create.append(
                     EntityMentionCreate(
@@ -3166,7 +3299,7 @@ class BatchCorrectionService:
                         segment_id=segment.id,
                         video_id=segment.video_id,
                         language_code=segment.language_code,
-                        mention_text=replacement,
+                        mention_text=corrected_text[match_start:match_end],
                         detection_method=DetectionMethod.USER_CORRECTION,
                         confidence=1.0,
                         match_start=match_start,
@@ -3180,7 +3313,6 @@ class BatchCorrectionService:
 
             # Use a savepoint so failures don't roll back the correction
             async with session.begin_nested():
-                mention_repo = EntityMentionRepository()
                 await mention_repo.bulk_create_with_conflict_skip(
                     session, mentions_to_create
                 )
@@ -3254,18 +3386,44 @@ class BatchCorrectionService:
             if not positions:
                 return
 
+            # #426: whole name occurrence, and no second mention of one already
+            # recorded (positions compared in the assembled text of the pair).
+            name_spans = await self._name_spans(
+                session, entity, index.text, segment_a.language_code, segment_a.id
+            )
+            mention_repo = EntityMentionRepository()
+            occupied: list[tuple[int, int]] = []
+            for span in await self._reading_mentions(
+                session,
+                mention_repo,
+                entity,
+                {segment_a.id: text_for_seg_a, segment_b.id: text_for_seg_b},
+            ):
+                located = index.locate(
+                    segment_id=span.segment_id,
+                    end_segment_id=span.end_segment_id,
+                    match_start=span.match_start,
+                    match_end=span.match_end,
+                )
+                if located is not None:
+                    occupied.append(located)
+
             exclusion_patterns: list[Any] = entity.exclusion_patterns or []
             mentions_to_create: list[EntityMentionCreate] = []
-            for match_start, match_end in positions:
+            for position in positions:
+                match_start, match_end = self._widen_to_name(position, name_spans)
                 anchor = index.resolve_span(match_start, match_end)
                 # Occurrences inside a single segment belong to the per-segment
                 # path; only the boundary-crossing span is recorded here.
                 if anchor.end_segment_id is None:
                     continue
+                if self._overlaps_any((match_start, match_end), occupied):
+                    continue
                 if exclusion_patterns and self._is_excluded_by_patterns(
                     match_start, match_end, index.text, exclusion_patterns
                 ):
                     continue
+                occupied.append((match_start, match_end))
                 mentions_to_create.append(
                     EntityMentionCreate(
                         entity_id=entity.id,
@@ -3288,7 +3446,6 @@ class BatchCorrectionService:
 
             # Use a savepoint so failures don't roll back the correction
             async with session.begin_nested():
-                mention_repo = EntityMentionRepository()
                 await mention_repo.bulk_create_with_conflict_skip(
                     session, mentions_to_create
                 )

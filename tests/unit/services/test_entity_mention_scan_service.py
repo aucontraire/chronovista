@@ -50,6 +50,18 @@ def _noop_cross_segment_pass() -> Any:
         yield
 
 
+@pytest.fixture(autouse=True)
+def _no_recorded_non_scan_mentions() -> Any:
+    """#426: a full rescan looks up mentions that survive its delete; these tests'
+    mocked sessions have none."""
+    with patch(
+        "chronovista.repositories.entity_mention_repository."
+        "EntityMentionRepository.transcript_mention_spans",
+        new=AsyncMock(return_value=[]),
+    ):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Helper factories
 # ---------------------------------------------------------------------------

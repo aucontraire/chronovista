@@ -31,6 +31,20 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _no_visible_names() -> Any:
+    """#426: widening a correction to the entity's whole name runs the scan's
+    detection against the database; these mocked sessions find no names, so spans
+    stay as replaced. Widening and overlap are covered in
+    tests/integration/services/test_mention_correction_integrity.py."""
+    with patch(
+        "chronovista.services.entity_mention_scan_service."
+        "EntityMentionScanService.detect_in_text",
+        new=AsyncMock(return_value=[]),
+    ):
+        yield
+
+
 @pytest.fixture
 def mock_correction_service() -> AsyncMock:
     """Provide a mock TranscriptCorrectionService."""

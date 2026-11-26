@@ -134,6 +134,66 @@ class TranscriptTextIndex:
         # pos is in the separator gap after span i -> attribute to the next segment
         return min(i + 1, len(self._spans) - 1)
 
+    @classmethod
+    def of(cls, texts: Sequence[tuple[int, str]]) -> TranscriptTextIndex:
+        """An index over ``(segment_id, effective_text)`` pairs already in order."""
+        return cls.from_segments(
+            [SegmentInput(segment_id=sid, text=text) for sid, text in texts]
+        )
+
+    def mention_reads(
+        self,
+        *,
+        segment_id: int,
+        end_segment_id: int | None,
+        match_start: int,
+        match_end: int,
+        mention_text: str,
+    ) -> bool:
+        """Whether a stored mention's offsets still read as its text (#426).
+
+        THE one rule for "is this stored mention still on its words", for a mention
+        within one segment or spread over several: its offsets must fall inside their
+        segments, and the assembled text there must equal ``mention_text`` ignoring
+        case. A cross-segment mention is read across all its segments joined, so its
+        halves must still meet as one name. Every reader of stored offsets uses this,
+        so no two of them can disagree about which rows are stale.
+        """
+        lengths = {span.segment_id: span.end - span.start for span in self._spans}
+        last = segment_id if end_segment_id is None else end_segment_id
+        if segment_id not in lengths or last not in lengths:
+            return False
+        if (
+            not 0 <= match_start <= lengths[segment_id]
+            or not 0 <= match_end <= lengths[last]
+        ):
+            return False
+        located = self.locate(
+            segment_id=segment_id,
+            end_segment_id=end_segment_id,
+            match_start=match_start,
+            match_end=match_end,
+        )
+        if located is None or located[0] >= located[1]:
+            return False
+        return self.text[located[0] : located[1]].casefold() == mention_text.casefold()
+
+    def locate(
+        self,
+        *,
+        segment_id: int,
+        end_segment_id: int | None,
+        match_start: int,
+        match_end: int,
+    ) -> tuple[int, int] | None:
+        """The assembled-text ``[start, end)`` of a stored mention; the inverse of
+        :meth:`resolve_span`. ``None`` when a segment it names is not in this index."""
+        starts = {span.segment_id: span.start for span in self._spans}
+        last = segment_id if end_segment_id is None else end_segment_id
+        if segment_id not in starts or last not in starts:
+            return None
+        return starts[segment_id] + match_start, starts[last] + match_end
+
     def resolve_span(self, match_start: int, match_end: int) -> SpanAnchor:
         """Map an assembled-text ``[match_start, match_end)`` slice to a :class:`SpanAnchor`.
 

@@ -24,7 +24,7 @@ Mutation results for each producer are recorded in the Feature 117 report; the
 Narrowest-function notes (stated rather than silently substituted):
 
 - CLI commands call ``asyncio.run`` internally, which cannot nest inside the running
-  test loop. ``_invoke_cli`` runs the REAL Typer command (argument parsing included)
+  test loop. ``invoke_cli`` runs the REAL Typer command (argument parsing included)
   with ``asyncio.run`` captured, then awaits the command's real ``_run`` coroutine on
   the test loop against the test session. Only the loop plumbing is replaced.
 - Whitespace backfill: its own invalidation is shadowed by the re-scan's invalidation
@@ -37,39 +37,28 @@ Everything is synthetic: nonsense placeholder names, generated video ids.
 
 from __future__ import annotations
 
-import asyncio
-import uuid
-from collections.abc import AsyncGenerator, AsyncIterator, Coroutine, Sequence
-from contextlib import asynccontextmanager
-from types import SimpleNamespace
+from collections.abc import AsyncGenerator
 from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from typer.testing import CliRunner
-from uuid_utils import uuid7
 
 from chronovista.api.deps import get_db
 from chronovista.api.main import app
-from chronovista.cli import entity_commands
-from chronovista.cli.main import app as cli_app
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.db.models import EntityAlias as EntityAliasDB
 from chronovista.db.models import EntityMention as EntityMentionDB
 from chronovista.db.models import EntityOperationLog as EntityOperationLogDB
 from chronovista.db.models import EntityPairProximity as EntityPairProximityDB
 from chronovista.db.models import NamedEntity as NamedEntityDB
-from chronovista.db.models import ProximityScopeState as ProximityScopeStateDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
 from chronovista.models.entity_operation_log import (
     AssociationExclusionRollback,
     EntityOperationLogCreate,
 )
-from chronovista.models.entity_pair_proximity import ScopeFilter
 from chronovista.models.enums import (
     CorrectionType,
     DownloadReason,
@@ -83,9 +72,6 @@ from chronovista.repositories.entity_mention_repository import EntityMentionRepo
 from chronovista.repositories.entity_operation_log_repository import (
     EntityOperationLogRepository,
 )
-from chronovista.repositories.entity_pair_proximity_repository import (
-    EntityPairProximityRepository,
-)
 from chronovista.repositories.entity_video_exclusion_repository import (
     EntityVideoExclusionRepository,
 )
@@ -94,44 +80,39 @@ from chronovista.repositories.tag_alias_repository import TagAliasRepository
 from chronovista.repositories.tag_operation_log_repository import (
     TagOperationLogRepository,
 )
-from chronovista.repositories.transcript_correction_repository import (
-    TranscriptCorrectionRepository,
-)
-from chronovista.repositories.transcript_segment_repository import (
-    TranscriptSegmentRepository,
-)
 from chronovista.repositories.video_transcript_repository import (
     VideoTranscriptRepository,
 )
-from chronovista.services.batch_correction_service import BatchCorrectionService
 from chronovista.services.entity_curation_service import EntityCurationService
 from chronovista.services.entity_mention_scan_service import EntityMentionScanService
-from chronovista.services.proximity_service import (
-    MEASUREMENT_RULE_VERSION,
-    process_stale_scopes,
-)
 from chronovista.services.tag_management import TagManagementService
-from chronovista.services.tag_normalization import TagNormalizationService
-from chronovista.services.transcript_correction_service import (
-    TranscriptCorrectionService,
-)
 from chronovista.services.transcript_whitespace_service import (
     TranscriptWhitespaceBackfillService,
 )
+from tests.factories.mention_world import (
+    A_NAME,
+    B_NAME,
+    GARBLE,
+    World,
+    add_alias,
+    batch_service,
+    invoke_cli,
+    is_current,
+    new_batch_id,
+    recompute,
+    scope_state,
+    seed_world,
+    session_factory,
+    settle,
+)
 from tests.factories.proximity_seed import (
     canonical,
-    route_proximity_service_to,
-    seed_mention,
     seed_segment,
-    seed_video,
 )
 
 pytestmark = pytest.mark.asyncio
 
-A_NAME = "Zeta Quux"
-B_NAME = "Yodel Vance"
 ACTOR = "test:producer"
-_normalizer = TagNormalizationService()
 
 
 # ---------------------------------------------------------------------------
@@ -139,157 +120,15 @@ _normalizer = TagNormalizationService()
 # ---------------------------------------------------------------------------
 
 
-class _World(BaseModel):
-    """One video, two entities, one close pair per language."""
-
-    video_id: str
-    languages: tuple[str, ...]
-    a: uuid.UUID
-    b: uuid.UUID
-    seg_a: dict[str, int]
-    seg_b: dict[str, int]
-
-
-def _video_id() -> str:
-    return f"pp{uuid.uuid4().hex[:9]}"  # 11 chars: valid ``VideoId``
-
-
-async def _make_entity(
-    session: AsyncSession,
-    name: str,
-    *,
-    entity_type: str = "person",
-    normalized: str | None = None,
-    with_alias: bool = True,
-) -> uuid.UUID:
-    """Persist an active entity (plus its self-alias, which scanning needs)."""
-    norm = normalized or _normalizer.normalize(name) or name.lower()
-    entity = NamedEntityDB(
-        canonical_name=name,
-        canonical_name_normalized=norm,
-        entity_type=entity_type,
-        status="active",
-        discovery_method="manual",
-        confidence=1.0,
-        mention_count=0,
-        video_count=0,
-    )
-    session.add(entity)
-    await session.flush()
-    if with_alias:
-        await _add_alias(session, entity.id, name)
-    return uuid.UUID(str(entity.id))
-
-
-async def _add_alias(
-    session: AsyncSession, entity_id: uuid.UUID, alias_name: str
-) -> uuid.UUID:
-    alias = EntityAliasDB(
-        entity_id=entity_id,
-        alias_name=alias_name,
-        alias_name_normalized=_normalizer.normalize(alias_name) or alias_name.lower(),
-        alias_type="name_variant",
-        occurrence_count=0,
-    )
-    session.add(alias)
-    await session.flush()
-    return uuid.UUID(str(alias.id))
-
-
-async def _seed_world(
-    session: AsyncSession,
-    *,
-    languages: Sequence[str] = ("en",),
-    a_mention_text: str | None = None,
-    a_mentioned: bool = True,
-    a_detection: str = "rule_match",
-    a_alias: bool = True,
-    a_name: str = A_NAME,
-    a_segment_text: str | None = None,
-    b_segment_text: str | None = None,
-) -> _World:
-    """Co-mention entities A and B 4 seconds apart in every language of one video.
-
-    ``a_mention_text`` defaults to A's canonical name (so the mention qualifies); pass
-    another string to seed a mention that does NOT qualify until a producer changes
-    the entity's visible names. ``a_mentioned=False`` seeds only B (for scan tests).
-    """
-    video_id = _video_id()
-    a = await _make_entity(session, a_name, with_alias=a_alias)
-    b = await _make_entity(session, B_NAME)
-    await seed_video(session, video_id, languages)
-    seg_a: dict[str, int] = {}
-    seg_b: dict[str, int] = {}
-    for language in languages:
-        seg_a[language] = await seed_segment(session, video_id, language, 10.0, 0)
-        seg_b[language] = await seed_segment(session, video_id, language, 14.0, 1)
-        for segment_id, text in (
-            (seg_a[language], a_segment_text),
-            (seg_b[language], b_segment_text),
-        ):
-            if text is not None:
-                await session.execute(
-                    update(TranscriptSegmentDB)
-                    .where(TranscriptSegmentDB.id == segment_id)
-                    .values(text=text)
-                )
-        if a_mentioned:
-            await seed_mention(
-                session,
-                entity_id=a,
-                video_id=video_id,
-                language_code=language,
-                segment_id=seg_a[language],
-                mention_text=a_mention_text,
-                detection_method=a_detection,
-            )
-        await seed_mention(
-            session,
-            entity_id=b,
-            video_id=video_id,
-            language_code=language,
-            segment_id=seg_b[language],
-        )
-    return _World(
-        video_id=video_id,
-        languages=tuple(languages),
-        a=a,
-        b=b,
-        seg_a=seg_a,
-        seg_b=seg_b,
-    )
-
-
-async def _state(
-    session: AsyncSession, video_id: str, language: str = "en"
-) -> ProximityScopeStateDB:
-    result = await session.execute(
-        select(ProximityScopeStateDB)
-        .where(
-            ProximityScopeStateDB.video_id == video_id,
-            ProximityScopeStateDB.language_code == language,
-        )
-        .execution_options(populate_existing=True)
-    )
-    return result.scalar_one()
-
-
-def _is_current(state: ProximityScopeStateDB) -> bool:
-    return (
-        state.computed_revision == state.revision
-        and state.computed_rule_version == MEASUREMENT_RULE_VERSION
-    )
-
-
-async def _revisions(world: _World, session: AsyncSession) -> dict[str, int]:
+async def _revisions(world: World, session: AsyncSession) -> dict[str, int]:
     return {
-        language: (await _state(session, world.video_id, language)).revision
+        language: (await scope_state(session, world.video_id, language)).revision
         for language in world.languages
     }
 
 
 async def _records(
-    session: AsyncSession, world: _World, language: str | None = None
+    session: AsyncSession, world: World, language: str | None = None
 ) -> list[EntityPairProximityDB]:
     a_id, b_id = canonical(world.a, world.b)
     stmt = select(EntityPairProximityDB).where(
@@ -305,76 +144,25 @@ async def _records(
     )
 
 
-async def _recompute(
-    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, world: _World
-) -> None:
-    """Process the video's stale scopes WITHOUT invalidating first."""
-    route_proximity_service_to(monkeypatch, session)
-    summary = await process_stale_scopes(
-        limit=10_000, scope_filter=ScopeFilter(video_ids=(world.video_id,))
-    )
-    assert summary.remaining == 0, f"recompute left scopes unsettled: {summary}"
-
-
-async def _settle(
-    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, world: _World
-) -> None:
-    """Force-invalidate every language then recompute, so each scope is CURRENT."""
-    await EntityPairProximityRepository().invalidate_proximity_scopes(
-        session, video_id=world.video_id, reason="test"
-    )
-    await _recompute(session, monkeypatch, world)
-    for language in world.languages:
-        assert _is_current(await _state(session, world.video_id, language))
-
-
 async def _assert_invalidated(
-    session: AsyncSession, world: _World, before: dict[str, int]
+    session: AsyncSession, world: World, before: dict[str, int]
 ) -> None:
     """Every language's scope advanced its revision and is no longer current."""
     for language in world.languages:
-        state = await _state(session, world.video_id, language)
+        state = await scope_state(session, world.video_id, language)
         assert state.revision > before[language], (
             f"{language}: revision did not advance ({before[language]} -> "
             f"{state.revision}); the producer did not invalidate this scope"
         )
-        assert not _is_current(state), f"{language}: scope still reports CURRENT"
+        assert not is_current(state), f"{language}: scope still reports CURRENT"
 
 
 async def _assert_recomputed(
-    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, world: _World
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch, world: World
 ) -> None:
-    await _recompute(session, monkeypatch, world)
+    await recompute(session, monkeypatch, world)
     for language in world.languages:
-        assert _is_current(await _state(session, world.video_id, language))
-
-
-def _session_factory(session: AsyncSession) -> Any:
-    """A ``session_factory`` stand-in that always yields the test session."""
-
-    class _CM:
-        async def __aenter__(self) -> AsyncSession:
-            return session
-
-        async def __aexit__(self, *exc: object) -> bool:
-            return False
-
-    class _Factory:
-        def __call__(self) -> _CM:
-            return _CM()
-
-    return _Factory()
-
-
-class _TestDbManager:
-    """Stand-in for ``db_manager`` yielding one fixed session (CLI plumbing)."""
-
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
-
-    @asynccontextmanager
-    async def session(self, echo: bool | None = None) -> AsyncIterator[AsyncSession]:
-        yield self._session
+        assert is_current(await scope_state(session, world.video_id, language))
 
 
 def _curation_service() -> EntityCurationService:
@@ -384,21 +172,6 @@ def _curation_service() -> EntityCurationService:
         entity_alias_repo=EntityAliasRepository(),
         entity_mention_repo=EntityMentionRepository(),
         entity_video_exclusion_repo=EntityVideoExclusionRepository(),
-    )
-
-
-def _batch_service() -> BatchCorrectionService:
-    correction_repo = TranscriptCorrectionRepository()
-    segment_repo = TranscriptSegmentRepository()
-    correction_service = TranscriptCorrectionService(
-        correction_repo=correction_repo,
-        segment_repo=segment_repo,
-        transcript_repo=VideoTranscriptRepository(),
-    )
-    return BatchCorrectionService(
-        correction_service=correction_service,
-        segment_repo=segment_repo,
-        correction_repo=correction_repo,
     )
 
 
@@ -420,30 +193,6 @@ async def api(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         app.dependency_overrides.pop(get_db, None)
 
 
-async def _invoke_cli(
-    monkeypatch: pytest.MonkeyPatch, session: AsyncSession, args: list[str]
-) -> None:
-    """Run a real ``chronovista entities ...`` command against the test session.
-
-    The command is parsed by Typer exactly as in production. Its body is an inner
-    ``async def _run`` handed to ``asyncio.run``; that call cannot nest inside the test
-    loop, so it is captured and the real coroutine is awaited here instead.
-    """
-    captured: list[Coroutine[Any, Any, None]] = []
-
-    def _capture(coro: Coroutine[Any, Any, None]) -> None:
-        captured.append(coro)
-
-    monkeypatch.setattr(
-        entity_commands, "asyncio", SimpleNamespace(run=_capture, sleep=asyncio.sleep)
-    )
-    monkeypatch.setattr(entity_commands, "db_manager", _TestDbManager(session))
-    result = CliRunner().invoke(cli_app, ["entities", *args])
-    assert result.exit_code == 0, f"CLI rejected its arguments: {result.output}"
-    assert len(captured) == 1, "expected exactly one asyncio.run(_run()) call"
-    await captured[0]
-
-
 # ---------------------------------------------------------------------------
 # 1. Transcript scan (per-segment path and cross-segment path)
 # ---------------------------------------------------------------------------
@@ -458,19 +207,19 @@ class TestScanProducer:
         Entry point: ``EntityMentionScanService.scan`` (per-segment path).
         Mutation: remove the batch-scope ``invalidate_proximity_scopes`` loop.
         """
-        world = await _seed_world(
+        world = await seed_world(
             db_session,
             a_mentioned=False,
             a_segment_text=f"we heard {A_NAME} speak",
             b_segment_text=f"then {B_NAME} replied",
         )
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert await _records(db_session, world) == [], "A has no mention yet"
         before = await _revisions(world, db_session)
 
         result = await EntityMentionScanService(
-            session_factory=_session_factory(db_session)
+            session_factory=session_factory(db_session)
         ).scan(video_ids=[world.video_id], entity_ids=[world.a])
 
         assert result.mentions_found == 1, "scan must have written A's mention"
@@ -490,7 +239,7 @@ class TestScanProducer:
         Mutation: remove the ``if mentions or delete_affected ...`` invalidation.
         """
         first, second = A_NAME.split(" ")
-        world = await _seed_world(
+        world = await seed_world(
             db_session,
             a_mentioned=False,
             a_segment_text=f"the guest is {first}",
@@ -509,12 +258,12 @@ class TestScanProducer:
             .values(segment_id=seg_b_far)
         )
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert await _records(db_session, world) == []
         before = await _revisions(world, db_session)
 
         result = await EntityMentionScanService(
-            session_factory=_session_factory(db_session)
+            session_factory=session_factory(db_session)
         ).scan(video_ids=[world.video_id], entity_ids=[world.a])
 
         assert result.mentions_found == 1, "scan must have written the spanning mention"
@@ -540,20 +289,14 @@ class TestScanProducer:
 # 2. apply_to_segments with an entity, and its negative twin
 # ---------------------------------------------------------------------------
 
-GARBLE = "Zeta Quuks"
 
-
-async def _seed_garbled_world(session: AsyncSession) -> _World:
-    return await _seed_world(
+async def _seed_garbled_world(session: AsyncSession) -> World:
+    return await seed_world(
         session,
         a_mentioned=False,
         a_segment_text=f"we saw {GARBLE} here",
         b_segment_text=f"then {B_NAME} replied",
     )
-
-
-def _new_batch_id() -> uuid.UUID:
-    return uuid.UUID(bytes=uuid7().bytes)
 
 
 class TestBatchCorrectionProducers:
@@ -567,11 +310,11 @@ class TestBatchCorrectionProducers:
         """
         world = await _seed_garbled_world(db_session)
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert await _records(db_session, world) == []
         before = await _revisions(world, db_session)
 
-        result = await _batch_service().apply_to_segments(
+        result = await batch_service().apply_to_segments(
             db_session,
             pattern=GARBLE,
             replacement=A_NAME,
@@ -579,7 +322,7 @@ class TestBatchCorrectionProducers:
             correction_type=CorrectionType.PROPER_NOUN,
             auto_rebuild=False,
             entity_id=world.a,
-            batch_id=_new_batch_id(),
+            batch_id=new_batch_id(),
         )
 
         assert result.total_applied == 1
@@ -598,7 +341,7 @@ class TestBatchCorrectionProducers:
         committed mentions in a scope still marked current.
         Mutation: remove the per-chunk invalidation in the helper.
         """
-        world = await _seed_world(
+        world = await seed_world(
             db_session,
             a_mentioned=False,
             # Both tokens must differ from the name ("Zeta Quux"), or the correction
@@ -607,7 +350,7 @@ class TestBatchCorrectionProducers:
             b_segment_text=f"Quuks then {B_NAME} replied",
         )
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         before = await _revisions(world, db_session)
 
         async def fails(*_: object, **__: object) -> None:
@@ -615,7 +358,7 @@ class TestBatchCorrectionProducers:
 
         monkeypatch.setattr(EntityMentionRepository, "update_entity_counters", fails)
         with pytest.raises(RuntimeError, match="after the chunk commit"):
-            await _batch_service().apply_to_segments(
+            await batch_service().apply_to_segments(
                 db_session,
                 pattern="Zita Quuks",
                 replacement=A_NAME,
@@ -623,7 +366,7 @@ class TestBatchCorrectionProducers:
                 correction_type=CorrectionType.PROPER_NOUN,
                 auto_rebuild=False,
                 entity_id=world.a,
-                batch_id=_new_batch_id(),
+                batch_id=new_batch_id(),
                 cross_segment=True,
             )
         await db_session.rollback()
@@ -643,10 +386,10 @@ class TestBatchCorrectionProducers:
         """
         world = await _seed_garbled_world(db_session)
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         before = await _revisions(world, db_session)
 
-        result = await _batch_service().apply_to_segments(
+        result = await batch_service().apply_to_segments(
             db_session,
             pattern=GARBLE,
             replacement=A_NAME,
@@ -666,7 +409,54 @@ class TestBatchCorrectionProducers:
         ).scalar_one()
         assert segment.has_correction is True
         assert await _revisions(world, db_session) == before
-        assert _is_current(await _state(db_session, world.video_id))
+        assert is_current(await scope_state(db_session, world.video_id))
+
+    async def test_correction_that_replaces_a_mentions_text_drops_the_record(
+        self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """#426: a text-only correction that removes the entity from its words drops it.
+
+        Entry point: ``TranscriptCorrectionService.apply_correction`` (via
+        ``apply_to_segments``), whose rebase step moves, re-points or removes the
+        segment's mentions. A's only mention is a name-exempt ``asr_match`` on the
+        garbled form; the correction replaces it with words that are not A, so the
+        mention is removed (fixing it to A's name would re-point it instead).
+        Mutation: remove the rebase step's ``invalidate_proximity_scopes`` call.
+        """
+        world = await seed_world(
+            db_session,
+            a_mention_text=GARBLE,
+            a_detection="asr_match",
+            a_segment_text=f"we saw {GARBLE} here",
+            b_segment_text=f"then {B_NAME} replied",
+            a_match_start=len("we saw "),
+        )
+        await db_session.commit()
+        await settle(db_session, monkeypatch, world)
+        assert len(await _records(db_session, world)) == 1
+        before = await _revisions(world, db_session)
+
+        result = await batch_service().apply_to_segments(
+            db_session,
+            pattern=GARBLE,
+            replacement="somebody else",
+            segment_ids=[world.seg_a["en"]],
+            correction_type=CorrectionType.PROPER_NOUN,
+            auto_rebuild=False,
+            entity_id=None,
+            batch_id=new_batch_id(),
+        )
+
+        assert result.total_applied == 1
+        remaining = (
+            await db_session.execute(
+                select(EntityMentionDB.id).where(EntityMentionDB.entity_id == world.a)
+            )
+        ).all()
+        assert remaining == [], "A is no longer said there, so its mention must be gone"
+        await _assert_invalidated(db_session, world, before)
+        await _assert_recomputed(db_session, monkeypatch, world)
+        assert await _records(db_session, world) == []
 
     async def test_batch_revert_by_batch_id_removes_the_record(
         self, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
@@ -678,8 +468,8 @@ class TestBatchCorrectionProducers:
         """
         world = await _seed_garbled_world(db_session)
         await db_session.commit()
-        batch_id = _new_batch_id()
-        service = _batch_service()
+        batch_id = new_batch_id()
+        service = batch_service()
         await service.apply_to_segments(
             db_session,
             pattern=GARBLE,
@@ -689,7 +479,7 @@ class TestBatchCorrectionProducers:
             entity_id=world.a,
             batch_id=batch_id,
         )
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert len(await _records(db_session, world)) == 1, "precondition: A is near B"
         before = await _revisions(world, db_session)
 
@@ -721,7 +511,7 @@ class TestBatchCorrectionProducers:
         """
         world = await _seed_garbled_world(db_session)
         await db_session.commit()
-        service = _batch_service()
+        service = batch_service()
         await service.apply_to_segments(
             db_session,
             pattern=GARBLE,
@@ -729,9 +519,9 @@ class TestBatchCorrectionProducers:
             segment_ids=[world.seg_a["en"]],
             auto_rebuild=False,
             entity_id=world.a,
-            batch_id=_new_batch_id(),
+            batch_id=new_batch_id(),
         )
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert len(await _records(db_session, world)) == 1
         before = await _revisions(world, db_session)
 
@@ -761,9 +551,9 @@ class TestExclusionEndpoints:
         Entry point: ``POST /api/v1/entities/{id}/excluded-videos``.
         Mutation: remove the ``invalidate_proximity_scopes`` call in the exclude route.
         """
-        world = await _seed_world(db_session, languages=("en", "fr"))
+        world = await seed_world(db_session, languages=("en", "fr"))
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         for language in world.languages:
             assert len(await _records(db_session, world, language)) == 1
         before = await _revisions(world, db_session)
@@ -788,14 +578,14 @@ class TestExclusionEndpoints:
 
         Mutation: remove the ``invalidate_proximity_scopes`` call in the restore route.
         """
-        world = await _seed_world(db_session, languages=("en", "fr"))
+        world = await seed_world(db_session, languages=("en", "fr"))
         await db_session.commit()
         exclude = await api.post(
             f"/api/v1/entities/{world.a}/excluded-videos",
             json={"video_id": world.video_id},
         )
         assert exclude.status_code == 200, exclude.text
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert await _records(db_session, world) == [], "precondition: A is excluded"
         before = await _revisions(world, db_session)
 
@@ -829,9 +619,9 @@ class TestTranscriptRedownload:
         Mutation: remove the ``invalidate_proximity_scopes`` call in
         ``_create_segments_from_raw_data``.
         """
-        world = await _seed_world(db_session)
+        world = await seed_world(db_session)
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert len(await _records(db_session, world)) == 1
         before = await _revisions(world, db_session)
 
@@ -880,8 +670,8 @@ class _FailingScan:
 
 
 class TestWhitespaceBackfill:
-    async def _world(self, session: AsyncSession) -> _World:
-        return await _seed_world(
+    async def _world(self, session: AsyncSession) -> World:
+        return await seed_world(
             session,
             a_segment_text=f"the  guest {A_NAME}  speaks",
             b_segment_text=f"then {B_NAME} replied",
@@ -899,11 +689,11 @@ class TestWhitespaceBackfill:
         """
         world = await self._world(db_session)
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         before = await _revisions(world, db_session)
 
         summary = await TranscriptWhitespaceBackfillService(
-            _session_factory(db_session),
+            session_factory(db_session),
             scan_service=cast(EntityMentionScanService, _FailingScan()),
         ).run(apply=True, video_id=world.video_id)
 
@@ -929,14 +719,14 @@ class TestWhitespaceBackfill:
         """
         world = await self._world(db_session)
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert len(await _records(db_session, world)) == 1
         before = await _revisions(world, db_session)
 
         await TranscriptWhitespaceBackfillService(
-            _session_factory(db_session),
+            session_factory(db_session),
             scan_service=EntityMentionScanService(
-                session_factory=_session_factory(db_session)
+                session_factory=session_factory(db_session)
             ),
         ).run(apply=True, video_id=world.video_id)
 
@@ -952,10 +742,10 @@ class TestWhitespaceBackfill:
 NICK = "Zeta Nick"
 
 
-async def _seed_alias_world(session: AsyncSession) -> tuple[_World, EntityAliasDB]:
+async def _seed_alias_world(session: AsyncSession) -> tuple[World, EntityAliasDB]:
     """A's only qualifying mention is under an alias (not its canonical name)."""
-    world = await _seed_world(session, a_mention_text=NICK)
-    alias_id = await _add_alias(session, world.a, NICK)
+    world = await seed_world(session, a_mention_text=NICK)
+    alias_id = await add_alias(session, world.a, NICK)
     alias = (
         await session.execute(select(EntityAliasDB).where(EntityAliasDB.id == alias_id))
     ).scalar_one()
@@ -973,7 +763,7 @@ class TestCurationServiceProducers:
         """
         world, alias = await _seed_alias_world(db_session)
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert len(await _records(db_session, world)) == 1
         entity = (
             await db_session.execute(
@@ -999,17 +789,17 @@ class TestCurationServiceProducers:
         name-exempt), so its scope must still be invalidated (Phase 5 contract
         review). Mutation: invalidate only the deleted mentions' scopes.
         """
-        world = await _seed_world(
+        world = await seed_world(
             db_session, a_mention_text=NICK, a_detection="user_correction"
         )
-        alias_id = await _add_alias(db_session, world.a, NICK)
+        alias_id = await add_alias(db_session, world.a, NICK)
         alias = (
             await db_session.execute(
                 select(EntityAliasDB).where(EntityAliasDB.id == alias_id)
             )
         ).scalar_one()
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert len(await _records(db_session, world)) == 1
         entity = (
             await db_session.execute(
@@ -1047,7 +837,7 @@ class TestCurationServiceProducers:
         _removed, op_id = await service.delete_alias(
             db_session, entity=entity, alias=alias, actor=ACTOR
         )
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert await _records(db_session, world) == [], "precondition: alias deleted"
         before = await _revisions(world, db_session)
 
@@ -1067,10 +857,10 @@ class TestCurationServiceProducers:
         Mutations: remove the invalidation in ``update_entity``; separately, remove the
         one in the ``update`` branch of ``undo_operation``.
         """
-        world = await _seed_world(db_session, a_alias=False)
+        world = await seed_world(db_session, a_alias=False)
         await db_session.commit()
         service = _curation_service()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert len(await _records(db_session, world)) == 1
         before = await _revisions(world, db_session)
 
@@ -1116,7 +906,7 @@ class TestCurationServiceProducers:
         Entry point: ``EntityCurationService.undo_operation``.
         Mutation: remove the single ``invalidate_proximity_scopes`` call (both red).
         """
-        world = await _seed_world(db_session, languages=("en", "fr"))
+        world = await seed_world(db_session, languages=("en", "fr"))
         exclusion_repo = EntityVideoExclusionRepository()
         if undo_of == "association_exclude":
             await exclusion_repo.add(
@@ -1132,7 +922,7 @@ class TestCurationServiceProducers:
             ),
         )
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         expected_before = 0 if undo_of == "association_exclude" else 1
         for language in world.languages:
             assert (
@@ -1167,11 +957,11 @@ class TestAliasEndpoints:
         Entry point: ``POST /api/v1/entities/{id}/aliases``.
         Mutation: remove the ``invalidate_proximity_scopes`` call in ``create_entity_alias``.
         """
-        world = await _seed_world(
+        world = await seed_world(
             db_session, languages=("en", "fr"), a_mention_text=NICK
         )
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert await _records(db_session, world) == [], "NICK is not a name yet"
         before = await _revisions(world, db_session)
 
@@ -1196,12 +986,12 @@ class TestAliasEndpoints:
         Entry point: ``PATCH /api/v1/entities/{id}/aliases/{alias_id}``.
         Mutation: remove the ``invalidate_proximity_scopes`` call in ``update_entity_alias``.
         """
-        world = await _seed_world(
+        world = await seed_world(
             db_session, languages=("en", "fr"), a_mention_text=NICK
         )
-        alias_id = await _add_alias(db_session, world.a, "Zeta Nik")
+        alias_id = await add_alias(db_session, world.a, "Zeta Nik")
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert await _records(db_session, world) == []
         before = await _revisions(world, db_session)
 
@@ -1230,15 +1020,15 @@ class TestCliAliasCommands:
 
         Mutation: remove the ``invalidate_proximity_scopes`` call in ``add_alias``.
         """
-        world = await _seed_world(
+        world = await seed_world(
             db_session, languages=("en", "fr"), a_mention_text=NICK
         )
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert await _records(db_session, world) == []
         before = await _revisions(world, db_session)
 
-        await _invoke_cli(
+        await invoke_cli(
             monkeypatch, db_session, ["add-alias", A_NAME, "--alias", NICK]
         )
 
@@ -1257,11 +1047,11 @@ class TestCliAliasCommands:
         """
         world, _alias = await _seed_alias_world(db_session)
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert len(await _records(db_session, world)) == 1
         before = await _revisions(world, db_session)
 
-        await _invoke_cli(
+        await invoke_cli(
             monkeypatch, db_session, ["remove-alias", A_NAME, "--alias", NICK]
         )
 
@@ -1286,16 +1076,16 @@ class TestCliAliasCommands:
 
         Mutation: remove the ``invalidate_proximity_scopes`` call in ``edit_alias``.
         """
-        world = await _seed_world(
+        world = await seed_world(
             db_session, languages=("en", "fr"), a_mention_text=NICK
         )
-        await _add_alias(db_session, world.a, "Zeta Nik")
+        await add_alias(db_session, world.a, "Zeta Nik")
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert await _records(db_session, world) == []
         before = await _revisions(world, db_session)
 
-        await _invoke_cli(
+        await invoke_cli(
             monkeypatch,
             db_session,
             ["edit-alias", A_NAME, "--alias", "Zeta Nik", "--new-name", NICK],
@@ -1327,7 +1117,7 @@ class TestTagClassifyLink:
         Entry point: ``TagManagementService.classify``.
         Mutation: remove the ``invalidate_proximity_scopes`` call after the alias create.
         """
-        world = await _seed_world(
+        world = await seed_world(
             db_session,
             a_name="Zeta  Quux",
             a_alias=False,
@@ -1343,7 +1133,7 @@ class TestTagClassifyLink:
             )
         )
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         assert await _records(db_session, world) == [], "double-space name != mention"
         before = await _revisions(world, db_session)
 
@@ -1389,16 +1179,16 @@ class TestAtomicity:
         transaction is open it must see neither half (the invalidation never commits on
         its own), and after the rollback it must still see neither.
         """
-        world = await _seed_world(db_session, a_alias=False)
+        world = await seed_world(db_session, a_alias=False)
         await db_session.commit()
-        await _settle(db_session, monkeypatch, world)
+        await settle(db_session, monkeypatch, world)
         await db_session.commit()
         before = await _revisions(world, db_session)
         observer_factory = async_sessionmaker(db_session.bind, expire_on_commit=False)
 
         async def observe() -> tuple[int, str]:
             async with observer_factory() as observer:
-                revision = (await _state(observer, world.video_id)).revision
+                revision = (await scope_state(observer, world.video_id)).revision
                 name = (
                     await observer.execute(
                         select(NamedEntityDB.canonical_name).where(
@@ -1411,7 +1201,7 @@ class TestAtomicity:
         await _curation_service().update_entity(
             db_session, world.a, canonical_name="Wexford Plinth", actor=ACTOR
         )
-        in_txn_revision = (await _state(db_session, world.video_id)).revision
+        in_txn_revision = (await scope_state(db_session, world.video_id)).revision
         assert (
             in_txn_revision > before["en"]
         ), "inside the transaction it is invalidated"
@@ -1420,6 +1210,6 @@ class TestAtomicity:
         await db_session.rollback()
 
         assert await observe() == (before["en"], A_NAME)
-        state = await _state(db_session, world.video_id)
+        state = await scope_state(db_session, world.video_id)
         assert state.revision == before["en"]
-        assert _is_current(state), "a rolled-back change must leave the scope CURRENT"
+        assert is_current(state), "a rolled-back change must leave the scope CURRENT"

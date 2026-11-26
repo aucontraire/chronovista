@@ -186,12 +186,19 @@ async def seed_mention(
     end_segment_id: int | None = None,
     mention_text: str | None = None,
     detection_method: str = "rule_match",
+    match_start: int | None = None,
+    match_end: int | None = None,
 ) -> None:
     """Persist one transcript-source mention anchored at ``segment_id``.
 
     ``mention_text`` defaults to the entity's canonical (placeholder) name, so the
     mention satisfies the shared visible-name qualification rule (Feature 117). Pass
     a non-name text to seed a mention that should NOT qualify.
+
+    Offsets are left unset (an unpositioned mention) unless ``match_start`` is given.
+    ``match_end`` then defaults to ``match_start + len(mention_text)``; pass it
+    explicitly for a cross-segment mention, whose end is an offset into the END
+    segment, and to seed an offset pair that does not read as the text (a stale row).
     """
     if mention_text is None:
         mention_text = (
@@ -201,6 +208,8 @@ async def seed_mention(
                 )
             )
         ).scalar_one()
+    if match_start is not None and match_end is None:
+        match_end = match_start + len(mention_text)
     session.add(
         EntityMentionDB(
             entity_id=entity_id,
@@ -211,6 +220,8 @@ async def seed_mention(
             mention_text=mention_text,
             detection_method=detection_method,
             mention_source="transcript",
+            match_start=match_start,
+            match_end=match_end,
         )
     )
     await session.flush()

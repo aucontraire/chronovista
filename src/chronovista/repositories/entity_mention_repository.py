@@ -28,6 +28,7 @@ from sqlalchemy import (
     cast,
     delete,
     distinct,
+    exists,
     func,
     literal,
     null,
@@ -194,6 +195,26 @@ def _mention_qualifies_as_association(
     )
 
 
+def _mention_counts_toward_totals(
+    visible_names: Subquery, mention: type[EntityMentionDB] = EntityMentionDB
+) -> ColumnElement[bool]:
+    """Predicate: a mention counts toward the stored ``mention_count`` / ``video_count``.
+
+    The one stored-counter rule: its text folds to one of the entity's visible names,
+    or it is a recovered ``asr_match`` (the garble, admitted by provenance, FR-014).
+    Unlike :func:`_mention_qualifies_as_association` it does NOT exempt ``manual``:
+    a hand-linked row counts only when its text is a visible name, so a manual-only
+    entity keeps ``mention_count == 0`` on the per-video surfaces that read it. A
+    disfluency-gap match (Feature 111) does not count: its text is no name. Callers
+    LEFT OUTER JOIN ``visible_names`` on entity_id + folded text, or evaluate it
+    inside an EXISTS bounded to the mention's entity (:data:`_MENTION_SPAN_COLUMNS`).
+    """
+    return or_(
+        _folded(mention.mention_text) == visible_names.c.name_lower,
+        mention.detection_method == "asr_match",
+    )
+
+
 def positioned_transcript_mention_qualifies(
     mention: type[EntityMentionDB], visible_names: Subquery
 ) -> ColumnElement[bool]:
@@ -288,6 +309,107 @@ class PassageText(NamedTuple):
     mention_lo: MentionRef
     mention_hi: MentionRef
     segments: list[PassageSegment]
+
+
+def _counts_column() -> ColumnElement[bool]:
+    """Whether the selected mention counts toward the stored totals, as a column."""
+    names = _visible_names_subquery(None)
+    return exists(
+        select(literal(1))
+        .select_from(names)
+        .where(
+            names.c.entity_id == EntityMentionDB.entity_id,
+            # Every entity has its canonical name here, so the method arm holds too.
+            _mention_counts_toward_totals(names),
+        )
+    ).label("counts")
+
+
+# The columns a MentionSpan is built from, in its field order.
+_MENTION_SPAN_COLUMNS = (
+    EntityMentionDB.id,
+    EntityMentionDB.entity_id,
+    EntityMentionDB.video_id,
+    EntityMentionDB.language_code,
+    EntityMentionDB.segment_id,
+    EntityMentionDB.end_segment_id,
+    EntityMentionDB.match_start,
+    EntityMentionDB.match_end,
+    EntityMentionDB.mention_text,
+    EntityMentionDB.detection_method,
+    _counts_column(),
+)
+
+
+def _transcript_of(mention: Any) -> tuple[ColumnElement[str], ColumnElement[str]]:
+    """A mention row's transcript, as labelled columns for a candidate query."""
+    return (
+        mention.video_id.label("video_id"),
+        mention.language_code.label("language_code"),
+    )
+
+
+class MentionMove(NamedTuple):
+    """New offsets for one mention (#426); a start that did not change is not rewritten."""
+
+    id: uuid.UUID
+    match_start: int
+    match_end: int
+    start_changed: bool
+
+
+class MentionRelabel(NamedTuple):
+    """What a mention reads as after an edit re-pointed it (#426)."""
+
+    id: uuid.UUID
+    mention_text: str
+    detection_method: str
+    alias_id: uuid.UUID | None
+
+
+class MentionSpan(NamedTuple):
+    """A positioned transcript mention's identity and offsets (#426)."""
+
+    id: uuid.UUID
+    entity_id: uuid.UUID
+    video_id: str
+    language_code: str
+    segment_id: int
+    end_segment_id: int | None
+    match_start: int
+    match_end: int
+    mention_text: str
+    detection_method: str
+    counts: bool
+
+    def survivor_rank(self) -> tuple[int, int, int, str]:
+        """Order for which of two mentions of one occurrence is kept (#426).
+
+        A mention that counts toward the entity's totals first, so keeping one row
+        never loses a counted occurrence (a disfluency-gap match is
+        longer than the clean name inside it but does not count). Then the longer
+        name (a full name over a fragment, a split name over an alias inside it), then
+        a correction over a scan match (a person tagged it), then the oldest row (ids
+        are UUIDv7, so their text sorts by creation). Lowest first. Used by the
+        correction rebase and the repair, so both keep the same row.
+        """
+        scan_owned = self.detection_method in SCAN_DETECTION_METHODS
+        return (
+            0 if self.counts else 1,
+            -len(self.mention_text),
+            1 if scan_owned else 0,
+            str(self.id),
+        )
+
+    def part_in(self, segment_id: int, text_length: int) -> tuple[int, int]:
+        """The ``[start, end)`` of ``segment_id``'s text this mention covers: all of a
+        single-segment mention, the tail from ``match_start`` of its start segment, or
+        the head up to ``match_end`` of its end segment."""
+        if self.end_segment_id is None:
+            return self.match_start, self.match_end
+        if self.segment_id == segment_id:
+            return self.match_start, text_length
+        return 0, self.match_end
 
 
 def _available_video_id_subquery() -> Select[Any]:
@@ -649,6 +771,435 @@ class EntityMentionRepository(
         )
         result = await session.execute(stmt)
         return int(result.rowcount)
+
+    async def transcript_mention_spans(
+        self,
+        session: AsyncSession,
+        *,
+        segment_ids: Sequence[int] = (),
+        transcript: tuple[str, str] | None = None,
+        entity_ids: Sequence[uuid.UUID] | None = None,
+        exclude_methods: Sequence[str] = (),
+    ) -> list[MentionSpan]:
+        """Positioned transcript mentions that start or end in these segments (#426).
+
+        A cross-segment mention is returned for both its start and its end segment,
+        since an edit of either moves its offsets. ``exclude_methods`` leaves out
+        detection methods the caller is about to re-derive (a full rescan's own).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active async session.
+        segment_ids : Sequence[int], optional
+            Segments to read.
+        transcript : tuple[str, str] | None, optional
+            ``(video_id, language_code)``: every mention in one transcript instead of
+            ``segment_ids``. Uses the (video, language) index, which stays fast for a
+            long transcript where a list of all its segment ids would not.
+        entity_ids : Sequence[uuid.UUID] | None, optional
+            Restrict to these entities; ``None`` applies no restriction.
+        exclude_methods : Sequence[str], optional
+            Detection methods to leave out.
+
+        Returns
+        -------
+        list[MentionSpan]
+            One per mention, unordered.
+        """
+        if transcript is None and not segment_ids:
+            return []
+        stmt = select(*_MENTION_SPAN_COLUMNS).where(
+            EntityMentionDB.mention_source == "transcript",
+            EntityMentionDB.match_start.is_not(None),
+            EntityMentionDB.match_end.is_not(None),
+        )
+        if transcript is not None:
+            stmt = stmt.where(
+                EntityMentionDB.video_id == transcript[0],
+                EntityMentionDB.language_code == transcript[1],
+                EntityMentionDB.segment_id.is_not(None),
+            )
+        else:
+            ids = list(segment_ids)
+            stmt = stmt.where(
+                or_(
+                    EntityMentionDB.segment_id.in_(ids),
+                    EntityMentionDB.end_segment_id.in_(ids),
+                )
+            )
+        if entity_ids is not None:
+            stmt = stmt.where(EntityMentionDB.entity_id.in_(list(entity_ids)))
+        if exclude_methods:
+            stmt = stmt.where(
+                EntityMentionDB.detection_method.not_in(list(exclude_methods))
+            )
+        return [MentionSpan(*row) for row in (await session.execute(stmt)).all()]
+
+    async def counted_mention_segments(
+        self, session: AsyncSession
+    ) -> set[tuple[uuid.UUID, int]]:
+        """Every ``(entity_id, segment_id)`` a counted transcript mention covers.
+
+        A mention covers its start segment and, when split, its end segment. A
+        snapshot of this before a change to mention data, compared with one after,
+        shows where an entity stopped being counted: removing a duplicate leaves the
+        pair in place, removing the only counted row of a spot takes it out. Counted
+        means :func:`_mention_counts_toward_totals`.
+        """
+        names = _visible_names_subquery(None)
+        counted = and_(
+            EntityMentionDB.mention_source == "transcript",
+            _mention_counts_toward_totals(names),
+        )
+        joined = and_(
+            names.c.entity_id == EntityMentionDB.entity_id,
+            _folded(EntityMentionDB.mention_text) == names.c.name_lower,
+        )
+        starts = (
+            select(EntityMentionDB.entity_id, EntityMentionDB.segment_id)
+            .outerjoin(names, joined)
+            .where(counted, EntityMentionDB.segment_id.is_not(None))
+        )
+        ends = (
+            select(EntityMentionDB.entity_id, EntityMentionDB.end_segment_id)
+            .outerjoin(names, joined)
+            .where(counted, EntityMentionDB.end_segment_id.is_not(None))
+        )
+        rows = await session.execute(union(starts, ends))
+        return {(row[0], int(row[1])) for row in rows.all()}
+
+    async def transcript_associations(
+        self, session: AsyncSession
+    ) -> set[tuple[uuid.UUID, str]]:
+        """Every ``(entity_id, video_id)`` a qualifying transcript mention links.
+
+        Qualifying means :func:`_mention_qualifies_as_association`, the rule every
+        association surface uses.
+        """
+        names = _visible_names_subquery(None)
+        rows = await session.execute(
+            select(EntityMentionDB.entity_id, EntityMentionDB.video_id)
+            .distinct()
+            .outerjoin(
+                names,
+                and_(
+                    names.c.entity_id == EntityMentionDB.entity_id,
+                    _folded(EntityMentionDB.mention_text) == names.c.name_lower,
+                ),
+            )
+            .where(
+                EntityMentionDB.mention_source == "transcript",
+                _mention_qualifies_as_association(names),
+            )
+        )
+        return {(row[0], row[1]) for row in rows.all()}
+
+    async def mention_repair_candidates(
+        self, session: AsyncSession, *, video_ids: Sequence[str] | None = None
+    ) -> list[tuple[int, str, str]]:
+        """Segment ids whose transcript mentions may be stale or duplicated (#426).
+
+        - segments with a correction holding positioned mentions (an edit can have
+          left offsets behind);
+        - segments where one entity has two overlapping single-segment mentions;
+        - start and end segments of a cross-segment mention that a single-segment
+          mention of the same entity overlaps there;
+        - the start segment of a cross-segment mention with a corrected middle
+          segment.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active async session.
+        video_ids : Sequence[str] | None, optional
+            Restrict to these videos; ``None`` reads the whole library.
+
+        Returns
+        -------
+        list[tuple[int, str, str]]
+            ``(segment_id, video_id, language_code)``, distinct, grouped by
+            transcript.
+        """
+        a = aliased(EntityMentionDB, name="a")
+        b = aliased(EntityMentionDB, name="b")
+        corrected = (
+            select(
+                EntityMentionDB.segment_id.label("segment_id"),
+                EntityMentionDB.video_id.label("video_id"),
+                EntityMentionDB.language_code.label("language_code"),
+            )
+            .join(
+                TranscriptSegmentDB,
+                TranscriptSegmentDB.id == EntityMentionDB.segment_id,
+            )
+            .where(
+                TranscriptSegmentDB.has_correction.is_(True),
+                EntityMentionDB.mention_source == "transcript",
+                EntityMentionDB.match_start.is_not(None),
+            )
+        )
+        corrected_end = (
+            select(
+                EntityMentionDB.end_segment_id.label("segment_id"),
+                EntityMentionDB.video_id.label("video_id"),
+                EntityMentionDB.language_code.label("language_code"),
+            )
+            .join(
+                TranscriptSegmentDB,
+                TranscriptSegmentDB.id == EntityMentionDB.end_segment_id,
+            )
+            .where(
+                TranscriptSegmentDB.has_correction.is_(True),
+                EntityMentionDB.mention_source == "transcript",
+                EntityMentionDB.match_start.is_not(None),
+            )
+        )
+        overlapping = select(a.segment_id.label("segment_id"), *_transcript_of(a)).join(
+            b,
+            and_(
+                b.entity_id == a.entity_id,
+                b.segment_id == a.segment_id,
+                b.id != a.id,
+                a.end_segment_id.is_(None),
+                b.end_segment_id.is_(None),
+                a.match_start < b.match_end,
+                b.match_start < a.match_end,
+            ),
+        )
+        # a spans segments; b is a single-segment mention of the same entity inside
+        # a's part of its start segment (after match_start) or end segment (before
+        # match_end).
+        in_span_start = select(
+            a.segment_id.label("segment_id"), *_transcript_of(a)
+        ).join(
+            b,
+            and_(
+                b.entity_id == a.entity_id,
+                b.segment_id == a.segment_id,
+                a.end_segment_id.is_not(None),
+                b.end_segment_id.is_(None),
+                b.match_end > a.match_start,
+            ),
+        )
+        in_span_end = select(
+            a.end_segment_id.label("segment_id"), *_transcript_of(a)
+        ).join(
+            b,
+            and_(
+                b.entity_id == a.entity_id,
+                b.segment_id == a.end_segment_id,
+                b.end_segment_id.is_(None),
+                b.match_start < a.match_end,
+            ),
+        )
+        # a spans three or more segments and one of its middle segments is corrected.
+        span_start = aliased(TranscriptSegmentDB, name="span_start")
+        span_end = aliased(TranscriptSegmentDB, name="span_end")
+        middle = aliased(TranscriptSegmentDB, name="span_middle")
+        corrected_middle = (
+            select(a.segment_id.label("segment_id"), *_transcript_of(a))
+            .join(span_start, span_start.id == a.segment_id)
+            .join(span_end, span_end.id == a.end_segment_id)
+            .join(
+                middle,
+                and_(
+                    middle.video_id == span_start.video_id,
+                    middle.language_code == span_start.language_code,
+                    middle.sequence_number > span_start.sequence_number,
+                    middle.sequence_number < span_end.sequence_number,
+                    middle.has_correction.is_(True),
+                ),
+            )
+        )
+        candidates = union(
+            corrected,
+            corrected_end,
+            overlapping,
+            in_span_start,
+            in_span_end,
+            corrected_middle,
+        ).subquery()
+        # Each arm carries its mention's transcript (entity_mentions stores it), so
+        # no join back to the 4M-row segments table is needed: on the production
+        # copy that join was misestimated and spilled past temp_file_limit.
+        stmt = select(
+            candidates.c.segment_id,
+            candidates.c.video_id,
+            candidates.c.language_code,
+        ).where(candidates.c.segment_id.is_not(None))
+        if video_ids is not None:
+            stmt = stmt.where(candidates.c.video_id.in_(list(video_ids)))
+        # The self-joins hash every positioned mention. Measured on a production copy
+        # (375k mentions): with the default 4MB work_mem they spill past the 100MB
+        # temp_file_limit, by a margin that parallel workers only sometimes hide, and
+        # raising work_mem with parallelism on exhausts the container's shared memory.
+        # Serial with 64MB of backend memory runs in about 5s without spilling. SET
+        # LOCAL ends with the transaction; this is an operator-run repair, not a
+        # request path.
+        await session.execute(text("SET LOCAL max_parallel_workers_per_gather = 0"))
+        await session.execute(text("SET LOCAL work_mem = '64MB'"))
+        rows = await session.execute(
+            stmt.order_by(
+                candidates.c.video_id,
+                candidates.c.language_code,
+                candidates.c.segment_id,
+            )
+        )
+        return [
+            (int(row.segment_id), row.video_id, row.language_code) for row in rows.all()
+        ]
+
+    async def spans_crossing_segment(
+        self, session: AsyncSession, *, segment_id: int
+    ) -> list[MentionSpan]:
+        """Cross-segment mentions whose middle runs through ``segment_id`` (#426).
+
+        A name spread over three or more segments starts before and ends after this
+        one; :meth:`transcript_mention_spans` reads only mentions that start or end in
+        a segment, so an edit of a middle segment needs this to be checked too.
+        """
+        start = aliased(TranscriptSegmentDB, name="span_start")
+        end = aliased(TranscriptSegmentDB, name="span_end")
+        middle = aliased(TranscriptSegmentDB, name="span_middle")
+        stmt = (
+            select(*_MENTION_SPAN_COLUMNS)
+            .join(middle, middle.id == segment_id)
+            .join(start, start.id == EntityMentionDB.segment_id)
+            .join(end, end.id == EntityMentionDB.end_segment_id)
+            .where(
+                EntityMentionDB.video_id == middle.video_id,
+                EntityMentionDB.language_code == middle.language_code,
+                EntityMentionDB.mention_source == "transcript",
+                EntityMentionDB.match_start.is_not(None),
+                EntityMentionDB.match_end.is_not(None),
+                start.sequence_number < middle.sequence_number,
+                end.sequence_number > middle.sequence_number,
+            )
+        )
+        return [MentionSpan(*row) for row in (await session.execute(stmt)).all()]
+
+    async def transcript_texts(
+        self, session: AsyncSession, *, video_id: str, language_code: str
+    ) -> list[tuple[int, str]]:
+        """``(segment_id, effective_text)`` of a whole transcript, in order (#426)."""
+        rows = await session.execute(
+            select(
+                TranscriptSegmentDB.id,
+                _effective_segment_text(TranscriptSegmentDB).label("text"),
+            )
+            .where(
+                TranscriptSegmentDB.video_id == video_id,
+                TranscriptSegmentDB.language_code == language_code,
+            )
+            .order_by(TranscriptSegmentDB.sequence_number)
+        )
+        return [(row.id, row.text or "") for row in rows.all()]
+
+    async def segment_texts(
+        self, session: AsyncSession, *, start_segment_id: int, end_segment_id: int
+    ) -> list[tuple[int, str]]:
+        """``(segment_id, effective_text)`` from one segment to another, in order.
+
+        The segments a cross-segment mention spans, in its transcript, so the caller
+        can read the mention across all of them (#426).
+        """
+        start = aliased(TranscriptSegmentDB, name="from_segment")
+        end = aliased(TranscriptSegmentDB, name="to_segment")
+        rows = await session.execute(
+            select(
+                TranscriptSegmentDB.id,
+                _effective_segment_text(TranscriptSegmentDB).label("text"),
+            )
+            .join(start, start.id == start_segment_id)
+            .join(end, end.id == end_segment_id)
+            .where(
+                TranscriptSegmentDB.video_id == start.video_id,
+                TranscriptSegmentDB.language_code == start.language_code,
+                TranscriptSegmentDB.sequence_number >= start.sequence_number,
+                TranscriptSegmentDB.sequence_number <= end.sequence_number,
+            )
+            .order_by(TranscriptSegmentDB.sequence_number)
+        )
+        return [(row.id, row.text or "") for row in rows.all()]
+
+    async def move_mention_offsets(
+        self,
+        session: AsyncSession,
+        moves: Sequence[MentionMove],
+    ) -> int:
+        """Set new offsets on mentions by id (#426).
+
+        ``uq_entity_mentions_transcript`` keys on ``match_start`` and is checked row
+        by row, so moving two mentions of one entity in one segment past each other
+        would clash halfway through. Every moved start is first parked on a unique
+        negative value, then set to its final value. A move whose start did not
+        change (the end side of a cross-segment mention) writes only ``match_end``,
+        so it cannot overwrite a start another edit moved.
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active async session.
+        moves : Sequence[MentionMove]
+            The caller guarantees the final starts collide neither with each other
+            nor with mentions it is not moving.
+
+        Returns
+        -------
+        int
+            Number of mentions moved.
+        """
+        starts = [move for move in moves if move.start_changed]
+        for parked, move in enumerate(starts):
+            await session.execute(
+                update(EntityMentionDB)
+                .where(EntityMentionDB.id == move.id)
+                .values(match_start=-1 - parked)
+            )
+        for move in starts:
+            await session.execute(
+                update(EntityMentionDB)
+                .where(EntityMentionDB.id == move.id)
+                .values(match_start=move.match_start, match_end=move.match_end)
+            )
+        for move in moves:
+            if not move.start_changed:
+                await session.execute(
+                    update(EntityMentionDB)
+                    .where(EntityMentionDB.id == move.id)
+                    .values(match_end=move.match_end)
+                )
+        return len(moves)
+
+    async def relabel_mentions(
+        self, session: AsyncSession, relabels: Sequence[MentionRelabel]
+    ) -> int:
+        """Set what re-pointed mentions read as: text, method, alias (#426).
+
+        Parameters
+        ----------
+        session : AsyncSession
+            Active async session.
+        relabels : Sequence[MentionRelabel]
+            One per mention.
+
+        Returns
+        -------
+        int
+            Number of mentions relabelled.
+        """
+        for relabel in relabels:
+            await session.execute(
+                update(EntityMentionDB)
+                .where(EntityMentionDB.id == relabel.id)
+                .values(
+                    mention_text=relabel.mention_text,
+                    detection_method=relabel.detection_method,
+                    alias_id=relabel.alias_id,
+                )
+            )
+        return len(relabels)
 
     async def entities_with_metadata_mentions_in_videos(
         self,
@@ -1074,10 +1625,7 @@ class EntityMentionRepository(
             )
             .where(
                 EntityMentionDB.entity_id.in_(entity_ids),
-                or_(
-                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
-                    EntityMentionDB.detection_method == "asr_match",
-                ),
+                _mention_counts_toward_totals(visible_names),
             )
             .group_by(EntityMentionDB.entity_id)
             .subquery()

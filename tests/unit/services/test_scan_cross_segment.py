@@ -72,6 +72,8 @@ async def _run(
     )
     repo.update_entity_counters = AsyncMock()
     repo.update_alias_counters = AsyncMock()
+    # #426: no mention recorded by a correction in these transcripts.
+    repo.transcript_mention_spans = AsyncMock(return_value=[])
     svc._mention_repo = repo
 
     session = AsyncMock()

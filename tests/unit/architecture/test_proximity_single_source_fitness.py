@@ -102,6 +102,11 @@ _EXPECTED_PRODUCER_CALL_SITES = {
     "services/entity_mention_scan_service.py": 2,  # per-segment + cross-segment scan
     "services/tag_management.py": 1,  # link a tag to an existing entity's name
     "services/transcript_whitespace_service.py": 1,  # whitespace normalization
+    # #426: a correction (or revert) whose edit removes a mention's own words
+    "services/transcript_correction_service.py": 1,
+    # #426: `entities repair-mentions` removing or moving stale/duplicate mentions
+    # (behavioural test: tests/integration/services/test_mention_repair.py)
+    "services/mention_repair_service.py": 1,
     # Not a library change: `rebuild --video-id/--entity-id` explicitly invalidates
     # the scopes the operator asked for (video branch, entity branch).
     "services/proximity_service.py": 2,
@@ -127,7 +132,7 @@ def test_the_proximity_producers_are_exactly_the_audited_call_sites() -> None:
         "invalidate (and get a behavioral test in test_proximity_producers.py); if you "
         "removed one, proximity can silently go stale. Update the map deliberately."
     )
-    assert sum(_EXPECTED_PRODUCER_CALL_SITES.values()) == 23
+    assert sum(_EXPECTED_PRODUCER_CALL_SITES.values()) == 25
 
 
 def test_the_current_predicate_has_one_home() -> None:

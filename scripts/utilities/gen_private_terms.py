@@ -1,6 +1,8 @@
 """Generate the private-term list used by the pre-commit leak check.
 
-The list is every entity name and alias in the local library. It is written to
+The list is every entity name and alias in the local library, plus the library's
+identifiers: the owner's account identifiers and every video, channel and playlist
+ID, as salted hashes, and the prefix the owner's playlists share. It is written to
 ``.private-terms`` at the repository root, which is **gitignored**: the list is
 itself the sensitive data and must never be committed. For the same reason this
 docstring names no examples from it.
@@ -23,6 +25,15 @@ completeness:
   substring hits "especially" and "association", but matched as a word it does
   not.
 
+Identifiers are hashed with a salt drawn fresh on every run, so the list does not
+hold them in plain text and two generations share no hashes. That still lets anyone
+holding the list test whether a guessed ID is in the library, which is acceptable
+only because the list is never committed. ``PLACEHOLDER_IDENTIFIERS`` are left out,
+each with its reason.
+
+The hashing, the identifier shapes and the acronym rule come from
+``check_private_terms``, so the generator and the checker cannot drift apart.
+
 Usage
 -----
     python scripts/utilities/gen_private_terms.py
@@ -37,25 +48,23 @@ from __future__ import annotations
 import argparse
 import asyncio
 import pathlib
+import secrets
 import sys
 import unicodedata
+from collections import Counter
+from collections.abc import Iterable, Mapping
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import check_private_terms as checker  # noqa: E402
+
 
 def _fold(text: str) -> str:
-    """Strip diacritics (NFKD, drop combining marks) to match check_private_terms.
-
-    The checker matches accent-folded, so an allowlisted term must exclude its
-    accented spellings too: allowlisting ``Peru`` has to drop ``Perú`` from the
-    list, or the checker (which folds ``Perú`` to ``peru``) re-flags it. Folding
-    only strips accents, so distinct entities stay distinct — ``Perú Libre`` folds
-    to ``peru libre``, not ``peru``, and remains guarded.
-    """
-    return "".join(
-        c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)
-    )
+    """The checker's fold, so an exemption excludes every spelling the checker folds
+    together (allowlisting ``Peru`` must drop ``Perú``)."""
+    return checker.fold(text)
 
 
 DEFAULT_DSN = "postgresql+asyncpg://chronovista:chronovista@localhost:5435/chronovista"
@@ -119,6 +128,8 @@ ALLOWLIST = {
 # library entities, so they must not trip the guard. Kept separate from the
 # toolchain ALLOWLIST because the reason is different.
 LANGUAGE_REGION_NAMES = {
+    # "German (Switzerland)" for de-CH, added in the 2026-11-27 whole-tree triage.
+    "Switzerland",
     "Mexico",
     "Spain",
     "Russia",
@@ -148,6 +159,9 @@ LANGUAGE_REGION_NAMES = {
 # identifies a person. Listed separately from ALLOWLIST because the reason is
 # different: these are not this project's subject matter, they are collisions.
 COMMON_WORD_ALIASES = {
+    # A weekday name: it appears in a list of weekdays in the Takeout parser
+    # (2026-11-27 whole-tree triage), and collides with a library entity.
+    "Wednesday",
     # An ASR mis-transcription of a surname, and the near-universal name for a
     # database connection: it fires on every `async with engine.begin() as
     # conn`, measured at 47 occurrences across 10 files.
@@ -249,6 +263,10 @@ COMMON_WORD_ALIASES = {
 FIXTURE_ENTITIES = {
     "Barack Obama",
     "Stephen Colbert",
+    # The archetypal example city, used in five test and factory files, where tests
+    # also rely on its structure (an exclusion for "York City" inside it). Accepted
+    # by the owner in the 2026-11-27 whole-tree triage; the cost is the same as above.
+    "New York City",
 }
 
 QUERY = text(
@@ -258,6 +276,122 @@ QUERY = text(
     SELECT alias_name FROM entity_aliases
     """
 )
+
+# Identifiers that are exempt although they are in the library. Each needs a reason
+# a reviewer can check. Do not extend this to silence a finding: use a placeholder
+# that is not in the library instead.
+PLACEHOLDER_IDENTIFIERS = {
+    # The conventional placeholder video ID, used by countless projects as the
+    # example YouTube link. It is in the library, but it discloses nothing about the
+    # owner, and the constitution (Principle VI) records this collision.
+    "dQw4w9WgXcQ",
+    # Accepted by the owner in the 2026-11-27 whole-tree triage, as public examples
+    # used far outside this project (FR-020). Any of them may be in a library, and
+    # each discloses close to nothing: anyone writing a YouTube example reaches for
+    # them.
+    # The cost: a future commit leaking one of these as library content is not caught.
+    "UCuAXFkgsw1L7xaCfnd5JJOw",  # the channel of the placeholder video above
+    "9bZkp7q19f0",  # the most-viewed-video example used across tutorials
+    "UC_x5XG1OV2P6uZZ5FSM9Ttw",  # Google Developers, the YouTube Data API docs' channel
+    "UCBR8-60-B28hp2BmDPdntcQ",  # the official YouTube channel, an API docs example
+    "fJ9rUzIMcZQ",  # a famous music video used as a generic example
+}
+
+OWNER_QUERY = text(
+    """
+    SELECT user_id AS value FROM app_identities
+    UNION SELECT DISTINCT user_id FROM user_videos
+    UNION SELECT DISTINCT user_id FROM user_language_preferences
+    """
+)
+ID_QUERIES = {
+    "video": text("SELECT video_id AS value FROM videos"),
+    "channel": text("SELECT channel_id AS value FROM channels"),
+    "playlist": text("SELECT playlist_id AS value FROM playlists"),
+}
+SYSTEM_PLAYLISTS = {"LL", "WL", "HL"}
+PREFIX_SHARE = 0.9
+PREFIX_MIN_LENGTH = 8
+
+
+def owner_playlist_prefix(playlist_ids: Iterable[str]) -> str | None:
+    """The longest prefix at least 90% of the YouTube playlist IDs share.
+
+    Returned only when it is at least 8 characters long; shorter prefixes are too
+    generic to identify anyone (every YouTube playlist starts with ``PL``).
+    """
+    ids = [p for p in playlist_ids if p.startswith("PL")]
+    if not ids:
+        return None
+    best: str | None = None
+    for length in range(2, min(len(p) for p in ids) + 1):
+        prefix, count = Counter(p[:length] for p in ids).most_common(1)[0]
+        if count / len(ids) < PREFIX_SHARE:
+            break
+        best = prefix
+    return best if best is not None and len(best) >= PREFIX_MIN_LENGTH else None
+
+
+def drop_acronym_collisions(terms: Iterable[str]) -> list[str]:
+    """Drop a spelling that case-folds to an acronym term but is not one itself.
+
+    An acronym matches only in capitals. A second spelling of the same letters
+    (say a title-cased alias) would match case-insensitively and quietly undo that.
+    """
+    terms = list(terms)
+    acronyms = {t.casefold() for t in terms if checker.is_acronym(t)}
+    return [t for t in terms if checker.is_acronym(t) or t.casefold() not in acronyms]
+
+
+def exempt(term: str, exemptions: Iterable[str]) -> bool:
+    """Whether an exemption set covers ``term``, by the rule ``term`` is matched with.
+
+    An acronym matches only in capitals, so only the same capitals exempt it; an
+    ordinary word (``Cast``) must not exempt a library acronym (``CAST``). Any other
+    term matches case-insensitively and accent-folded, so its exemptions do too.
+    """
+    if checker.is_acronym(term):
+        return _fold(term) in {_fold(e) for e in exemptions}
+    return _fold(term).casefold() in {_fold(e).casefold() for e in exemptions}
+
+
+def prepare_names(terms: Iterable[str]) -> tuple[list[str], list[str]]:
+    """The names to write, and those rejected because they start with ``@``.
+
+    A name starting with ``@`` would read back as a record, so it is left out and
+    reported instead.
+    """
+    terms = list(terms)
+    rejected = [t for t in terms if t.startswith("@")]
+    kept = drop_acronym_collisions(t for t in terms if not t.startswith("@"))
+    return kept, rejected
+
+
+def identifier_records(
+    salt: str,
+    owner_ids: Iterable[str],
+    library_ids: Mapping[str, Iterable[str]],
+) -> tuple[list[str], Counter[str]]:
+    """The ``@id`` lines and a count per class.
+
+    Only identifier-shaped values are kept, because only those can be matched; that
+    also drops placeholder identities such as ``local_user``. Exempt placeholders
+    and system playlists are left out.
+    """
+    records: list[str] = []
+    counts: Counter[str] = Counter()
+    sources = [("owner", owner_ids), *library_ids.items()]
+    for id_class, values in sources:
+        for value in sorted(set(values)):
+            if value in PLACEHOLDER_IDENTIFIERS or value in SYSTEM_PLAYLISTS:
+                continue
+            shaped = checker.identifier_shape(value)
+            if shaped is None:
+                counts[f"{id_class} (unrecognised shape, not covered)"] += 1
+                continue
+            records.append(f"@id {id_class} {checker.hash_identifier(salt, shaped)}")
+            counts[id_class] += 1
+    return records, counts
 
 
 async def main(dsn: str) -> int:
@@ -278,14 +412,13 @@ async def main(dsn: str) -> int:
             # Accent-fold as well as casefold, so allowlisting a term excludes its
             # accented spellings (the checker folds, so an un-folded exclusion lets
             # "Perú" slip back in even when "Peru" is allowlisted).
-            blocked = {_fold(a).casefold() for a in excluded}
             terms = sorted(
                 {
                     r.term.strip()
                     for r in rows
                     if r.term
                     and r.term.strip()
-                    and _fold(r.term.strip()).casefold() not in blocked
+                    and not exempt(r.term.strip(), excluded)
                 }
             )
     finally:
@@ -294,8 +427,26 @@ async def main(dsn: str) -> int:
     # A one-character term would match a word anywhere; nothing in the library
     # is that short, but the guard costs nothing and the failure would be loud.
     terms = [t for t in terms if len(t) > 1]
+    terms, rejected = prepare_names(terms)
 
-    OUTPUT.write_text("\n".join(terms) + "\n", encoding="utf-8")
+    salt = secrets.token_hex(32)
+    engine = create_async_engine(dsn)
+    try:
+        async with engine.connect() as conn:
+            owner_ids = [r.value for r in await conn.execute(OWNER_QUERY) if r.value]
+            library_ids = {
+                id_class: [r.value for r in await conn.execute(query) if r.value]
+                for id_class, query in ID_QUERIES.items()
+            }
+    finally:
+        await engine.dispose()
+    id_lines, id_counts = identifier_records(salt, owner_ids, library_ids)
+    prefix = owner_playlist_prefix(library_ids["playlist"])
+
+    records = [f"@salt {salt}", *id_lines]
+    if prefix is not None:
+        records.append(f"@prefix playlist {prefix}")
+    OUTPUT.write_text("\n".join([*terms, *records]) + "\n", encoding="utf-8")
     # Report every exclusion set, not just the first. The previous message
     # counted ALLOWLIST alone, which understated how much is unguarded — the
     # opposite of what a tool like this should round towards.
@@ -305,6 +456,19 @@ async def main(dsn: str) -> int:
         f"{len(LANGUAGE_REGION_NAMES)} language-region labels, "
         f"{len(COMMON_WORD_ALIASES)} word collisions, "
         f"{len(FIXTURE_ENTITIES)} accepted fixture entities"
+        + (f", {len(rejected)} names starting with '@'" if rejected else "")
+    )
+    # Counts and coverage only; never a value.
+    print(
+        "  identifiers: " + ", ".join(f"{n} {k}" for k, n in sorted(id_counts.items()))
+    )
+    print(
+        "  owner playlist prefix: "
+        + (
+            "recorded"
+            if prefix is not None
+            else "none (no 8+ character prefix shared by 90%)"
+        )
     )
     return 0
 

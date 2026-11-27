@@ -292,9 +292,16 @@ pre-commit:
 # exits 0 — the exact false green this target exists to prevent.
 #
 # `quality` now runs the same three static checks as CI, so the steps below
-# duplicate it on purpose: this target must stay readable as a literal
+# duplicate it on purpose: steps 1 to 6 must stay readable as a literal
 # transcription of the workflow, not a call into something that could drift.
+#
+# Step 0 is the one addition, a local-only check that needs gitignored data: the
+# whole-tree privacy scan reads .private-terms, which CI does not have. It runs
+# first, so a leak never waits behind a slow test suite. It fails open, with a
+# notice, when the term list is missing.
 pre-push:
+	@echo "==> [0/6] private-terms --tree (local only: CI has no term list)"
+	$(POETRY_RUN) python scripts/utilities/check_private_terms.py --tree
 	@echo "==> [1/6] ruff"
 	$(POETRY_RUN) ruff check $(SRC_DIR)/$(PACKAGE_NAME)/ $(TEST_DIR)/
 	@echo "==> [2/6] black --check"
@@ -318,7 +325,7 @@ pre-push:
 	@docker exec chronovista-postgres-dev psql -U dev_user -d chronovista_dev -c "DROP DATABASE IF EXISTS chronovista_alembic_check;" >/dev/null 2>&1 || true
 	NO_COLOR=1 $(POETRY_RUN) pytest $(TEST_DIR)/integration/ -q -o "addopts=-v --strict-markers --strict-config --timeout=120 --timeout-method=thread" -m "not docker and not slow and not auth and not db"
 	@echo ""
-	@echo "✅ pre-push passed — all four CI jobs reproduced locally"
+	@echo "✅ pre-push passed — all four CI jobs reproduced locally, plus the privacy scan"
 
 # Development targets
 run:

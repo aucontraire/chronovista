@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from chronovista import __version__
+from chronovista.cli.audit_commands import audit_invariants
 from chronovista.cli.auth_commands import auth_app
 from chronovista.cli.candidate_commands import candidate_app
 from chronovista.cli.category_commands import category_app
@@ -37,6 +38,9 @@ app = typer.Typer(
     help="Personal YouTube data analytics tool",
     no_args_is_help=True,
     rich_markup_mode="rich",
+    # A traceback's local variables can hold library identifiers (an audit run's
+    # keys, a row being written); never print them.
+    pretty_exceptions_show_locals=False,
 )
 
 # Add subcommands
@@ -92,6 +96,8 @@ app.add_typer(topic_app, name="topics", help="📂 Topic exploration and analyti
 app.add_typer(
     transcript_app, name="transcript", help="📝 Query transcript segments by timestamp"
 )
+
+app.command("audit-invariants")(audit_invariants)
 
 
 @app.command()

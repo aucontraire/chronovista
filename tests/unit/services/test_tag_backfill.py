@@ -964,20 +964,20 @@ class TestRunRecount:
         # Mock alias count query results
         alias_row_1 = MagicMock()
         alias_row_1.canonical_tag_id = ct_id_1
-        alias_row_1.new_alias_count = 3
+        alias_row_1.alias_count = 3
 
         alias_row_2 = MagicMock()
         alias_row_2.canonical_tag_id = ct_id_2
-        alias_row_2.new_alias_count = 2
+        alias_row_2.alias_count = 2
 
         # Mock video count query results
         video_row_1 = MagicMock()
         video_row_1.canonical_tag_id = ct_id_1
-        video_row_1.new_video_count = 10
+        video_row_1.video_count = 10
 
         video_row_2 = MagicMock()
         video_row_2.canonical_tag_id = ct_id_2
-        video_row_2.new_video_count = 5
+        video_row_2.video_count = 5
 
         # Current counts match new counts exactly
         current_row_1 = MagicMock()
@@ -1036,12 +1036,12 @@ class TestRunRecount:
         # New alias count = 5, but current = 3 (stale)
         alias_row = MagicMock()
         alias_row.canonical_tag_id = ct_id_1
-        alias_row.new_alias_count = 5
+        alias_row.alias_count = 5
 
         # New video count = 15, but current = 10 (stale)
         video_row = MagicMock()
         video_row.canonical_tag_id = ct_id_1
-        video_row.new_video_count = 15
+        video_row.video_count = 15
 
         current_row = MagicMock()
         current_row.id = ct_id_1
@@ -1094,11 +1094,11 @@ class TestRunRecount:
         # Stale alias count
         alias_row = MagicMock()
         alias_row.canonical_tag_id = ct_id_1
-        alias_row.new_alias_count = 7
+        alias_row.alias_count = 7
 
         video_row = MagicMock()
         video_row.canonical_tag_id = ct_id_1
-        video_row.new_video_count = 20
+        video_row.video_count = 20
 
         current_row = MagicMock()
         current_row.id = ct_id_1
@@ -1176,11 +1176,11 @@ class TestRunRecount:
 
         alias_row = MagicMock()
         alias_row.canonical_tag_id = ct_id_1
-        alias_row.new_alias_count = 3
+        alias_row.alias_count = 3
 
         video_row = MagicMock()
         video_row.canonical_tag_id = ct_id_1
-        video_row.new_video_count = 10
+        video_row.video_count = 10
 
         current_row = MagicMock()
         current_row.id = ct_id_1

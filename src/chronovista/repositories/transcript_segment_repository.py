@@ -23,8 +23,11 @@ from sqlalchemy import (
     literal,
     or_,
     select,
+    tuple_,
 )
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from chronovista.db.models import Channel as ChannelDB
 from chronovista.db.models import TranscriptSegment as TranscriptSegmentDB
@@ -1191,6 +1194,107 @@ class TranscriptSegmentRepository(
             .limit(1)
         )
         return result.scalar_one_or_none() is not None
+
+    # -- Invariant audit (register T1, T7). Each returns ``video_id/language_code``
+    # keys of the transcripts that break the rule; nothing here writes.
+
+    @staticmethod
+    def _corrected_segment_count() -> ColumnElement[int]:
+        return (
+            select(func.count())
+            .where(
+                TranscriptSegmentDB.video_id == TranscriptDB.video_id,
+                TranscriptSegmentDB.language_code == TranscriptDB.language_code,
+                TranscriptSegmentDB.has_correction.is_(True),
+            )
+            .scalar_subquery()
+        )
+
+    async def correction_flag_mismatches(self, session: AsyncSession) -> set[str]:
+        """T1: transcripts whose ``has_corrections`` disagrees with their segments."""
+        result = await session.execute(
+            select(TranscriptDB.video_id, TranscriptDB.language_code).where(
+                TranscriptDB.has_corrections.is_distinct_from(
+                    self._corrected_segment_count() > 0
+                )
+            )
+        )
+        return {f"{video_id}/{language}" for video_id, language in result.all()}
+
+    async def correction_count_mismatches(self, session: AsyncSession) -> set[str]:
+        """T1: transcripts whose ``correction_count`` is not the number of segments
+        currently carrying a correction ("active corrections", Feature 033 FR-014a;
+        re-correcting a segment adds a version, not a count).
+        """
+        result = await session.execute(
+            select(TranscriptDB.video_id, TranscriptDB.language_code).where(
+                TranscriptDB.correction_count != self._corrected_segment_count()
+            )
+        )
+        return {f"{video_id}/{language}" for video_id, language in result.all()}
+
+    async def stale_full_texts(self, session: AsyncSession) -> set[str]:
+        """T7: corrected transcripts whose stored full text is not their segments'.
+
+        The expected text is the full-text rebuild's own rule
+        (``BatchCorrectionService.rebuild_text``): each segment's correction if it is
+        corrected, otherwise its text, a missing value read as empty, joined with one
+        space. Segments are in sequence order. Only transcripts with a corrected
+        segment are in scope: uncorrected text is built at download by another rule.
+        """
+        effective = func.coalesce(
+            case(
+                (
+                    TranscriptSegmentDB.has_correction.is_(True),
+                    TranscriptSegmentDB.corrected_text,
+                ),
+                else_=TranscriptSegmentDB.text,
+            ),
+            "",
+        )
+        corrected = aliased(TranscriptSegmentDB)
+        rebuilt = (
+            select(
+                TranscriptSegmentDB.video_id,
+                TranscriptSegmentDB.language_code,
+                func.string_agg(
+                    effective,
+                    aggregate_order_by(
+                        literal(" "), TranscriptSegmentDB.sequence_number
+                    ),
+                ).label("text"),
+            )
+            # Only transcripts with a corrected segment are in scope. The planner turns
+            # this into a hash join; it still reads every segment once (about 3 s on
+            # production), which is acceptable for an audit.
+            .where(
+                tuple_(
+                    TranscriptSegmentDB.video_id, TranscriptSegmentDB.language_code
+                ).in_(
+                    select(corrected.video_id, corrected.language_code)
+                    .where(corrected.has_correction.is_(True))
+                    .distinct()
+                )
+            )
+            .group_by(TranscriptSegmentDB.video_id, TranscriptSegmentDB.language_code)
+            .subquery()
+        )
+        result = await session.execute(
+            select(TranscriptDB.video_id, TranscriptDB.language_code)
+            .join(
+                rebuilt,
+                and_(
+                    rebuilt.c.video_id == TranscriptDB.video_id,
+                    rebuilt.c.language_code == TranscriptDB.language_code,
+                ),
+            )
+            .where(
+                func.coalesce(TranscriptDB.transcript_text, "").is_distinct_from(
+                    rebuilt.c.text
+                )
+            )
+        )
+        return {f"{video_id}/{language}" for video_id, language in result.all()}
 
     async def list_segments_page(
         self,

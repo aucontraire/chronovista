@@ -49,7 +49,11 @@ make pre-push
 
 This mirrors `.github/workflows/test.yml` step for step: ruff, black, mypy
 `--strict`, backend unit tests, frontend type check and tests, and backend
-integration tests. A green run here is the closest thing to a guarantee that CI
+integration tests. It adds one local-only step first: the privacy scan
+(`scripts/utilities/check_private_terms.py --tree`). It checks every tracked file
+for names and identifiers from your local library, which CI cannot do, because
+the term list (`.private-terms`) is gitignored. Regenerate the list after adding
+data with `python scripts/utilities/gen_private_terms.py`. A green run here is the closest thing to a guarantee that CI
 will agree. It needs the development database running (`make dev-db-up`) and
 fails rather than skipping if it is not — a skipped job cannot tell you anything.
 

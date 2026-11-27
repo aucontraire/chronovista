@@ -154,6 +154,7 @@ nav:
       - Grow your entity graph: user-guide/candidate-queue.md
       - Review candidates in the browser: user-guide/candidate-review.md
       - Find novel relationships: user-guide/relationship-candidates.md
+      - Check your data before and after a change: user-guide/data-audit.md
       - CLI workflows: user-guide/cli-overview.md
       - Run the REST API: user-guide/rest-api.md
       - Deploy with Docker: guides/migrating-to-docker.md
@@ -169,6 +170,7 @@ nav:
       - Glossary: glossary.md
   - Explanation:
       - Architecture overview: architecture/overview.md
+      - System invariants: architecture/invariants.md
       - System design: architecture/system-design.md
       - Data model: architecture/data-model.md
       - The knowledge model: architecture/knowledge-model.md

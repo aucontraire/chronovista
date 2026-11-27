@@ -4,10 +4,11 @@ Database configuration and connection management.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -16,6 +17,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from chronovista.config.settings import settings
+
+logger = logging.getLogger(__name__)
 from chronovista.db.models import Base
 
 # Metadata for migrations
@@ -28,6 +31,7 @@ class DatabaseManager:
     def __init__(self) -> None:
         self._engine: AsyncEngine | None = None
         self._session_factory: async_sessionmaker[AsyncSession] | None = None
+        self._read_only_engine: AsyncEngine | None = None
 
     @staticmethod
     def _pool_kwargs() -> dict[str, int]:
@@ -70,9 +74,48 @@ class DatabaseManager:
             )
         return self._session_factory
 
+    def _get_read_only_engine(self) -> AsyncEngine:
+        """A separate engine whose transactions the server starts read-only.
+
+        ``default_transaction_read_only`` is a connection setting, so it covers
+        every transaction on these connections, including one a caller opens after an
+        unexpected ``commit()``. It lives on its own pool so it never reaches the
+        read-write connections. It is a default, not a permission: deliberate SQL
+        (``SET TRANSACTION READ WRITE``) can override it, which is why the session
+        resets every setting before the connection returns to the pool.
+        """
+        if self._read_only_engine is None:
+            self._read_only_engine = create_async_engine(
+                settings.effective_database_url,
+                # Read-only callers handle library keys; never log their SQL or
+                # put bound parameters in an exception message.
+                echo=False,
+                hide_parameters=True,
+                future=True,
+                pool_pre_ping=True,
+                pool_recycle=3600,
+                connect_args={
+                    "server_settings": {
+                        "statement_timeout": "60000",
+                        "default_transaction_read_only": "on",
+                    }
+                },
+                **self._pool_kwargs(),
+            )
+        return self._read_only_engine
+
     @asynccontextmanager
-    async def session(self, echo: bool | None = None) -> AsyncIterator[AsyncSession]:
+    async def session(
+        self, echo: bool | None = None, *, read_only: bool = False
+    ) -> AsyncIterator[AsyncSession]:
         """Session scope that commits on success and rolls back on failure.
+
+        ``read_only=True`` opens the session on connections whose transactions the
+        database starts read-only, and always rolls back, so an accidental write or a
+        stray ``commit()`` cannot change data. Only deliberate SQL could override it,
+        and every setting is reset before the connection is reused. Read-only
+        commands use it instead of relying on their own dry-run conventions (``echo``
+        is ignored with it).
 
         The single supported way to open a session. Because it is a context
         manager, leaving the block early — ``return``, ``break``, an exception
@@ -93,6 +136,32 @@ class DatabaseManager:
         client disconnecting mid-write — with no rollback at all.
         """
         temp_engine: AsyncEngine | None = None
+
+        if read_only:
+            read_only_factory = async_sessionmaker(
+                bind=self._get_read_only_engine(),
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+            async with read_only_factory() as session:
+                try:
+                    yield session
+                finally:
+                    await session.rollback()
+                    # Undo any SET the caller ran, so it never reaches the next user.
+                    # Committed, because rolling back would undo the RESET too; the
+                    # transaction holds nothing else. If the connection is broken,
+                    # drop it instead, without hiding the caller's own error.
+                    try:
+                        await session.execute(text("RESET ALL"))
+                        await session.commit()
+                    except Exception:  # noqa: BLE001 — cleanup must not mask an error
+                        logger.warning(
+                            "read-only session reset failed; connection dropped"
+                        )
+                        await session.invalidate()
+                    await session.close()
+            return
 
         if echo is not None:
             # A distinct engine, because `echo` is fixed at engine construction.
@@ -135,6 +204,9 @@ class DatabaseManager:
             await self._engine.dispose()
             self._engine = None
         self._session_factory = None
+        if self._read_only_engine is not None:
+            await self._read_only_engine.dispose()
+            self._read_only_engine = None
 
     async def create_tables(self) -> None:
         """Create database tables."""

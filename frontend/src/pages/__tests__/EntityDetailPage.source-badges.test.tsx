@@ -145,7 +145,7 @@ function createDescriptionVideo(overrides: Partial<EntityVideoResult> = {}): Ent
     first_mention_time: null,
     upload_date: "2024-07-15T00:00:00+00:00",
     description_context:
-      "...featuring journalist Karen Sparck who has covered Israeli policies in the West Bank for over a decade...",
+      "...featuring journalist Karen Sparck who has covered regional policy for over a decade...",
     ...overrides,
   };
 }

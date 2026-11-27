@@ -1796,7 +1796,7 @@ class TestCreateEntityEndpoint:
         existing_row.id = existing_id
         existing_row.canonical_name = "Alan Turing"
         existing_row.entity_type = "person"
-        existing_row.description = "NSA whistleblower"
+        existing_row.description = "Placeholder description"
 
         mock_session = _make_session_with_existing_entity(existing_row)
 
@@ -1831,7 +1831,7 @@ class TestCreateEntityEndpoint:
         existing_row.id = existing_id
         existing_row.canonical_name = "Alan Turing"
         existing_row.entity_type = "person"
-        existing_row.description = "NSA whistleblower"
+        existing_row.description = "Placeholder description"
 
         mock_session = _make_session_with_existing_entity(existing_row)
 

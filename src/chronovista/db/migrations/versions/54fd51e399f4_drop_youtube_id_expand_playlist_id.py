@@ -12,7 +12,7 @@ This migration consolidates playlist_id and youtube_id into a single column:
 
 Context:
 - playlist_id is now the canonical identifier supporting:
-  - YouTube IDs (PL prefix, 30-50 chars) like "PLdU2XMVb99xMxwMeeLWDqmyW8GFqpvgVC"
+  - YouTube IDs (PL prefix, 30-50 chars) like "PLabcdefghijSyntheticPlaylistTail0"
   - Internal IDs (int_ prefix, 36 chars) like "int_5d41402abc4b2a76b9719d911017c592"
   - System playlists (LL, WL, HL)
 - youtube_id column is now redundant and removed
@@ -173,4 +173,6 @@ def downgrade() -> None:
     logger.info("Index ix_playlists_youtube_id re-created")
 
     logger.info("Phase 2 complete: youtube_id infrastructure restored")
-    logger.info("Rollback completed (WARNING: youtube_id column empty, requires manual data migration)")
+    logger.info(
+        "Rollback completed (WARNING: youtube_id column empty, requires manual data migration)"
+    )

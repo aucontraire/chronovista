@@ -24,11 +24,12 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from chronovista.repositories.user_video_repository import UserVideoRepository
+from tests.factories.app_identity_factory import OWNER_CHANNEL_ID
 
 pytestmark = pytest.mark.asyncio
 
 FROM_ID = "takeout_user"
-TO_ID = "UCzYTmeK-6v3DcJ6hzRh1q9w"
+TO_ID = OWNER_CHANNEL_ID
 
 
 def _mock_session() -> MagicMock:

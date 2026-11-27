@@ -157,7 +157,7 @@ class ChannelTopicTestData:
     VALID_CHANNEL_IDS = [
         "UCuAXFkgsw1L7xaCfnd5JJOw",  # Rick Astley
         "UC_x5XG1OV2P6uZZ5FSM9Ttw",  # Google Developers
-        "UCMtFAi84ehTSYSE9XoHefig",  # Late Show
+        "UCtestchannel00000000003",  # Late Show
         "UCblfuW_4rakIf2h6aqANefA",  # Veritasium
     ]
 

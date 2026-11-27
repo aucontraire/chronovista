@@ -14,6 +14,7 @@ from chronovista.models.app_identity import (
     AppIdentitySource,
     AppIdentityUpdate,
 )
+from tests.factories.app_identity_factory import OWNER_CHANNEL_ID
 
 
 class TestAppIdentitySource:
@@ -45,7 +46,7 @@ class TestLocalUserConstant:
 class TestHierarchy:
     def test_create(self) -> None:
         m = AppIdentityCreate(
-            user_id="UCzYTmeK-6v3DcJ6hzRh1q9w", source=AppIdentitySource.CHANNEL
+            user_id=OWNER_CHANNEL_ID, source=AppIdentitySource.CHANNEL
         )
         assert m.source is AppIdentitySource.CHANNEL
 
@@ -58,7 +59,7 @@ class TestHierarchy:
         now = datetime.now(UTC)
         m = AppIdentity(
             id=1,
-            user_id="UCzYTmeK-6v3DcJ6hzRh1q9w",
+            user_id=OWNER_CHANNEL_ID,
             source=AppIdentitySource.CHANNEL,
             created_at=now,
             updated_at=now,

@@ -16,7 +16,10 @@ from chronovista.models.app_identity import (
     AppIdentityUpdate,
 )
 from chronovista.repositories.app_identity_repository import AppIdentityRepository
-from tests.factories.app_identity_factory import create_app_identity_create
+from tests.factories.app_identity_factory import (
+    OWNER_CHANNEL_ID,
+    create_app_identity_create,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -61,7 +64,7 @@ class TestSetIdentity:
         created = await repo.set_identity(
             session,
             obj_in=create_app_identity_create(
-                user_id="UCzYTmeK-6v3DcJ6hzRh1q9w",
+                user_id=OWNER_CHANNEL_ID,
                 source=AppIdentitySource.CHANNEL,
             ),
         )
@@ -69,7 +72,7 @@ class TestSetIdentity:
         session.add.assert_called_once()
         session.flush.assert_awaited_once()
         assert created.id == 1
-        assert created.user_id == "UCzYTmeK-6v3DcJ6hzRh1q9w"
+        assert created.user_id == OWNER_CHANNEL_ID
         # source stored as the enum's string value
         assert created.source == "channel"
 
@@ -112,10 +115,10 @@ class TestUpdateIdentity:
         await repo.update_identity(
             session,
             obj_in=AppIdentityUpdate(
-                user_id="UCzYTmeK-6v3DcJ6hzRh1q9w", source=AppIdentitySource.CHANNEL
+                user_id=OWNER_CHANNEL_ID, source=AppIdentitySource.CHANNEL
             ),
         )
-        assert existing.user_id == "UCzYTmeK-6v3DcJ6hzRh1q9w"
+        assert existing.user_id == OWNER_CHANNEL_ID
         # enum mapped to its string value on the ORM object
         assert existing.source == "channel"
         session.flush.assert_awaited_once()

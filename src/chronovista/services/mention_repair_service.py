@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import re
 import uuid
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,6 +62,15 @@ class MentionRepairReport(BaseModel):
     dry_run: bool = True
 
 
+class MentionRepairFindings(BaseModel):
+    """The rows a repair would treat, by kind (register M1 and M2)."""
+
+    stale: set[uuid.UUID] = set()
+    """Mentions that do not read as their text, whether they would move or go."""
+    duplicates: set[uuid.UUID] = set()
+    """Mentions that would be removed as a second record of one occurrence."""
+
+
 class _TranscriptPlan(BaseModel):
     removals: list[uuid.UUID] = []
     moves: list[MentionMove] = []
@@ -70,6 +79,8 @@ class _TranscriptPlan(BaseModel):
     stale_moved: int = 0
     stale_removed: int = 0
     duplicates_removed: int = 0
+    stale_ids: set[uuid.UUID] = set()
+    duplicate_ids: set[uuid.UUID] = set()
 
 
 class MentionRepairService:
@@ -94,23 +105,12 @@ class MentionRepairService:
         at the same time. A dry run writes nothing; the caller rolls it back.
         """
         report = MentionRepairReport(dry_run=dry_run)
-        transcripts: dict[tuple[str, str], None] = {}
-        for (
-            _segment_id,
-            video_id,
-            language_code,
-        ) in await self._mentions.mention_repair_candidates(
-            session, video_ids=video_ids
-        ):
-            transcripts[(video_id, language_code)] = None
-
         changed_entities: set[uuid.UUID] = set()
         pending: set[uuid.UUID] = set()
         uncommitted = 0
         proximity = EntityPairProximityRepository()
-        for video_id, language_code in transcripts:
+        async for video_id, language_code, plan in self._plans(session, video_ids):
             report.transcripts_examined += 1
-            plan = await self._plan_transcript(session, video_id, language_code)
             report.stale_moved += plan.stale_moved
             report.stale_removed += plan.stale_removed
             report.duplicates_removed += plan.duplicates_removed
@@ -140,6 +140,38 @@ class MentionRepairService:
         if not dry_run:
             logger.info("Mention repair applied: %s", report.model_dump())
         return report
+
+    async def findings(
+        self, session: AsyncSession, *, video_ids: Sequence[str] | None = None
+    ) -> MentionRepairFindings:
+        """The stale and duplicate mentions a repair would treat; writes nothing.
+
+        The same plans :meth:`repair` applies, so the audit (register M1, M2) and the
+        repair cannot disagree. It sees the repair's candidate transcripts only.
+        """
+        found = MentionRepairFindings()
+        async for _video_id, _language_code, plan in self._plans(session, video_ids):
+            found.stale |= plan.stale_ids
+            found.duplicates |= plan.duplicate_ids
+        return found
+
+    async def _plans(
+        self, session: AsyncSession, video_ids: Sequence[str] | None
+    ) -> AsyncIterator[tuple[str, str, _TranscriptPlan]]:
+        """Each candidate transcript, in order, with its repair plan."""
+        transcripts: dict[tuple[str, str], None] = {}
+        for (
+            _segment_id,
+            video_id,
+            language_code,
+        ) in await self._mentions.mention_repair_candidates(
+            session, video_ids=video_ids
+        ):
+            transcripts[(video_id, language_code)] = None
+        for video_id, language_code in transcripts:
+            yield video_id, language_code, await self._plan_transcript(
+                session, video_id, language_code
+            )
 
     async def _commit(self, session: AsyncSession, entities: set[uuid.UUID]) -> None:
         entity_ids = sorted(entities, key=str)
@@ -184,6 +216,7 @@ class MentionRepairService:
                 placed[span.id] = located
             else:
                 stale.append(span)
+                plan.stale_ids.add(span.id)
         # 1. Stale rows: move to the nearest free occurrence of the entity, else remove.
         current: dict[uuid.UUID, MentionSpan] = {span.id: span for span in spans}
         for span in stale:
@@ -255,6 +288,7 @@ class MentionRepairService:
                     plan.stale_removed += 1
                 else:
                     plan.duplicates_removed += 1
+                    plan.duplicate_ids.add(mention_id)
                 continue
             kept.append(mention_id)
         return plan

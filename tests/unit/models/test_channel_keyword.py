@@ -51,12 +51,12 @@ class TestChannelKeywordBase:
     def test_create_channel_keyword_base_minimal(self):
         """Test creating ChannelKeywordBase with minimal required fields."""
         keyword = ChannelKeywordBaseFactory.build(
-            channel_id="UC-lHJZR3Gqxm24_Vd_AJ5Yw",
+            channel_id="UCtestchannel00000000001",
             keyword="technology",
             keyword_order=None,
         )
 
-        assert keyword.channel_id == "UC-lHJZR3Gqxm24_Vd_AJ5Yw"
+        assert keyword.channel_id == "UCtestchannel00000000001"
         assert keyword.keyword == "technology"
         assert keyword.keyword_order is None
 
@@ -148,10 +148,10 @@ class TestChannelKeywordCreate:
     def test_create_valid_channel_keyword_create(self):
         """Test creating valid ChannelKeywordCreate with keyword arguments."""
         keyword = ChannelKeywordCreateFactory.build(
-            channel_id="UCBJycsmduvYEL83R_U4JriQ", keyword="review", keyword_order=3
+            channel_id="UCtestchannel00000000002", keyword="review", keyword_order=3
         )
 
-        assert keyword.channel_id == "UCBJycsmduvYEL83R_U4JriQ"
+        assert keyword.channel_id == "UCtestchannel00000000002"
         assert keyword.keyword == "review"
         assert keyword.keyword_order == 3
 
@@ -213,14 +213,14 @@ class TestChannelKeyword:
         keyword = cast(
             ChannelKeyword,
             ChannelKeywordFactory.build(
-                channel_id="UCsXVk37bltHxD1rDPwtNM8Q",
+                channel_id="UCtestchannel00000000004",
                 keyword="programming",
                 keyword_order=2,
                 created_at=now,
             ),
         )
 
-        assert keyword.channel_id == "UCsXVk37bltHxD1rDPwtNM8Q"
+        assert keyword.channel_id == "UCtestchannel00000000004"
         assert keyword.keyword == "programming"
         assert keyword.keyword_order == 2
         assert keyword.created_at == now
@@ -597,9 +597,9 @@ class TestChannelKeywordModelInteractions:
         # Test various valid YouTube channel ID formats (all UC prefix, 24 chars)
         valid_channel_ids = [
             "UCuAXFkgsw1L7xaCfnd5JJOw",  # Standard UC format
-            "UC-lHJZR3Gqxm24_Vd_AJ5Yw",  # UC with hyphen
-            "UCBJycsmduvYEL83R_U4JriQ",  # Another UC format
-            "UCsXVk37bltHxD1rDPwtNM8Q",  # UC format variant
+            "UCtestchannel00000000001",  # UC with hyphen
+            "UCtestchannel00000000002",  # Another UC format
+            "UCtestchannel00000000004",  # UC format variant
         ]
 
         for channel_id in valid_channel_ids:

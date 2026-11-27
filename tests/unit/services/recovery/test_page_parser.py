@@ -146,7 +146,7 @@ VALID_PAGE_META_WITH_EOW_DESCRIPTION = """
 <link itemprop="url" href="http://www.youtube.com/user/CookingWithSarah">
 </head><body>
 <div id="watch-description-text" class="">
-<p id="eow-description" class="">FULL RECIPE: <a href="/web/20190604182457/https://www.youtube.com/redirect?q=https%3A%2F%2Fexample.com%2Fpasta">https://example.com/pasta</a><br><br>Learn how to make the perfect homemade pasta from scratch using just three simple ingredients. This step-by-step tutorial covers everything from mixing the dough to cutting your own fettuccine.<br>We also show you how to make a classic marinara sauce to pair with your fresh pasta.<br><br>TIMESTAMPS <a href="/web/20190604182457/https://www.youtube.com/watch?v=IFAcqaNzNSc">https://www.youtube.com/watch?v=IFAcq...</a> <br><br>Check out <a href="/web/20190604182457/http://example.com">http://example.com</a><br><br>Subscribe to our channel! <a href="http://www.youtube.com/subscription_center?add_user=CookingWithSarah">http://www.youtube.com/subscription_c...</a><br><br>Follow us on Twitter <a href="/web/20190604182457/http://twitter.com/CookWithSarah">http://twitter.com/CookWithSarah</a><br>Follow us on Instagram <a href="/web/20190604182457/http://instagram.com/cookingwithsarah">http://instagram.com/cookingwithsarah</a><br><br>Cooking With Sarah is a home cooking channel dedicated to simple, delicious recipes anyone can make. We were the first cooking channel to reach 500 million YouTube views.</p>
+<p id="eow-description" class="">FULL RECIPE: <a href="/web/20190604182457/https://www.youtube.com/redirect?q=https%3A%2F%2Fexample.com%2Fpasta">https://example.com/pasta</a><br><br>Learn how to make the perfect homemade pasta from scratch using just three simple ingredients. This step-by-step tutorial covers everything from mixing the dough to cutting your own fettuccine.<br>We also show you how to make a classic marinara sauce to pair with your fresh pasta.<br><br>TIMESTAMPS <a href="/web/20190604182457/https://www.youtube.com/watch?v=testvid0001">https://www.youtube.com/watch?v=testv...</a> <br><br>Check out <a href="/web/20190604182457/http://example.com">http://example.com</a><br><br>Subscribe to our channel! <a href="http://www.youtube.com/subscription_center?add_user=CookingWithSarah">http://www.youtube.com/subscription_c...</a><br><br>Follow us on Twitter <a href="/web/20190604182457/http://twitter.com/CookWithSarah">http://twitter.com/CookWithSarah</a><br>Follow us on Instagram <a href="/web/20190604182457/http://instagram.com/cookingwithsarah">http://instagram.com/cookingwithsarah</a><br><br>Cooking With Sarah is a home cooking channel dedicated to simple, delicious recipes anyone can make. We were the first cooking channel to reach 500 million YouTube views.</p>
 </div>
 </body></html>
 """
@@ -672,7 +672,7 @@ class TestMetaTagExtraction:
 
         html = """
 <html><head>
-<meta itemprop="channelId" content="UCpwvZwUam-URkxB7g4USKpg">
+<meta itemprop="channelId" content="UCtestchannel00000000005">
 <meta property="og:title" content="Test Video">
 </head><body></body></html>
 """
@@ -686,7 +686,7 @@ class TestMetaTagExtraction:
             result = await parser.extract_metadata(snapshot)
 
         assert result is not None
-        assert result.channel_id == "UCpwvZwUam-URkxB7g4USKpg"
+        assert result.channel_id == "UCtestchannel00000000005"
 
     async def test_channel_id_itemprop_takes_priority_over_link_href(
         self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter
@@ -697,7 +697,7 @@ class TestMetaTagExtraction:
 
         html = """
 <html><head>
-<meta itemprop="channelId" content="UCpwvZwUam-URkxB7g4USKpg">
+<meta itemprop="channelId" content="UCtestchannel00000000005">
 <link itemprop="url" href="https://youtube.com/channel/UCDifferentChannelId1234">
 <meta property="og:title" content="Test Video">
 </head><body></body></html>
@@ -713,7 +713,7 @@ class TestMetaTagExtraction:
 
         assert result is not None
         # itemprop="channelId" should win
-        assert result.channel_id == "UCpwvZwUam-URkxB7g4USKpg"
+        assert result.channel_id == "UCtestchannel00000000005"
 
     async def test_extracts_channel_id_from_data_channel_external_id(
         self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter
@@ -726,7 +726,7 @@ class TestMetaTagExtraction:
 <html><head>
 <meta property="og:title" content="Test Video">
 </head><body>
-<button class="yt-uix-subscription-button" data-channel-external-id="UC8-Th83bH_thdKZDJCrn88g">Subscribe</button>
+<button class="yt-uix-subscription-button" data-channel-external-id="UCtestchannel00000000006">Subscribe</button>
 </body></html>
 """
 
@@ -739,7 +739,7 @@ class TestMetaTagExtraction:
             result = await parser.extract_metadata(snapshot)
 
         assert result is not None
-        assert result.channel_id == "UC8-Th83bH_thdKZDJCrn88g"
+        assert result.channel_id == "UCtestchannel00000000006"
 
     async def test_extracts_channel_id_from_anchor_tag(
         self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter
@@ -753,7 +753,7 @@ class TestMetaTagExtraction:
 <meta property="og:title" content="Test Video">
 </head><body>
 <div class="yt-user-info">
-  <a href="/web/20190509183907/https://www.youtube.com/channel/UC8-Th83bH_thdKZDJCrn88g">The Tonight Show</a>
+  <a href="/web/20190509183907/https://www.youtube.com/channel/UCtestchannel00000000006">The Tonight Show</a>
 </div>
 </body></html>
 """
@@ -767,7 +767,7 @@ class TestMetaTagExtraction:
             result = await parser.extract_metadata(snapshot)
 
         assert result is not None
-        assert result.channel_id == "UC8-Th83bH_thdKZDJCrn88g"
+        assert result.channel_id == "UCtestchannel00000000006"
 
     async def test_channel_id_itemprop_takes_priority_over_data_attribute(
         self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter
@@ -778,10 +778,10 @@ class TestMetaTagExtraction:
 
         html = """
 <html><head>
-<meta itemprop="channelId" content="UCpwvZwUam-URkxB7g4USKpg">
+<meta itemprop="channelId" content="UCtestchannel00000000005">
 <meta property="og:title" content="Test Video">
 </head><body>
-<button data-channel-external-id="UC8-Th83bH_thdKZDJCrn88g">Subscribe</button>
+<button data-channel-external-id="UCtestchannel00000000006">Subscribe</button>
 </body></html>
 """
 
@@ -794,7 +794,7 @@ class TestMetaTagExtraction:
             result = await parser.extract_metadata(snapshot)
 
         assert result is not None
-        assert result.channel_id == "UCpwvZwUam-URkxB7g4USKpg"
+        assert result.channel_id == "UCtestchannel00000000005"
 
     async def test_data_channel_external_id_ignores_invalid_format(
         self, cdx_snapshot_factory: Any, rate_limiter_mock: RateLimiter

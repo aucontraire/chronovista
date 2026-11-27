@@ -28,10 +28,11 @@ from chronovista.services.identity_service import (
     PreImageError,
     UnrecognizedIdentityConfigError,
 )
+from tests.factories.app_identity_factory import OWNER_CHANNEL_ID
 
 pytestmark = pytest.mark.asyncio
 
-CHANNEL = "UCzYTmeK-6v3DcJ6hzRh1q9w"
+CHANNEL = OWNER_CHANNEL_ID
 
 
 def _repo() -> MagicMock:

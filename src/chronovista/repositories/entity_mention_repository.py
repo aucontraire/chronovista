@@ -429,6 +429,48 @@ def _available_video_id_subquery() -> Select[Any]:
     )
 
 
+def _entity_counter_recount(entity_ids: list[uuid.UUID] | None) -> Subquery:
+    """Each entity's stored-counter values recomputed from its mentions.
+
+    The one place the stored ``mention_count`` / ``video_count`` rule is built, used
+    by :meth:`EntityMentionRepository.update_entity_counters` to write it and by the
+    invariant audit (register C3) to compare it. ``None`` covers every entity.
+    """
+    # Visible names (canonical + non-ASR aliases) from the ONE shared builder,
+    # so the stored counters are recomputed under the exact rule the counts,
+    # the filter, and the page matches use (the #262 single-definition rule).
+    visible_names = _visible_names_subquery(entity_ids)
+
+    # The stored totals count DETECTED mentions, not associations. A mention
+    # counts when its text folds to a visible name OR it is a recovered
+    # ``asr_match`` (the garble, admitted by provenance — FR-014). Unlike
+    # association membership this does NOT exempt ``manual`` via a method arm:
+    # a hand-linked row counts only when its text is a visible name (its
+    # canonical name), never a non-visible manual row — preserving the pre-ASR
+    # counting rule so a manual-only entity keeps ``mention_count == 0`` on the
+    # per-video surfaces that read it. LEFT OUTER JOIN so a recovered garble,
+    # which matches no visible name, still counts via the method arm below.
+    stmt = (
+        select(
+            EntityMentionDB.entity_id,
+            func.count(distinct(EntityMentionDB.id)).label("mention_count"),
+            func.count(distinct(EntityMentionDB.video_id)).label("video_count"),
+        )
+        .outerjoin(
+            visible_names,
+            and_(
+                EntityMentionDB.entity_id == visible_names.c.entity_id,
+                _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
+            ),
+        )
+        .where(_mention_counts_toward_totals(visible_names))
+        .group_by(EntityMentionDB.entity_id)
+    )
+    if entity_ids is not None:
+        stmt = stmt.where(EntityMentionDB.entity_id.in_(entity_ids))
+    return stmt.subquery()
+
+
 class EntityMentionRepository(
     BaseSQLAlchemyRepository[
         EntityMentionDB,
@@ -1596,40 +1638,7 @@ class EntityMentionRepository(
         if not entity_ids:
             return
 
-        # Visible names (canonical + non-ASR aliases) from the ONE shared builder,
-        # so the stored counters are recomputed under the exact rule the counts,
-        # the filter, and the page matches use (the #262 single-definition rule).
-        visible_names = _visible_names_subquery(list(entity_ids))
-
-        # The stored totals count DETECTED mentions, not associations. A mention
-        # counts when its text folds to a visible name OR it is a recovered
-        # ``asr_match`` (the garble, admitted by provenance — FR-014). Unlike
-        # association membership this does NOT exempt ``manual`` via a method arm:
-        # a hand-linked row counts only when its text is a visible name (its
-        # canonical name), never a non-visible manual row — preserving the pre-ASR
-        # counting rule so a manual-only entity keeps ``mention_count == 0`` on the
-        # per-video surfaces that read it. LEFT OUTER JOIN so a recovered garble,
-        # which matches no visible name, still counts via the method arm below.
-        agg_subq = (
-            select(
-                EntityMentionDB.entity_id,
-                func.count(distinct(EntityMentionDB.id)).label("mention_count"),
-                func.count(distinct(EntityMentionDB.video_id)).label("video_count"),
-            )
-            .outerjoin(
-                visible_names,
-                and_(
-                    EntityMentionDB.entity_id == visible_names.c.entity_id,
-                    _folded(EntityMentionDB.mention_text) == visible_names.c.name_lower,
-                ),
-            )
-            .where(
-                EntityMentionDB.entity_id.in_(entity_ids),
-                _mention_counts_toward_totals(visible_names),
-            )
-            .group_by(EntityMentionDB.entity_id)
-            .subquery()
-        )
+        agg_subq = _entity_counter_recount(list(entity_ids))
 
         # Update entities that have visible mentions
         stmt = (
@@ -1653,6 +1662,80 @@ class EntityMentionRepository(
             .values(mention_count=0, video_count=0)
         )
         await session.execute(zero_stmt)
+
+    # -- Invariant audit (register C3, M9). Each returns the keys of the rows that
+    # break the rule; nothing here writes.
+
+    async def entity_counter_drift(self, session: AsyncSession) -> set[str]:
+        """C3: entities whose stored counters differ from a recount by the one rule."""
+        recount = _entity_counter_recount(None)
+        result = await session.execute(
+            select(NamedEntityDB.id)
+            .outerjoin(recount, recount.c.entity_id == NamedEntityDB.id)
+            .where(
+                or_(
+                    NamedEntityDB.mention_count
+                    != func.coalesce(recount.c.mention_count, 0),
+                    NamedEntityDB.video_count
+                    != func.coalesce(recount.c.video_count, 0),
+                )
+            )
+        )
+        return {str(entity_id) for entity_id in result.scalars().all()}
+
+    async def mention_shape_violations(self, session: AsyncSession) -> set[str]:
+        """M9: mentions whose row shape breaks the mention model's rules.
+
+        A manual mention has no segment, position or end segment; an alias link only
+        appears on a rule match; a mention's video and language are its start and end
+        segments'. Not checked here, deliberately: the model also forbids a confidence
+        or language on a manual mention, a transcript mention without a segment, and an
+        end segment without a spanning method. The confidence rule has historical
+        violations (an observation); the others have none in production.
+        """
+        start = aliased(TranscriptSegmentDB)
+        end = aliased(TranscriptSegmentDB)
+        result = await session.execute(
+            select(EntityMentionDB.id)
+            .outerjoin(start, start.id == EntityMentionDB.segment_id)
+            .outerjoin(end, end.id == EntityMentionDB.end_segment_id)
+            .where(
+                or_(
+                    and_(
+                        EntityMentionDB.detection_method == "manual",
+                        or_(
+                            EntityMentionDB.segment_id.is_not(None),
+                            EntityMentionDB.match_start.is_not(None),
+                            EntityMentionDB.match_end.is_not(None),
+                            EntityMentionDB.end_segment_id.is_not(None),
+                        ),
+                    ),
+                    and_(
+                        EntityMentionDB.alias_id.is_not(None),
+                        EntityMentionDB.detection_method != "rule_match",
+                    ),
+                    and_(
+                        start.id.is_not(None),
+                        or_(
+                            start.video_id != EntityMentionDB.video_id,
+                            start.language_code.is_distinct_from(
+                                EntityMentionDB.language_code
+                            ),
+                        ),
+                    ),
+                    and_(
+                        end.id.is_not(None),
+                        or_(
+                            end.video_id != EntityMentionDB.video_id,
+                            end.language_code.is_distinct_from(
+                                EntityMentionDB.language_code
+                            ),
+                        ),
+                    ),
+                )
+            )
+        )
+        return {str(mention_id) for mention_id in result.scalars().all()}
 
     async def update_alias_counters(
         self,

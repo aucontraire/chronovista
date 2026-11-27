@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.133.0] - 2026-11-27
+
+chronovista can now check its own data. A new read-only command, `chronovista
+audit-invariants`, verifies the rules the application depends on, the ones written down
+in the new [system invariants](https://aucontraire.github.io/chronovista/architecture/invariants/)
+register, and is the before-and-after gate for any bulk change to data. The privacy hook
+now also catches the library's identifiers, not only its names, and checks the whole
+tree before every push.
+
+### Added
+
+- **`chronovista audit-invariants`** runs ten read-only checks and reports each as holding,
+  broken in N places, or unable to run. The checks cover:
+  - transcript correction metadata, and the stored full text of corrected transcripts;
+  - tag alias placement, merge state and tag counters;
+  - entity counters;
+  - mention row shape;
+  - stale and duplicate mentions, from the mention repair's own analysis.
+
+  Each check uses the same rule as the code it watches, so the two cannot disagree. The
+  database itself refuses writes for the whole run, and every check reads one snapshot.
+  - `--save` records a baseline.
+  - `--compare` fails on any violation that is new, even when a total fell.
+  - `--check` runs one check, or every check of a register entry.
+  - `--list` shows the rules without running them.
+
+  Exit codes: 0 clean, 1 broken (or something new), 75 a check could not run, 2 a usage
+  error. See [Check your data before and after a change](https://aucontraire.github.io/chronovista/user-guide/data-audit/).
+- **The system invariants register** (`docs/architecture/invariants.md`) lists every rule
+  the project depends on. For each it gives the status, what enforces it, the evidence that
+  it matters, and its audit check. A test keeps the register and the checks in step.
+- **`check_private_terms.py --tree`** scans every tracked file. `make pre-push` now runs it
+  first, as a local-only step, because CI has no term list.
+
+### Changed
+
+- **The privacy hook also catches identifiers.**
+  - **What it covers:** the owner's account identifiers, and every video, channel and
+    playlist ID in the library, matched by salted hash, so the term list does not hold them
+    in plain text. It also covers the prefix the owner's playlists share.
+  - **Glued IDs:** an ID inside a longer token (a filename, a percent-encoded link) is
+    caught too.
+  - **Reports:** findings name the kind of identifier, never its value.
+- **Acronyms match only in capitals.** A short all-capitals name no longer fires on the
+  ordinary word it spells in lower case. That alone cleared most of the hook's false
+  findings on ordinary prose.
+- **Read-only sessions.** `db_manager.session(read_only=True)` opens a session the database
+  keeps read-only, always rolls back, and resets its settings before the connection is
+  reused.
+
+### Fixed
+
+- **The privacy hook no longer skips added lines that begin with `++`** (a diff shows them
+  like a file header), and no longer crashes on non-UTF-8 text.
+- **A malformed term list is reported** instead of silently losing coverage: a missing or
+  duplicated salt, an unknown class, or a byte-order mark.
+- **The owner's own identifiers, and other library identifiers and names, are removed** from
+  tracked tests, fixtures and docs. They are replaced with neutral placeholders, or, for a
+  few widely used public example IDs and generic names, exempted with a stated reason. The
+  whole-tree scan now reports no findings.
+
 ## [0.132.0] - 2026-11-24
 
 Entity mentions in transcripts now stay on the words they record through corrections and
@@ -3840,7 +3901,7 @@ Consolidated playlist identification into a single `playlist_id` field that serv
 **Key Changes:**
 
 - **Single Source of Truth**: `playlist_id` now supports all playlist types:
-  - YouTube IDs (PL prefix, 30-50 chars) e.g., `PLdU2XMVb99xMxwMeeLWDqmyW8GFqpvgVC`
+  - YouTube IDs (PL prefix, 30-50 chars) e.g., `PLabcdefghijSyntheticPlaylistTail0`
   - Internal IDs (int_ prefix, 36 chars) e.g., `int_5d41402abc4b2a76b9719d911017c592`
   - System playlists (LL, WL, HL) for Liked, Watch Later, History
 - **Simplified Architecture**: Removed redundant columns:

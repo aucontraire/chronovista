@@ -94,7 +94,7 @@ def is_internal_playlist_id(playlist_id: Any) -> bool:
     --------
     >>> is_internal_playlist_id("INT_f7abe60f1234567890abcdef12345678")
     True
-    >>> is_internal_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+    >>> is_internal_playlist_id("PLabcdefghijSyntheticTailValue0yZK")
     False
     >>> is_internal_playlist_id("")
     False
@@ -123,7 +123,7 @@ def is_youtube_playlist_id(playlist_id: Any) -> bool:
 
     Examples
     --------
-    >>> is_youtube_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+    >>> is_youtube_playlist_id("PLabcdefghijSyntheticTailValue0yZK")
     True
     >>> is_youtube_playlist_id("LL")
     True
@@ -167,7 +167,7 @@ def is_system_playlist_id(playlist_id: Any) -> bool:
     True
     >>> is_system_playlist_id("HL")
     True
-    >>> is_system_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+    >>> is_system_playlist_id("PLabcdefghijSyntheticTailValue0yZK")
     False
     """
     if not isinstance(playlist_id, str):
@@ -207,8 +207,8 @@ def validate_youtube_id_format(youtube_id: str) -> str:
 
     Examples
     --------
-    >>> validate_youtube_id_format("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
-    'PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK'
+    >>> validate_youtube_id_format("PLabcdefghijSyntheticTailValue0yZK")
+    'PLabcdefghijSyntheticTailValue0yZK'
     >>> validate_youtube_id_format("LL")
     'LL'
     >>> validate_youtube_id_format("WL")
@@ -579,7 +579,7 @@ if __name__ == "__main__":
     # Test playlist ID creation (YouTube PL format)
     try:
         # Valid YouTube playlist IDs
-        playlist1 = validate_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+        playlist1 = validate_playlist_id("PLabcdefghijSyntheticTailValue0yZK")
         playlist2 = create_test_playlist_id("music")
 
         # Valid internal playlist IDs

@@ -395,7 +395,9 @@ class FixedSessionDbManager:
         self._session = session
 
     @asynccontextmanager
-    async def session(self, echo: bool | None = None) -> AsyncIterator[AsyncSession]:
+    async def session(
+        self, echo: bool | None = None, *, read_only: bool = False
+    ) -> AsyncIterator[AsyncSession]:
         yield self._session
 
 

@@ -331,7 +331,7 @@ class TestPlaylistMembershipSeederTransformations:
         self, seeder: PlaylistMembershipSeeder
     ) -> None:
         """Test playlist ID returns youtube_id when available."""
-        youtube_id = "PLdU2XMVb99xMxwMeeLWDqmyW8GFqpvgVC"
+        youtube_id = "PLabcdefghijSyntheticPlaylistTail0"
         playlist = create_takeout_playlist(
             name="Test Playlist",
             file_path=Path("/test/playlist.csv"),

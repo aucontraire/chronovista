@@ -373,7 +373,7 @@ class TestMultilangSpanish:
 
     def test_acute_stripped_tilde_preserved(self, svc: TagNormalizationService) -> None:
         """Acute accent (Tier 1) is stripped, tilde (Tier 2) preserved, casefolded."""
-        assert svc.normalize("España") == "españa"
+        assert svc.normalize("Mañana") == "mañana"
 
 
 class TestMultilangPortuguese:

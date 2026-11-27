@@ -40,7 +40,7 @@ class TestValidatePlaylistId:
     def test_valid_playlist_ids(self):
         """Test valid playlist ID formats."""
         valid_ids = [
-            "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",  # Real YouTube playlist ID
+            "PLabcdefghijSyntheticTailValue0yZK",  # Real YouTube playlist ID
             "PLtest_123456_music_xxxxxxxxxx",  # Test format
             "PL" + "x" * 32,  # Minimum valid length (34 chars)
             "PL" + "a" * 28,  # 30 chars (minimum)
@@ -78,22 +78,22 @@ class TestValidatePlaylistId:
             match='PlaylistId must start with "int_", "PL", or be a system ID',
         ):
             validate_playlist_id(
-                "UCdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK"
+                "UCabcdefghijSyntheticTailValue0yZK"
             )  # Channel ID format
 
         with pytest.raises(
             ValueError,
             match='PlaylistId must start with "int_", "PL", or be a system ID',
         ):
-            validate_playlist_id("XLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")  # Wrong prefix
+            validate_playlist_id("XLabcdefghijSyntheticTailValue0yZK")  # Wrong prefix
 
     def test_invalid_playlist_id_characters(self):
         """Test playlist ID validation with invalid characters."""
         with pytest.raises(ValueError, match="PlaylistId contains invalid characters"):
-            validate_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5y@K")  # Contains @
+            validate_playlist_id("PLabcdefghijSyntheticTailValue0y@K")  # Contains @
 
         with pytest.raises(ValueError, match="PlaylistId contains invalid characters"):
-            validate_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5y K")  # Contains space
+            validate_playlist_id("PLabcdefghijSyntheticTailValue0y K")  # Contains space
 
 
 class TestValidateChannelId:
@@ -668,7 +668,7 @@ class TestPydanticIntegration:
 
         # Valid data should work
         valid_data = {
-            "playlist_id": "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",
+            "playlist_id": "PLabcdefghijSyntheticTailValue0yZK",
             "channel_id": "UCuAXFkgsw1L7xaCfnd5JJOw",
             "video_id": "dQw4w9WgXcQ",
             "user_id": "test_user",
@@ -711,7 +711,7 @@ class TestInternalPlaylistIdHelpers:
 
     def test_is_internal_playlist_id_false_for_pl_prefix(self):
         """Test is_internal_playlist_id returns False for PL prefix."""
-        assert not is_internal_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+        assert not is_internal_playlist_id("PLabcdefghijSyntheticTailValue0yZK")
         assert not is_internal_playlist_id("PLtest_123456_music_xxxxxxxxxx")
 
     def test_is_internal_playlist_id_false_for_invalid(self):
@@ -723,7 +723,7 @@ class TestInternalPlaylistIdHelpers:
 
     def test_is_youtube_playlist_id_true_for_pl_prefix(self):
         """Test is_youtube_playlist_id returns True for PL prefix."""
-        assert is_youtube_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+        assert is_youtube_playlist_id("PLabcdefghijSyntheticTailValue0yZK")
         assert is_youtube_playlist_id("PLtest_123456_music_xxxxxxxxxx")
 
     def test_is_youtube_playlist_id_false_for_int_prefix(self):
@@ -742,7 +742,7 @@ class TestInternalPlaylistIdHelpers:
         """Test validate_youtube_id_format accepts valid PL IDs."""
         # Valid PL IDs (30-50 chars)
         valid_ids = [
-            "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK",  # 34 chars
+            "PLabcdefghijSyntheticTailValue0yZK",  # 34 chars
             "PL" + "a" * 28,  # 30 chars (minimum)
             "PL" + "Z" * 48,  # 50 chars (maximum)
             "PLtest_123-ABC_xyz-012_padding",  # With hyphens and underscores (30 chars)
@@ -787,7 +787,7 @@ class TestInternalPlaylistIdHelpers:
 
     def test_validate_playlist_id_accepts_pl_prefix(self):
         """Test PlaylistId validator accepts PL prefix (30-50 chars)."""
-        pl_id = "PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK"
+        pl_id = "PLabcdefghijSyntheticTailValue0yZK"
         result = validate_playlist_id(pl_id)
         assert result == pl_id
         assert 30 <= len(result) <= 50
@@ -902,7 +902,7 @@ class TestSystemPlaylistIdValidation:
 
     def test_is_youtube_playlist_id_true_for_pl_prefix(self):
         """Test is_youtube_playlist_id returns True for regular PL prefix."""
-        assert is_youtube_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+        assert is_youtube_playlist_id("PLabcdefghijSyntheticTailValue0yZK")
         assert is_youtube_playlist_id("PLtest_123456_music_xxxxxxxxxx")
 
     def test_is_youtube_playlist_id_false_for_lowercase_system_ids(self):
@@ -925,7 +925,7 @@ class TestSystemPlaylistIdValidation:
 
     def test_is_system_playlist_id_false_for_pl_prefix(self):
         """Test is_system_playlist_id returns False for regular PL prefix playlists."""
-        assert not is_system_playlist_id("PLdU2XMVb99xOK9Ch9k0X9kWJwGQ3P5yZK")
+        assert not is_system_playlist_id("PLabcdefghijSyntheticTailValue0yZK")
         assert not is_system_playlist_id("PLtest_123456_music_xxxxxxxxxx")
 
     def test_is_system_playlist_id_false_for_int_prefix(self):

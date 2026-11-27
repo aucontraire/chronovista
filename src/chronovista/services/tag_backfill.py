@@ -36,6 +36,10 @@ from uuid_utils import uuid7
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
 from chronovista.db.models import TagAlias as TagAliasDB
 from chronovista.db.models import VideoTag as VideoTagDB
+from chronovista.repositories.canonical_tag_repository import (
+    tag_alias_count_query,
+    tag_video_count_query,
+)
 from chronovista.repositories.video_tag_repository import VideoTagRepository
 from chronovista.services.tag_normalization import TagNormalizationService
 
@@ -997,27 +1001,15 @@ class TagBackfillService:
         await self._check_tables_exist(session)
 
         # Step 2: Compute new alias_count for all canonical tags
-        alias_query = select(
-            TagAliasDB.canonical_tag_id,
-            func.count().label("new_alias_count"),
-        ).group_by(TagAliasDB.canonical_tag_id)
-        alias_rows = (await session.execute(alias_query)).all()
+        alias_rows = (await session.execute(tag_alias_count_query())).all()
         new_alias_counts: dict[uuid.UUID, int] = {
-            row.canonical_tag_id: row.new_alias_count for row in alias_rows
+            row.canonical_tag_id: row.alias_count for row in alias_rows
         }
 
         # Step 3: Compute new video_count for all canonical tags
-        video_query = (
-            select(
-                TagAliasDB.canonical_tag_id,
-                func.count(distinct(VideoTagDB.video_id)).label("new_video_count"),
-            )
-            .join(VideoTagDB, VideoTagDB.tag == TagAliasDB.raw_form)
-            .group_by(TagAliasDB.canonical_tag_id)
-        )
-        video_rows = (await session.execute(video_query)).all()
+        video_rows = (await session.execute(tag_video_count_query())).all()
         new_video_counts: dict[uuid.UUID, int] = {
-            row.canonical_tag_id: row.new_video_count for row in video_rows
+            row.canonical_tag_id: row.video_count for row in video_rows
         }
 
         # Step 4: Fetch current counts from canonical_tags

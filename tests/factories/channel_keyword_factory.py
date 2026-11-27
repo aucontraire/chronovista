@@ -75,7 +75,7 @@ class ChannelKeywordSearchFiltersFactory(factory.Factory[ChannelKeywordSearchFil
         model = ChannelKeywordSearchFilters
 
     channel_ids: Any = factory.LazyFunction(
-        lambda: ["UCuAXFkgsw1L7xaCfnd5JJOw", "UC-lHJZR3Gqxm24_Vd_AJ5Yw"]
+        lambda: ["UCuAXFkgsw1L7xaCfnd5JJOw", "UCtestchannel00000000001"]
     )
     keywords: Any = factory.LazyFunction(lambda: ["gaming", "technology", "tutorial"])
     keyword_pattern: Any = Faker("word")
@@ -221,9 +221,9 @@ class ChannelKeywordTestData:
 
     VALID_CHANNEL_IDS = [
         "UCuAXFkgsw1L7xaCfnd5JJOw",
-        "UC-lHJZR3Gqxm24_Vd_AJ5Yw",
-        "UCBJycsmduvYEL83R_U4JriQ",
-        "UCsXVk37bltHxD1rDPwtNM8Q",
+        "UCtestchannel00000000001",
+        "UCtestchannel00000000002",
+        "UCtestchannel00000000004",
     ]
 
     VALID_KEYWORDS = [

@@ -203,7 +203,7 @@ class TestTagCommands:
     ) -> None:
         """Test tags by video command with dash-prefixed video ID."""
         # This tests the fix for video IDs starting with '-'
-        result = runner.invoke(tag_app, ["by-video", "--id", "-2kc5xfeQEs"])
+        result = runner.invoke(tag_app, ["by-video", "--id", "-testvid004"])
 
         assert result.exit_code == 0
         mock_asyncio.assert_called_once()
@@ -511,7 +511,7 @@ class TestTagCommandsEdgeCases:
             "dQw4w9WgXcQ",  # Standard 11-char
             "9bZkp7q19f0",  # Another standard
             "shortid",  # Short
-            "-2kc5xfeQEs",  # Dash prefix (requires --id)
+            "-testvid004",  # Dash prefix (requires --id)
         ]
 
         for video_id in video_ids:

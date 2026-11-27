@@ -133,9 +133,9 @@ interface EntitySearchResult {
 /** An active entity that is not yet linked to the test video. */
 const ACTIVE_RESULT: EntitySearchResult = {
   entity_id: "ent-search-001",
-  canonical_name: "MIT Media Lab",
+  canonical_name: "Quux Research Lab",
   entity_type: "organization",
-  description: "Research laboratory at MIT",
+  description: "A placeholder research laboratory",
   status: "active",
   matched_alias: null,
   is_linked: false,
@@ -1007,7 +1007,7 @@ describe("EntityMentionsPanel", () => {
 
         renderPanel();
 
-        expect(screen.getByText("MIT Media Lab")).toBeInTheDocument();
+        expect(screen.getByText("Quux Research Lab")).toBeInTheDocument();
       });
 
       it("displays the entity type label alongside each result name", () => {
@@ -1032,7 +1032,7 @@ describe("EntityMentionsPanel", () => {
 
         renderPanel();
 
-        expect(screen.getByText("MIT Media Lab")).toBeInTheDocument();
+        expect(screen.getByText("Quux Research Lab")).toBeInTheDocument();
         // MANUALLY_LINKED_RESULT may already appear as an existing chip — getAllByText handles duplicates.
         expect(screen.getAllByText(/ada lovelace/i).length).toBeGreaterThan(0);
         expect(screen.getByText("Bell Telephone")).toBeInTheDocument();
@@ -1166,7 +1166,7 @@ describe("EntityMentionsPanel", () => {
 
         const user = userEvent.setup();
         const resultButton = screen.getByRole("button", {
-          name: /mit media lab/i,
+          name: /quux research lab/i,
         });
         await user.click(resultButton);
 
@@ -1350,7 +1350,7 @@ describe("EntityMentionsPanel", () => {
         const input = screen.getByRole("searchbox");
         fireEvent.change(input, { target: { value: "MI" } });
 
-        expect(screen.getByText("MIT Media Lab")).toBeInTheDocument();
+        expect(screen.getByText("Quux Research Lab")).toBeInTheDocument();
       });
     });
 
@@ -1378,7 +1378,7 @@ describe("EntityMentionsPanel", () => {
         renderPanel();
 
         expect(
-          screen.getByRole("button", { name: /mit media lab/i })
+          screen.getByRole("button", { name: /quux research lab/i })
         ).toBeInTheDocument();
       });
 
@@ -1392,7 +1392,7 @@ describe("EntityMentionsPanel", () => {
         });
 
         renderPanel();
-        expect(screen.getByText("MIT Media Lab")).toBeInTheDocument();
+        expect(screen.getByText("Quux Research Lab")).toBeInTheDocument();
 
         // Phase 2: input cleared — hook now returns idle (isBelowMinChars=true).
         (useEntitySearch as Mock).mockReturnValue({
@@ -1406,7 +1406,7 @@ describe("EntityMentionsPanel", () => {
         await user.clear(input);
 
         await waitFor(() => {
-          expect(screen.queryByText("MIT Media Lab")).not.toBeInTheDocument();
+          expect(screen.queryByText("Quux Research Lab")).not.toBeInTheDocument();
         });
       });
     });

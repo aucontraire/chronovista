@@ -114,7 +114,7 @@ chronovista tags stats
 
 # View all tags for a specific video
 chronovista tags by-video --id "dQw4w9WgXcQ"
-chronovista tags by-video --id "-2kc5xfeQEs"  # Video ID starting with -
+chronovista tags by-video --id "-testvid004"  # Video ID starting with -
 ```
 
 ### Tag Normalization
@@ -273,6 +273,29 @@ occurrence, then recomputes the affected counters and marks their proximity for
 recompute. It works one transcript at a time and commits as it goes, so it can run while
 the app is in use; if it is interrupted, run it again to finish. Running it again after it
 completes changes nothing.
+
+**Checking that the library's data obeys its rules:** `chronovista audit-invariants`
+runs read-only checks, one per rule in the [system invariants](../architecture/invariants.md)
+register, and reports each as holding, broken in N places, or unable to run. Save a run
+before a bulk change and compare after it; the comparison fails on anything new:
+
+```bash
+chronovista audit-invariants --save backups/audit-before.json
+# ... the change ...
+chronovista audit-invariants --compare backups/audit-before.json
+```
+
+| Option | Meaning |
+|---|---|
+| `--check ID` | Run one check, or every check of a register entry (repeatable) |
+| `--list` | List the checks and their rules; runs nothing |
+| `--save PATH` | Save this run as a baseline (refused inside the repository without `--force`) |
+| `--compare PATH` | Compare with a saved baseline; fail on anything new |
+| `--sample N` | New keys to show per check when comparing (default 5) |
+| `--show-keys` | Also show keys built from video IDs |
+
+Exit codes and how to read the result: see
+[Check your data before and after a change](data-audit.md#read-the-result).
 
 **Checking that a change to mention data lost nothing that counted:** a repair, a
 `scan --full` or a batch correction can pass its own checks and still leave an entity

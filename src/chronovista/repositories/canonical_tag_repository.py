@@ -12,7 +12,7 @@ from typing import Any
 
 from sqlalchemy import case, desc, distinct, exists, func, or_, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.sql import Select
 
 from chronovista.db.models import CanonicalTag as CanonicalTagDB
@@ -22,6 +22,31 @@ from chronovista.db.models import Video as VideoDB
 from chronovista.db.models import VideoTag
 from chronovista.models.canonical_tag import CanonicalTagCreate, CanonicalTagUpdate
 from chronovista.repositories.base import BaseSQLAlchemyRepository
+
+
+def tag_alias_count_query() -> Select[tuple[uuid.UUID, int]]:
+    """Each canonical tag's alias count, from its ``tag_aliases`` rows.
+
+    The one home of the tag-counter rule, shared by the operator recount
+    (``TagBackfillService.run_recount``) and the invariant audit (register G3).
+    """
+    return select(
+        TagAliasDB.canonical_tag_id, func.count().label("alias_count")
+    ).group_by(TagAliasDB.canonical_tag_id)
+
+
+def tag_video_count_query() -> Select[tuple[uuid.UUID, int]]:
+    """Each canonical tag's video count: distinct videos whose tag is one of its
+    aliases' raw forms (an exact match, the same join every tag surface uses).
+    """
+    return (
+        select(
+            TagAliasDB.canonical_tag_id,
+            func.count(distinct(VideoTag.video_id)).label("video_count"),
+        )
+        .join(VideoTag, VideoTag.tag == TagAliasDB.raw_form)
+        .group_by(TagAliasDB.canonical_tag_id)
+    )
 
 
 class CanonicalTagRepository(
@@ -624,3 +649,78 @@ class CanonicalTagRepository(
             subqueries.append(sq)
 
         return subqueries
+
+    # -- Invariant audit (register G1, G2, G3). Each returns the keys of the rows
+    # that break the rule; nothing here writes.
+
+    async def alias_placement_violations(self, session: AsyncSession) -> set[str]:
+        """G1: aliases on a merged tag, or on an active tag with another normalized form.
+
+        Aliases on a deprecated tag are allowed: deprecation keeps them by design.
+        """
+        result = await session.execute(
+            select(TagAliasDB.id)
+            .join(CanonicalTagDB, CanonicalTagDB.id == TagAliasDB.canonical_tag_id)
+            .where(
+                or_(
+                    CanonicalTagDB.status == "merged",
+                    (CanonicalTagDB.status == "active")
+                    & (TagAliasDB.normalized_form != CanonicalTagDB.normalized_form),
+                )
+            )
+        )
+        return {str(alias_id) for alias_id in result.scalars().all()}
+
+    async def merge_state_violations(self, session: AsyncSession) -> set[str]:
+        """G2: merged tags that point nowhere, at themselves, keep an entity link or own
+        aliases; and entities linked to more than one active tag (``entity:<id>``).
+        """
+        target = aliased(CanonicalTagDB)
+        bad_merges = await session.execute(
+            select(CanonicalTagDB.id)
+            .outerjoin(target, target.id == CanonicalTagDB.merged_into_id)
+            .where(
+                CanonicalTagDB.status == "merged",
+                or_(
+                    target.id.is_(None),
+                    CanonicalTagDB.merged_into_id == CanonicalTagDB.id,
+                    CanonicalTagDB.entity_id.is_not(None),
+                    exists().where(TagAliasDB.canonical_tag_id == CanonicalTagDB.id),
+                ),
+            )
+        )
+        shared_entities = await session.execute(
+            select(CanonicalTagDB.entity_id)
+            .where(
+                CanonicalTagDB.status == "active",
+                CanonicalTagDB.entity_id.is_not(None),
+            )
+            .group_by(CanonicalTagDB.entity_id)
+            .having(func.count() > 1)
+        )
+        return {str(tag_id) for tag_id in bad_merges.scalars().all()} | {
+            f"entity:{entity_id}" for entity_id in shared_entities.scalars().all()
+        }
+
+    async def tag_counter_drift(self, session: AsyncSession) -> set[str]:
+        """G3: active tags whose stored alias or video count differs from a recount.
+
+        A merged tag's counts are deliberately frozen, so only active tags count.
+        """
+        aliases = tag_alias_count_query().subquery()
+        videos = tag_video_count_query().subquery()
+        result = await session.execute(
+            select(CanonicalTagDB.id)
+            .outerjoin(aliases, aliases.c.canonical_tag_id == CanonicalTagDB.id)
+            .outerjoin(videos, videos.c.canonical_tag_id == CanonicalTagDB.id)
+            .where(
+                CanonicalTagDB.status == "active",
+                or_(
+                    CanonicalTagDB.alias_count
+                    != func.coalesce(aliases.c.alias_count, 0),
+                    CanonicalTagDB.video_count
+                    != func.coalesce(videos.c.video_count, 0),
+                ),
+            )
+        )
+        return {str(tag_id) for tag_id in result.scalars().all()}

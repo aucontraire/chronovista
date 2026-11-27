@@ -230,10 +230,10 @@ describe('EntityName — the NAME in a type-coloured pill (FR-025, FR-029)', () 
     // This is what makes the colour convention learnable: it only teaches
     // anything if it is the same everywhere.
     const { container: first } = render(
-      <EntityName name="Belgium" entityType="place" />
+      <EntityName name="Ruritania" entityType="place" />
     );
     const { container: second } = render(
-      <EntityName name="Belgium" entityType="place" />
+      <EntityName name="Ruritania" entityType="place" />
     );
     expect(first.firstElementChild?.className).toBe(
       second.firstElementChild?.className

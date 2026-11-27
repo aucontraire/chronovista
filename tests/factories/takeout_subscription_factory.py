@@ -124,8 +124,8 @@ class TakeoutSubscriptionTestData:
     VALID_CHANNEL_IDS = [
         "UCuAXFkgsw1L7xaCfnd5JJOw",  # Rick Astley (24 chars)
         "UC_x5XG1OV2P6uZZ5FSM9Ttw",  # Google Developers (24 chars)
-        "UCMtFAi84ehTSYSE9XoHefig",  # Stephen Colbert (24 chars)
-        "UCBJycsmduvYEL83R_U4JriQ",  # MKBHD (24 chars)
+        "UCtestchannel00000000003",  # Stephen Colbert (24 chars)
+        "UCtestchannel00000000002",  # MKBHD (24 chars)
         None,  # Valid for custom URLs
     ]
 
@@ -201,8 +201,8 @@ def create_batch_takeout_subscriptions(count: int = 5) -> list[TakeoutSubscripti
     base_channels = [
         ("Rick Astley", "UCuAXFkgsw1L7xaCfnd5JJOw"),
         ("Google Developers", "UC_x5XG1OV2P6uZZ5FSM9Ttw"),
-        ("The Late Show", "UCMtFAi84ehTSYSE9XoHefig"),
-        ("Marques Brownlee", "UCBJycsmduvYEL83R_U4JriQ"),
+        ("The Late Show", "UCtestchannel00000000003"),
+        ("Marques Brownlee", "UCtestchannel00000000002"),
         ("Tech Channel", "UCTestChannel12345678901"),
     ]
 

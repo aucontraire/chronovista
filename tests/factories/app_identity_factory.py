@@ -18,6 +18,9 @@ from chronovista.models.app_identity import (
     AppIdentityUpdate,
 )
 
+# A placeholder channel identity: the right shape for a channel ID, owned by no one.
+OWNER_CHANNEL_ID = "UCtestownerplaceholder00"
+
 
 class AppIdentityBaseFactory(factory.Factory[AppIdentityBase]):
     """Factory for AppIdentityBase models."""
@@ -25,7 +28,7 @@ class AppIdentityBaseFactory(factory.Factory[AppIdentityBase]):
     class Meta:
         model = AppIdentityBase
 
-    user_id: Any = LazyFunction(lambda: "UCzYTmeK-6v3DcJ6hzRh1q9w")
+    user_id: Any = LazyFunction(lambda: OWNER_CHANNEL_ID)
     source: Any = LazyFunction(lambda: AppIdentitySource.CHANNEL)
 
 
@@ -35,7 +38,7 @@ class AppIdentityCreateFactory(factory.Factory[AppIdentityCreate]):
     class Meta:
         model = AppIdentityCreate
 
-    user_id: Any = LazyFunction(lambda: "UCzYTmeK-6v3DcJ6hzRh1q9w")
+    user_id: Any = LazyFunction(lambda: OWNER_CHANNEL_ID)
     source: Any = LazyFunction(lambda: AppIdentitySource.CHANNEL)
 
 
@@ -53,7 +56,7 @@ class AppIdentityFactory(factory.Factory[AppIdentity]):
         model = AppIdentity
 
     id: Any = LazyFunction(lambda: 1)
-    user_id: Any = LazyFunction(lambda: "UCzYTmeK-6v3DcJ6hzRh1q9w")
+    user_id: Any = LazyFunction(lambda: OWNER_CHANNEL_ID)
     source: Any = LazyFunction(lambda: AppIdentitySource.CHANNEL)
     created_at: Any = LazyFunction(lambda: datetime.now(UTC))
     updated_at: Any = LazyFunction(lambda: datetime.now(UTC))

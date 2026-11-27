@@ -161,13 +161,13 @@ chronovista corrections find-replace \
   --cross-segment --regex \
   --pattern '\bvector data\s+base\b' \
   --replacement 'Vector Database' \
-  --video-id uajXFlDGTfg --dry-run
+  --video-id testvid0003 --dry-run
 
 # Cross-segment + case-insensitive
 chronovista corrections find-replace \
   --cross-segment --case-insensitive \
   --pattern 'data base' --replacement 'database' \
-  --video-id JIMXfrMtHas --dry-run
+  --video-id testvid0002 --dry-run
 
 # Cross-segment + language filter
 chronovista corrections find-replace \
@@ -217,11 +217,11 @@ Use `--yes` to bypass the warning, or add a scope filter.
 ```bash
 # Preview what would be reverted
 chronovista corrections batch-revert \
-  --pattern 'Database' --video-id JIMXfrMtHas --dry-run
+  --pattern 'Database' --video-id testvid0002 --dry-run
 
 # Apply the revert
 chronovista corrections batch-revert \
-  --pattern 'Database' --video-id JIMXfrMtHas
+  --pattern 'Database' --video-id testvid0002
 ```
 
 **Important**: The pattern matches against the **corrected** text (what the segment says now), not the original text.
@@ -250,12 +250,12 @@ To revert only one segment without affecting others that match the same pattern,
 ```bash
 # Too broad — might revert multiple segments
 chronovista corrections batch-revert \
-  --pattern 'Database' --video-id JIMXfrMtHas --dry-run
+  --pattern 'Database' --video-id testvid0002 --dry-run
 
 # More specific — targets only the segment with this exact corrected text
 chronovista corrections batch-revert \
   --pattern 'we stored it in the vector database' \
-  --video-id JIMXfrMtHas --dry-run
+  --video-id testvid0002 --dry-run
 ```
 
 Always use `--dry-run` first to verify which segments will be affected.
@@ -322,17 +322,17 @@ chronovista corrections rebuild-text
 chronovista corrections find-replace \
   --cross-segment \
   --pattern 'Data Base' --replacement 'database' \
-  --video-id uajXFlDGTfg --dry-run
+  --video-id testvid0003 --dry-run
 
 # 3. Apply
 chronovista corrections find-replace \
   --cross-segment \
   --pattern 'Data Base' --replacement 'database' \
-  --video-id uajXFlDGTfg
+  --video-id testvid0003
 
 # 4. If wrong, revert (partner segment auto-reverted)
 chronovista corrections batch-revert \
-  --pattern 'Database' --video-id uajXFlDGTfg
+  --pattern 'Database' --video-id testvid0003
 ```
 
 ### Bulk fix a pattern across a language

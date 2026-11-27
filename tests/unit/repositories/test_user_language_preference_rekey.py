@@ -12,11 +12,12 @@ from chronovista.repositories.user_language_preference_repository import (
     RekeyCollisionError,
     UserLanguagePreferenceRepository,
 )
+from tests.factories.app_identity_factory import OWNER_CHANNEL_ID
 
 pytestmark = pytest.mark.asyncio
 
 FROM_ID = "default_user"
-TO_ID = "UCzYTmeK-6v3DcJ6hzRh1q9w"
+TO_ID = OWNER_CHANNEL_ID
 
 
 def _sql(stmt) -> str:

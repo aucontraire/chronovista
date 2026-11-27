@@ -133,7 +133,7 @@ const VIDEO_ID = "removal-test-video-001";
 /** A transcript-only entity (no unlink button expected). */
 const TRANSCRIPT_ONLY_ENTITY: VideoEntitySummary = {
   entity_id: "ent-transcript",
-  canonical_name: "MIT Media Lab",
+  canonical_name: "Quux Research Lab",
   entity_type: "organization",
   description: null,
   mention_count: 8,

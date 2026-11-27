@@ -82,9 +82,9 @@ class TakeoutWatchEntryWithTimeFactory(factory.Factory[TakeoutWatchEntry]):
         lambda: "The Late Show with Stephen Colbert"
     )
     channel_url: Any = factory.LazyFunction(
-        lambda: "https://www.youtube.com/channel/UCMtFAi84ehTSYSE9XoHefig"
+        lambda: "https://www.youtube.com/channel/UCtestchannel00000000003"
     )
-    channel_id: Any = factory.LazyFunction(lambda: "UCMtFAi84ehTSYSE9XoHefig")
+    channel_id: Any = factory.LazyFunction(lambda: "UCtestchannel00000000003")
     watched_at: Any = factory.LazyFunction(
         lambda: datetime(2023, 12, 15, 23, 35, 0, tzinfo=UTC)
     )
@@ -131,8 +131,8 @@ class TakeoutWatchEntryTestData:
     VALID_CHANNEL_IDS = [
         "UCuAXFkgsw1L7xaCfnd5JJOw",  # Rick Astley (24 chars)
         "UC_x5XG1OV2P6uZZ5FSM9Ttw",  # Google Developers (24 chars)
-        "UCMtFAi84ehTSYSE9XoHefig",  # Stephen Colbert (24 chars)
-        "UCBJycsmduvYEL83R_U4JriQ",  # MKBHD (24 chars)
+        "UCtestchannel00000000003",  # Stephen Colbert (24 chars)
+        "UCtestchannel00000000002",  # MKBHD (24 chars)
         "UC1234567890123456789012",  # Exactly 24 chars
     ]
 
@@ -263,8 +263,8 @@ def create_batch_takeout_watch_entries(count: int = 5) -> list[TakeoutWatchEntry
     base_channels = [
         ("Rick Astley", "UCuAXFkgsw1L7xaCfnd5JJOw"),
         ("Python Tutorials", "UC_x5XG1OV2P6uZZ5FSM9Ttw"),
-        ("The Late Show", "UCMtFAi84ehTSYSE9XoHefig"),
-        ("Google Developers", "UCBJycsmduvYEL83R_U4JriQ"),
+        ("The Late Show", "UCtestchannel00000000003"),
+        ("Google Developers", "UCtestchannel00000000002"),
         ("Tech Channel", "UCTestChannel12345678901"),
     ]
 

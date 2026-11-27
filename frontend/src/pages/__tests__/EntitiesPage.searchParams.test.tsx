@@ -1,7 +1,7 @@
 /**
  * Feature 072 — the /entities page searches accent-insensitively AND across
  * aliases. Accent-insensitivity is enforced entirely in the backend; the
- * frontend's job is to OPT IN by sending `search_aliases=true` on every
+ * frontend's job is to opt in by sending `search_aliases=true` on every
  * entity-list request.
  *
  * Feature 110 removed the `exclude_alias_types=asr_error` param: transcript-error

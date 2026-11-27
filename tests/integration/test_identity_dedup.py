@@ -27,10 +27,11 @@ from chronovista.services.identity_service import (
     IdentityService,
     LanguagePrefRekeyError,
 )
+from tests.factories.app_identity_factory import OWNER_CHANNEL_ID
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
-CHANNEL = "UCzYTmeK-6v3DcJ6hzRh1q9w"
+CHANNEL = OWNER_CHANNEL_ID
 PLACEHOLDER = "takeout_user"
 
 T1 = datetime(2024, 1, 1, tzinfo=UTC)

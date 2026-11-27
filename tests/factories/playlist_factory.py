@@ -119,7 +119,7 @@ class PlaylistSearchFiltersFactory(factory.Factory[PlaylistSearchFilters]):
         ]
     )
     channel_ids: Any = factory.LazyFunction(
-        lambda: ["UCuAXFkgsw1L7xaCfnd5JJOw", "UC-lHJZR3Gqxm24_Vd_AJ5Yw"]
+        lambda: ["UCuAXFkgsw1L7xaCfnd5JJOw", "UCtestchannel00000000001"]
     )
     title_query: Any = Faker("word")
     description_query: Any = Faker("word")
@@ -159,8 +159,8 @@ class PlaylistStatisticsFactory(factory.Factory[PlaylistStatistics]):
     top_channels_by_playlists: Any = factory.LazyFunction(
         lambda: [
             ("UCuAXFkgsw1L7xaCfnd5JJOw", 25),
-            ("UC-lHJZR3Gqxm24_Vd_AJ5Yw", 20),
-            ("UCBJycsmduvYEL83R_U4JriQ", 18),
+            ("UCtestchannel00000000001", 20),
+            ("UCtestchannel00000000002", 18),
         ]
     )
     playlist_size_distribution: Any = factory.LazyFunction(
@@ -289,9 +289,9 @@ class PlaylistTestData:
 
     VALID_CHANNEL_IDS = [
         "UCuAXFkgsw1L7xaCfnd5JJOw",
-        "UC-lHJZR3Gqxm24_Vd_AJ5Yw",
-        "UCBJycsmduvYEL83R_U4JriQ",
-        "UCsXVk37bltHxD1rDPwtNM8Q",
+        "UCtestchannel00000000001",
+        "UCtestchannel00000000002",
+        "UCtestchannel00000000004",
         "UCYCvGbr7chpyTgFpgUOVjjw",
     ]
 
@@ -397,7 +397,7 @@ class PlaylistTestData:
             "description": "Personal music collection for private listening.",
             "default_language": "en",
             "privacy_status": "private",
-            "channel_id": "UC-lHJZR3Gqxm24_Vd_AJ5Yw",
+            "channel_id": "UCtestchannel00000000001",
             "video_count": 30,
         }
 

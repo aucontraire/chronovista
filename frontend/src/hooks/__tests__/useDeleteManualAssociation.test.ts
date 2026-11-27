@@ -113,7 +113,7 @@ function makeMultiSourceEntity(overrides: Partial<VideoEntitySummary> = {}): Vid
 function makeTranscriptOnlyEntity(overrides: Partial<VideoEntitySummary> = {}): VideoEntitySummary {
   return {
     entity_id: ENTITY_ID_TRANSCRIPT_ONLY,
-    canonical_name: "MIT Media Lab",
+    canonical_name: "Quux Research Lab",
     entity_type: "organization",
     description: null,
     mention_count: 8,

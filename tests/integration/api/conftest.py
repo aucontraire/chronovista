@@ -432,7 +432,6 @@ def sample_youtube_channel_ids() -> list[str]:
     return [
         "UCuAXFkgsw1L7xaCfnd5JJOw",  # Rick Astley (stable, english content)
         "UC_x5XG1OV2P6uZZ5FSM9Ttw",  # Google Developers (stable, tech content)
-        "UCMtFAi84ehTSYSE9XoHefig",  # The Late Show with Stephen Colbert (stable, many videos)
     ]
 
 

@@ -268,7 +268,7 @@ class TestVideoFactory:
 
         assert isinstance(video, Video)
         assert video.video_id == "3tmd-ClpJxA"
-        assert video.channel_id == "UCMtFAi84ehTSYSE9XoHefig"
+        assert video.channel_id == "UCtestchannel00000000003"
         assert "Stephen Colbert" in video.title
         assert hasattr(video, "created_at")
         assert hasattr(video, "updated_at")
@@ -351,7 +351,7 @@ class TestVideoSearchFiltersFactory:
             channel_ids=[
                 "UCuAXFkgsw1L7xaCfnd5JJOw",
                 "UC_x5XG1OV2P6uZZ5FSM9Ttw",
-                "UCMtFAi84ehTSYSE9XoHefig",
+                "UCtestchannel00000000003",
             ],
             title_query="artificial intelligence",
             description_query="deep learning",
@@ -457,7 +457,7 @@ class TestVideoWithChannelFactory:
 
         assert isinstance(video, VideoWithChannel)
         assert video.video_id == "jNQXAC9IVRw"
-        assert video.channel_id == "UCBJycsmduvYEL83R_U4JriQ"
+        assert video.channel_id == "UCtestchannel00000000002"
         assert "iPhone" in video.title
         assert video.channel_title == "Marques Brownlee"
         assert video.channel_subscriber_count == 17800000

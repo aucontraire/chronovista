@@ -17,10 +17,11 @@ from chronovista.services.identity_service import (
     RepairReport,
     UnrecognizedIdentityConfigError,
 )
+from tests.factories.app_identity_factory import OWNER_CHANNEL_ID
 
 runner = CliRunner()
 
-CHANNEL = "UCzYTmeK-6v3DcJ6hzRh1q9w"
+CHANNEL = OWNER_CHANNEL_ID
 _INV = IdentityInvariants(distinct_watched_videos=10, liked_count=3, rewatch_sum=5)
 
 

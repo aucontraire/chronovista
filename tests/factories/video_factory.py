@@ -154,7 +154,7 @@ class VideoFactory(factory.Factory[Video]):
         model = Video
 
     video_id: Any = factory.LazyFunction(lambda: "3tmd-ClpJxA")
-    channel_id: Any = factory.LazyFunction(lambda: "UCMtFAi84ehTSYSE9XoHefig")
+    channel_id: Any = factory.LazyFunction(lambda: "UCtestchannel00000000003")
     channel_name_hint: Any = factory.LazyFunction(lambda: None)
     title: Any = factory.LazyFunction(
         lambda: "The Late Show with Stephen Colbert - Best Moments 2023"
@@ -255,7 +255,7 @@ class VideoWithChannelFactory(factory.Factory[VideoWithChannel]):
         model = VideoWithChannel
 
     video_id: Any = factory.LazyFunction(lambda: "jNQXAC9IVRw")
-    channel_id: Any = factory.LazyFunction(lambda: "UCBJycsmduvYEL83R_U4JriQ")
+    channel_id: Any = factory.LazyFunction(lambda: "UCtestchannel00000000002")
     channel_name_hint: Any = factory.LazyFunction(lambda: None)
     title: Any = factory.LazyFunction(
         lambda: "Marques Brownlee - iPhone 15 Pro Max Review!"
@@ -312,8 +312,8 @@ class VideoTestData:
     VALID_CHANNEL_IDS = [
         "UCuAXFkgsw1L7xaCfnd5JJOw",  # Rick Astley (24 chars)
         "UC_x5XG1OV2P6uZZ5FSM9Ttw",  # Google Developers (24 chars)
-        "UCMtFAi84ehTSYSE9XoHefig",  # Stephen Colbert (24 chars)
-        "UCBJycsmduvYEL83R_U4JriQ",  # MKBHD (24 chars)
+        "UCtestchannel00000000003",  # Stephen Colbert (24 chars)
+        "UCtestchannel00000000002",  # MKBHD (24 chars)
         "UC1234567890123456789012",  # Exactly 24 chars
     ]
 
@@ -450,8 +450,8 @@ def create_batch_videos(count: int = 5) -> list[Video]:
     base_channel_ids = [
         "UCuAXFkgsw1L7xaCfnd5JJOw",
         "UC_x5XG1OV2P6uZZ5FSM9Ttw",
-        "UCMtFAi84ehTSYSE9XoHefig",
-        "UCBJycsmduvYEL83R_U4JriQ",
+        "UCtestchannel00000000003",
+        "UCtestchannel00000000002",
         "UCTestChannel12345678901",
     ]
     base_titles = [

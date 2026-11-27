@@ -250,7 +250,7 @@ When no video ID is available, seeding generated fake MD5-based IDs.
 - 11 characters
 - Base64-like alphabet: `a-zA-Z0-9_-`
 - Contains uppercase letters, underscores, or dashes
-- Example: `dQw4w9WgXcQ`, `hwRMkJRM-G8`
+- Example: `dQw4w9WgXcQ`, `testvid0005`
 
 **Generated Video IDs (SHOULD NOT EXIST):**
 - 11 characters

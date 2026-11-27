@@ -21,10 +21,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chronovista.db.models import AppIdentity as AppIdentityDB
 from chronovista.db.models import Channel, UserLanguagePreference, UserVideo, Video
 from chronovista.services.identity_service import IdentityService
+from tests.factories.app_identity_factory import OWNER_CHANNEL_ID
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.integration]
 
-CHANNEL = "UCzYTmeK-6v3DcJ6hzRh1q9w"
+CHANNEL = OWNER_CHANNEL_ID
 PLACEHOLDER = "takeout_user"
 
 # Identity-bearing tables (model, user-id column) — the full cross-table set.

@@ -68,7 +68,7 @@ class TestPlaylistBase:
             description=None,
             default_language=None,
             privacy_status="private",
-            channel_id="UC-lHJZR3Gqxm24_Vd_AJ5Yw",
+            channel_id="UCtestchannel00000000001",
             video_count=0,
         )
 
@@ -77,7 +77,7 @@ class TestPlaylistBase:
         assert playlist.description is None
         assert playlist.default_language is None
         assert playlist.privacy_status == "private"
-        assert playlist.channel_id == "UC-lHJZR3Gqxm24_Vd_AJ5Yw"
+        assert playlist.channel_id == "UCtestchannel00000000001"
         assert playlist.video_count == 0
 
     def test_factory_generates_valid_defaults(self):
@@ -255,7 +255,7 @@ class TestPlaylistCreate:
             description="My favorite music tracks",
             default_language="fr",
             privacy_status="unlisted",
-            channel_id="UCBJycsmduvYEL83R_U4JriQ",
+            channel_id="UCtestchannel00000000002",
             video_count=40,
         )
 
@@ -264,7 +264,7 @@ class TestPlaylistCreate:
         assert playlist.description == "My favorite music tracks"
         assert playlist.default_language == "fr"
         assert playlist.privacy_status == "unlisted"
-        assert playlist.channel_id == "UCBJycsmduvYEL83R_U4JriQ"
+        assert playlist.channel_id == "UCtestchannel00000000002"
         assert playlist.video_count == 40
 
     def test_inherits_base_validation(self):
@@ -364,7 +364,7 @@ class TestPlaylist:
             description="Collection of technology tutorials",
             default_language="de",
             privacy_status="public",
-            channel_id="UCsXVk37bltHxD1rDPwtNM8Q",
+            channel_id="UCtestchannel00000000004",
             video_count=75,
             created_at=created_at,
             updated_at=updated_at,
@@ -376,7 +376,7 @@ class TestPlaylist:
         assert playlist.description == "Collection of technology tutorials"
         assert playlist.default_language == "de"
         assert playlist.privacy_status == "public"
-        assert playlist.channel_id == "UCsXVk37bltHxD1rDPwtNM8Q"
+        assert playlist.channel_id == "UCtestchannel00000000004"
         assert playlist.video_count == 75
         assert playlist.created_at == created_at
         assert playlist.updated_at == updated_at
@@ -512,7 +512,7 @@ class TestPlaylistStatistics:
             language_distribution={"en": 250, "es": 100, "fr": 80, "de": 70},
             top_channels_by_playlists=[
                 ("UCuAXFkgsw1L7xaCfnd5JJOw", 35),
-                ("UC-lHJZR3Gqxm24_Vd_AJ5Yw", 30),
+                ("UCtestchannel00000000001", 30),
             ],
             playlist_size_distribution={
                 "1-5 videos": 150,
@@ -535,7 +535,7 @@ class TestPlaylistStatistics:
         assert stats.language_distribution == {"en": 250, "es": 100, "fr": 80, "de": 70}
         assert stats.top_channels_by_playlists == [
             ("UCuAXFkgsw1L7xaCfnd5JJOw", 35),
-            ("UC-lHJZR3Gqxm24_Vd_AJ5Yw", 30),
+            ("UCtestchannel00000000001", 30),
         ]
         assert stats.playlist_size_distribution == {
             "1-5 videos": 150,
@@ -689,8 +689,8 @@ class TestPlaylistModelInteractions:
             },
             "top_channels_by_playlists": [
                 ("UCuAXFkgsw1L7xaCfnd5JJOw", 45),
-                ("UC-lHJZR3Gqxm24_Vd_AJ5Yw", 40),
-                ("UCBJycsmduvYEL83R_U4JriQ", 35),
+                ("UCtestchannel00000000001", 40),
+                ("UCtestchannel00000000002", 35),
             ],
             "playlist_size_distribution": {
                 "1-5 videos": 300,
@@ -719,7 +719,7 @@ class TestPlaylistModelInteractions:
             title="Test Playlist",
             description="Test description",
             privacy_status="public",
-            channel_id="UC-lHJZR3Gqxm24_Vd_AJ5Yw",
+            channel_id="UCtestchannel00000000001",
         )
 
         assert isinstance(playlist, Playlist)
@@ -727,7 +727,7 @@ class TestPlaylistModelInteractions:
         assert playlist.title == "Test Playlist"
         assert playlist.description == "Test description"
         assert playlist.privacy_status == "public"
-        assert playlist.channel_id == "UC-lHJZR3Gqxm24_Vd_AJ5Yw"
+        assert playlist.channel_id == "UCtestchannel00000000001"
         assert isinstance(playlist.created_at, datetime)
         assert isinstance(playlist.updated_at, datetime)
 
@@ -768,9 +768,9 @@ class TestPlaylistModelInteractions:
         # Test various valid YouTube channel ID formats (all start with UC)
         valid_channel_ids = [
             "UCuAXFkgsw1L7xaCfnd5JJOw",  # UC format
-            "UC-lHJZR3Gqxm24_Vd_AJ5Yw",  # UC with hyphen
-            "UCBJycsmduvYEL83R_U4JriQ",  # Another UC format
-            "UCsXVk37bltHxD1rDPwtNM8Q",  # UC format variant
+            "UCtestchannel00000000001",  # UC with hyphen
+            "UCtestchannel00000000002",  # Another UC format
+            "UCtestchannel00000000004",  # UC format variant
         ]
 
         for channel_id in valid_channel_ids:

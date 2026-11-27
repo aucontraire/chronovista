@@ -87,7 +87,7 @@ class ChannelFactory(factory.Factory[Channel]):
     class Meta:
         model = Channel
 
-    channel_id: Any = factory.LazyFunction(lambda: "UCMtFAi84ehTSYSE9XoHefig")
+    channel_id: Any = factory.LazyFunction(lambda: "UCtestchannel00000000003")
     title: Any = factory.LazyFunction(lambda: "The Late Show with Stephen Colbert")
     description: Any = factory.LazyFunction(
         lambda: "The Late Show with Stephen Colbert brings you late-night laughs with a healthy dose of current events and celebrity guests."
@@ -156,7 +156,7 @@ class ChannelTestData:
     VALID_CHANNEL_IDS = [
         "UCuAXFkgsw1L7xaCfnd5JJOw",  # Rick Astley
         "UC_x5XG1OV2P6uZZ5FSM9Ttw",  # Google Developers
-        "UCMtFAi84ehTSYSE9XoHefig",  # Stephen Colbert
+        "UCtestchannel00000000003",  # Stephen Colbert
         "UC1234567890123456789012",  # Exactly 24 chars with UC prefix
         "UCabcdefghijklmnopqrstuv",  # Another valid 24-char ID
     ]
@@ -250,7 +250,7 @@ def create_batch_channels(count: int = 5) -> list[Channel]:
     base_channel_ids = [
         "UCuAXFkgsw1L7xaCfnd5JJOw",
         "UC_x5XG1OV2P6uZZ5FSM9Ttw",
-        "UCMtFAi84ehTSYSE9XoHefig",
+        "UCtestchannel00000000003",
         "UC123456789Test1234567890",
         "UC987654321Test0987654321",
     ]

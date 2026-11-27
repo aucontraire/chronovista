@@ -160,13 +160,13 @@ export const ENTITY_TYPE_TABS: Array<{ value: string; label: string }> = [
  */
 export const ENTITY_TYPE_TOOLTIPS: Record<string, string> = {
   person:
-    "A named human being. Examples: Barbara Jordan-Reed, Alan Turing, Adam Smith",
+    "A named human being. Examples: Barbara Jordan-Reed, Alan Turing, Ada Lovelace",
   organization:
     "A company, institution, government body, or formal group. Examples: Federal Reserve, NATO, OpenAI",
   place:
-    "A named geographic location or region. Examples: Gaza Strip, Silicon Valley, European Union",
+    "A named geographic location or region. Examples: Mount Everest, Lake Geneva, Sahara Desert",
   event:
-    "A named historical, political, or cultural event. Examples: January 6th, Bretton Woods Conference, Arab Spring",
+    "A named historical, political, or cultural event. Examples: Moon landing, Olympic Games, Industrial Revolution",
   work:
     "A creative work: a book, film, TV series, musical work, or video game. Examples: a novel, a documentary, a studio album",
   product:

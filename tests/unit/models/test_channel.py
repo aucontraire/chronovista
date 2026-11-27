@@ -260,7 +260,7 @@ class TestChannelFactory:
         channel = ChannelFactory.build()
 
         assert isinstance(channel, Channel)
-        assert channel.channel_id == "UCMtFAi84ehTSYSE9XoHefig"
+        assert channel.channel_id == "UCtestchannel00000000003"
         assert channel.title == "The Late Show with Stephen Colbert"
         assert hasattr(channel, "created_at")
         assert hasattr(channel, "updated_at")
